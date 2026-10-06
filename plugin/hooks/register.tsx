@@ -22,6 +22,7 @@ import {
   colorProbes,
   detectTerminal,
   emPxForCell,
+  fontCell,
   imageInkBackground,
   init,
   measureDisplay,
@@ -243,7 +244,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       // out for cells that are gone, and once more when the resize settles.
       // A render may not write state, so the settle timer stores what it finds.
       const cell = await cells?.probe()
-      if (cell) env = { ...env, ...cellEnv(cell), columns: seen }
+      if (cell) env = { ...env, ...cellEnv(cell, env.cellAdjust), columns: seen }
       cells?.settle(seen)
     }
     const columns = e.viewport?.columns ?? env.columns
@@ -381,10 +382,12 @@ async function setUp($: $, surface: string | null): Promise<void> {
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
+  const cellAdjust = terminalColors?.cellAdjust
   const env: KittexEnv = {
     kind: terminal.kind,
     images: terminal.images,
-    ...cellEnv(cell),
+    ...cellEnv(cell, cellAdjust),
+    ...(cellAdjust ? { cellAdjust } : {}),
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     ink: inkNow(),
     ...inkOverNow(),
@@ -679,10 +682,10 @@ function cellsFor($: $): Cells {
   }
 }
 
-/** A measured cell as kittex.env holds it. */
-function cellEnv(cell: CellSize | undefined): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
+/** A measured cell as kittex.env holds it: the math's em from the font's own cell (fontCell), the terminal's adjustments undone. */
+function cellEnv(cell: CellSize | undefined, adjust: KittexEnv['cellAdjust']): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
   const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
-  return { cellWidth, cellHeight, measured, emPx: emPxForCell({ cellWidth, cellHeight }) }
+  return { cellWidth, cellHeight, measured, emPx: emPxForCell(fontCell({ cellWidth, cellHeight }, adjust)) }
 }
 
 /** Stores a probe's cells and columns in kittex.env when they changed (a failed probe changes only the columns, to `seen`). */
@@ -690,7 +693,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
   const env = await readEnv($)
   if (!env) return
   const columns = cell?.columns ?? seen ?? env.columns
-  const measured = cell ? cellEnv(cell) : undefined
+  const measured = cell ? cellEnv(cell, env.cellAdjust) : undefined
   const same = measured === undefined || (measured.cellWidth === env.cellWidth && measured.cellHeight === env.cellHeight)
   if (same && columns === env.columns) return
   await $.state.set(ENV, { ...env, ...measured, columns })

@@ -1,4 +1,4 @@
-import type { Probe, RGB, TerminalColors } from '../types.js'
+import type { CellAdjust, MetricAdjust, Probe, RGB, TerminalColors } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
 
@@ -48,10 +48,29 @@ interface GhosttyColors {
   values: Map<'foreground' | 'background', RGB>
   palette: Map<number, RGB>
   alphaBlending?: TerminalColors['alphaBlending']
+  adjust: CellAdjust
+}
+
+/** Ghostty's options that set its cells off the font's own metrics, and the CellAdjust field each sets. */
+const ADJUST_KEYS = { 'adjust-cell-width': 'width', 'adjust-cell-height': 'height', 'adjust-font-baseline': 'baseline' } as const
+
+/**
+ * An `adjust-*` metric value, parsed as Ghostty's font/Metrics.zig Modifier
+ * does: `N%` changes the metric by N percent (a factor of 1 + N/100, no less
+ * than 0), a bare integer adds that many pixels. Empty or malformed: unset.
+ */
+export function parseMetricAdjust(value: string): MetricAdjust | undefined {
+  const v = value.trim()
+  if (v.endsWith('%')) {
+    const percent = Number(v.slice(0, -1))
+    if (v.length < 2 || !Number.isFinite(percent)) return undefined
+    return { factor: Math.max(0, 1 + percent / 100) }
+  }
+  return /^[+-]?\d+$/.test(v) ? { px: Number(v) } : undefined
 }
 
 function emptyColors(): GhosttyColors {
-  return { values: new Map(), palette: new Map() }
+  return { values: new Map(), palette: new Map(), adjust: {} }
 }
 
 /** An `alpha-blending` value (Ghostty 1.1 and later). */
@@ -67,7 +86,12 @@ export function ghosttyDefaultAlphaBlending(platform: string): NonNullable<Termi
 
 // Applies one colour entry; an empty value resets the key to its default.
 function applyColor(into: GhosttyColors, key: string, value: string): void {
-  if (key === 'alpha-blending') {
+  if (Object.prototype.hasOwnProperty.call(ADJUST_KEYS, key)) {
+    const field = ADJUST_KEYS[key as keyof typeof ADJUST_KEYS]
+    const adjust = value ? parseMetricAdjust(value) : undefined
+    if (adjust) into.adjust[field] = adjust
+    else delete into.adjust[field]
+  } else if (key === 'alpha-blending') {
     // An empty value resets it to the default, which depends on the platform.
     into.alphaBlending = parseAlphaBlending(value)
   } else if (key === 'foreground' || key === 'background') {
@@ -95,6 +119,8 @@ function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   }
   const blending = layers.reduce<TerminalColors['alphaBlending']>((b, l) => l.alphaBlending ?? b, undefined)
   if (blending) colors.alphaBlending = blending
+  const adjust: CellAdjust = Object.assign({}, ...layers.map(l => l.adjust))
+  if (Object.keys(adjust).length > 0) colors.cellAdjust = adjust
   return colors
 }
 

@@ -21,6 +21,7 @@ import {
   previewInline,
   scan,
   TexError,
+  textBaseline,
   textWidth,
 } from './core.js'
 import type { CellSize, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
@@ -272,7 +273,7 @@ export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
 
 /** Where inline formulas are drawn: one text row, the math on the font's baseline. */
 export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
-  return { ...renderEnvFor(env, columns), baselinePx: Math.round(env.cellHeight * TEXT_BASELINE) }
+  return { ...renderEnvFor(env, columns), baselinePx: textBaseline(env.cellHeight, TEXT_BASELINE, env.cellAdjust) }
 }
 
 /**

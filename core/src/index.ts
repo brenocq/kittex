@@ -16,8 +16,10 @@ export {
   colorProbes,
   detectTerminal,
   emPxForCell,
+  fontCell,
   imageInkBackground,
   readTerminalColors,
+  textBaseline,
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'

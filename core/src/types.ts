@@ -205,6 +205,23 @@ export interface TerminalColors {
    * images in linear light as they are (see imageInkBackground).
    */
   alphaBlending?: 'native' | 'linear' | 'linear-corrected'
+  /**
+   * Not a colour, but read by the same probe: how far the terminal's cells
+   * are set off the font's own (Ghostty's adjust-cell-width,
+   * adjust-cell-height, adjust-font-baseline), when any is set.
+   */
+  cellAdjust?: CellAdjust
+}
+
+/** A change to one cell metric: a factor (Ghostty's `20%` is 1.2) or whole pixels added. */
+export type MetricAdjust = { factor: number } | { px: number }
+
+/** How the terminal changed its cells from what its font gives (see fontCell, textBaseline). */
+export interface CellAdjust {
+  width?: MetricAdjust
+  height?: MetricAdjust
+  /** The baseline's distance from the bottom of the cell. */
+  baseline?: MetricAdjust
 }
 
 export type TerminalKind = 'kitty' | 'ghostty' | 'wezterm' | 'iterm2' | 'other'

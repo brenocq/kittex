@@ -6,6 +6,7 @@ import {
   ghosttyEntries,
   imageInkBackground,
   parseGhosttyConfig,
+  parseMetricAdjust,
   readGhosttyColors,
   readTerminalColors,
   toHex,
@@ -140,21 +141,44 @@ describe('readGhosttyColors', () => {
   })
 })
 
-describe('alpha-blending', () => {
-  test('Ghostty 1.3.1 on Linux, theme Gruvbox Light: linear-corrected by default', () => {
+describe('alpha-blending and the cell adjustments', () => {
+  test('Ghostty 1.3.1 on Linux, theme Gruvbox Light: linear-corrected by default, no adjustments', () => {
     // Captured on this machine: `ghostty +show-config --changes-only=false` with a config of one line, theme = Gruvbox Light.
     const colors = parseGhosttyConfig(fixture('ghostty-1.3.1-show-config.txt'))
     expect(hex(colors)).toMatchObject({ foreground: '#3c3836', background: '#fbf1c7' })
     expect(colors?.alphaBlending).toBe('linear-corrected')
+    expect(colors?.cellAdjust).toBeUndefined()
+  })
+
+  test('show-config prints the adjustments as Ghostty formats them', () => {
+    // Printed by Ghostty 1.3.1 for adjust-cell-width = 20%, adjust-cell-height = -2, adjust-font-baseline = 10%.
+    const out = 'foreground = #000000\nalpha-blending = native\nadjust-cell-width = 19.999999999999996%\nadjust-cell-height = -2\nadjust-font-baseline = 10.000000000000009%\n'
+    const colors = parseGhosttyConfig(out)
+    expect(colors?.alphaBlending).toBe('native')
+    expect(colors?.cellAdjust?.width).toEqual({ factor: expect.closeTo(1.2, 12) })
+    expect(colors?.cellAdjust?.height).toEqual({ px: -2 })
+    expect(colors?.cellAdjust?.baseline).toEqual({ factor: expect.closeTo(1.1, 12) })
+  })
+
+  test('parseMetricAdjust: percent as a factor (never below 0), integers as pixels, anything else unset', () => {
+    expect(parseMetricAdjust('20%')).toEqual({ factor: 1.2 })
+    expect(parseMetricAdjust('-25%')).toEqual({ factor: 0.75 })
+    expect(parseMetricAdjust('-150%')).toEqual({ factor: 0 })
+    expect(parseMetricAdjust('3')).toEqual({ px: 3 })
+    expect(parseMetricAdjust('-2')).toEqual({ px: -2 })
+    for (const bad of ['', '%', '1.5', 'abc', '2px']) expect(parseMetricAdjust(bad)).toBeUndefined()
   })
 
   test('config files: alpha-blending as set, else the platform default once the platform is known', async () => {
     const env = { HOME: '/h' }
-    const set = { '/h/.config/ghostty/config': 'alpha-blending = linear\n' }
+    const set = { '/h/.config/ghostty/config': 'alpha-blending = linear\nadjust-cell-width = 10%\n' }
     expect((await readGhosttyColors(memFs(set), { env }))?.alphaBlending).toBe('linear')
+    expect((await readGhosttyColors(memFs(set), { env }))?.cellAdjust).toEqual({ width: { factor: 1.1 } })
     expect((await readGhosttyColors(memFs({}), { env, platform: 'linux' }))?.alphaBlending).toBe('linear-corrected')
     expect((await readGhosttyColors(memFs({}), { env, platform: 'darwin' }))?.alphaBlending).toBe('native')
     expect((await readGhosttyColors(memFs({}), { env }))?.alphaBlending).toBeUndefined()
+    const reset = { '/h/.config/ghostty/config': 'adjust-cell-width = 10%\nadjust-cell-width =\n' }
+    expect((await readGhosttyColors(memFs(reset), { env }))?.cellAdjust).toBeUndefined()
   })
 
   test('imageInkBackground: the background in Ghostty with linear-corrected blending only', () => {

@@ -4,7 +4,7 @@ import type { Env } from './detect.js'
 import { ghosttyColorProbes, readGhosttyColors } from './ghostty.js'
 import { kittyColorProbes, readKittyColors } from './kitty.js'
 
-export { cellProbe, cellProbePython, cellProbes, emPxForCell, parseWinsize } from './cell.js'
+export { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, parseWinsize, textBaseline } from './cell.js'
 export {
   CLAUDE_THEME_TEXT,
   type ClaudeBuiltinTheme,
@@ -20,7 +20,7 @@ export {
 } from './claude-theme.js'
 export { type ConfigReadOptions, type FileReader, isDark, parseColorValue, toHex } from './color.js'
 export { detectTerminal, type Env } from './detect.js'
-export { ghosttyDefaultAlphaBlending, ghosttyEntries, parseAlphaBlending, parseGhosttyConfig, readGhosttyColors } from './ghostty.js'
+export { ghosttyDefaultAlphaBlending, ghosttyEntries, parseAlphaBlending, parseGhosttyConfig, parseMetricAdjust, readGhosttyColors } from './ghostty.js'
 export { kittyConfigDirs, parseKittyColors, readKittyColors } from './kitty.js'
 
 export interface ColorProbeOptions {

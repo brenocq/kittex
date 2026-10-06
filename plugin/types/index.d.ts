@@ -17,6 +17,12 @@ export type KittexEnv = {
   ink: { r: number; g: number; b: number }
   /** The background the ink's alpha is corrected against, as the terminal corrects its text (Ghostty's linear-corrected blending); absent where images and text blend alike. */
   inkOver?: { r: number; g: number; b: number }
+  /** How the terminal set its cells off its font's (Ghostty's adjust-cell-width, adjust-cell-height, adjust-font-baseline); absent when none is set. */
+  cellAdjust?: {
+    width?: { factor: number } | { px: number }
+    height?: { factor: number } | { px: number }
+    baseline?: { factor: number } | { px: number }
+  }
   /** Whether the cell size was measured (false: the fallback cell). */
   measured: boolean
   /** The glyph the engine opens a reply with (`⏺` on macOS, `●` elsewhere); `●` when absent. */

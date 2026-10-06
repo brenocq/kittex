@@ -1,13 +1,14 @@
 // kittex in Ghostty: the formulas' alpha corrected the way Ghostty corrects
-// its text (alpha-blending = linear-corrected). Measured live on Ghostty 1.3.1
-// (see core/src/terminal).
+// its text (alpha-blending = linear-corrected), and the math sized and placed
+// for the font's own cell when adjust-cell-width / adjust-cell-height set the
+// cells off it. Measured live on Ghostty 1.3.1 (see core/src/terminal).
 
 import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { cellProbe, emPxForCell, init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
-import { renderEnvFor } from '../hooks/math.ts'
+import { inlineEnvFor, renderEnvFor, TEXT_BASELINE } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
 import { COLUMNS, test } from './support.ts'
 
@@ -80,5 +81,25 @@ describe('Ghostty', () => {
     const png = await landedPng($)
     await init()
     expect(png).toBe(expected(ghosttyEnv({ cellWidth: 10, cellHeight: 21 })))
+  })
+
+  test('adjust-cell-width and -height: the math em is the font cell’s, the image fills the adjusted cells', async ($, on) => {
+    const cell = { cellWidth: 12, cellHeight: 27 }
+    await startGhostty($, on, showConfig(['adjust-cell-width = 19.999999999999996%', 'adjust-cell-height = 30%']), cell)
+    const png = await landedPng($)
+    await init()
+    const cellAdjust = { width: { factor: 1.2 }, height: { factor: 1.3 } }
+    const env = ghosttyEnv(cell, { inkOver: BACKGROUND, emPx: emPxForCell({ cellWidth: 10, cellHeight: 21 }), cellAdjust })
+    expect(png).toBe(expected(env))
+    expect(png).not.toBe(expected({ ...env, emPx: emPxForCell(cell) }))
+  })
+})
+
+describe('inlineEnvFor in adjusted cells', () => {
+  test('the baseline stays where Ghostty draws the text: 16 px down 21 px cells, 19 px down the same cells 30% taller', () => {
+    expect(inlineEnvFor(ghosttyEnv({ cellWidth: 10, cellHeight: 21 })).baselinePx).toBe(16)
+    expect(inlineEnvFor(ghosttyEnv({ cellWidth: 12, cellHeight: 27 }, { cellAdjust: { height: { factor: 1.3 } } })).baselinePx).toBe(19)
+    // Unadjusted cells keep the fraction (kitty's 13×26: 20 px).
+    expect(inlineEnvFor(ghosttyEnv({ cellWidth: 13, cellHeight: 26 })).baselinePx).toBe(Math.round(26 * TEXT_BASELINE))
   })
 })
