@@ -194,8 +194,10 @@ test.skipIf(!RUN)(
       }
       writeFileSync(join(OUT, `previews-${width}.txt`), previews.join('\n'))
       if (entries.length > 0) {
-        const pages = contactSheets(entries, { ink: INK, background: BACKGROUND, rule: { r: 0x50, g: 0x49, b: 0x45 }, maxHeight: 1400 })
-        for (const [p, png] of pages.entries()) writeFileSync(join(OUT, `sheet-${width}-${String(p + 1).padStart(2, '0')}.png`), png)
+        const { pages, pageOf } = contactSheets(entries, { ink: INK, background: BACKGROUND, rule: { r: 0x50, g: 0x49, b: 0x45 }, maxHeight: 1400 })
+        const name = (p: number) => `sheet-${width}-${String(p + 1).padStart(2, '0')}.png`
+        for (const [p, png] of pages.entries()) writeFileSync(join(OUT, name(p)), png)
+        writeFileSync(join(OUT, `sheet-index-${width}.txt`), pageOf.map((p, i) => `${i}\t${name(p)}`).join('\n') + '\n')
       }
     }
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(all, null, 1))

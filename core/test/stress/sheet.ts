@@ -26,10 +26,11 @@ export interface SheetOptions {
   rule: RGB
 }
 
-/** Lays entries out as pages: label above, image below, a rule under each, the image's own box framed. */
-export function contactSheets(entries: readonly SheetEntry[], options: SheetOptions): Uint8Array[] {
+/** Lays entries out as pages: label above, image below, a rule under each, the image's own box framed. `pageOf[i]` is entry i's page (0-based). */
+export function contactSheets(entries: readonly SheetEntry[], options: SheetOptions): { pages: Uint8Array[]; pageOf: number[] } {
   const margin = 8
   const pages: SheetEntry[][] = [[]]
+  const pageOf: number[] = []
   let height = margin
   for (const entry of entries) {
     const h = entry.label.height + entry.image.height + 3 * margin
@@ -38,9 +39,10 @@ export function contactSheets(entries: readonly SheetEntry[], options: SheetOpti
       height = margin
     }
     pages[pages.length - 1]!.push(entry)
+    pageOf.push(pages.length - 1)
     height += h
   }
-  return pages.map(page => {
+  const pngs = pages.map(page => {
     const width = 2 * margin + Math.max(1, ...page.map(e => Math.max(e.label.width, e.image.width + 2)))
     const pageHeight = margin + page.reduce((sum, e) => sum + e.label.height + e.image.height + 3 * margin + 2, 0)
     const rgb = new Uint8Array(width * pageHeight * 3)
@@ -58,6 +60,7 @@ export function contactSheets(entries: readonly SheetEntry[], options: SheetOpti
     }
     return encodeRgbPng(rgb, width, pageHeight)
   })
+  return { pages: pngs, pageOf }
 }
 
 function fill(rgb: Uint8Array, stride: number, x0: number, y0: number, w: number, h: number, c: RGB): void {
