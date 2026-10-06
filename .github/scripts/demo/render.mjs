@@ -127,6 +127,9 @@ export function timeline(screens, marks, speed) {
     while (i < end && at.get(i + 1) <= k * q + 1e-9) i++
     if (!frames.length || frames.at(-1).screen !== screens[i]) frames.push({ start: k * q, screen: screens[i] })
   }
+  // The final screen can fall between the last two instants (the images land a
+  // few ms after the last preview): it still gets a frame of its own.
+  if (frames.at(-1).screen !== screens[end]) frames.push({ start: frames.at(-1).start + q, screen: screens[end] })
   const landed = frames.at(-1)
   let t = landed.start + T.hold
   const steps = Math.max(2, Math.round(T.fade * T.fps))

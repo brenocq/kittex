@@ -1,4 +1,4 @@
-import type { Probe, RGB, TerminalColors } from '../types.js'
+import type { CellAdjust, MetricAdjust, Probe, RGB, TerminalColors } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
 
@@ -47,15 +47,54 @@ export function parseGhosttyTheme(value: string): { light: string; dark: string 
 interface GhosttyColors {
   values: Map<'foreground' | 'background', RGB>
   palette: Map<number, RGB>
+  alphaBlending?: TerminalColors['alphaBlending']
+  adjust: CellAdjust
+}
+
+/** Ghostty's options that set its cells off the font's own metrics, and the CellAdjust field each sets. */
+const ADJUST_KEYS = { 'adjust-cell-width': 'width', 'adjust-cell-height': 'height', 'adjust-font-baseline': 'baseline' } as const
+
+/**
+ * An `adjust-*` metric value, parsed as Ghostty's font/Metrics.zig Modifier
+ * does: `N%` changes the metric by N percent (a factor of 1 + N/100, no less
+ * than 0), a bare integer adds that many pixels. Empty or malformed: unset.
+ */
+export function parseMetricAdjust(value: string): MetricAdjust | undefined {
+  const v = value.trim()
+  if (v.endsWith('%')) {
+    const percent = Number(v.slice(0, -1))
+    if (v.length < 2 || !Number.isFinite(percent)) return undefined
+    return { factor: Math.max(0, 1 + percent / 100) }
+  }
+  return /^[+-]?\d+$/.test(v) ? { px: Number(v) } : undefined
 }
 
 function emptyColors(): GhosttyColors {
-  return { values: new Map(), palette: new Map() }
+  return { values: new Map(), palette: new Map(), adjust: {} }
+}
+
+/** An `alpha-blending` value (Ghostty 1.1 and later). */
+export function parseAlphaBlending(value: string): TerminalColors['alphaBlending'] {
+  const v = value.trim()
+  return v === 'native' || v === 'linear' || v === 'linear-corrected' ? v : undefined
+}
+
+/** Ghostty's `alpha-blending` when nothing sets it: native on macOS, linear-corrected elsewhere (Config.zig). */
+export function ghosttyDefaultAlphaBlending(platform: string): NonNullable<TerminalColors['alphaBlending']> {
+  return platform === 'darwin' ? 'native' : 'linear-corrected'
 }
 
 // Applies one colour entry; an empty value resets the key to its default.
 function applyColor(into: GhosttyColors, key: string, value: string): void {
-  if (key === 'foreground' || key === 'background') {
+  if (Object.prototype.hasOwnProperty.call(ADJUST_KEYS, key)) {
+    const field = ADJUST_KEYS[key as keyof typeof ADJUST_KEYS]
+    const adjust = value ? parseMetricAdjust(value) : undefined
+    if (adjust) into.adjust[field] = adjust
+    else delete into.adjust[field]
+  } else if (key === 'alpha-blending') {
+    // An empty value resets it to the default, which depends on the platform.
+    into.alphaBlending = parseAlphaBlending(value)
+  } else if (key === 'foreground' || key === 'background') {
     if (!value) {
       into.values.delete(key)
       return
@@ -71,33 +110,47 @@ function applyColor(into: GhosttyColors, key: string, value: string): void {
   }
 }
 
+/** A `grapheme-width-method` value Ghostty knows. */
+function graphemeWidthOf(value: string): TerminalColors['graphemeWidth'] {
+  return value === 'unicode' || value === 'legacy' ? value : undefined
+}
+
 function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   const pick = (key: 'foreground' | 'background') => layers.reduce<RGB | undefined>((c, l) => l.values.get(key) ?? c, undefined)
-  return {
+  const colors: TerminalColors = {
     foreground: pick('foreground') ?? GHOSTTY_DEFAULT_FOREGROUND,
     background: pick('background') ?? GHOSTTY_DEFAULT_BACKGROUND,
     palette: GHOSTTY_DEFAULT_PALETTE.map((c, i) => layers.reduce((acc, l) => l.palette.get(i) ?? acc, c)),
   }
+  const blending = layers.reduce<TerminalColors['alphaBlending']>((b, l) => l.alphaBlending ?? b, undefined)
+  if (blending) colors.alphaBlending = blending
+  const adjust: CellAdjust = Object.assign({}, ...layers.map(l => l.adjust))
+  if (Object.keys(adjust).length > 0) colors.cellAdjust = adjust
+  return colors
 }
 
 /**
  * Reads `ghostty +show-config --changes-only=false`: every option as
  * `key = value`, colours as `#rrggbb`, the palette as `palette = N=#rrggbb`,
- * with the theme already applied (Config.load runs finalize, which loads the
- * theme under the user's own settings). For `theme = light:A,dark:B` the CLI
- * resolves the light theme (the GUI alone follows the desktop), so with scheme
- * `dark` and two different themes the answer is known to be wrong: undefined.
+ * `alpha-blending` resolved for the platform, with the theme already applied
+ * (Config.load runs finalize, which loads the theme under the user's own
+ * settings). For `theme = light:A,dark:B` the CLI resolves the light theme
+ * (the GUI alone follows the desktop), so with scheme `dark` and two
+ * different themes the answer is known to be wrong: undefined. The
+ * `grapheme-width-method` comes along (how Ghostty measures emoji sequences).
  */
 export function parseGhosttyConfig(stdout: string, scheme?: Scheme): TerminalColors | undefined {
   const colors = emptyColors()
   let theme: { light: string; dark: string } | undefined
+  let graphemeWidth: TerminalColors['graphemeWidth']
   for (const [key, value] of ghosttyEntries(stdout)) {
     if (key === 'theme') theme = parseGhosttyTheme(value)
+    else if (key === 'grapheme-width-method') graphemeWidth = graphemeWidthOf(value)
     else applyColor(colors, key, value)
   }
   if (!colors.values.has('foreground') && !colors.values.has('background')) return undefined
   if (scheme === 'dark' && theme && theme.light !== theme.dark) return undefined
-  return toTerminalColors(colors)
+  return { ...toTerminalColors(colors), ...(graphemeWidth ? { graphemeWidth } : {}) }
 }
 
 /**
@@ -150,11 +203,15 @@ function ghosttyThemeDirs(env: Env): string[] {
  * ~/.config/ghostty/themes and the resources dir, or an absolute path) under
  * the user's own colours. A light/dark theme pair follows `scheme` (light when
  * not given, as the CLI does). Ghostty's defaults when nothing sets a colour.
+ * `alpha-blending` as configured, else the platform's default when
+ * `platform` is given (unknown otherwise). The last `grapheme-width-method`
+ * set comes along.
  */
 export async function readGhosttyColors(read: FileReader, options: ConfigReadOptions): Promise<TerminalColors> {
   const { env } = options
   const user = emptyColors()
   let theme: { light: string; dark: string } | undefined
+  let graphemeWidth: TerminalColors['graphemeWidth']
   // Missing files are skipped whether or not they were marked optional with `?`.
   const queue = ghosttyConfigFiles(env, options.platform)
   const seen = new Set<string>()
@@ -170,6 +227,7 @@ export async function readGhosttyColors(read: FileReader, options: ConfigReadOpt
         const target = resolvePath(value.startsWith('?') ? value.slice(1) : value, env, dirname(path))
         if (target) queue.push(target)
       } else if (key === 'theme') theme = parseGhosttyTheme(value)
+      else if (key === 'grapheme-width-method') graphemeWidth = graphemeWidthOf(value)
       else applyColor(user, key, value)
     }
   }
@@ -184,5 +242,7 @@ export async function readGhosttyColors(read: FileReader, options: ConfigReadOpt
       break
     }
   }
-  return toTerminalColors(themeColors, user)
+  const colors = toTerminalColors(themeColors, user)
+  if (!colors.alphaBlending && options.platform !== undefined) colors.alphaBlending = ghosttyDefaultAlphaBlending(options.platform)
+  return { ...colors, ...(graphemeWidth ? { graphemeWidth } : {}) }
 }

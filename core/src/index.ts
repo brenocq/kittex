@@ -1,5 +1,5 @@
-import { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
+import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
+import { encodePng, inkAlpha, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
@@ -15,14 +15,18 @@ export {
   claudeThemeScheme,
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   emPxForCell,
+  fontCell,
+  imageInkBackground,
   readTerminalColors,
+  textBaseline,
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
-export { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
-export type { BlockPart, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
+export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
+export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
+export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
 /** Where a display formula is drawn. */
 export interface RenderEnv {
@@ -35,6 +39,12 @@ export interface RenderEnv {
   emPx: number
   /** The colour to draw in. */
   ink: RGB
+  /**
+   * The background to correct the ink's alpha against, as the terminal
+   * corrects its text's (imageInkBackground): absent where images and text
+   * blend alike.
+   */
+  inkOver?: RGB
 }
 
 /** Where an inline formula is drawn: one text row. */
@@ -57,6 +67,9 @@ export const MIN_INLINE_SCALE = 0.85
  * below the baseline and would otherwise need about 0.8 and stay Unicode.
  */
 export const INLINE_OVERFLOW = 0.06
+
+/** Where an inline formula's ink goes in a slot wider than it (RasterOptions.inkPlace). */
+export type InkPlace = NonNullable<RasterOptions['inkPlace']>
 
 /** A display formula ready for an Image element. */
 export interface RenderedImage extends CellBox {
@@ -139,9 +152,9 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 /**
@@ -219,21 +232,23 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
 
 /**
  * Draws an inline formula `columns` wide (its slot: measureInline's columns,
- * or its preview's when that is wider), on the terminal font's baseline, its
- * ink centred across the slot: the part of a cell its whole cells leave over
- * is split between both sides instead of all falling after it, where it would
- * read as a space before the next character (`(y_w)`).
+ * or its preview's when that is wider), on the terminal font's baseline. The
+ * blank its whole cells leave over the ink goes where `place` says: split
+ * between both sides (`center`, the default) instead of all falling after it,
+ * where it would read as a space before the next character (`(y_w)`), or all
+ * on one side (`end`: the ink against the slot's right edge, the blank before
+ * it; `start`: after it), to join a space the slot already has there.
  */
-export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
-  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
+export function renderInline(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
+  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, place, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetInline(tex)
-    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, centerInk: true }
+    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 export interface InlinePreviewOptions {
@@ -315,6 +330,8 @@ function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'
     align,
     minRows: 1,
     baselinePx: env.baselinePx,
+    // Fitted to its ink, which renderInline places in its slot.
+    centerInk: align === 'left',
     minScale: MIN_INLINE_SCALE,
     overflowPx: Math.max(1, Math.round(env.cellHeight * INLINE_OVERFLOW)),
   }

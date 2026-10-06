@@ -1,10 +1,10 @@
-import type { Probe, TerminalColors, TerminalInfo } from '../types.js'
+import type { Probe, RGB, TerminalColors, TerminalInfo } from '../types.js'
 import type { ConfigReadOptions, FileReader } from './color.js'
 import type { Env } from './detect.js'
 import { ghosttyColorProbes, readGhosttyColors } from './ghostty.js'
 import { kittyColorProbes, readKittyColors } from './kitty.js'
 
-export { cellProbe, cellProbePython, cellProbes, emPxForCell, parseWinsize } from './cell.js'
+export { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, parseWinsize, textBaseline } from './cell.js'
 export {
   CLAUDE_THEME_TEXT,
   type ClaudeBuiltinTheme,
@@ -20,7 +20,7 @@ export {
 } from './claude-theme.js'
 export { type ConfigReadOptions, type FileReader, isDark, parseColorValue, toHex } from './color.js'
 export { detectTerminal, type Env } from './detect.js'
-export { ghosttyEntries, parseGhosttyConfig, readGhosttyColors } from './ghostty.js'
+export { ghosttyDefaultAlphaBlending, ghosttyEntries, parseAlphaBlending, parseGhosttyConfig, parseMetricAdjust, readGhosttyColors } from './ghostty.js'
 export { kittyConfigDirs, parseKittyColors, readKittyColors } from './kitty.js'
 
 export interface ColorProbeOptions {
@@ -52,6 +52,21 @@ export function colorProbes(terminal: TerminalInfo, options: ColorProbeOptions =
   }
 }
 
+/**
+ * Whether the terminal draws emoji sequences (an emoji with U+FE0F or a skin
+ * tone, zero-width joiner chains, flags, keycaps with U+FE0F) two cells wide,
+ * as Claude Code counts them: kitty (wcswidth, measured on 0.49), and Ghostty
+ * unless its `grapheme-width-method` is `legacy` (there they take one to six
+ * cells; `unicode`, its default, gives two). Not over ssh or in a
+ * multiplexer, where the drawing terminal and its settings aren't known (and
+ * a multiplexer measures widths itself), nor in any other terminal.
+ */
+export function drawsEmojiSequences(terminal: TerminalInfo, colors?: TerminalColors): boolean {
+  if (terminal.ssh || terminal.multiplexed) return false
+  if (terminal.kind === 'kitty') return true
+  return terminal.kind === 'ghostty' && colors?.graphemeWidth !== 'legacy'
+}
+
 /** The terminal's configured colours from its config files, for when its probes can't run. */
 export async function readTerminalColors(terminal: TerminalInfo, read: FileReader, options: ConfigReadOptions): Promise<TerminalColors | undefined> {
   if (terminal.ssh) return undefined
@@ -63,4 +78,23 @@ export async function readTerminalColors(terminal: TerminalInfo, read: FileReade
     default:
       return undefined
   }
+}
+
+/**
+ * The background an image's ink alpha must be corrected against so a formula
+ * weighs what the terminal's text weighs (raster's inkAlpha), or undefined
+ * where the terminal blends images and text alike.
+ *
+ * Ghostty with `alpha-blending = linear-corrected` (its default outside macOS)
+ * blends everything in linear light but corrects text glyphs to look
+ * gamma-blended; images get no correction, so measured on Ghostty 1.3.1 a
+ * formula drew thinner than the text beside it on a light background and
+ * bolder on a dark one. Text is corrected against the cell's background, the
+ * default background under reply text. With `native` or `linear` Ghostty
+ * blends images as it blends text, and kitty blends both in linear light (its
+ * `text_composition_strategy` on Linux, 1.0 0, adds nothing to that).
+ */
+export function imageInkBackground(kind: TerminalInfo['kind'], colors: TerminalColors | undefined): RGB | undefined {
+  if (kind !== 'ghostty' || colors?.alphaBlending !== 'linear-corrected') return undefined
+  return colors.background
 }
