@@ -1,2 +1,4 @@
 node_modules/
 *.log
+# Laid by Claude Code each time it loads the mod from a folder (types for the mod API)
+plugin/.claude-plugin/types/

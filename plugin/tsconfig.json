@@ -1,0 +1,25 @@
+{
+  // Type-checks the mod and its tests: `npx tsc -p plugin`. The mod API's
+  // declarations are the ones Claude Code lays in .claude-plugin/types/ each
+  // time it loads the mod from a folder (git-ignored); before the folder was
+  // ever loaded, copy the plugin-authoring skill's types/claude-code.d.ts to
+  // .claude-plugin/types/claude-code/index.d.ts. types/index.d.ts is kittex's
+  // state contract and hooks/core.d.ts the bundle's types; neither is loaded
+  // at run time.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": [],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
+  },
+  "include": [".claude-plugin/types", "hooks", "types", "tests"]
+}
