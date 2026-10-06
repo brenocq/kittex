@@ -94,12 +94,15 @@ export const INK_PREFER: 'theme' | 'terminal' = 'terminal'
 export const NOT_RENDERED = 'not rendered: '
 
 /**
- * The terminal font's baseline in its cell, from the top, as a fraction of the
- * cell's height: measured in kitty (DejaVu Sans Mono at 13×26 px cells: the
- * baseline is 21 px down, glyphs reach 16 px above it and 4 below). Inline
- * images put the math baseline there.
+ * Where inline images put the math baseline in a cell, from the top, as a
+ * fraction of the cell's height. The terminal font's own baseline is 21 px down
+ * a 13×26 px cell in kitty (DejaVu Sans Mono: glyphs reach 16 px above it and 4
+ * below); one pixel higher leaves room under it for brackets, bars and \ne at
+ * 0.91 of the display size, so every inline formula draws as an image at one
+ * size instead of bracketed ones staying Unicode. The pixel is not visible at
+ * normal size.
  */
-export const TEXT_BASELINE = 21 / 26
+export const TEXT_BASELINE = 20 / 26
 
 /**
  * What joins the words of an inline preview: a no-break space, one cell that
@@ -400,6 +403,11 @@ export class MarkdownWriter {
     return block
   }
 
+  /** The end of everything written so far, earlier takes included: enough to see the block being written. */
+  recent(): string {
+    return this.tail + this.out
+  }
+
   /** Takes the text written so far (one flush, or one prose piece). */
   take(): string {
     const out = this.out
@@ -432,7 +440,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
+      const inline = env.inline && env.images && inParagraph(writer.recent()) ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -461,6 +469,22 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     }
   }
   return { text: writer.take(), records }
+}
+
+/**
+ * Whether inline math written next, after `written`, lands in a plain paragraph:
+ * the only block whose inline previews get images at landing (proseBlocks, the
+ * rule the landed drawing uses). Anywhere else (a list item, a heading, a
+ * quote, a table) the formula is drawn as plain Unicode, so streaming writes
+ * it unpadded: padding there would stay behind as gaps.
+ */
+export function inParagraph(written: string): boolean {
+  // A table's first row reads as a paragraph until its delimiter row arrives.
+  if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
+  // A stand-in for the formula, so the line it starts is part of the block read.
+  const text = written + 'x'
+  const last = proseBlocks(text)?.at(-1)
+  return last !== undefined && last.paragraph && last.end === text.length
 }
 
 /** Why MathJax refuses a formula, or undefined when it doesn't. */
