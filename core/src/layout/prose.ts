@@ -193,6 +193,8 @@ export interface ProseBlock {
   end: number
   paragraph: boolean
   list?: boolean
+  /** A single blockquote, which the engine draws as one text box two cells in (a bar and a space). */
+  quote?: boolean
 }
 
 /**
@@ -217,7 +219,13 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
   const close = () => {
     if (!block) return
     const types = block.types.join(',')
-    blocks.push({ start: block.start, end: block.end, paragraph: types === 'paragraph', ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}) })
+    blocks.push({
+      start: block.start,
+      end: block.end,
+      paragraph: types === 'paragraph',
+      ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}),
+      ...(types === 'blockquote' ? { quote: true } : {}),
+    })
     block = undefined
   }
   let at = 0

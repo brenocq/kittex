@@ -36,6 +36,8 @@ export type KittexPreview = {
   inline?: true
   /** Inline: the cells the preview and its image take. */
   columns?: number
+  /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
+  quote?: number
 }
 
 declare module 'claude-code' {

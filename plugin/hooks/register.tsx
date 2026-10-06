@@ -50,6 +50,7 @@ import {
   PIECE_TOP,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
+  quoteColumns,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -226,7 +227,9 @@ export const register: Register = (on, options) => {
       const inlineEnv = inlineEnvFor(env, columns)
       const plan = planLanded(e.props.text, records, {
         maxColumns: renderEnv.maxColumns,
-        draw: images ? (tex, rows) => displayImage(tex, renderEnv, rows) : undefined,
+        draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
+        width: proseWidthFor(env, columns),
+        measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
         inline: images && inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), draw: (tex, cells) => inlineImage(tex, inlineEnv, cells) } : undefined,
       })
       if (!plan.changed) return next(e)
@@ -279,7 +282,7 @@ export const register: Register = (on, options) => {
             {text}
             {piece.inline.map((inline: InlineImage, k: number) => (
               <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
-                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={1} alt={inline.tex} />
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
               </Box>
             ))}
           </Box>
@@ -695,7 +698,10 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
     if (!next) return
     const { record, env } = next
     try {
-      const image = record.inline ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0) : displayImage(record.tex, renderEnvFor(env), record.rows)
+      const renderEnv = renderEnvFor(env)
+      const image = record.inline
+        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0)
+        : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
       base64Of(image.png)
       signatureOf(image.png)
     } catch {

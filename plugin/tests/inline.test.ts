@@ -406,3 +406,52 @@ describe('inline math wider than a row (stress report F5)', () => {
     expect(streamed([`So $${tex}$.\n`], { ...inlineOn(), maxProseWidth: 12 }).records).toEqual([])
   })
 })
+
+describe('display math in a blockquote (stress report F11)', () => {
+  const quote = '> A well-tuned filter has white innovations:\n>\n> $$\n> \\mathbb{E}[y_k y_j^T] = 0\n> $$\n>\n> for every $k \\ne j$.\n\nAfter the quote.\n'
+
+  test('streams its preview inside the quote, every line under the quote marker, as wide as the quote text', async () => {
+    await init()
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const record = records.find(one => !one.inline)!
+    expect(record.quote).toBe(1)
+    const lines = landed.split('\n')
+    const first = lines.findIndex(line => line.includes('&nbsp;'))
+    for (const line of lines.slice(first, first + record.rows)) expect(line.startsWith('> ')).toBe(true)
+    expect(lines[first - 1]).toBe('>')
+    expect(lines[first + record.rows]).toBe('>')
+    expect(landed).toContain('> for every')
+  })
+
+  test('lands with the preview kept in the quote and the image over it, two cells in, a row under the text before it', async () => {
+    await init()
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const { pieces } = plan(landed, records, kitty26(), {
+      width: proseWidthFor(kitty26()),
+      measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnvFor(kitty26()), maxColumns }).rows,
+    })
+    expect(pieces.some(piece => piece.kind === 'image')).toBe(false)
+    const quoted = pieces.find(piece => piece.kind === 'prose' && piece.text.startsWith('>'))!
+    expect(quoted.kind === 'prose' && quoted.inline?.map(image => [image.tex, image.row, image.col, image.image.rows])).toEqual([
+      [records.find(one => !one.inline)!.tex, 2, 2, records.find(one => !one.inline)!.rows],
+    ])
+  })
+
+  test('after --resume the LaTeX in a quote gets the same drawing', async () => {
+    await init()
+    const options = {
+      width: proseWidthFor(kitty26()),
+      measure: (tex: string, maxColumns: number) => measureDisplay(tex, { ...renderEnvFor(kitty26()), maxColumns }).rows,
+    }
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const strip = (pieces: ReturnType<typeof plan>['pieces']) => pieces.map(piece => (piece.kind === 'prose' ? piece.inline?.map(image => [image.tex, image.row, image.col]) : piece.kind))
+    expect(strip(plan(quote, [], kitty26(), options).pieces)).toEqual(strip(plan(landed, records, kitty26(), options).pieces))
+  })
+
+  test('two quotes deep the preview stays Unicode inside the quote', async () => {
+    await init()
+    const { landed, records } = streamed(['> > $$\n', '> > x^2 + y^2\n', '> > $$\n'])
+    expect(records).toEqual([])
+    expect(landed.split('\n').filter(line => line.includes('&nbsp;')).every(line => line.startsWith('> > '))).toBe(true)
+  })
+})

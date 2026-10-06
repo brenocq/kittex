@@ -256,6 +256,15 @@ export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
   return { ...renderEnvFor(env, columns), baselinePx: Math.round(env.cellHeight * TEXT_BASELINE) }
 }
 
+/**
+ * The cells a display preview (and its image) takes in a blockquote `depth`
+ * deep: the engine draws a quote's text two cells in (a bar and a space),
+ * at most maxProseWidth wide.
+ */
+export function quoteColumns(env: KittexEnv, depth: number, columns = env.columns): number {
+  return Math.max(1, proseWidthFor(env, columns) - 2 * depth)
+}
+
 /** The width reply prose wraps at: the reply column, or `maxProseWidth` when that is narrower. */
 export function proseWidthFor(env: KittexEnv, columns = env.columns): number {
   const reply = replyColumns(columns)
@@ -401,6 +410,9 @@ function reasonOf(error: TexError): string {
   return error.message || 'TeX error'
 }
 
+/** A line's start that only opens blockquotes (`> `, `>> `, `> > `). */
+const QUOTE_LEAD = /^[ \t]{0,3}(?:>[ \t]?)+$/
+
 /** How much of what a writer took it keeps for reading the block being written (a long list included). */
 const WRITER_TAIL = 2048
 
@@ -418,25 +430,43 @@ export class MarkdownWriter {
   private started = false
   /** A block was the last thing written: the next text must leave a blank line. */
   private afterBlock = false
+  /** The blockquote prefix the last block was written under ('' outside a quote). */
+  private quote = ''
 
   text(text: string): void {
     if (text === '') return
-    if (this.afterBlock && !/^[ \t]*\r?\n/.test(text)) this.out += '\n'
+    if (this.afterBlock && this.quote !== '') {
+      // In a quote the blank line after a block is a `>` line: a bare one would end the quote.
+      if (/^[ \t]*\r?\n[ \t]*(?:>[ \t]*)+\r?\n/.test(text)) text = text.replace(/^[ \t]*\r?\n/, '')
+      else this.out += this.quote.trimEnd() + (/^[ \t]*\r?\n/.test(text) ? '' : '\n')
+    } else if (this.afterBlock && !/^[ \t]*\r?\n/.test(text)) {
+      this.out += '\n'
+    }
     this.afterBlock = false
     if (/\S/.test(text)) this.started = true
     this.out += text
   }
 
-  /** Writes a block and returns it as written (lines after the first indented). */
+  /**
+   * Writes a block and returns it as written (lines after the first indented,
+   * or under the blockquote prefix the line it starts on opens with).
+   */
   block(lines: readonly string[]): string {
     const written = this.tail + this.out
     const start = written.lastIndexOf('\n') + 1
     const lead = written.slice(start)
     let indent = ''
+    this.quote = ''
     if (/^[ \t]*$/.test(lead)) {
       indent = lead
       const above = written.slice(0, start)
       if (this.started && !/\n[ \t]*\n$/.test(above)) this.out += '\n' + indent
+    } else if (QUOTE_LEAD.test(lead)) {
+      // A paragraph of its own inside the quote: a `>` line above it unless one is there.
+      indent = lead
+      this.quote = lead
+      const above = written.slice(0, start)
+      if (this.started && !/(?:^|\n)[ \t]*(?:>[ \t]*)+\n$/.test(above)) this.out += '\n' + indent
     } else {
       this.out += '\n\n'
     }
@@ -445,6 +475,13 @@ export class MarkdownWriter {
     this.started = true
     this.afterBlock = true
     return block
+  }
+
+  /** How many blockquotes deep the line being written is (its `>` prefix so far; 0 outside a quote). */
+  quoteDepth(): number {
+    const written = this.tail + this.out
+    const lead = written.slice(written.lastIndexOf('\n') + 1)
+    return QUOTE_LEAD.test(lead) ? (lead.match(/>/g) ?? []).length : 0
   }
 
   /** The end of everything written so far, earlier takes included: enough to see the block being written. */
@@ -492,19 +529,23 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
         writer.text(inlineText(segment.tex) ?? segment.raw)
       }
     } else {
+      // In a blockquote the preview stays inside it, as wide as the quote's text; one quote deep its image lies over it once landed.
+      const quote = writer.quoteDepth()
+      const width = quote > 0 ? quoteColumns(env, quote) : maxColumns
+      const drawn = env.images && quote <= 1
       let rows: number | undefined
       try {
-        rows = env.images ? measureDisplay(segment.tex, renderEnv).rows : undefined
+        rows = drawn ? measureDisplay(segment.tex, { ...renderEnv, maxColumns: width }).rows : undefined
       } catch (error) {
         if (!(error instanceof TexError)) throw error
         const preview = writer.block(refusedMarkdownLines(segment.tex, reasonOf(error), maxColumns))
         if (env.images) records.push({ preview, tex: segment.tex, rows: 0, error: reasonOf(error) })
         continue
       }
-      const lines = displayPreviewLines(segment.tex, maxColumns, rows)
+      const lines = displayPreviewLines(segment.tex, width, rows)
       if (lines) {
         const preview = writer.block(lines)
-        if (rows !== undefined) records.push({ preview, tex: segment.tex, rows })
+        if (rows !== undefined) records.push({ preview, tex: segment.tex, rows, ...(quote > 0 ? { quote } : {}) })
         continue
       }
       const refused = texErrorOf(segment.tex, renderEnv)
@@ -587,7 +628,10 @@ export type Piece =
   | { kind: 'image'; tex: string; image: RenderedImage; gap: boolean }
   | { kind: 'note'; text: string; gap: boolean }
 
-/** An inline formula's image, drawn over its preview: the preview's row and column in its prose piece's text. */
+/** Cells from a blockquote's edge to its text: the bar and a space (the engine's quote border and padding). */
+export const QUOTE_INDENT = 2
+
+/** An inline formula's image (or a quoted display formula's), drawn over its preview: the preview's row and column in its prose piece's drawing. */
 export interface InlineImage {
   tex: string
   image: RenderedImage
@@ -603,8 +647,16 @@ export interface LandedPlan {
 
 export interface PlanOptions {
   maxColumns: number
-  /** Draws a display formula `rows` tall (rows from measureDisplay when not given); absent where no images are drawn. Throws TexError. */
-  draw?: (tex: string, rows?: number) => RenderedImage
+  /**
+   * Draws a display formula `rows` tall (rows from measureDisplay when not
+   * given), `maxColumns` wide when given (a quote's width); absent where no
+   * images are drawn. Throws TexError.
+   */
+  draw?: (tex: string, rows?: number, maxColumns?: number) => RenderedImage
+  /** The width prose wraps at (maxProseWidth included); maxColumns when absent. A quote's text is two cells narrower. */
+  width?: number
+  /** The rows a display formula's image takes `maxColumns` wide (measureDisplay); absent, a quoted formula keeps its preview. Throws TexError. */
+  measure?: (tex: string, maxColumns: number) => number
   /** Splits markdown into prose and math (core's scan unless given). */
   scan?: (markdown: string) => Segment[]
   /**
@@ -689,6 +741,8 @@ interface InlineMark {
   columns: number
   /** What the formula is written as where it gets no image, when that may differ (math read back as LaTeX, never shown padded). */
   plain?: string
+  /** A display preview inside a blockquote (one deep), its image `rows` tall drawn over it: no inline formula. */
+  rows?: number
 }
 
 /**
@@ -716,7 +770,29 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
     writer.block(lines)
   }
 
+  // A display formula in a blockquote: its preview stays in the quote, as wide as the quote's text.
+  const quoted = (tex: string, fallback: string, depth: number) => {
+    const width = Math.max(1, (options.width ?? maxColumns) - 2 * depth)
+    let rows: number | undefined
+    try {
+      rows = options.draw && options.measure && depth === 1 ? options.measure(tex, width) : undefined
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+    }
+    const lines = displayPreviewLines(tex, width, rows)
+    if (!lines) return writer.text(fallback)
+    changed = true
+    if (rows !== undefined) {
+      marks.push({ tex, columns: width, rows })
+      lines[0] = MARK_OPEN + (marks.length - 1) + MARK_SEP + lines[0]
+      lines[lines.length - 1] += MARK_CLOSE
+    }
+    writer.block(lines)
+  }
+
   const display = (tex: string, fallback: string) => {
+    const depth = writer.quoteDepth()
+    if (depth > 0) return quoted(tex, fallback, depth)
     changed = true
     if (options.draw) {
       try {
@@ -785,6 +861,10 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
     const written = text.slice(span.start, span.end)
     if (!options.draw) {
       writer.text(written)
+    } else if (record.quote !== undefined) {
+      // In a quote the preview stays; one deep, its image lies over it.
+      if (record.quote === 1) mark(written, { tex: record.tex, columns: Math.max(1, (options.width ?? maxColumns) - 2), rows: record.rows })
+      else writer.text(written)
     } else if (record.error !== undefined) {
       changed = true
       const lines = written.split('\n')
@@ -833,21 +913,30 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
     }
     text += piece.text.slice(last)
 
-    // The paragraphs and lists whose previews get images.
+    // The paragraphs and lists whose inline previews get images, and the quotes whose display previews do.
     const parts: { start: number; end: number; images: InlineImage[] }[] = []
-    for (const block of (options.inline ? proseBlocks(text) : null) ?? []) {
+    const placed = new Set<SourceSpan>()
+    const overlays = spans.some(span => span.mark.rows !== undefined)
+    for (const block of (options.inline || overlays ? proseBlocks(text) : null) ?? []) {
       const inside = spans.filter(span => span.start >= block.start && span.end <= block.end)
-      if (!(block.paragraph || block.list) || inside.length === 0) continue
-      const images = placeImages(text.slice(block.start, block.end), inside, block.start, options.inline!, block.list === true)
-      if (images.length > 0) parts.push({ start: block.start, end: block.end, images })
+      const inline = inside.filter(span => span.mark.rows === undefined)
+      const quoted = inside.filter(span => span.mark.rows !== undefined)
+      let images: [SourceSpan, InlineImage][] = []
+      if ((block.paragraph || block.list) && inline.length > 0 && options.inline) {
+        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, block.list === true)
+      } else if (block.quote && quoted.length > 0) {
+        images = placeQuoted(text.slice(block.start, block.end), quoted, block.start, options)
+      }
+      for (const [span] of images) placed.add(span)
+      if (images.length > 0) parts.push({ start: block.start, end: block.end, images: images.map(([, image]) => image) })
     }
 
-    // Text outside those paragraphs, with math read back as LaTeX in its plain form.
+    // Text outside those images, with math read back as LaTeX in its plain form.
     const plain = (from: number, to: number) => {
       let written = ''
       let at = from
       for (const span of spans) {
-        if (span.start < from || span.end > to || span.mark.plain === undefined) continue
+        if (span.start < from || span.end > to || span.mark.plain === undefined || placed.has(span)) continue
         written += text.slice(at, span.start) + span.mark.plain
         at = span.end
       }
@@ -863,6 +952,7 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
         out.push({ kind: 'prose', text: before, gap })
         gap = true
       }
+      // As laid out: previews that got no image keep their padded form (their plain one could move the others).
       out.push({ kind: 'prose', text: text.slice(part.start, part.end), gap, inline: part.images })
       gap = true
       at = part.end
@@ -884,22 +974,66 @@ function placeImages(
   offset: number,
   inline: NonNullable<PlanOptions['inline']>,
   list: boolean,
-): InlineImage[] {
+): [SourceSpan, InlineImage][] {
   const layout = (list ? layoutList : layoutProse)(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
   )
   if (!layout) return []
-  const images: InlineImage[] = []
+  const images: [SourceSpan, InlineImage][] = []
   for (const [k, place] of layout.places.entries()) {
-    const { mark } = spans[k]!
+    const span = spans[k]!
+    const { mark } = span
     if (!place || mark.columns < 1 || place.columns !== mark.columns) continue
     try {
-      images.push({ tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col })
+      images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col }])
     } catch (error) {
       if (!(error instanceof TexError)) throw error
     }
+  }
+  return images
+}
+
+/**
+ * Draws the display previews written in a blockquote over them. The engine
+ * draws a quote's text as one box two cells in (a bar and a space), its
+ * paragraphs a blank row apart, wrapped at the quote's width; the text before
+ * each preview is laid out as paragraphs, and an image goes where the preview's
+ * first row is. Past text that can't be laid out, the previews stay.
+ */
+function placeQuoted(
+  quote: string,
+  spans: readonly (SourceSpan & { mark: InlineMark })[],
+  offset: number,
+  options: PlanOptions,
+): [SourceSpan, InlineImage][] {
+  if (!options.draw) return []
+  const images: [SourceSpan, InlineImage][] = []
+  const inner = (from: number, to: number) =>
+    quote
+      .slice(from, to)
+      .split('\n')
+      .map(line => line.replace(/^[ \t]{0,3}>[ \t]?/, ''))
+      .join('\n')
+      .replace(/^\s+|\s+$/g, '')
+  let row = 0
+  let at = 0
+  for (const span of spans) {
+    const before = inner(at, span.start - offset)
+    if (before !== '') {
+      const layout = layoutProse(before, span.mark.columns)
+      if (!layout) break
+      row += layout.rows + 1
+    }
+    try {
+      const image = options.draw(span.mark.tex, span.mark.rows, span.mark.columns)
+      images.push([span, { tex: span.mark.tex, image, row, col: QUOTE_INDENT }])
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+    }
+    row += span.mark.rows! + 1
+    at = span.end - offset
   }
   return images
 }
