@@ -11,7 +11,7 @@
 // script, no external references. Everything moves with CSS keyframes on one
 // shared loop (LOOP seconds), and prefers-reduced-motion gets a still frame.
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { cat, TAIL_ROOT } from './cat.mjs'
+import { CAT_REACH, cat, TAIL_MOTION, TAIL_ROOT, tailGeometry, tailReach } from './cat.mjs'
 import { loadMono, loadTypesetter } from './glyphs.mjs'
 
 const OUT_DIR = '.github/assets'
@@ -30,7 +30,7 @@ const THEMES = {
  * arrive together (as a model streams tokens), and is not part of the TeX.
  */
 const FORMULAS = [
-  '\\operatorname|{soft|max}|\\!|\\left(|\\frac|{Q|K|^\\top|}{|\\sqrt|{d|_k|}}|\\right)|V',
+  '\\mathrm|{soft|max}|\\left(|\\frac|{Q|K|^\\top|}{|\\sqrt|{d|_k|}}|\\right)|V',
   '-|\\sum|_t |\\log| p|_\\theta|(x|_t |\\mid| x|_{<|t})',
   'e|^{i|\\pi}|+|1|=|0',
   '\\int|_{-|\\infty}|^{\\infty}| e|^{-|x^2}|\\,|dx|=|\\sqrt|{\\pi}',
@@ -38,9 +38,8 @@ const FORMULAS = [
 
 // ─── layout (px) ───────────────────────────────────────────────────────────
 
-const CAT_X = 230 // middle of the cat's body
+const GAP = 122 // from the middle of the cat's body to the wordmark
 const CAT_GROUND = 207
-const TEXT_X = 348 // left edge of the wordmark and the formula line
 const WORD_EM = 112
 const WORD_BASELINE = 110
 const FORMULA_MID = 178 // vertical middle of the formula line
@@ -133,8 +132,7 @@ async function main() {
   const ys = intNums.filter((_, i) => i % 2 === 1)
   const integral = { d: int.d, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }
 
-  // The wordmark: "kit", then the TeX logo: T, E lowered by half an ex and
-  // kerned in by 1/6 em, X kerned in by 1/8 em.
+  // The wordmark's letters: "kit", then the TeX logo (placed below).
   const exEm = 0.4306
   const piece = tex => typeset(`\\mathrm{${tex}}`, { display: false })
   const kit = piece('kit')
@@ -142,13 +140,26 @@ async function main() {
   const xT = kit.width - 0.03
   const xE = xT + T.width - 1 / 6
   const xX = xE + E.width - 1 / 8
+
+  // The cat and the wordmark are centred together; the formulas sit under the
+  // wordmark, so the group stays put whichever one is showing.
+  const wordWidth = (xX + X.width) * WORD_EM
+  const CAT_X = Math.round((W - (CAT_REACH + GAP + wordWidth)) / 2 + CAT_REACH)
+  const TEXT_X = CAT_X + GAP
+  const reach = tailReach(integral)
+  if (reach.whiskers < 2) throw new Error(`the tail comes within ${r(reach.whiskers)} px of a whisker`)
+  if (reach.head < 3) throw new Error(`the tail comes within ${r(reach.head)} px of the head`)
+  if (CAT_X + reach.right > TEXT_X - 6) throw new Error(`the tail reaches the wordmark (${r(CAT_X + reach.right)} px)`)
+
+  // The wordmark: "kit", then the TeX logo: T, E lowered by half an ex and
+  // kerned in by 1/6 em, X kerned in by 1/8 em.
   const word = {
     kit: drawOps(defs, kit.ops, TEXT_X, WORD_BASELINE, WORD_EM),
     tex:
       drawOps(defs, T.ops, TEXT_X + xT * WORD_EM, WORD_BASELINE, WORD_EM) +
       drawOps(defs, E.ops, TEXT_X + xE * WORD_EM, WORD_BASELINE + 0.5 * exEm * WORD_EM, WORD_EM) +
       drawOps(defs, X.ops, TEXT_X + xX * WORD_EM, WORD_BASELINE, WORD_EM),
-    width: (xX + X.width) * WORD_EM,
+    width: wordWidth,
   }
 
   // The formulas: their streamed source in Roboto Mono, then the typeset math.
@@ -260,14 +271,26 @@ async function main() {
   // The cat's small life, on the same loop.
   // The tail sways twice a loop; eyes blink now and then (a double blink once);
   // the left ear twitches when a formula appears; the eyes glance at the math.
-  const tail = [
-    [0, 'transform:rotate(-3deg)'],
-    [LOOP / 4, 'transform:rotate(4deg)'],
-    [LOOP / 2, 'transform:rotate(-3deg)'],
-    [(3 * LOOP) / 4, 'transform:rotate(4deg)'],
-    [LOOP, 'transform:rotate(-3deg)'],
-  ]
-  keyframes('tail', tail)
+  // The tail swishes four times a loop, eased; each joint up the tail bends the
+  // same way a little later than the one below (follow-through, so the tail
+  // curls and uncurls), and flicks as each formula lands.
+  const swish = LOOP / 4
+  const { base, tip, flick } = TAIL_MOTION
+  const swing = (lo, hi) => {
+    const frames = []
+    for (let k = 0; k <= 8; k++) frames.push([(k * swish) / 2, `transform:rotate(${k % 2 ? hi : lo}deg)`])
+    return frames
+  }
+  keyframes('tail', swing(base[0], base[1]))
+  keyframes('tip', swing(tip[0], tip[1]))
+  const flickFrames = [[0, 'transform:none']]
+  for (const [g0] of glances) {
+    const landed = g0 - 0.15 + MORPH
+    flickFrames.push([landed - 0.05, 'transform:none'], [landed + 0.12, `transform:rotate(${flick[0]}deg)`], [landed + 0.3, `transform:rotate(${flick[1]}deg)`], [landed + 0.5, 'transform:none'])
+  }
+  flickFrames.push([LOOP, 'transform:none'])
+  keyframes('flick', flickFrames)
+  const joints = tailGeometry(integral).joints
   const blinks = [2.6, 8.3, 12.9, 13.25]
   const blinkFrames = [[0, 'transform:none']]
   const lidFrames = [[0, 'opacity:0']]
@@ -291,14 +314,20 @@ async function main() {
 
   const [rootX, rootY] = TAIL_ROOT
   const animCss = [
-    `.raw,.caret,.tex,.ch,.tail,.eye,.lids,.ear-l,.pupils{animation-duration:${LOOP}s;animation-iteration-count:infinite;animation-timing-function:linear;animation-fill-mode:both}`,
+    `.raw,.caret,.tex,.ch,.tail,.tip,.flick,.eye,.lids,.ear-l,.pupils{animation-duration:${LOOP}s;animation-iteration-count:infinite;animation-timing-function:linear;animation-fill-mode:both}`,
     `.ch{animation-name:ch}`,
     `@keyframes ch{0%,${r(50, 3)}%{opacity:1}${r(50.01, 3)}%,100%{opacity:0}}`,
     `.caret{opacity:0;animation-timing-function:steps(1,end)}`,
     `.tail{animation-name:tail;animation-timing-function:ease-in-out;transform-origin:${rootX}px ${rootY}px}`,
-    `.eye{animation-name:blink;transform-origin:0 -114px}`,
+    `.tip{animation-name:tip;animation-timing-function:ease-in-out}`,
+    `.flick{animation-name:flick;animation-timing-function:ease-out}`,
+    ...joints.map((j, k) => {
+      const origin = `transform-origin:${r(j.x)}px ${r(j.y)}px`
+      return `.j${k + 1}>.tip{${origin};animation-delay:${r(swish / 6 + k * 0.18 - LOOP, 3)}s}.j${k + 1}>.tip>.flick{${origin};animation-delay:${r(k * 0.06 - LOOP, 3)}s}`
+    }),
+    `.eye{animation-name:blink;transform-origin:0 -118px}`,
     `.lids{animation-name:lids}`,
-    `.ear-l{animation-name:ear;transform-origin:-34px -134px}`,
+    `.ear-l{animation-name:ear;transform-origin:-38px -142px}`,
     `.pupils{animation-name:glance;animation-timing-function:ease-in-out}`,
     ...css,
     `@media (prefers-reduced-motion:reduce){*{animation:none!important}}`,
@@ -310,7 +339,7 @@ async function main() {
       `<title>kittex: LaTeX in Claude Code, typeset as real equations</title>`,
       `<style>.caret{fill:${theme.caret}}${animCss}</style>`,
       `<defs>${defs.out.join('')}</defs>`,
-      `<g transform="translate(${CAT_X} ${CAT_GROUND})">${cat({ integral, whisker: theme.whisker })}</g>`,
+      `<g transform="translate(${CAT_X} ${CAT_GROUND})">${cat({ integral, theme: name, whisker: theme.whisker })}</g>`,
       `<g fill="${theme.ink}">${word.kit}${word.tex}</g>`,
       `<g fill="${theme.muted}">${sources.join('')}</g>`,
       `<g fill="${theme.ink}">${maths.join('')}</g>`,
@@ -323,6 +352,7 @@ async function main() {
   }
   console.log(`wordmark ${r(word.width)} px wide; each formula shows for ${show.toFixed(2)} s`)
   for (const line of timeline) console.log(`  ${line}`)
+  console.log(`  tail: at least ${r(reach.whiskers)} px from a whisker, ${r(reach.head)} px from the head, ${r(TEXT_X - CAT_X - reach.right)} px from the wordmark`)
   console.log(`  blinks at ${blinks.join(', ')} s; ear twitches at ${twitches.map(t => r(t)).join(', ')} s`)
 }
 

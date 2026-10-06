@@ -1,7 +1,7 @@
 // Renders the banner at chosen moments of its loop, on a white and a GitHub-dark
 // background, into one PNG (headless Chrome; no window opens):
 //
-//   node scripts/readme/banner/preview.mjs [--out file.png] [--scale 2] [t1 t2 ...]
+//   node scripts/readme/banner/preview.mjs [--out file.png] [--scale 1] [t1 t2 ...]
 //
 // Without times it renders the contact sheet: six moments of the loop, written
 // to .github/assets/banner-contact-sheet.png. Each frame inlines the SVG and
@@ -19,11 +19,14 @@ const option = (name, fallback) => {
   return value
 }
 const out = resolve(option('--out', '.github/assets/banner-contact-sheet.png'))
-const scale = Number(option('--scale', '1'))
+// 2x by default: at 1x Chrome may rasterize a paused, transformed layer (the
+// tail) blurry, which the live banner in an <img> is not.
+const scale = Number(option('--scale', '2'))
 const chrome = process.env.CHROME ?? '/usr/bin/google-chrome-stable'
-// Default moments: streaming, the morph, a blink over the attention formula, an ear
-// twitch as the loss appears, Euler, and the Gaussian integral.
-const times = args.length ? args.map(Number) : [0.75, 1.95, 2.67, 6.2, 10.6, 14.6]
+// Default moments: the source streaming in, the morph, a blink over the attention
+// formula, the tail's flick and an ear twitch as the loss lands, Euler, and
+// the Gaussian integral.
+const times = args.length ? args.map(Number) : [0.75, 1.85, 2.67, 6.33, 10.6, 14.6]
 
 const W = 880
 const H = 220
@@ -36,7 +39,7 @@ let n = 0
 for (const t of times) {
   for (const theme of ['light', 'dark']) {
     // Ids are per document once inlined: give each copy its own.
-    const svg = svgs[theme].replace(/id="/g, `id="f${n}-`).replace(/href="#/g, `href="#f${n}-`)
+    const svg = svgs[theme].replace(/id="/g, `id="f${n}-`).replace(/href="#/g, `href="#f${n}-`).replace(/url\(#/g, `url(#f${n}-`)
     frames += `<div class="frame" style="background:${backgrounds[theme]}" data-t="${t}"><span>${theme} · t = ${t}s</span>${svg}</div>`
     n++
   }
