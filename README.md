@@ -1,10 +1,6 @@
 <div align="center">
   <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://github.com/brenocq/kittex/raw/assets/banner.svg" width="880">
 
-  <h3>LaTeX in Claude Code, typeset for real.</h3>
-
-  Claude's equations in the font of LaTeX papers, right in your terminal, while it writes.
-
   <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#options">Options</a>
 
   <a href="https://github.com/brenocq/kittex/actions/workflows/tests.yml"><img src="https://github.com/brenocq/kittex/actions/workflows/tests.yml/badge.svg" alt="🧪 Tests"/></a>
