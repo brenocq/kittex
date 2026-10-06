@@ -41,6 +41,9 @@ export interface WalkOptions {
 /** Thrown for SVG content that cannot be drawn as paths (text in a font we don't carry, images, HTML). */
 export class UndrawableError extends Error {}
 
+/** Text in characters the bundled font has no glyphs for (Cyrillic, CJK, emoji). */
+export class MissingGlyphError extends UndrawableError {}
+
 interface State {
   /** User units of this element to em. */
   m: Matrix
@@ -165,7 +168,7 @@ function walk(adaptor: LiteAdaptor, el: LiteElement, parent: State, ops: DrawOp[
       const text = textContent(adaptor, el)
       if (text.trim() === '') return
       const code = [...text].map(c => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`).join(' ')
-      throw new UndrawableError(`no glyph for "${text}" (${code}) in the bundled font`)
+      throw new MissingGlyphError(`no glyph for "${text}" (${code}) in the bundled font`)
     }
     default:
       throw new UndrawableError(`cannot draw <${kind}>`)
