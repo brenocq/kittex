@@ -5,7 +5,9 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { codeWidth, layoutProse, proseBlocks, textWidth, visibleProse, wrapRows } from '../../src/layout/index.js'
+import { readFileSync } from 'node:fs'
+
+import { codeWidth, layoutList, layoutProse, markerOf, proseBlocks, textWidth, visibleProse, wrapRows } from '../../src/layout/index.js'
 
 const NB = ' '
 
@@ -149,5 +151,76 @@ describe('proseBlocks', () => {
     }
     // With no blank line between, a heading and the text under it stay one block.
     expect(proseBlocks('## Head\nText')?.map(block => block.paragraph)).toEqual([false])
+  })
+})
+
+/** A reply of paragraphs and lists drawn as the engine draws it: each block laid out, a blank row between. */
+function replyRows(markdown: string, width: number): string[] | null {
+  const rows: string[] = []
+  for (const [k, block] of (proseBlocks(markdown) ?? []).entries()) {
+    const text = markdown.slice(block.start, block.end)
+    const layout = block.list ? layoutList(text, width) : block.paragraph ? layoutProse(text, width) : null
+    if (!layout) return null
+    if (k > 0) rows.push('')
+    rows.push(...layout.lines)
+  }
+  return rows
+}
+
+describe('layoutList', () => {
+  const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
+
+  test('draws lists row for row as the engine did live (research/lab runs LB-listedge-c120, c61, c42)', () => {
+    const markdown = fixture('list-edge.md').replace(/\n$/, '')
+    const screens = JSON.parse(fixture('list-edge-screens.json')) as Record<string, string[]>
+    for (const [width, screen] of Object.entries(screens)) expect(replyRows(markdown, Number(width))).toEqual(screen)
+  })
+
+  test('markers: dashes for every bullet, numbers, then letters, then roman numerals', () => {
+    expect(markerOf(0, 3, 1, 5)).toBe('3.')
+    expect(markerOf(1, 2, 1, 5)).toBe('b.')
+    expect(markerOf(1, 27, 1, 30)).toBe('aa.')
+    expect(markerOf(2, 4, 1, 5)).toBe('iv.')
+    expect(markerOf(3, 4, 1, 5)).toBe('4.')
+    expect(layoutList('* a\n+ b', 40)?.lines).toEqual(['- a', '- b'])
+  })
+
+  test('an item wraps in the column after its marker (a hanging indent)', () => {
+    expect(layoutList('10. one two three four five six', 20)?.lines).toEqual(['10. one two three', '    four five six'])
+  })
+
+  test('a space before a number ending in . or ) joins it to the word before', () => {
+    expect(layoutList('- aaaa at step 3. done', 16)?.lines).toEqual(['- aaaa at', '  step\u00a03. done'])
+    expect(layoutProse('aaaa at step 3. done', 14)?.lines).toEqual(['aaaa at step ', '3. done'])
+  })
+
+  test('finds each span in the item text column, nested lists included', () => {
+    const markdown = '- see X here\n  1. and Y'
+    const x = markdown.indexOf('X')
+    const y = markdown.indexOf('Y')
+    expect(layoutList(markdown, 40, [{ start: x, end: x + 1 }, { start: y, end: y + 1 }])?.places).toEqual([
+      { row: 0, col: 6, columns: 1 },
+      { row: 1, col: 9, columns: 1 },
+    ])
+  })
+
+  test('a paragraph right before the list draws above it, no blank row', () => {
+    expect(layoutList('Where:\n- a\n- b', 40)?.lines).toEqual(['Where:', '- a', '- b'])
+  })
+
+  test('code blocks, quotes, tables, task items, links and too-narrow rows are not followed', () => {
+    expect(layoutList('- a\n\n  ```\n  x\n  ```', 40)).toBeNull()
+    expect(layoutList('- a\n  > quote', 40)).toBeNull()
+    expect(layoutList('- [ ] task', 40)).toBeNull()
+    expect(layoutList('- a [link](https://x.y)', 40)).toBeNull()
+    expect(layoutList('- a b c', 11)).toBeNull()
+    expect(layoutList('Just a paragraph.', 40)).toBeNull()
+  })
+
+  test('proseBlocks marks list blocks', () => {
+    expect(proseBlocks('Intro:\n- a\n* b\n\nText.')).toEqual([
+      { start: 0, end: 14, paragraph: false, list: true },
+      { start: 16, end: 21, paragraph: true },
+    ])
   })
 })

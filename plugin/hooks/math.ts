@@ -7,6 +7,7 @@
 
 import {
   createLineScanner,
+  layoutList,
   layoutProse,
   measureDisplay,
   measureInline,
@@ -360,6 +361,9 @@ function reasonOf(error: TexError): string {
   return error.message || 'TeX error'
 }
 
+/** How much of what a writer took it keeps for reading the block being written (a long list included). */
+const WRITER_TAIL = 2048
+
 /**
  * Builds markdown out of source text and blocks. A block is a paragraph of its
  * own: a blank line before and after it, each line at the indentation of the
@@ -411,7 +415,7 @@ export class MarkdownWriter {
   /** Takes the text written so far (one flush, or one prose piece). */
   take(): string {
     const out = this.out
-    this.tail = (this.tail + out).slice(-512)
+    this.tail = (this.tail + out).slice(-WRITER_TAIL)
     this.out = ''
     return out
   }
@@ -440,7 +444,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images && inParagraph(writer.recent()) ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
+      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -472,19 +476,22 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 }
 
 /**
- * Whether inline math written next, after `written`, lands in a plain paragraph:
- * the only block whose inline previews get images at landing (proseBlocks, the
- * rule the landed drawing uses). Anywhere else (a list item, a heading, a
- * quote, a table) the formula is drawn as plain Unicode, so streaming writes
- * it unpadded: padding there would stay behind as gaps.
+ * Whether inline math written next, after `written`, lands in a block whose
+ * inline previews get images at landing (proseBlocks, the rule the landed
+ * drawing uses): a plain paragraph, or the text of a list item in a list the
+ * replay follows so far (`width`: the width prose wraps at). Anywhere else (a
+ * heading, a quote, a table) the formula is drawn as plain Unicode, so
+ * streaming writes it unpadded: padding there would stay behind as gaps.
  */
-export function inParagraph(written: string): boolean {
+export function placeable(written: string, width: number): boolean {
   // A table's first row reads as a paragraph until its delimiter row arrives.
   if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = proseBlocks(text)?.at(-1)
-  return last !== undefined && last.paragraph && last.end === text.length
+  if (last === undefined || last.end !== text.length) return false
+  if (last.paragraph) return true
+  return last.list === true && layoutList(text.slice(last.start, last.end), width) !== null
 }
 
 /** Why MathJax refuses a formula, or undefined when it doesn't. */
@@ -757,9 +764,9 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
 
 /**
  * Gives the inline previews marked in prose pieces their images. A paragraph
- * holding previews, set apart by blank lines, is drawn as a piece of its own
- * (so its first row is the piece's), laid out as the engine lays it out, and
- * each preview drawn whole on one row gets its image there. Everything else
+ * or a list holding previews, set apart by blank lines, is drawn as a piece of
+ * its own (so its first row is the piece's), laid out as the engine lays it
+ * out, and each preview drawn whole on one row gets its image there. Everything else
  * keeps its text: previews streamed padded stay as they were shown, math read
  * back as LaTeX goes back to its plain Unicode.
  */
@@ -783,12 +790,12 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
     }
     text += piece.text.slice(last)
 
-    // The paragraphs whose previews get images.
+    // The paragraphs and lists whose previews get images.
     const parts: { start: number; end: number; images: InlineImage[] }[] = []
     for (const block of (options.inline ? proseBlocks(text) : null) ?? []) {
       const inside = spans.filter(span => span.start >= block.start && span.end <= block.end)
-      if (!block.paragraph || inside.length === 0) continue
-      const images = placeImages(text.slice(block.start, block.end), inside, block.start, options.inline!)
+      if (!(block.paragraph || block.list) || inside.length === 0) continue
+      const images = placeImages(text.slice(block.start, block.end), inside, block.start, options.inline!, block.list === true)
       if (images.length > 0) parts.push({ start: block.start, end: block.end, images })
     }
 
@@ -827,15 +834,16 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
   return out
 }
 
-/** Lays out one paragraph and draws the images of the previews found whole on a row. */
+/** Lays out one paragraph (or list) and draws the images of the previews found whole on a row. */
 function placeImages(
-  paragraph: string,
+  block: string,
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   offset: number,
   inline: NonNullable<PlanOptions['inline']>,
+  list: boolean,
 ): InlineImage[] {
-  const layout = layoutProse(
-    paragraph,
+  const layout = (list ? layoutList : layoutProse)(
+    block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
   )

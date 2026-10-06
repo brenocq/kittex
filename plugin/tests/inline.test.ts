@@ -102,9 +102,9 @@ describe('streaming', () => {
     for (const record of records) expect(landed).toContain(record.preview)
   })
 
-  test('outside a plain paragraph inline math streams unpadded, with no record, so no gap stays at landing', async () => {
+  test('outside a paragraph or a list item inline math streams unpadded, with no record, so no gap stays at landing', async () => {
     await init()
-    for (const line of ['- $x_k$: state\n', '1. $x_k$: state\n', '## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
+    for (const line of ['## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
       const { landed, records } = streamed([line])
       expect({ line, records }).toEqual({ line, records: [] })
       expect(landed).toBe(line.replace('$x_k$', previewInline('x_k')!))
@@ -204,9 +204,8 @@ describe('the landed plan', () => {
     expect(live.pieces[0]).toMatchObject({ kind: 'prose', text: landed })
   })
 
-  test('list items and headings keep Unicode', async () => {
+  test('headings keep Unicode', async () => {
     await init()
-    expect(places(plan('- a list item with $x$\n- and $y$').pieces)).toEqual([])
     expect(places(plan('# Title with $x$').pieces)).toEqual([])
   })
 
