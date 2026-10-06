@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'claude-code/testing'
 
-import { init, measureDisplay, previewInline, renderDisplay, TexError } from '../hooks/core.js'
+import { init, measureDisplay, previewDisplay, previewInline, renderDisplay, TexError } from '../hooks/core.js'
 import {
   HELD_DISPLAY,
   MessageStream,
@@ -122,7 +122,8 @@ describe('MessageStream', () => {
     const stream = new MessageStream(contractScanner())
     const flush = stream.push(`$$\n${TEX}\n$$\n`, true, env)
     expect(flush.records).toEqual([])
-    expect(previewLines(flush.text).map(line => line.trim())).toEqual([TEX])
+    const lines = previewDisplay(TEX, renderEnvFor(env))!
+    expect(previewLines(flush.text).map(line => line.trim())).toEqual(lines.map(line => line.trim()))
   })
 })
 

@@ -52,6 +52,13 @@ describe('AssistantMessage', () => {
     })
   })
 
+  test('a formula MathJax refuses stays as its source in a latex block', async ($, on) => {
+    await startSession($, on)
+    const bad = 'Bad:\n\n$$\\frac{1}{$$\n\nafter.'
+    const drawn = await (await mountReply($, bad)).drawn()
+    expect(drawn).toEqual({ type: 'Text', children: ['Bad:\n\n```latex\n\\frac{1}{\n```\n\nafter.'] })
+  })
+
   test('a reply without math is drawn by the engine untouched', async ($, on) => {
     await startSession($, on)
     const ui = await mountReply($, 'Just prose, costs 5 dollars.')
