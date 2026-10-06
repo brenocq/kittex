@@ -1,0 +1,293 @@
+<!doctype html>
+<!--
+  The frame page for render.mjs: a macOS-style window around a <canvas> that
+  draws one terminal screen the way kitty does (every glyph in its own cell,
+  box drawing and block elements drawn as shapes, kitty images in the cells of
+  their placeholders). render.mjs loads it in headless Chrome, calls
+  setup(config) once, then show(frame) and takes a screenshot per frame.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=block">
+<style>
+  html, body { margin: 0; background: transparent; }
+  #stage { display: inline-block; }
+  #win {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg);
+    /* The shadow of a macOS window, and its dark outer edge. */
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.85), 0 22px 70px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.25);
+  }
+  /* The light inner highlight, above the content. */
+  #win::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  }
+  #bar {
+    position: relative; height: 28px; background: var(--bar);
+    box-shadow: inset 0 -0.5px 0 rgba(0, 0, 0, 0.45);
+  }
+  .light {
+    position: absolute; top: 8px; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box;
+  }
+  #title {
+    position: absolute; left: 80px; right: 80px; top: 0; height: 28px; line-height: 28px; text-align: center;
+    font: 600 13px Inter, "SF Pro Text", -apple-system, Cantarell, "Liberation Sans", sans-serif;
+    color: rgba(235, 235, 245, 0.62); letter-spacing: -0.08px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #title span { position: absolute; left: 0; right: 0; top: 0; height: 28px; line-height: 28px; overflow: hidden; text-overflow: ellipsis; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="win">
+    <div id="bar">
+      <div class="light" style="left: 13px; background: #ff5f57; border: 0.5px solid #e0443e"></div>
+      <div class="light" style="left: 33px; background: #febc2e; border: 0.5px solid #dea123"></div>
+      <div class="light" style="left: 53px; background: #28c840; border: 0.5px solid #1aab29"></div>
+      <div id="title"><span id="t0"></span><span id="t1"></span></div>
+    </div>
+    <canvas id="term"></canvas>
+  </div>
+</div>
+<script>
+let C, ctx, back, bctx
+const images = new Map()
+
+/** Loads fonts and images; sizes the window. Resolves to the stage's CSS size. */
+async function setup(config) {
+  C = config
+  const root = document.documentElement.style
+  root.setProperty('--bg', C.theme.background)
+  root.setProperty('--bar', C.titleBar)
+  const stage = document.getElementById('stage')
+  stage.style.padding = C.margin.map(n => n + 'px').join(' ')
+  const canvas = document.getElementById('term')
+  const [cw, ch] = [C.cellWidth, C.cellHeight]
+  canvas.width = C.cols * cw
+  canvas.height = C.rows * ch
+  canvas.style.width = canvas.width / C.dpr + 'px'
+  canvas.style.height = canvas.height / C.dpr + 'px'
+  canvas.style.margin = C.padding.map(n => n + 'px').join(' ')
+  ctx = canvas.getContext('2d', { alpha: false })
+  back = new OffscreenCanvas(canvas.width, canvas.height)
+  bctx = back.getContext('2d', { alpha: false })
+  for (const [style, weight, file] of C.fonts) {
+    const face = new FontFace('TermFont', `url("${file}")`, { style, weight: String(weight) })
+    document.fonts.add(await face.load())
+  }
+  await document.fonts.load('600 13px Inter').catch(() => undefined)
+  await document.fonts.ready
+  for (const [id, png] of Object.entries(C.images)) {
+    const img = new Image()
+    img.src = 'data:image/png;base64,' + png.data
+    await img.decode()
+    images.set(Number(id), { img, cols: png.cols, rows: png.rows })
+  }
+  const r = stage.getBoundingClientRect()
+  return { width: Math.ceil(r.width), height: Math.ceil(r.height) }
+}
+
+/** Draws a frame: one screen, or two blended ({screen, next, mix}). */
+function show(frame) {
+  paint(ctx, frame.screen)
+  const t0 = document.getElementById('t0'), t1 = document.getElementById('t1')
+  t0.textContent = frame.screen.title || C.defaultTitle
+  t0.style.opacity = 1
+  t1.textContent = ''
+  if (frame.next) {
+    paint(bctx, frame.next)
+    ctx.globalAlpha = frame.mix
+    ctx.drawImage(back, 0, 0)
+    ctx.globalAlpha = 1
+    t1.textContent = frame.next.title || C.defaultTitle
+    t0.style.opacity = 1 - frame.mix
+    t1.style.opacity = frame.mix
+  }
+}
+
+function font(cell) {
+  return `${cell.italic ? 'italic ' : ''}${cell.bold ? C.boldWeight : C.weight} ${C.fontSize}px TermFont, ${C.fallback}`
+}
+
+function paint(g, screen) {
+  const [cw, ch] = [C.cellWidth, C.cellHeight]
+  g.fillStyle = C.theme.background
+  g.fillRect(0, 0, C.cols * cw, C.rows * ch)
+  // Backgrounds first, so a glyph that overhangs its cell is never cut by the next cell's.
+  screen.rows.forEach((row, y) => row.forEach((c, x) => {
+    if (c.bg !== C.theme.background) { g.fillStyle = c.bg; g.fillRect(x * cw, y * ch, cw * Math.max(c.w, 1), ch) }
+  }))
+  const cur = screen.cursor
+  if (cur.visible && cur.y < C.rows && cur.x < C.cols) {
+    g.fillStyle = C.theme.cursor
+    g.fillRect(cur.x * cw, cur.y * ch, cw, ch)
+  }
+  g.textBaseline = 'alphabetic'
+  screen.rows.forEach((row, y) => row.forEach((c, x) => {
+    const px = x * cw, py = y * ch
+    if (c.img) return tile(g, c.img, px, py)
+    if (!c.ch || c.w === 0) return
+    const atCursor = cur.visible && cur.x === x && cur.y === y
+    const fg = atCursor ? C.theme.cursorText : c.fg
+    const cp = c.ch.codePointAt(0)
+    if (c.ch.length <= 2 && shape(g, cp, px, py, cw * c.w, ch, fg)) return
+    if (c.ch !== ' ') glyph(g, c, px, py, fg)
+    if (c.underline) { g.fillStyle = fg; g.fillRect(px, py + C.baseline + C.underlineOffset, cw * c.w, C.lineWidth) }
+    if (c.strike) { g.fillStyle = fg; g.fillRect(px, py + Math.round(C.baseline * 0.65), cw * c.w, C.lineWidth) }
+  }))
+}
+
+/** A glyph in its cell: on the cell's baseline, centred, scaled down to fit when wider. */
+function glyph(g, c, px, py, fg) {
+  const box = C.cellWidth * Math.max(c.w, 1)
+  g.font = font(c)
+  g.fillStyle = fg
+  const w = g.measureText(c.ch).width
+  if (w <= box + 0.5) {
+    g.fillText(c.ch, px + (box - w) / 2, py + C.baseline)
+    return
+  }
+  const k = box / w
+  g.save()
+  g.translate(px, py + C.baseline - (1 - k) * C.fontSize * 0.35)
+  g.scale(k, k)
+  g.fillText(c.ch, 0, 0)
+  g.restore()
+}
+
+/** One cell of a kitty image: the image fills its c×r box (aspect kept, centred). */
+function tile(g, ref, px, py) {
+  const im = images.get(ref.id)
+  if (!im) return
+  const [cw, ch] = [C.cellWidth, C.cellHeight]
+  const boxW = (im.cols || Math.ceil(im.img.width / cw)) * cw
+  const boxH = (im.rows || Math.ceil(im.img.height / ch)) * ch
+  const k = Math.min(boxW / im.img.width, boxH / im.img.height)
+  const w = im.img.width * k, h = im.img.height * k
+  const ox = (boxW - w) / 2, oy = (boxH - h) / 2
+  g.save()
+  g.beginPath()
+  g.rect(px, py, cw, ch)
+  g.clip()
+  g.imageSmoothingEnabled = k !== 1
+  g.drawImage(im.img, px - ref.col * cw + ox, py - ref.row * ch + oy, w, h)
+  g.restore()
+}
+
+// ─── Box drawing and block elements, drawn as shapes (as kitty does) ─────────
+
+// U+2500..U+254B: [up, right, down, left] with 1 = light, 2 = heavy.
+const LINES = {
+  0x2500: [0, 1, 0, 1], 0x2501: [0, 2, 0, 2], 0x2502: [1, 0, 1, 0], 0x2503: [2, 0, 2, 0],
+  0x250c: [0, 1, 1, 0], 0x250f: [0, 2, 2, 0], 0x2510: [0, 0, 1, 1], 0x2513: [0, 0, 2, 2],
+  0x2514: [1, 1, 0, 0], 0x2517: [2, 2, 0, 0], 0x2518: [1, 0, 0, 1], 0x251b: [2, 0, 0, 2],
+  0x251c: [1, 1, 1, 0], 0x2523: [2, 2, 2, 0], 0x2524: [1, 0, 1, 1], 0x252b: [2, 0, 2, 2],
+  0x252c: [0, 1, 1, 1], 0x2533: [0, 2, 2, 2], 0x2534: [1, 1, 0, 1], 0x253b: [2, 2, 0, 2],
+  0x253c: [1, 1, 1, 1], 0x254b: [2, 2, 2, 2],
+  0x2574: [0, 0, 0, 1], 0x2575: [1, 0, 0, 0], 0x2576: [0, 1, 0, 0], 0x2577: [0, 0, 1, 0],
+  0x2578: [0, 0, 0, 2], 0x2579: [2, 0, 0, 0], 0x257a: [0, 2, 0, 0], 0x257b: [0, 0, 2, 0],
+  0x257c: [0, 2, 0, 1], 0x257d: [1, 0, 2, 0], 0x257e: [0, 1, 0, 2], 0x257f: [2, 0, 1, 0],
+}
+// Dashed lines: [horizontal?, weight, dashes].
+const DASHES = {
+  0x2504: [1, 1, 3], 0x2505: [1, 2, 3], 0x2506: [0, 1, 3], 0x2507: [0, 2, 3],
+  0x2508: [1, 1, 4], 0x2509: [1, 2, 4], 0x250a: [0, 1, 4], 0x250b: [0, 2, 4],
+  0x254c: [1, 1, 2], 0x254d: [1, 2, 2], 0x254e: [0, 1, 2], 0x254f: [0, 2, 2],
+}
+// Quadrants: bits UL, UR, LL, LR.
+const QUADS = {
+  0x2596: 0b0010, 0x2597: 0b0001, 0x2598: 0b1000, 0x2599: 0b1011, 0x259a: 0b1001,
+  0x259b: 0b1110, 0x259c: 0b1101, 0x259d: 0b0100, 0x259e: 0b0110, 0x259f: 0b0111,
+  0x2580: 0b1100, 0x2584: 0b0011, 0x2588: 0b1111, 0x258c: 0b1010, 0x2590: 0b0101,
+}
+
+function thick(weight) {
+  return weight === 2 ? C.heavyWidth : C.lineWidth
+}
+
+function shape(g, cp, x, y, w, h, color) {
+  g.fillStyle = color
+  g.strokeStyle = color
+  const cx = x + Math.floor(w / 2), cy = y + Math.floor(h / 2)
+  const L = LINES[cp]
+  if (L) {
+    const [up, right, down, left] = L
+    // Each arm from the centre to the edge; arms of a junction overlap at the centre.
+    const v = Math.max(up, down), hz = Math.max(left, right)
+    const tv = thick(v), th = thick(hz)
+    const vx = cx - Math.floor(tv / 2), hy = cy - Math.floor(th / 2)
+    const reachH = hz ? Math.ceil(thick(hz) / 2) : 0, reachV = v ? Math.ceil(thick(v) / 2) : 0
+    if (up) g.fillRect(cx - Math.floor(thick(up) / 2), y, thick(up), cy - y + reachH)
+    if (down) g.fillRect(cx - Math.floor(thick(down) / 2), cy - reachH, thick(down), y + h - cy + reachH)
+    if (left) g.fillRect(x, cy - Math.floor(thick(left) / 2), cx - x + reachV, thick(left))
+    if (right) g.fillRect(cx - reachV, cy - Math.floor(thick(right) / 2), x + w - cx + reachV, thick(right))
+    return true
+  }
+  const D = DASHES[cp]
+  if (D) {
+    const [horizontal, weight, n] = D
+    const t = thick(weight)
+    const len = horizontal ? w : h
+    const seg = len / n
+    for (let i = 0; i < n; i++) {
+      const a = Math.round(i * seg), b = Math.round(i * seg + seg * 0.6)
+      if (horizontal) g.fillRect(x + a, cy - Math.floor(t / 2), b - a, t)
+      else g.fillRect(cx - Math.floor(t / 2), y + a, t, b - a)
+    }
+    return true
+  }
+  if (cp >= 0x256d && cp <= 0x2570) {
+    // Rounded corners: a quarter circle joining the two arms.
+    const t = C.lineWidth
+    const ax = cx - Math.floor(t / 2) + t / 2, ay = cy - Math.floor(t / 2) + t / 2
+    const r = Math.min(w, h) / 2
+    const toRight = cp === 0x256d || cp === 0x2570, toDown = cp === 0x256d || cp === 0x256e
+    const ex = toRight ? x + w : x, ey = toDown ? y + h : y
+    const sx = toRight ? 1 : -1, sy = toDown ? 1 : -1
+    g.lineWidth = t
+    g.beginPath()
+    g.moveTo(ex, ay)
+    g.lineTo(ax + sx * r, ay)
+    g.arcTo(ax, ay, ax, ay + sy * r, r)
+    g.lineTo(ax, ey)
+    g.stroke()
+    return true
+  }
+  const Q = QUADS[cp]
+  if (Q !== undefined) {
+    const mx = x + Math.round(w / 2), my = y + Math.round(h / 2)
+    if (Q & 0b1000) g.fillRect(x, y, mx - x, my - y)
+    if (Q & 0b0100) g.fillRect(mx, y, x + w - mx, my - y)
+    if (Q & 0b0010) g.fillRect(x, my, mx - x, y + h - my)
+    if (Q & 0b0001) g.fillRect(mx, my, x + w - mx, y + h - my)
+    return true
+  }
+  if (cp >= 0x2581 && cp <= 0x2587) { // lower eighths
+    const k = Math.round(h * (cp - 0x2580) / 8)
+    g.fillRect(x, y + h - k, w, k)
+    return true
+  }
+  if (cp >= 0x2589 && cp <= 0x258f) { // left eighths
+    const k = Math.round(w * (0x2590 - cp) / 8)
+    g.fillRect(x, y, k, h)
+    return true
+  }
+  if (cp === 0x2594) { g.fillRect(x, y, w, Math.round(h / 8)); return true }
+  if (cp === 0x2595) { const k = Math.round(w / 8); g.fillRect(x + w - k, y, k, h); return true }
+  if (cp >= 0x2591 && cp <= 0x2593) {
+    g.globalAlpha = (cp - 0x2590) / 4
+    g.fillRect(x, y, w, h)
+    g.globalAlpha = 1
+    return true
+  }
+  return false
+}
+</script>
+</body>
+</html>
