@@ -5,7 +5,17 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
-import { MATH_INSTRUCTIONS, renderEnvFor, REPLY_INDENT, replyColumns, RESIZE_SETTLE_MS, SECTION_ID } from '../hooks/math.ts'
+import {
+  HELD_DISPLAY,
+  MATH_INSTRUCTIONS,
+  PREVIEW_FENCE_INFO,
+  PREVIEW_OVERHEAD_ROWS,
+  renderEnvFor,
+  REPLY_INDENT,
+  replyColumns,
+  RESIZE_SETTLE_MS,
+  SECTION_ID,
+} from '../hooks/math.ts'
 import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
@@ -147,23 +157,50 @@ describe('terminal changes', () => {
 })
 
 describe('MessageDisplay', () => {
+  /** Streams `flushes` as one message; what each flush showed. */
+  async function stream($: Engine, id: string, flushes: readonly string[]): Promise<string[]> {
+    const shown: string[] = []
+    for (const [index, delta] of flushes.entries()) {
+      const final = index === flushes.length - 1
+      const result = await $.classic.MessageDisplay({ turn_id: 't1', message_id: id, index, final, delta })
+      shown.push(result.displayContent ?? delta)
+    }
+    return shown
+  }
+
+  test('an open display block shows nothing until it closes, then exactly its reserved rows', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'm1', ["Euler's identity:\n", '$$\n', `${TEX}\n`, '$$\n', 'is beautiful.'])
+    expect(shown.slice(0, 3)).toEqual(["Euler's identity:\n", HELD_DISPLAY, HELD_DISPLAY])
+    const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
+    const fence = shown[3]!.split('\n')
+    expect(fence[0]).toBe('```' + PREVIEW_FENCE_INFO)
+    expect(fence.indexOf('```', 1) - 1).toBe(rows - PREVIEW_OVERHEAD_ROWS)
+    expect(shown[4]).toBe('is beautiful.')
+  })
+
   test('a streamed reply lands as an Image of the rows its preview reserved', async ($, on) => {
     await startSession($, on)
     await init()
-    const flushes = ["Euler's identity:\n", '$$\n', `${TEX}\n`, '$$\n', 'is beautiful.']
-    let landed = ''
-    for (const [index, delta] of flushes.entries()) {
-      const final = index === flushes.length - 1
-      const shown = await $.classic.MessageDisplay({ turn_id: 't1', message_id: 'm1', index, final, delta })
-      landed += shown.displayContent ?? delta
-    }
+    const landed = (await stream($, 'm2', ["Euler's identity:\n", '$$\n', `${TEX}\n`, '$$\n', 'is beautiful.'])).join('')
+    expect(landed).not.toContain('$$')
     const ui = await mountReply($, landed)
     const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
-    const image = await ui.find({ type: 'Image' })
-    expect(image).toBeDefined()
     expect(await ui.drawn()).toMatchObject({
-      children: [{}, { children: [{ type: 'Image', props: { rows, alt: TEX } }] }, {}],
+      children: [
+        { type: 'Text', children: ["Euler's identity:"] },
+        { children: [{ type: 'Image', props: { rows, alt: TEX } }] },
+        { type: 'Text', children: ['is beautiful.'] },
+      ],
     })
+  })
+
+  test('a held line that turns out to be prose comes back as written', async ($, on) => {
+    await startSession($, on)
+    const flushes = ['It costs $5\n', 'and that is all.\n', '\n', 'Next paragraph.']
+    const shown = await stream($, 'm3', flushes)
+    expect(shown.join('')).toBe(flushes.join(''))
   })
 
   test('prose without math passes through unchanged', async ($, on) => {

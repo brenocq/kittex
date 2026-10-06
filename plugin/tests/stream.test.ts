@@ -1,5 +1,4 @@
-// The streaming rewrite and the plan of a landed reply, with a scanner that
-// keeps the LineScanner contract.
+// The streaming rewrite and the plan of a landed reply, with core's own scanner.
 
 import { describe, expect, test } from 'claude-code/testing'
 
@@ -14,7 +13,7 @@ import {
   trimPieces,
 } from '../hooks/math.ts'
 import type { PreviewRecord } from '../hooks/math.ts'
-import { contractScan, contractScanner, kittyEnv } from './support.ts'
+import { kittyEnv } from './support.ts'
 
 const TEX = 'E = mc^2'
 
@@ -31,7 +30,7 @@ describe('MessageStream', () => {
   test('holds an open display block, then shows exactly the rows its image takes', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
 
     const first = stream.push('Energy is\n$$\n', false, env)
     expect(first.text).toBe('Energy is\n')
@@ -49,7 +48,7 @@ describe('MessageStream', () => {
   test('the landed text maps back to the TeX and the reserved rows', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
     const records: PreviewRecord[] = []
     let landed = ''
     for (const [delta, final] of [['Energy is\n$$\n', false], [`${TEX}\n`, false], ['$$\nas Einstein said.', true]] as const) {
@@ -63,7 +62,6 @@ describe('MessageStream', () => {
     const plan = planLanded(landed, records, {
       maxColumns: renderEnv.maxColumns,
       draw: (tex, minRows) => renderDisplay(tex, renderEnv, minRows),
-      scan: contractScan,
     })
     const pieces = trimPieces(plan.pieces)
     expect(plan.changed).toBe(true)
@@ -80,18 +78,18 @@ describe('MessageStream', () => {
   test('trailing spaces the engine trims still map back', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
     const flush = stream.push(`$$\n${TEX}\n$$\n`, true, env)
     const trimmed = flush.text.replace(/[ \t]+$/gm, '')
     const renderEnv = renderEnvFor(env)
-    const plan = planLanded(trimmed, flush.records, { maxColumns: renderEnv.maxColumns, draw: tex => renderDisplay(tex, renderEnv), scan: contractScan })
+    const plan = planLanded(trimmed, flush.records, { maxColumns: renderEnv.maxColumns, draw: tex => renderDisplay(tex, renderEnv) })
     expect(trimPieces(plan.pieces).map(piece => piece.kind)).toEqual(['image'])
   })
 
   test('a formula in a list item keeps its indentation and still maps back', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
     let landed = ''
     const records: PreviewRecord[] = []
     for (const [delta, final] of [['- Basel:\n', false], ['  $$\n', false], [`  ${TEX}\n`, false], ['  $$\n', false], ['- next', true]] as const) {
@@ -104,14 +102,14 @@ describe('MessageStream', () => {
     expect(lines.slice(1, -1).every(line => line.startsWith('  '))).toBe(true)
     expect(lines[lines.length - 1]).toBe('- next')
     const renderEnv = renderEnvFor(env)
-    const plan = planLanded(landed, records, { maxColumns: renderEnv.maxColumns, draw: (tex, minRows) => renderDisplay(tex, renderEnv, minRows), scan: contractScan })
+    const plan = planLanded(landed, records, { maxColumns: renderEnv.maxColumns, draw: (tex, minRows) => renderDisplay(tex, renderEnv, minRows) })
     expect(plan.pieces.filter(piece => piece.kind === 'image').map(piece => piece.kind === 'image' && piece.tex)).toEqual([TEX])
   })
 
   test('inline math becomes one line of Unicode while streaming', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
     const flush = stream.push('Let $x^2$ be positive.\n', false, env)
     expect(flush.text).toBe(`Let ${previewInline('x^2', renderEnvFor(env).maxColumns)} be positive.\n`)
   })
@@ -119,7 +117,7 @@ describe('MessageStream', () => {
   test('without images a display formula is an unpadded preview and records nothing', async () => {
     await init()
     const env = { ...kittyEnv(), kind: 'wezterm' as const, images: false }
-    const stream = new MessageStream(contractScanner())
+    const stream = new MessageStream()
     const flush = stream.push(`$$\n${TEX}\n$$\n`, true, env)
     expect(flush.records).toEqual([])
     const lines = previewDisplay(TEX, renderEnvFor(env))!
@@ -130,13 +128,13 @@ describe('MessageStream', () => {
 describe('planLanded', () => {
   test('rewrites inline math in a reply that never streamed', async () => {
     await init()
-    const plan = planLanded('Take $a+b$ and $c$.', [], { maxColumns: 97, scan: contractScan })
+    const plan = planLanded('Take $a+b$ and $c$.', [], { maxColumns: 97 })
     expect(plan.changed).toBe(true)
     expect(plan.pieces).toEqual([{ kind: 'prose', text: `Take ${previewInline('a+b', 97)} and ${previewInline('c', 97)}.` }])
   })
 
   test('leaves a reply without math alone', () => {
-    const plan = planLanded('Nothing to see.', [], { maxColumns: 97, scan: contractScan })
+    const plan = planLanded('Nothing to see.', [], { maxColumns: 97 })
     expect(plan.changed).toBe(false)
   })
 
