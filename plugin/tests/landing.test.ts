@@ -17,7 +17,7 @@ function mount($: Engine, text: string) {
     surface: 'terminal',
     component: 'AssistantMessage',
     props: { text, isFirstOfReply: true },
-    viewport: { columns: COLUMNS, rows: 50 },
+    viewport: { columns: COLUMNS, rows: 50, isFullscreen: false },
   })
 }
 
@@ -70,5 +70,65 @@ describe('landing', () => {
     const again = sources(await (await mount($, text)).drawn())
     expect(first).toHaveLength(2)
     expect(again).toEqual(first)
+  })
+})
+
+// The landing blank (engine-findings, "A blank flash at landing"): the engine
+// draws a hooked block as nothing until the hook answers, unless it drew the
+// block unhooked before. In the fullscreen layout kittex leaves a streamed
+// block's first render (no `onScreen` yet) to the engine, whose drawing of the
+// streamed text is the streaming preview, and draws from the next one on.
+describe('landing in the fullscreen layout', () => {
+  const FULLSCREEN = { columns: COLUMNS, rows: 50, isFullscreen: true }
+  const ON_SCREEN = { first: 0, last: 5, of: 6 }
+
+  function mountFullscreen($: Engine, text: string, onScreen?: { first: number; last: number; of: number } | null) {
+    return $.ui.mount({
+      plugin: 'kittex',
+      surface: 'terminal',
+      component: 'AssistantMessage',
+      props: { text, isFirstOfReply: true, ...(onScreen === undefined ? {} : { onScreen }) },
+      viewport: FULLSCREEN,
+    })
+  }
+
+  test("a streamed block's first render (no onScreen yet) is the engine's own drawing of its preview", async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n', 'f1')
+    expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
+  })
+
+  test('once its rows on screen are reported, on screen or off, kittex draws its images', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n', 'f2')
+    expect(sources(await (await mountFullscreen($, shown, ON_SCREEN)).drawn())).toHaveLength(2)
+    expect(sources(await (await mountFullscreen($, shown, null)).drawn())).toHaveLength(2)
+  })
+
+  test('LaTeX as written (after --resume) is drawn by kittex from the first render, its source never shown', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const text = 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n'
+    expect(sources(await (await mountFullscreen($, text)).drawn())).toHaveLength(2)
+    expect(sources(await (await mountFullscreen($, text, ON_SCREEN)).drawn())).toHaveLength(2)
+  })
+
+  test('a text holding both previews and LaTeX is drawn once, by one registration', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n', 'f3')
+    const mixed = `${shown}\nThen $y$ too.\n`
+    const ui = await mountFullscreen($, mixed, ON_SCREEN)
+    // Once: the preview's image, x's and y's, none drawn twice over a drawing of kittex's own.
+    expect(sources(await ui.drawn())).toHaveLength(3)
+  })
+
+  test('the main screen reports no onScreen: a streamed block is drawn by kittex from its first render', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n', 'f4')
+    expect(sources(await (await mount($, shown)).drawn())).toHaveLength(2)
   })
 })

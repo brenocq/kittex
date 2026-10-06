@@ -19,7 +19,7 @@ function mountAt($: Engine, columns?: number) {
     surface: 'terminal',
     component: 'AssistantMessage',
     props: { text: REPLY, isFirstOfReply: true },
-    ...(columns === undefined ? {} : { viewport: { columns, rows: 50 } }),
+    ...(columns === undefined ? {} : { viewport: { columns, rows: 50, isFullscreen: false } }),
   })
 }
 
@@ -158,7 +158,7 @@ describe('inline formulas', () => {
         surface: 'terminal',
         component: 'AssistantMessage',
         props: { text: 'Let $x$ be real.', isFirstOfReply: true },
-        viewport: { columns, rows: 50 },
+        viewport: { columns, rows: 50, isFullscreen: false },
       })
       return { ui, image: () => ui.find({ type: 'Image' }).then(imageOf) }
     }

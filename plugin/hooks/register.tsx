@@ -12,7 +12,7 @@
 // back to what the engine would have drawn.
 
 import { update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
 
 import {
   cellProbes,
@@ -44,6 +44,8 @@ import {
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
   LANDED_PATTERN,
+  SOURCE_PATTERN,
+  STREAMED_PATTERN,
   linkEnv,
   MessageStream,
   MATH_INSTRUCTIONS,
@@ -202,139 +204,165 @@ export const register: Register = (on, options) => {
 
   // ─── Landed replies ────────────────────────────────────────────────────────
 
-  // Registered with a matcher on the text, so a block that holds no math and
+  // Registered with matchers on the text, so a block that holds no math and
   // no kittex preview is drawn by the engine alone (no round trip here).
-  on('ui.render', { component: 'AssistantMessage', props: { text: LANDED_PATTERN } }, async ($, e, next) => {
-    if (e.props.isSummary) return next(e)
-    try {
-      let env = await readEnv($)
-      if (!env) return next(e)
-      const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
-      if (seen !== undefined && seen !== env.columns) {
-        // The window changed width since the cells were measured, and a font
-        // zoom changes the cells too: measure before drawing, so no image goes
-        // out for cells that are gone, and once more when the resize settles.
-        // A render may not write state, so the settle timer stores what it finds.
-        const cell = await cells?.probe()
-        if (cell) env = { ...env, ...cellEnv(cell), columns: seen }
-        cells?.settle(seen)
-      }
-      const columns = e.viewport?.columns ?? env.columns
-      const images = e.surface === 'terminal' && env.images
-      // The text may lack the block's last flush (or be empty) on the first
-      // render: nothing here is final, and the render runs again when it lands.
-      const records = images && /&nbsp;|```|\u00a0|\u2800|\u034f/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
-      const renderEnv = renderEnvFor(env, columns)
-      const inlineEnv = inlineEnvFor(env, columns)
-      const plan = planLanded(e.props.text, records, {
-        maxColumns: renderEnv.maxColumns,
-        draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
-        width: proseWidthFor(env, columns),
-        measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-        inline:
-          images && inlineImages
-            ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks }
-            : undefined,
-      })
-      if (!plan.changed) return next(e)
-      if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
-        return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
-      }
-      // Drawn as the engine drew the preview, row for row (measured live): the
-      // first prose piece is the engine's own drawing with the block's bullet;
-      // later pieces are drawn without a bullet (each brings a one-row top
-      // margin) and indented to the reply column; images and notes sit in that
-      // column, a blank row above them where a blank line was. A block that
-      // opens with a formula gets the bullet beside the image's first row,
-      // where the preview's first line had it.
-      const { pieces } = plan
-      if (images) cells?.poll()
-      const { Box, Button, Image, Text } = $.ui.resolve(e)
-      const first = e.props.isFirstOfReply
-      const indent = first ? REPLY_INDENT : 0
-      // A selection over an image copies the terminal's placeholder cells, not the
-      // formula (the engine copies screen cells and offers no hook), so each image
-      // carries a copy button, shown while the pointer is over it (fullscreen), in
-      // its top-right corner: absolute, so it moves no row.
-      const copy = (tex: string) => async () => {
-        const copied = await $.ui.copy({ text: copiedFormula(tex), surface: e.surface })
-        $.ui.toast(copied.isCopied ? 'Copied the formula as LaTeX' : 'Could not copy the formula')
-      }
-      const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
-        piece.kind === 'image' ? (
-          <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
-            <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
-            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-              <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
+  //
+  // The engine draws a hooked block as nothing until the hook's answer
+  // arrives (a hop to the worker and back, 15 to 50 ms), unless the block was
+  // drawn unhooked before: then its own drawing stays up meanwhile. So in the
+  // fullscreen layout a block kittex streamed is hooked only once its
+  // `onScreen` is reported, which it never is on a block's first render: the
+  // engine draws that one itself, and its drawing of a streamed text is the
+  // streaming preview row for row, so the landing shows no blank, only the
+  // images arriving over their previews. LaTeX as written (after --resume) is
+  // hooked from the first render (its own drawing would show the source), as
+  // is every block on the main screen, which reports no `onScreen`. The four
+  // matchers never select the same render, so kittex runs once per render.
+  const landed = { component: 'AssistantMessage' } as const
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, inlineImages))
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
+  on('ui.render', { ...landed, surface: 'terminal', props: { text: SOURCE_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
+  on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
+}
+
+/**
+ * Draws a landed block (see the AssistantMessage registrations): its prose
+ * through the engine, an Image where each preview was; anything that fails
+ * falls back to the engine's drawing. `inlineImages` is the `inline` option.
+ */
+async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, inlineImages: boolean): Promise<RenderElement> {
+  if (e.props.isSummary) return next(e)
+  try {
+    let env = await readEnv($)
+    if (!env) return next(e)
+    const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
+    if (seen !== undefined && seen !== env.columns) {
+      // The window changed width since the cells were measured, and a font
+      // zoom changes the cells too: measure before drawing, so no image goes
+      // out for cells that are gone, and once more when the resize settles.
+      // A render may not write state, so the settle timer stores what it finds.
+      const cell = await cells?.probe()
+      if (cell) env = { ...env, ...cellEnv(cell), columns: seen }
+      cells?.settle(seen)
+    }
+    const columns = e.viewport?.columns ?? env.columns
+    const images = e.surface === 'terminal' && env.images
+    // The text may lack the block's last flush (or be empty) on the first
+    // render: nothing here is final, and the render runs again when it lands.
+    const records = images && /&nbsp;|```|\u00a0|\u2800|\u034f/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
+    const renderEnv = renderEnvFor(env, columns)
+    const inlineEnv = inlineEnvFor(env, columns)
+    const plan = planLanded(e.props.text, records, {
+      maxColumns: renderEnv.maxColumns,
+      draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
+      width: proseWidthFor(env, columns),
+      measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+      inline:
+        images && inlineImages
+          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks }
+          : undefined,
+    })
+    if (!plan.changed) return next(e)
+    if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
+      return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
+    }
+    // Drawn as the engine drew the preview, row for row (measured live): the
+    // first prose piece is the engine's own drawing with the block's bullet;
+    // later pieces are drawn without a bullet (each brings a one-row top
+    // margin) and indented to the reply column; images and notes sit in that
+    // column, a blank row above them where a blank line was. A block that
+    // opens with a formula gets the bullet beside the image's first row,
+    // where the preview's first line had it.
+    const { pieces } = plan
+    if (images) cells?.poll()
+    const { Box, Button, Image, Text } = $.ui.resolve(e as Extract<LandedEvent, { surface: 'terminal' }>)
+    const first = e.props.isFirstOfReply
+    const indent = first ? REPLY_INDENT : 0
+    // A selection over an image copies the terminal's placeholder cells, not the
+    // formula (the engine copies screen cells and offers no hook), so each image
+    // carries a copy button, shown while the pointer is over it (fullscreen), in
+    // its top-right corner: absolute, so it moves no row.
+    const copy = (tex: string) => async () => {
+      const copied = await $.ui.copy({ text: copiedFormula(tex), surface: e.surface })
+      $.ui.toast(copied.isCopied ? 'Copied the formula as LaTeX' : 'Could not copy the formula')
+    }
+    const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
+      piece.kind === 'image' ? (
+        <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
+          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+            <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
+          </Box>
+        </Box>
+      ) : (
+        <Text dimColor>{piece.text}</Text>
+      )
+    // A prose piece is the engine's own drawing; its inline formulas' images
+    // lie over their previews, absolute (nothing moves), each at the cell
+    // its preview starts in: a row under the piece's top margin, the column
+    // after the bullet's where the piece draws one. The wrapper carries no
+    // `position` (the engine refuses its own drawing under one); a Box is
+    // the frame of its absolute children all the same.
+    const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
+      const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
+      if (!piece.inline?.length) return text
+      const left = isFirstOfReply ? REPLY_INDENT : 0
+      return (
+        <Box flexDirection="column">
+          {text}
+          {piece.inline.map((inline: InlineImage, k: number) => (
+            <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
+              <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
             </Box>
-          </Box>
-        ) : (
-          <Text dimColor>{piece.text}</Text>
-        )
-      // A prose piece is the engine's own drawing; its inline formulas' images
-      // lie over their previews, absolute (nothing moves), each at the cell
-      // its preview starts in: a row under the piece's top margin, the column
-      // after the bullet's where the piece draws one. The wrapper carries no
-      // `position` (the engine refuses its own drawing under one); a Box is
-      // the frame of its absolute children all the same.
-      const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
-        const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
-        if (!piece.inline?.length) return text
-        const left = isFirstOfReply ? REPLY_INDENT : 0
-        return (
-          <Box flexDirection="column">
-            {text}
-            {piece.inline.map((inline: InlineImage, k: number) => (
-              <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
-                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
-              </Box>
-            ))}
-          </Box>
-        )
-      }
-      const drawn = []
-      for (const [i, piece] of pieces.entries()) {
-        if (i === 0) {
-          if (piece.kind === 'prose') {
-            drawn.push(await prose(piece, first))
-          } else {
-            drawn.push(
-              <Box flexDirection="row" marginTop={1}>
-                {first ? (
-                  <Box minWidth={REPLY_INDENT}>
-                    <Text color="text">{env.bullet ?? BULLET.other}</Text>
-                  </Box>
-                ) : null}
-                {own(piece, i)}
-              </Box>,
-            )
-          }
-        } else if (piece.kind === 'prose') {
-          drawn.push(
-            <Box paddingLeft={indent} marginTop={piece.gap ? 0 : -1}>
-              {await prose(piece, false)}
-            </Box>,
-          )
-        } else if (piece.kind === 'image') {
-          drawn.push(
-            <Box marginLeft={indent} marginTop={piece.gap ? 1 : 0}>
-              {own(piece, i)}
-            </Box>,
-          )
+          ))}
+        </Box>
+      )
+    }
+    const drawn = []
+    for (const [i, piece] of pieces.entries()) {
+      if (i === 0) {
+        if (piece.kind === 'prose') {
+          drawn.push(await prose(piece, first))
         } else {
           drawn.push(
-            <Box paddingLeft={indent} marginTop={piece.gap ? 1 : 0}>
+            <Box flexDirection="row" marginTop={1}>
+              {first ? (
+                <Box minWidth={REPLY_INDENT}>
+                  <Text color="text">{env.bullet ?? BULLET.other}</Text>
+                </Box>
+              ) : null}
               {own(piece, i)}
             </Box>,
           )
         }
+      } else if (piece.kind === 'prose') {
+        drawn.push(
+          <Box paddingLeft={indent} marginTop={piece.gap ? 0 : -1}>
+            {await prose(piece, false)}
+          </Box>,
+        )
+      } else if (piece.kind === 'image') {
+        drawn.push(
+          <Box marginLeft={indent} marginTop={piece.gap ? 1 : 0}>
+            {own(piece, i)}
+          </Box>,
+        )
+      } else {
+        drawn.push(
+          <Box paddingLeft={indent} marginTop={piece.gap ? 1 : 0}>
+            {own(piece, i)}
+          </Box>,
+        )
       }
-      return <Box flexDirection="column">{drawn}</Box>
-    } catch {
-      return next(e)
     }
-  })
+    return <Box flexDirection="column">{drawn}</Box>
+  } catch {
+    return next(e)
+  }
 }
+
+/** A render of a landed block, as any of the AssistantMessage registrations receives it. */
+type LandedEvent = Parameters<MatchedHook<'ui.render', { component: 'AssistantMessage' }>>[1]
 
 // ─── Helpers that take $ ─────────────────────────────────────────────────────
 

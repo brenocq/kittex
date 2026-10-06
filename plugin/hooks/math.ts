@@ -217,10 +217,23 @@ export const MATH_INSTRUCTIONS =
  * streamed through MessageDisplay, or one read back after `--resume`), a
  * display preview's pad, an inline preview's join or pad, or a refused
  * formula's source block. The AssistantMessage
- * hook is registered with this as its `props.text` matcher, so every other
- * block is drawn by the engine without a round trip through kittex.
+ * hook is registered with this as its `props.text` matcher (split as below on
+ * the terminal), so every other block is drawn by the engine without a round
+ * trip through kittex.
  */
 export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800|\u034f/
+
+/** LaTeX as written: a reply that never streamed through MessageDisplay, or one read back after `--resume`. */
+export const SOURCE_PATTERN = /\$|\\[([]|\\begin\{/
+
+/**
+ * A block as kittex streamed it: its previews (a display preview's pad, an
+ * inline preview's join, pad or mark, a refused formula's source block) and
+ * no LaTeX as written. The engine's own drawing of such a text is the
+ * streaming preview row for row, so it may stand in while kittex's drawing is
+ * on its way (the AssistantMessage hook, in the fullscreen layout).
+ */
+export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\[([]|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 

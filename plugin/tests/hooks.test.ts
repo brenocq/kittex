@@ -28,7 +28,7 @@ function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = '
     surface,
     component: 'AssistantMessage',
     props: { text, isFirstOfReply },
-    viewport: { columns: COLUMNS, rows: 50 },
+    viewport: { columns: COLUMNS, rows: 50, isFullscreen: false },
   })
 }
 
@@ -180,7 +180,7 @@ describe('AssistantMessage', () => {
       surface: 'terminal',
       component: 'AssistantMessage',
       props: { text: REPLY, isFirstOfReply: true, isSummary: true },
-      viewport: { columns: COLUMNS, rows: 50 },
+      viewport: { columns: COLUMNS, rows: 50, isFullscreen: false },
     })
     expect(await ui.drawn()).toEqual({ type: 'Text', children: [REPLY] })
   })

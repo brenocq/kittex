@@ -274,7 +274,7 @@ function mountReply($: Engine, text: string) {
     surface: 'terminal',
     component: 'AssistantMessage',
     props: { text, isFirstOfReply: true },
-    viewport: { columns: COLUMNS, rows: 50 },
+    viewport: { columns: COLUMNS, rows: 50, isFullscreen: false },
   })
 }
 

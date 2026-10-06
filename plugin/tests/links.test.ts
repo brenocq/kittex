@@ -124,7 +124,7 @@ describe('links: the engine link mode', () => {
   })
 
   function mountReply($: Engine, text: string) {
-    return $.ui.mount({ plugin: 'kittex', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport: { columns: COLUMNS, rows: 50 } })
+    return $.ui.mount({ plugin: 'kittex', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport: { columns: COLUMNS, rows: 50, isFullscreen: false } })
   }
 
   test('a landed paragraph with a link draws its inline images in kitty', async ($, on) => {
