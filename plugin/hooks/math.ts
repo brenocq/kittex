@@ -283,9 +283,10 @@ export interface InlinePreview {
 /**
  * The preview of an inline formula drawn as an image, or null when it stays
  * plain Unicode: too tall for a row (see measureInline), refused by MathJax,
- * no one-line Unicode, a character whose width isn't certain, or a backslash.
+ * wider than a row of prose (`rowWidth`), no one-line Unicode, a character whose
+ * width isn't certain, or a backslash.
  */
-export function inlinePreview(tex: string, env: InlineEnv): InlinePreview | null {
+export function inlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxColumns): InlinePreview | null {
   // Tight, so the text is no wider than the image; spaced where tight would put a `<` against a letter.
   let unicode = previewInline(tex, env.maxColumns)?.trim()
   if (unicode && TAG_OPEN.test(unicode)) unicode = previewInline(tex, env.maxColumns, { tight: false })?.trim()
@@ -296,7 +297,8 @@ export function inlinePreview(tex: string, env: InlineEnv): InlinePreview | null
   const box = measureInline(tex, env)
   if (!box) return null
   const columns = Math.max(box.columns, width)
-  if (columns > Math.min(255, env.maxColumns)) return null
+  // The image is drawn on one row: wider than prose wraps, it could never be placed.
+  if (columns > Math.min(255, env.maxColumns, rowWidth)) return null
   const body = escapeInline(unicode.replaceAll(' ', INLINE_JOIN))
   const mark = columns === width && !unicode.includes(' ') ? INLINE_MARK : ''
   return { markdown: body + mark + INLINE_PAD.repeat(columns - width), tex, columns }
@@ -480,7 +482,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
+      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -761,7 +763,7 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
         writer.text(segment.text)
       } else if (!segment.display) {
         const plain = inlineText(segment.tex)
-        const padded = options.inline ? inlinePreview(segment.tex, options.inline.env) : null
+        const padded = options.inline ? inlinePreview(segment.tex, options.inline.env, options.inline.width) : null
         if (padded) {
           mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: plain ?? segment.raw })
           continue

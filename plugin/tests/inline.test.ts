@@ -374,3 +374,35 @@ describe('markdown in inline Unicode (stress report F1)', () => {
     expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual([fits!.tex])
   })
 })
+
+describe('characters outside the font', () => {
+  test('after --resume a display formula the font cannot draw keeps its Unicode preview, not a refused source block', async () => {
+    await init()
+    const { pieces } = plan('Before.\n\n$$\n\\text{Привет} = x\n$$\n\nAfter.')
+    expect(pieces.some(piece => piece.kind === 'image' || piece.kind === 'note')).toBe(false)
+    const text = joinProse(pieces)
+    expect(text).toContain('Привет')
+    expect(text).not.toContain('```latex')
+  })
+})
+
+describe('inline math wider than a row (stress report F5)', () => {
+  const long = Array.from({ length: 40 }, (_, k) => `a_{${k}}`).join(' + ')
+
+  test('stays one line of Unicode that prose wraps, not raw TeX', async () => {
+    await init()
+    for (const env of [inlineOn(), { ...kitty26(), images: false }]) {
+      const { landed } = streamed([`The sum $${long}$ ends.\n`], env)
+      expect(landed).not.toContain('$')
+      expect(landed).toContain('a₃₉')
+    }
+    expect(joinProse(plan(`The sum $${long}$ ends.`).pieces)).toContain('a₃₉')
+  })
+
+  test('a formula whose image is wider than maxProseWidth streams plain, not padded', async () => {
+    await init()
+    const tex = 'x_1 + x_2 + x_3 + x_4 + x_5 + x_6 + x_7 + x_8'
+    expect(streamed([`So $${tex}$.\n`]).records).toHaveLength(1)
+    expect(streamed([`So $${tex}$.\n`], { ...inlineOn(), maxProseWidth: 12 }).records).toEqual([])
+  })
+})
