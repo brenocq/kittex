@@ -10,14 +10,26 @@
 // (blink), `ear-l` (twitches) and `pupils` (glance toward the formula).
 
 /**
- * The fur follows the page: a true near-black on a light page; on GitHub's
- * dark page (where black would vanish) a soft charcoal with a lighter rim, so
- * the silhouette reads. `line` draws the folds inside the fur.
+ * The colours that follow the page, as CSS custom properties: the fur is a true
+ * near-black on a light page; on GitHub's dark page (where black would vanish)
+ * a soft charcoal with a lighter rim, so the silhouette reads. `line` draws the
+ * folds inside the fur; `whisker` shows against the page itself.
  */
-export const FUR = {
-  light: { fur: '#1c1d21', rim: '#3a3d45', line: '#4a4e57' },
-  dark: { fur: '#2c3139', rim: '#5a6370', line: '#59626e' },
+export const CAT_THEMES = {
+  light: { fur: '#1c1d21', rim: '#3a3d45', line: '#4a4e57', whisker: '#59636e' },
+  dark: { fur: '#2c3139', rim: '#5a6370', line: '#59626e', whisker: '#8b949e' },
 }
+
+/**
+ * The classes that paint with those colours (presentation attributes cannot
+ * take var()): fur filled and rimmed, fur or rim alone as fill or stroke.
+ */
+export const CAT_CSS = [
+  `.fr{fill:var(--fur);stroke:var(--rim)}`,
+  `.ff{fill:var(--fur)}.fs{stroke:var(--fur)}`,
+  `.rf{fill:var(--rim)}.rs{stroke:var(--rim)}`,
+  `.ln{stroke:var(--line)}.wh{stroke:var(--whisker)}`,
+].join('')
 
 const C = {
   white: '#f8f6f1',
@@ -54,12 +66,11 @@ const WHISKERS = [
 
 /**
  * The cat as SVG markup. `integral` is the ∫ glyph `{ d, box: [x0, y0, x1, y1] }`
- * in font units with y up; `theme` picks the fur; `whisker` is the whiskers'
- * colour (they show against the page, so they follow it).
+ * in font units with y up. Colours that follow the page are classes from
+ * CAT_CSS, painted by the custom properties in CAT_THEMES.
  */
-export function cat({ integral, theme, whisker }) {
-  const f = FUR[theme]
-  const furred = `fill="${f.fur}" stroke="${f.rim}" stroke-width="${RIM}" stroke-linejoin="round"`
+export function cat({ integral }) {
+  const furred = `class="fr" stroke-width="${RIM}" stroke-linejoin="round"`
 
   // The tail: the ∫ outline about 80 units tall, its lower end tucked behind
   // the body and its upper hook curling away from the cat. It is cut into
@@ -67,18 +78,19 @@ export function cat({ integral, theme, whisker }) {
   // it, carried by the ones lower down, and a disc centred on each joint (the
   // same at every angle) closes the seam. Rims first, then the fur over them.
   const t = tailGeometry(integral)
-  const glyph = (stroke, width) => `<path d="${integral.d}" transform="matrix(${r(t.s, 5)} 0 0 ${r(-t.s, 5)} ${r(t.x)} ${r(t.y)})" fill="${f.fur}" stroke="${stroke}" stroke-width="${r(width / t.s, 0)}" stroke-linejoin="round"/>`
+  // `paint` is "r" (the rim, drawn first and wider) or "f" (the fur over it).
+  const glyph = (paint, width) => `<path class="ff ${paint}s" d="${integral.d}" transform="matrix(${r(t.s, 5)} 0 0 ${r(-t.s, 5)} ${r(t.x)} ${r(t.y)})" stroke-width="${r(width / t.s, 0)}" stroke-linejoin="round"/>`
   // A white tip on the ∫'s upper terminal, rimmed in fur like the socks; it
   // rides on the last segment.
   const [tipX, tipY, tipR] = t.tip
-  const whiteTip = `<circle cx="${r(tipX)}" cy="${r(tipY)}" r="${r(tipR + 1.4)}" fill="${C.white}" stroke="${f.fur}" stroke-width="2.4"/>`
-  const layer = (stroke, width, rim) => {
+  const whiteTip = `<circle cx="${r(tipX)}" cy="${r(tipY)}" r="${r(tipR + 1.4)}" class="fs" fill="${C.white}" stroke-width="2.4"/>`
+  const layer = (paint, width, rim) => {
     let markup = ''
     for (let k = t.joints.length; k >= 0; k--) {
-      let segment = `<g clip-path="url(#tail-${k})">${glyph(stroke, width)}</g>`
+      let segment = `<g clip-path="url(#tail-${k})">${glyph(paint, width)}</g>`
       if (k === t.joints.length && rim === 0) segment += whiteTip
       const above = k < t.joints.length ? `<g class="j${k + 1}"><g class="tip"><g class="flick">${markup}</g></g></g>` : ''
-      const disc = k < t.joints.length ? `<circle cx="${r(t.joints[k].x)}" cy="${r(t.joints[k].y)}" r="${r(t.joints[k].halfWidth + rim)}" fill="${stroke}"/>` : ''
+      const disc = k < t.joints.length ? `<circle cx="${r(t.joints[k].x)}" cy="${r(t.joints[k].y)}" r="${r(t.joints[k].halfWidth + rim)}" class="${paint}f"/>` : ''
       markup = segment + above + disc
     }
     return markup
@@ -90,7 +102,7 @@ export function cat({ integral, theme, whisker }) {
     const y1 = Math.min(lower + 0.5, 300)
     return `<clipPath id="tail-${k}"><rect x="-100" y="${r(y0)}" width="300" height="${r(y1 - y0)}"/></clipPath>`
   })
-  const tail = `<defs>${clips.join('')}</defs><g class="tail">${layer(f.rim, TAIL_THICKEN + 2 * RIM, RIM)}${layer(f.fur, TAIL_THICKEN, 0)}</g>`
+  const tail = `<defs>${clips.join('')}</defs><g class="tail">${layer('r', TAIL_THICKEN + 2 * RIM, RIM)}${layer('f', TAIL_THICKEN, 0)}</g>`
 
   const ear = (k, cls) => {
     const outer = `M${k * 64} -122 C${k * 66} -152 ${k * 64} -174 ${k * 57} -187 C${k * 54} -193 ${k * 48} -193 ${k * 44} -189 C${k * 34} -178 ${k * 22} -167 ${k * 10} -158 Z`
@@ -102,11 +114,11 @@ export function cat({ integral, theme, whisker }) {
     // A small pear of a body.
     `<path d="M-27 -76 C-39 -60 -48 -36 -48 -17 C-48 -5 -41 0 -31 0 L31 0 C41 0 48 -5 48 -17 C48 -36 39 -60 27 -76 Z" ${furred}/>`,
     // Haunch folds.
-    `<path d="M-43 -8 C-45 -22 -40 -34 -30 -40 M43 -8 C45 -22 40 -34 30 -40" fill="none" stroke="${f.line}" stroke-width="2.4" stroke-linecap="round"/>`,
+    `<path d="M-43 -8 C-45 -22 -40 -34 -30 -40 M43 -8 C45 -22 40 -34 30 -40" class="ln" fill="none" stroke-width="2.4" stroke-linecap="round"/>`,
     // White shirt front.
     `<path d="M-17 -74 C-25 -56 -23 -36 -15 -24 C-8 -15 8 -15 15 -24 C23 -36 25 -56 17 -74 Z" fill="${C.white}"/>`,
     // White socks, rimmed in fur so they hold their shape on a white page.
-    `<path d="M-27 -1 C-29 -12 -23 -18 -14.5 -18 C-6 -18 -1 -12 -2 -1 Z M27 -1 C29 -12 23 -18 14.5 -18 C6 -18 1 -12 2 -1 Z" fill="${C.white}" stroke="${f.fur}" stroke-width="2.4" stroke-linejoin="round"/>`,
+    `<path d="M-27 -1 C-29 -12 -23 -18 -14.5 -18 C-6 -18 -1 -12 -2 -1 Z M27 -1 C29 -12 23 -18 14.5 -18 C6 -18 1 -12 2 -1 Z" class="fs" fill="${C.white}" stroke-width="2.4" stroke-linejoin="round"/>`,
     `<path d="M-18.5 -2.5 L-18.5 -7.5 M-10.5 -2.5 L-10.5 -7.5 M18.5 -2.5 L18.5 -7.5 M10.5 -2.5 L10.5 -7.5" stroke="#c4c2bc" stroke-width="2" stroke-linecap="round"/>`,
   ].join('')
 
@@ -133,7 +145,7 @@ export function cat({ integral, theme, whisker }) {
   ].join('')
 
   const curves = WHISKERS.flatMap(w => [w, w.map(([x, y]) => [-x, y])])
-  const whiskers = `<path d="${curves.map(([a, b, c, d]) => `M${a.join(' ')}C${[b, c, d].map(p => p.join(' ')).join(' ')}`).join('')}" fill="none" stroke="${whisker}" stroke-width="1.6" stroke-linecap="round"/>`
+  const whiskers = `<path d="${curves.map(([a, b, c, d]) => `M${a.join(' ')}C${[b, c, d].map(p => p.join(' ')).join(' ')}`).join('')}" class="wh" fill="none" stroke-width="1.6" stroke-linecap="round"/>`
 
   return `${tail}${body}${ear(-1, 'ear-l')}${ear(1, 'ear-r')}${head}${whiskers}`
 }

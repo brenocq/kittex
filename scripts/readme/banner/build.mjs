@@ -1,6 +1,6 @@
-// Generates the animated README banner, in a light and a dark variant:
+// Generates the animated README banner, one SVG for both light and dark pages:
 //
-//   npm run readme:banner            # writes .github/assets/banner-{light,dark}.svg
+//   npm run readme:banner            # writes .github/assets/banner.svg
 //   npm run readme:banner:preview    # also renders frames and a contact sheet (headless Chrome)
 //
 // Run `npm ci` first. The glyphs are real outlines: New Computer Modern from
@@ -10,8 +10,10 @@
 // GitHub shows the SVG through an <img>, so it is shapes only: no <text>, no
 // script, no external references. Everything moves with CSS keyframes on one
 // shared loop (LOOP seconds), and prefers-reduced-motion gets a still frame.
+// One file serves both GitHub themes: its colours are custom properties, light
+// by default and dark under prefers-color-scheme.
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { CAT_REACH, cat, TAIL_MOTION, TAIL_ROOT, tailGeometry, tailReach } from './cat.mjs'
+import { CAT_CSS, CAT_REACH, CAT_THEMES, cat, TAIL_MOTION, TAIL_ROOT, tailGeometry, tailReach } from './cat.mjs'
 import { loadMono, loadTypesetter } from './glyphs.mjs'
 
 const OUT_DIR = '.github/assets'
@@ -20,10 +22,15 @@ const H = 220
 /** One loop of the whole animation, in seconds; every keyframe sits on it. */
 const LOOP = 16
 
+/**
+ * The colours that follow the page: light by default, dark under
+ * prefers-color-scheme, as custom properties the stylesheet paints with.
+ */
 const THEMES = {
-  light: { ink: '#1f2328', muted: '#59636e', whisker: '#59636e', caret: '#d65d0e' },
-  dark: { ink: '#e6edf3', muted: '#8b949e', whisker: '#8b949e', caret: '#fe8019' },
+  light: { ink: '#1f2328', muted: '#59636e', caret: '#d65d0e', ...CAT_THEMES.light },
+  dark: { ink: '#e6edf3', muted: '#8b949e', caret: '#fe8019', ...CAT_THEMES.dark },
 }
+const vars = theme => `svg{${Object.entries(theme).map(([k, v]) => `--${k}:${v}`).join(';')}}`
 
 /**
  * The formulas, as their source streams in: `|` separates the chunks that
@@ -333,23 +340,23 @@ async function main() {
     `@media (prefers-reduced-motion:reduce){*{animation:none!important}}`,
   ].join('')
 
-  for (const [name, theme] of Object.entries(THEMES)) {
-    const svg = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
-      `<title>kittex: LaTeX in Claude Code, typeset as real equations</title>`,
-      `<style>.caret{fill:${theme.caret}}${animCss}</style>`,
-      `<defs>${defs.out.join('')}</defs>`,
-      `<g transform="translate(${CAT_X} ${CAT_GROUND})">${cat({ integral, theme: name, whisker: theme.whisker })}</g>`,
-      `<g fill="${theme.ink}">${word.kit}${word.tex}</g>`,
-      `<g fill="${theme.muted}">${sources.join('')}</g>`,
-      `<g fill="${theme.ink}">${maths.join('')}</g>`,
-      `</svg>`,
-    ].join('\n')
-    mkdirSync(OUT_DIR, { recursive: true })
-    const file = `${OUT_DIR}/banner-${name}.svg`
-    writeFileSync(file, `${svg}\n`)
-    console.log(`${file}: ${(Buffer.byteLength(svg) / 1024).toFixed(1)} KiB`)
-  }
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
+    `<title>kittex: LaTeX in Claude Code, typeset as real equations</title>`,
+    `<style>${vars(THEMES.light)}@media (prefers-color-scheme:dark){${vars(THEMES.dark)}}`,
+    `.ink{fill:var(--ink)}.muted{fill:var(--muted)}.caret{fill:var(--caret)}${CAT_CSS}`,
+    `${animCss}</style>`,
+    `<defs>${defs.out.join('')}</defs>`,
+    `<g transform="translate(${CAT_X} ${CAT_GROUND})">${cat({ integral })}</g>`,
+    `<g class="ink">${word.kit}${word.tex}</g>`,
+    `<g class="muted">${sources.join('')}</g>`,
+    `<g class="ink">${maths.join('')}</g>`,
+    `</svg>`,
+  ].join('\n')
+  mkdirSync(OUT_DIR, { recursive: true })
+  const file = `${OUT_DIR}/banner.svg`
+  writeFileSync(file, `${svg}\n`)
+  console.log(`${file}: ${(Buffer.byteLength(svg) / 1024).toFixed(1)} KiB`)
   console.log(`wordmark ${r(word.width)} px wide; each formula shows for ${show.toFixed(2)} s`)
   for (const line of timeline) console.log(`  ${line}`)
   console.log(`  tail: at least ${r(reach.whiskers)} px from a whisker, ${r(reach.head)} px from the head, ${r(TEXT_X - CAT_X - reach.right)} px from the wordmark`)
