@@ -8,8 +8,8 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 
 import { emPxForCell, init, measureDisplay, renderDisplay, renderInline } from '../../../plugin/hooks/core.js'
-import { inlineEnvFor, MessageStream, planLanded, proseWidthFor, renderEnvFor, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
-import type { KittexEnv, PreviewRecord, StreamEnv } from '../../../plugin/hooks/math.js'
+import { inlineEnvFor, inlineFlow, MessageStream, PIECE_TOP, planLanded, proseWidthFor, renderEnvFor, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
+import type { InlineImage, KittexEnv, PreviewRecord, StreamEnv } from '../../../plugin/hooks/math.js'
 
 const CELL = { cellWidth: 13, cellHeight: 26 }
 const env = (): KittexEnv => ({ kind: 'kitty', images: true, ...CELL, columns: 100, emPx: emPxForCell(CELL), ink: { r: 0xeb, g: 0xdb, b: 0xb2 }, measured: true })
@@ -21,8 +21,8 @@ function stream(markdown: string): { text: string; records: PreviewRecord[] } {
   return { text: out.text, records: out.records }
 }
 
-/** The inline images a landed plan places for a streamed reply. */
-function inlineImages(markdown: string): number {
+/** The inline images a landed plan places for a streamed reply, by prose piece. */
+function placedInline(markdown: string): InlineImage[][] {
   const { text, records } = stream(markdown)
   const e = env()
   const renderEnv = renderEnvFor(e)
@@ -33,7 +33,12 @@ function inlineImages(markdown: string): number {
     width: proseWidthFor(e),
     inline: { env: inlineEnv, width: proseWidthFor(e), columns: e.columns, draw: (tex, columns) => renderInline(tex, inlineEnv, columns) },
   })
-  return plan.pieces.reduce((n, piece) => n + (piece.kind === 'prose' ? (piece.inline?.length ?? 0) : 0), 0)
+  return plan.pieces.flatMap(piece => (piece.kind === 'prose' && piece.inline?.length ? [piece.inline] : []))
+}
+
+/** The inline images a landed plan places for a streamed reply. */
+function inlineImages(markdown: string): number {
+  return placedInline(markdown).reduce((n, inline) => n + inline.length, 0)
 }
 
 beforeAll(async () => {
@@ -93,12 +98,33 @@ describe('live QA regressions', () => {
   test.todo('an inline preview in a table cell never wraps its pad onto a line of its own')
 
   // Inline images above the fullscreen viewport pile up on its first row. A
-  // prose piece's inline images are absolute boxes at their preview's cell;
-  // when a landed reply is taller than the window, the boxes of rows scrolled
-  // above the top are drawn clamped onto row 0 instead of being clipped, over
+  // prose piece's inline images were absolute boxes at their preview's cell;
+  // when a landed reply is taller than the window, the engine draws an
+  // absolute box whose top falls above the screen clamped onto row 0 (2.1.291:
+  // `if (y < 0 && position === "absolute") y = 0`) instead of clipping it, over
   // the text there and over each other. Live: 19 of 46 fullscreen runs, both
   // terminals, also after a resize or a font zoom (sheet-top-row-pileup.png).
-  test.todo('inline images of rows above the fullscreen viewport are clipped, not drawn on its first row')
+  // Now laid out in the flow of an overlay column (inlineFlow), each image
+  // scrolls and clips with its row; this checks the flow puts every image of a
+  // long reply at its own preview cell.
+  test('inline images of rows above the fullscreen viewport are clipped, not drawn on its first row', () => {
+    const reply = Array.from({ length: 12 }, (_, k) => `Line ${k}: the sum $\\sum_{n=1}^{${k + 2}} n^2$ and the ratio $a_{${k}}/b$ hold for every $x > ${k}$ in the set.`).join(' ') + '\n'
+    const pieces = placedInline(reply)
+    expect(pieces.length).toBeGreaterThan(0)
+    for (const inline of pieces) {
+      let bottom = 0
+      const seen = new Set<string>()
+      for (const { inline: one, marginTop, marginLeft } of inlineFlow(inline, 2)) {
+        const top = bottom + marginTop
+        bottom = top + one.image.rows
+        expect([top, marginLeft]).toEqual([PIECE_TOP + one.row, 2 + one.col])
+        seen.add(`${one.row},${one.col}`)
+      }
+      expect(seen.size).toBe(inline.length)
+      // Rows well past a window's height: the ones a scroll puts above the top.
+      expect(Math.max(...inline.map(one => one.row))).toBeGreaterThan(5)
+    }
+  })
 
   // Display math inside a list item: the landed plan splits the item at the
   // formula, and the text after it is drawn as a piece of its own, outside the

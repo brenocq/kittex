@@ -787,6 +787,35 @@ export interface InlineImage {
   col: number
 }
 
+/** An inline image as the overlay beside its prose piece lays it out: in the overlay's column, by margins (inlineFlow). */
+export interface InlineSlot {
+  inline: InlineImage
+  /** Rows from the bottom of the slot before it (from the piece's top for the first); negative to go back up. */
+  marginTop: number
+  /** Columns from the piece's left edge. */
+  marginLeft: number
+}
+
+/**
+ * The inline images of a prose piece laid out in the flow of a column that
+ * starts at the piece's top-left cell: each at PIECE_TOP + its row, `left` +
+ * its column, every slot as tall as its image. In the flow, not absolute: the
+ * engine draws an absolute box whose top falls above the screen on the
+ * screen's first row (clamped, not clipped), so in the fullscreen layout every
+ * formula scrolled above the viewport piled up on its top row; a box in the
+ * flow scrolls and clips as text does.
+ */
+export function inlineFlow(inline: readonly InlineImage[], left: number): InlineSlot[] {
+  const sorted = [...inline].sort((a, b) => a.row - b.row || a.col - b.col)
+  let bottom = 0
+  return sorted.map(one => {
+    const top = PIECE_TOP + one.row
+    const slot = { inline: one, marginTop: top - bottom, marginLeft: left + one.col }
+    bottom = top + one.image.rows
+    return slot
+  })
+}
+
 export interface LandedPlan {
   pieces: Piece[]
   /** Whether anything differs from the text as it came. */
