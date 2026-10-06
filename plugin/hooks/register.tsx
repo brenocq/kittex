@@ -21,6 +21,7 @@ import {
   claudeThemeScheme,
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   emPxForCell,
   init,
   measureDisplay,
@@ -259,7 +260,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
       inline:
         images && inlineImages
-          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks }
+          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
           : undefined,
     })
     if (!plan.changed) return next(e)
@@ -389,6 +390,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
     ...linkEnv(processEnv),
+    emojiSequences: drawsEmojiSequences(terminal, terminalColors),
   }
   await $.state.set(ENV, env)
 

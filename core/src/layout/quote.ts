@@ -86,10 +86,12 @@ export function drawQuote(markdown: string, width: number, mode: LinkMode = {}):
   const kept = inner.text.slice(lead).trimEnd().length
   const visible: VisibleText = { text: inner.text.slice(lead, lead + kept), source: inner.source.slice(lead, lead + kept) }
   if (visible.text === '') return null
+  const sequences = mode.emojiSequences === true
   for (const line of visible.text.split('\n')) {
-    if (INNER_SPACES.test(line) && !(textWidth(line) >= 0 && textWidth(line) <= width - QUOTE_TEXT)) return null
+    const cells = textWidth(line, sequences)
+    if (INNER_SPACES.test(line) && !(cells >= 0 && cells <= width - QUOTE_TEXT)) return null
   }
-  const canvas = new Canvas(width)
+  const canvas = new Canvas(width, sequences)
   if (!canvas.draw(visible, 0, QUOTE_TEXT, width - QUOTE_TEXT)) return null
   for (let row = 0; row < canvas.rows; row++) canvas.put(QUOTE_BAR, row, 0)
   return canvas

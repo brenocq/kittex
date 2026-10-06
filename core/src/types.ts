@@ -207,6 +207,8 @@ export interface TerminalColors {
   background?: RGB
   /** The 16 ANSI colours (0-7 normal, 8-15 bright), when known; ANSI Claude themes draw text in these. */
   palette?: RGB[]
+  /** Ghostty's `grapheme-width-method`, read with its colours, when its config sets it (Ghostty's default is `unicode`). */
+  graphemeWidth?: 'unicode' | 'legacy'
 }
 
 export type TerminalKind = 'kitty' | 'ghostty' | 'wezterm' | 'iterm2' | 'other'

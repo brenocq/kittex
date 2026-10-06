@@ -26,15 +26,14 @@ const out = resolve(option('--out', '.github/assets/banner-contact-sheet.png'))
 // tail) blurry, which the live banner in an <img> is not.
 const scale = Number(option('--scale', '2'))
 const chrome = process.env.CHROME ?? '/usr/bin/google-chrome-stable'
-// Default moments: the source streaming in, the morph, a blink over the attention
-// formula, the tail's flick and an ear twitch as the loss lands, Euler, and
-// the Gaussian integral.
-const times = args.length ? args.map(Number) : [0.75, 1.85, 2.67, 6.33, 10.6, 14.6]
+// Default moments: the subtitle typing itself, the subtitle turning into
+// type, the first formula streaming in, the attention formula, the tail's flick
+// and an ear twitch as the loss lands, Euler, and the Gaussian integral.
+const times = args.length ? args.map(Number) : [0.9, 2.2, 3.4, 5.3, 8.95, 13.2, 17.2]
 
-const W = 880
-const H = 220
-const LABEL = 18
 const svg = readFileSync('.github/assets/banner.svg', 'utf8')
+const [W, H] = ['width', 'height'].map(name => Number(svg.match(new RegExp(`<svg[^>]* ${name}="([\\d.]+)"`))[1]))
+const LABEL = 18
 const THEMES = { light: '#ffffff', dark: '#0d1117' }
 
 /** One column of frames: the banner inlined at each time, every animation paused there. */

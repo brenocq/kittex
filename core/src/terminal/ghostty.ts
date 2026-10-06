@@ -71,6 +71,11 @@ function applyColor(into: GhosttyColors, key: string, value: string): void {
   }
 }
 
+/** A `grapheme-width-method` value Ghostty knows. */
+function graphemeWidthOf(value: string): TerminalColors['graphemeWidth'] {
+  return value === 'unicode' || value === 'legacy' ? value : undefined
+}
+
 function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   const pick = (key: 'foreground' | 'background') => layers.reduce<RGB | undefined>((c, l) => l.values.get(key) ?? c, undefined)
   return {
@@ -87,17 +92,20 @@ function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
  * theme under the user's own settings). For `theme = light:A,dark:B` the CLI
  * resolves the light theme (the GUI alone follows the desktop), so with scheme
  * `dark` and two different themes the answer is known to be wrong: undefined.
+ * The `grapheme-width-method` comes along (how Ghostty measures emoji sequences).
  */
 export function parseGhosttyConfig(stdout: string, scheme?: Scheme): TerminalColors | undefined {
   const colors = emptyColors()
   let theme: { light: string; dark: string } | undefined
+  let graphemeWidth: TerminalColors['graphemeWidth']
   for (const [key, value] of ghosttyEntries(stdout)) {
     if (key === 'theme') theme = parseGhosttyTheme(value)
+    else if (key === 'grapheme-width-method') graphemeWidth = graphemeWidthOf(value)
     else applyColor(colors, key, value)
   }
   if (!colors.values.has('foreground') && !colors.values.has('background')) return undefined
   if (scheme === 'dark' && theme && theme.light !== theme.dark) return undefined
-  return toTerminalColors(colors)
+  return { ...toTerminalColors(colors), ...(graphemeWidth ? { graphemeWidth } : {}) }
 }
 
 /**
@@ -150,11 +158,13 @@ function ghosttyThemeDirs(env: Env): string[] {
  * ~/.config/ghostty/themes and the resources dir, or an absolute path) under
  * the user's own colours. A light/dark theme pair follows `scheme` (light when
  * not given, as the CLI does). Ghostty's defaults when nothing sets a colour.
+ * The last `grapheme-width-method` set comes along.
  */
 export async function readGhosttyColors(read: FileReader, options: ConfigReadOptions): Promise<TerminalColors> {
   const { env } = options
   const user = emptyColors()
   let theme: { light: string; dark: string } | undefined
+  let graphemeWidth: TerminalColors['graphemeWidth']
   // Missing files are skipped whether or not they were marked optional with `?`.
   const queue = ghosttyConfigFiles(env, options.platform)
   const seen = new Set<string>()
@@ -170,6 +180,7 @@ export async function readGhosttyColors(read: FileReader, options: ConfigReadOpt
         const target = resolvePath(value.startsWith('?') ? value.slice(1) : value, env, dirname(path))
         if (target) queue.push(target)
       } else if (key === 'theme') theme = parseGhosttyTheme(value)
+      else if (key === 'grapheme-width-method') graphemeWidth = graphemeWidthOf(value)
       else applyColor(user, key, value)
     }
   }
@@ -184,5 +195,5 @@ export async function readGhosttyColors(read: FileReader, options: ConfigReadOpt
       break
     }
   }
-  return toTerminalColors(themeColors, user)
+  return { ...toTerminalColors(themeColors, user), ...(graphemeWidth ? { graphemeWidth } : {}) }
 }
