@@ -27,15 +27,24 @@ export interface WrappedLine {
   hidden: Uint8Array
   /** Cells the character starting at each UTF-16 unit takes; -1 for a unit inside a character (see charAt). */
   cells: Int8Array
+  /**
+   * A partial wrap only (see wrapLine): the units from here on are not laid
+   * out (the word holding a character of unknown width, and all after it);
+   * those before it are where the whole line puts them. `rows` counts the
+   * rows so far.
+   */
+  known?: number
 }
 
 /**
  * Wraps one line (no newline in it) to `columns`; null when a character's
- * width is unknown. `hard: false` replays `{ hard: false }` (the engine's
+ * width is unknown, or, with `partial`, the line wrapped up to the word that
+ * holds it (`known`: a row's breaks depend only on the words before them, so
+ * those are exact). `hard: false` replays `{ hard: false }` (the engine's
  * table cells): a word wider than the row is not cut, it takes a row of its
  * own and overflows it. `sequences`: emoji sequences are characters (charAt).
  */
-export function wrapLine(line: string, columns: number, hard = true, sequences = false): WrappedLine | null {
+export function wrapLine(line: string, columns: number, hard = true, sequences = false, partial = false): WrappedLine | null {
   if (!(columns >= 1)) return null
   const row = new Int32Array(line.length)
   const col = new Int32Array(line.length)
@@ -46,6 +55,7 @@ export function wrapLine(line: string, columns: number, hard = true, sequences =
   const words: { first: number; last: number; width: number }[] = []
   let first = 0
   let width = 0
+  let known: number | undefined
   for (let k = 0; k <= chars.length; k++) {
     const char = chars[k]
     if (char === undefined || (char.end - char.start === 1 && line.charCodeAt(char.start) === 0x20)) {
@@ -53,7 +63,10 @@ export function wrapLine(line: string, columns: number, hard = true, sequences =
       first = k + 1
       width = 0
     } else if (char.width < 0) {
-      return null
+      if (!partial) return null
+      // Laid out up to the space before this word: everything from it on is unknown.
+      known = first > 0 ? chars[first - 1]!.start : 0
+      break
     } else {
       width += char.width
     }
@@ -107,7 +120,7 @@ export function wrapLine(line: string, columns: number, hard = true, sequences =
     if (length + word.width > columns && length > 0 && word.width > 0) newRow()
     for (let k = word.first; k < word.last; k++) place(chars[k]!)
   }
-  return { rows: r + 1, row, col, hidden, cells }
+  return known === undefined ? { rows: r + 1, row, col, hidden, cells } : { rows: r + 1, row, col, hidden, cells, known }
 }
 
 /** The rows a line wraps into, as text (for checks against a terminal screen). */

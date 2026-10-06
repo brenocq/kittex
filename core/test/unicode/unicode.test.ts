@@ -22,7 +22,11 @@ describe('results', () => {
 
   test('inline math is one line', () => {
     expect(inline(String.raw`\frac{a}{b}`)).toEqual({ lines: ['a/b'], baseline: 0, width: 3 })
-    expect(inline(String.raw`\begin{pmatrix} a \\ b \end{pmatrix}`)).toBeNull()
+    // A table on one line: rows parted by `; `, cells by `, ` (none at an alignment point).
+    expect(inline(String.raw`\begin{pmatrix} a \\ b \end{pmatrix}`)?.lines).toEqual(['(a; b)'])
+    expect(inline(String.raw`\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix}`)?.lines).toEqual(['[1, 2; 3, 4]'])
+    expect(inline(String.raw`|x| = \begin{cases} x, & x \ge 0, \\ -x, & x < 0. \end{cases}`)?.lines).toEqual(['|x| = {x, x ≥ 0; −x, x < 0.'])
+    expect(inline(String.raw`\begin{aligned} a &= b \\ &= c \end{aligned}`)?.lines).toEqual(['a = b; = c'])
   })
 
   test('maxWidth refuses what does not fit', () => {

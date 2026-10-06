@@ -45,6 +45,7 @@ import {
   IMAGE_LIMIT,
   inlineEnvFor,
   INSTRUCT_WITHOUT_IMAGES,
+  inlineFlow,
   joinProse,
   LANDED_PATTERN,
   SOURCE_PATTERN,
@@ -53,10 +54,9 @@ import {
   MessageStream,
   MATH_INSTRUCTIONS,
   planLanded,
-  PIECE_TOP,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
-  quoteColumns,
+  displayColumns,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -65,7 +65,7 @@ import {
   STREAM_LIMIT,
   withoutTextOverride,
 } from './math.ts'
-import type { InlineImage, KittexEnv, Piece, PreviewRecord } from './math.ts'
+import type { InlineSlot, KittexEnv, Piece, PreviewRecord } from './math.ts'
 
 type $ = EngineInterface
 
@@ -217,10 +217,12 @@ export const register: Register = (on, options) => {
   // `onScreen` is reported, which it never is on a block's first render: the
   // engine draws that one itself, and its drawing of a streamed text is the
   // streaming preview row for row, so the landing shows no blank, only the
-  // images arriving over their previews. LaTeX as written (after --resume) is
-  // hooked from the first render (its own drawing would show the source), as
-  // is every block on the main screen, which reports no `onScreen`. The four
-  // matchers never select the same render, so kittex runs once per render.
+  // images arriving over their previews. A block holding a preview mark is a
+  // streamed one whatever else it holds (a reply's `$100` stays as written in
+  // it). LaTeX as written (after --resume) is hooked from the first render (its
+  // own drawing would show the source), as is every block on the main screen,
+  // which reports no `onScreen`. The four matchers never select the same
+  // render, so kittex runs once per render.
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, inlineImages))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
@@ -301,23 +303,39 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         <Text dimColor>{piece.text}</Text>
       )
     // A prose piece is the engine's own drawing; its inline formulas' images
-    // lie over their previews, absolute (nothing moves), each at the cell
-    // its preview starts in: a row under the piece's top margin, the column
-    // after the bullet's where the piece draws one. The wrapper carries no
-    // `position` (the engine refuses its own drawing under one); a Box is
-    // the frame of its absolute children all the same.
+    // lie over their previews, each at the cell its preview starts in: a row
+    // under the piece's top margin, the column after the bullet's where the
+    // piece draws one. Not absolute: the engine puts an absolute box that
+    // falls above the screen on its first row (fullscreen, a reply scrolled
+    // past the top), so the images go in the flow of an overlay column, as
+    // wide as nothing and as tall as the piece, beside the drawing in a
+    // row-reverse Box: it starts at the piece's top-left cell, is painted
+    // after the drawing, and takes no room (nothing moves). The drawing's
+    // wrapper grows to the width instead of naming one: the engine refuses
+    // its own drawing under a Box with a size, a position or an overflow.
     const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
       const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       if (!piece.inline?.length) return text
       const left = isFirstOfReply ? REPLY_INDENT : 0
       return (
-        <Box flexDirection="column">
-          {text}
-          {piece.inline.map((inline: InlineImage, k: number) => (
-            <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
-              <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
-            </Box>
-          ))}
+        <Box flexDirection="row-reverse">
+          <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+            {text}
+          </Box>
+          <Box flexDirection="column" width={0} flexShrink={0} alignItems="flex-start">
+            {inlineFlow(piece.inline, left).map(({ inline, marginTop, marginLeft }: InlineSlot, k: number) => (
+              <Box
+                key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`}
+                marginTop={marginTop}
+                marginLeft={marginLeft}
+                width={inline.image.columns}
+                height={inline.image.rows}
+                flexShrink={0}
+              >
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
+              </Box>
+            ))}
+          </Box>
         </Box>
       )
     }
@@ -767,7 +785,7 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
       const renderEnv = renderEnvFor(env)
       const image = record.inline
         ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
-        : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
+        : displayImage(record.tex, { ...renderEnv, maxColumns: displayColumns(record, env) }, record.rows)
       base64Of(image.png)
       signatureOf(image.png)
     } catch {

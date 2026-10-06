@@ -56,6 +56,12 @@ export type KittexPreview = {
   place?: 'center' | 'start' | 'end'
   /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
   quote?: number
+  /**
+   * Display: written in a list item whose text is this many cells in from the
+   * reply column (its lines carry the item's indentation, its width the item's
+   * text width); its image lies over it in the item once landed.
+   */
+  indent?: number
 }
 
 declare module 'claude-code' {

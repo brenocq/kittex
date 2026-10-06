@@ -26,7 +26,11 @@ export type Segment =
       kind: 'math'
       /** Display math (a block of its own) or inline math. */
       display: boolean
-      /** The TeX between the delimiters, trimmed; for `env`, the whole `\begin{…}…\end{…}`. */
+      /**
+       * The TeX between the delimiters, trimmed; for `env`, the whole
+       * `\begin{…}…\end{…}`. In a GFM table row, as the row reads it: each `\|`
+       * a pipe (scan/inline.ts).
+       */
       tex: string
       /** The source exactly as written, delimiters included. */
       raw: string

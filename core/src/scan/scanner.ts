@@ -20,7 +20,9 @@
 import type { MathDelimiter, Segment } from '../types.js'
 import {
   closesFence,
+  delimitsTable,
   type DisplayKind,
+  endsTable,
   displayOpen,
   fenceOpen,
   findClose,
@@ -149,6 +151,11 @@ export class Scanner {
   private readonly out = new Output()
   private partial = ''
   private offset = 0
+  /** The start offsets of the lines read as rows of a GFM table (its header included). */
+  private readonly rows = new Set<number>()
+  /** The table whose rows go on, at its blockquote depth (null outside a table). */
+  private table: { depth: number } | null = null
+  private readonly isRow = (line: Line): boolean => this.rows.has(line.start)
 
   constructor(private readonly maxHeldLines: number) {}
 
@@ -197,7 +204,7 @@ export class Scanner {
       this.state = { t: 'fence', ch: st.ch, len: st.len, indent: st.indent, depth: st.depth }
     }
     if (this.para.length > 0) {
-      const { segments, cut } = scanInline(this.para, true)
+      const { segments, cut } = scanInline(this.para, true, this.isRow)
       for (const segment of segments) this.out.segment(segment)
       let keep = 0
       while (keep < this.para.length && this.para[keep]!.start < cut) keep++
@@ -276,6 +283,7 @@ export class Scanner {
   private normal(line: Line): void {
     const flags = this.flags
     const before = { ...flags }
+    this.tableRow(line)
     if (line.blank) {
       this.endParagraph()
       this.out.line(line)
@@ -336,9 +344,29 @@ export class Scanner {
     return !((line.indent <= 3 || this.flags.inList) && startsBlock(line.body))
   }
 
+  /**
+   * Follows GFM tables (marked's reading), before the line joins a paragraph:
+   * a delimiter row right under a prose line makes that line a header and
+   * starts a table; its rows go on until a blank line, a change of quote
+   * depth or a line that starts another block.
+   */
+  private tableRow(line: Line): void {
+    if (this.table && (line.blank || line.depth !== this.table.depth || endsTable(line.body))) this.table = null
+    if (this.table) {
+      this.rows.add(line.start)
+      return
+    }
+    const header = this.paraLast
+    if (header && header.depth === line.depth && delimitsTable(header.body, line.body)) {
+      this.rows.add(header.start)
+      this.rows.add(line.start)
+      this.table = { depth: line.depth }
+    }
+  }
+
   private endParagraph(): void {
     if (this.para.length > 0) {
-      for (const segment of scanInline(this.para, false).segments) this.out.segment(segment)
+      for (const segment of scanInline(this.para, false, this.isRow).segments) this.out.segment(segment)
       this.para = []
     }
     this.paraLast = null

@@ -144,7 +144,12 @@ describe('MessageStream', () => {
     expect(lines[1]!.trim()).toBe('')
     expect(lines.slice(2, -2).every(line => line.startsWith('  ' + PREVIEW_PAD))).toBe(true)
     expect(lines.slice(-2)).toEqual(['', '- next'])
-    expect(plan(landed, records).pieces.filter(piece => piece.kind === 'image')).toHaveLength(1)
+    // Drawn in the item: the list is one piece, the image over the preview from its first row, at the item's text.
+    expect(records[0]).toMatchObject({ indent: 2 })
+    const { pieces } = plan(landed, records)
+    expect(pieces).toHaveLength(1)
+    const overlay = pieces[0]!.kind === 'prose' ? pieces[0]!.inline : undefined
+    expect(overlay?.map(one => [one.row, one.col, one.image.rows])).toEqual([[2, 2, records[0]!.rows]])
   })
 
   test('inline math becomes one line of Unicode while streaming', async () => {
@@ -247,10 +252,32 @@ describe('planLanded', () => {
   test('a streamed text and LaTeX as written are told apart, escaped brackets included', () => {
     const streamedText = '&nbsp;&nbsp;= −𝔼\\[log σ\\] and y\u2800'
     expect([STREAMED_PATTERN.test(streamedText), SOURCE_PATTERN.test(streamedText)]).toEqual([true, false])
-    for (const source of ['\\[ x \\]', 'a $x$', '\\(x\\)', '\\begin{aligned}', 'x\u2800 $y$', '\\(x\\) &nbsp;']) {
+    for (const source of ['\\[ x \\]', 'a $x$', '$$\nx^2\n$$', '\\(x\\)', '\\begin{aligned}', 'You save $100 at a rate $r = 0.05$ a year.']) {
       expect({ source, streamed: STREAMED_PATTERN.test(source), latex: SOURCE_PATTERN.test(source) }).toEqual({ source, streamed: false, latex: true })
     }
     expect([STREAMED_PATTERN.test('plain [x]'), SOURCE_PATTERN.test('plain [x]')]).toEqual([false, false])
+  })
+
+  // A block holding a preview mark is one kittex streamed, whatever else it
+  // holds: hooked as LaTeX source, the fullscreen landing drew it as nothing
+  // until the hook answered (live QA: 22 of 46 fullscreen runs, 15 to 140 ms).
+  test('a preview mark makes a text streamed, never LaTeX source, a dollar in it or not', () => {
+    for (const streamed of ['x\u2800 $y$', '\\(x\\) &nbsp;', 'r\u00a0=\u00a00.05 on $100', 'x\u034f costs \\$5', '```latex\n\\begin{x}\n```\n\n*not rendered: missing argument*']) {
+      expect({ streamed, is: STREAMED_PATTERN.test(streamed), latex: SOURCE_PATTERN.test(streamed) }).toEqual({ streamed, is: true, latex: false })
+    }
+  })
+
+  test('a dollar amount, as written or escaped, is no LaTeX source', () => {
+    for (const text of [
+      'You save $100 a year.',
+      'You save \\$100 a year.',
+      '$25,000 at 6.5% APR over 5 years, and $25,000 at 4.9% over 7 years',
+      'from $5-$10 each',
+      'between $5 and $10',
+      'Run `echo $HOME` or `$PATH`.',
+    ]) {
+      expect({ text, latex: SOURCE_PATTERN.test(text), streamed: STREAMED_PATTERN.test(text) }).toEqual({ text, latex: false, streamed: false })
+    }
   })
 
   test('keeps a formula MathJax refuses as its source, with a note under it', () => {

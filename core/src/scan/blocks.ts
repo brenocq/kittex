@@ -170,3 +170,35 @@ export function standsAlone(body: string): boolean {
 export function startsBlock(body: string): boolean {
   return HEADING.test(body) || LIST_ITEM.test(body) || body.startsWith('|') || THEMATIC_OR_SETEXT.test(body)
 }
+
+/** A GFM table's delimiter row (marked's): dashes with optional colons, parted by pipes. */
+const DELIMITER_ROW = /^ {0,3}((?:\| *)?:?-+:? *(?:\| *:?-+:? *)*(?:\| *)?)$/
+
+/**
+ * Whether `body` is a GFM table's delimiter row under a header line `header`,
+ * as marked reads them: a pipe or a colon in it, and as many cells as the header.
+ */
+export function delimitsTable(header: string, body: string): boolean {
+  const delimiter = DELIMITER_ROW.exec(body.replace(/[ \t\r]+$/, ''))?.[1]
+  if (!delimiter || !/[:|]/.test(delimiter) || header.trim() === '') return false
+  return cellCount(header) === delimiter.replace(/^\||\| *$/g, '').split('|').length
+}
+
+/** The cells marked splits a table line into (an escaped pipe parts none; empty outer cells dropped). */
+function cellCount(line: string): number {
+  const cells = line
+    .replace(/\|/g, (_match: string, offset: number, all: string) => {
+      let escaped = false
+      for (let p = offset - 1; p >= 0 && all[p] === '\\'; p--) escaped = !escaped
+      return escaped ? '|' : ' |'
+    })
+    .split(/ \|/)
+  if (!cells[0]?.trim()) cells.shift()
+  if (cells.length > 0 && !cells.at(-1)?.trim()) cells.pop()
+  return cells.length
+}
+
+/** A line that ends a GFM table's rows (marked's): a heading, a rule, a fence, a list item, HTML. */
+export function endsTable(body: string): boolean {
+  return HEADING.test(body) || LIST_ITEM.test(body) || THEMATIC_OR_SETEXT.test(body) || looksLikeFence(body) || body.startsWith('<')
+}

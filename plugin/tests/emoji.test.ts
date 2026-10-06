@@ -57,13 +57,14 @@ describe('a paragraph the replay refuses streams its formulas unpadded', () => {
     expect(placeable('The orbit 🛰️.\n\nThen ', 98)).toBe(true)
   })
 
-  test('the user reply where sequences are refused: the formula before 🛰️ is padded (the stream cannot see ahead), none after it', async () => {
+  test('the user reply where sequences are refused: the formula before 🛰️ is padded and lands as its image, none after it is padded', async () => {
     await init()
     const { shown, records } = streamed(REPLY, { ...env(false), inline: true })
     expect(records.map(record => record.tex)).toEqual(['\\hat{x}_{k|k-1} = F_k \\hat{x}_{k-1|k-1}'])
     expect(shown).toContain('σ² = 4 to σ² ≈ 0.8 🎯')
     expect(shown).not.toMatch(/σ²=4⠀|σ²≈0\.8⠀/)
-    expect(images(plan(shown, records, env(false)).pieces)).toEqual([])
+    // The paragraph is laid out up to 🛰️ (what comes before it is drawn the same whatever follows): its pad is never left behind.
+    expect(images(plan(shown, records, env(false)).pieces).map(image => [image.tex, image.row, image.col])).toEqual([['\\hat{x}_{k|k-1} = F_k \\hat{x}_{k-1|k-1}', 0, 54]])
   })
 })
 
@@ -130,11 +131,12 @@ describe('Ghostty: by its grapheme-width-method', () => {
     expect((await streamAndLand($)).images).toBe(5)
   })
 
-  test('legacy: they draw at other widths, so the paragraph keeps its Unicode and pads nothing past 🛰️', async ($, on) => {
+  test('legacy: they draw at other widths, so the paragraph keeps its Unicode past 🛰️ and pads nothing there', async ($, on) => {
     await ghosttySession($, on, `${COLORS}grapheme-width-method = legacy\n`)
     await init()
     const { shown, images: count } = await streamAndLand($)
-    expect(count).toBe(0)
+    // The formula before 🛰️, laid out exactly, gets its image.
+    expect(count).toBe(1)
     expect(shown).toContain('σ² = 4 to σ² ≈ 0.8 🎯')
   })
 })

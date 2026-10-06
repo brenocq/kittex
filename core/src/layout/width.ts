@@ -28,7 +28,17 @@ const COMBINING: readonly (readonly [number, number])[] = [
  * One-cell ranges: Latin, Greek, Cyrillic, punctuation, letterlike symbols,
  * arrows, mathematical operators and alphanumerics, box drawing. Ranges that
  * hold emoji-presentation characters (misc technical, geometric shapes, misc
- * symbols) are listed in parts around them.
+ * symbols, dingbats) are listed in parts around them.
+ *
+ * The control pictures, enclosed alphanumerics (①, ⒜, Ⓐ), and the misc
+ * symbols and dingbats in text presentation (✓ ✔ ✗ ★ ☐ ☑ ♥ ⚠ ❤ ➜, standing
+ * alone: U+FE0F after one makes it an emoji, read by charAt) are those that
+ * Claude Code 2.1.291 (Bun.stringWidth, ambiguous narrow), kitty 0.49
+ * (wcswidth) and Ghostty (one cell unless East Asian wide or emoji by default,
+ * ambiguous narrow) all draw one cell wide, alone and between letters. Left
+ * out where they disagree or may: the trigrams and the monograms and digrams
+ * (☰ ⚊, wide since Unicode 16) and the skin-tone bases ☝ ⛹ ✌ ✍ (two cells to
+ * kitty).
  */
 const NARROW: readonly (readonly [number, number])[] = [
   [0x0020, 0x007e],
@@ -59,12 +69,41 @@ const NARROW: readonly (readonly [number, number])[] = [
   [0x23ed, 0x23ef],
   [0x23f1, 0x23f2],
   [0x23f4, 0x23ff],
-  [0x2500, 0x25fc],
+  [0x2400, 0x2429],
+  [0x2440, 0x244a],
+  [0x2460, 0x25fc],
   [0x25ff, 0x25ff],
+  [0x2600, 0x2613],
+  [0x2616, 0x261c],
+  [0x261e, 0x262f],
+  [0x2638, 0x2647],
+  [0x2654, 0x267e],
+  [0x2680, 0x2689],
+  [0x2690, 0x2692],
+  [0x2694, 0x26a0],
+  [0x26a2, 0x26a9],
+  [0x26ac, 0x26bc],
+  [0x26bf, 0x26c3],
+  [0x26c6, 0x26cd],
+  [0x26cf, 0x26d3],
+  [0x26d5, 0x26e9],
+  [0x26eb, 0x26f1],
+  [0x26f4, 0x26f4],
+  [0x26f6, 0x26f8],
+  [0x26fb, 0x26fc],
+  [0x26fe, 0x2704],
+  [0x2706, 0x2709],
+  [0x270e, 0x2727],
+  [0x2729, 0x274b],
+  [0x274d, 0x274d],
+  [0x274f, 0x2752],
+  [0x2756, 0x2756],
+  [0x2758, 0x2794],
+  [0x2798, 0x27af],
+  [0x27b1, 0x27be],
   [0x27c0, 0x27ff],
   [0x2800, 0x28ff],
-  [0x2900, 0x2b0f],
-  [0x2b12, 0x2b1a],
+  [0x2900, 0x2b1a],
   [0x2b1d, 0x2b4f],
   [0x2b51, 0x2b54],
   [0x2b56, 0x2bff],

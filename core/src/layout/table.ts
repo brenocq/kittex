@@ -208,9 +208,9 @@ function splitCells(line: string, base: number, count?: number): SplitCell[] {
 }
 
 /**
- * The engine reads a table line with a `|` inside a code span otherwise (its
- * `me` escapes it first): such a line is not followed. True when the line is
- * read as marked reads it.
+ * The engine reads a table line with an unescaped `|` inside a code span
+ * otherwise (its `me` escapes it first): such a line is not followed. True
+ * when the line is read as marked reads it.
  */
 function codePipesAlike(line: string): boolean {
   if (!line.includes('`') || !line.includes('|')) return true
@@ -241,7 +241,9 @@ function codePipesAlike(line: string): boolean {
       p++
       continue
     }
-    if (line.slice(starts[p]! + lengths[p]!, starts[close]!).includes('|')) return false
+    // A pipe already escaped (after an odd run of backslashes) is left alone by both, and parts no cell.
+    const code = line.slice(starts[p]! + lengths[p]!, starts[close]!)
+    for (const pipe of code.matchAll(/(\\*)\|/g)) if (pipe[1]!.length % 2 === 0) return false
     p = close + 1
   }
   return true

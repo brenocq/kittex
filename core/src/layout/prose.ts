@@ -76,6 +76,24 @@ export const LEADING_SPACE = / {2}|(?:^|\n) /
 export interface VisibleText {
   text: string
   source: number[]
+  /**
+   * A partial text only: the markdown offset from which it isn't followed
+   * (the text holds what is drawn before it, up to the last whole word).
+   */
+  stop?: number
+}
+
+/**
+ * Cuts a partial visible text back to its last whole word (the cut word may go
+ * on in what isn't followed), and notes in `stop` the first markdown offset
+ * cut off. `at`: where the text stops being followed (its length by default).
+ */
+export function cutPartial(visible: VisibleText, stop: number, at = visible.text.length): VisibleText {
+  let end = at
+  while (end > 0 && visible.text[end - 1] !== ' ' && visible.text[end - 1] !== '\n') end--
+  if (end > 0) end--
+  for (let i = end; i < visible.text.length; i++) if (visible.source[i]! >= 0) stop = Math.min(stop, visible.source[i]!)
+  return { text: visible.text.slice(0, end), source: visible.source.slice(0, end), stop }
 }
 
 /**
@@ -85,7 +103,7 @@ export interface VisibleText {
  * markdown holds anything else, or anything whose drawing kittex can't be
  * sure of. `mode`: how the engine draws links (none are followed unknown).
  */
-export function visibleProse(markdown: string, mode: LinkMode = {}): VisibleText | null {
+export function visibleProse(markdown: string, mode: LinkMode = {}, partial = false): VisibleText | null {
   if (unfollowable(markdown)) return null
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   const out: VisibleText = { text: '', source: [] }
@@ -108,24 +126,34 @@ export function visibleProse(markdown: string, mode: LinkMode = {}): VisibleText
       } else if (token.type === 'paragraph') {
         const paragraph = token as Tokens.Paragraph
         if (!markdown.startsWith(paragraph.text, at)) return null
-        if (!inline(out, paragraph.tokens, paragraph.text, at, false, links)) return null
+        if (!inline(out, paragraph.tokens, paragraph.text, at, false, links)) {
+          if (!partial || out.stop === undefined) return null
+          break
+        }
         out.text += '\n'
         out.source.push(-1)
       } else {
-        return null
+        if (!partial) return null
+        out.stop = at
+        break
       }
       at += token.raw.length
     }
-    if (at !== markdown.length) return null
+    if (out.stop === undefined && at !== markdown.length) return null
   }
   if (!linksHold(markdown, links)) return null
   // The engine drops leading newlines and trailing whitespace of a prose run.
   const lead = /^\n*/.exec(out.text)![0].length
   const kept = out.text.slice(lead).trimEnd().length
-  const text = out.text.slice(lead, lead + kept)
+  let visible: VisibleText = { text: out.text.slice(lead, lead + kept), source: out.source.slice(lead, lead + kept) }
+  if (out.stop !== undefined) visible = cutPartial(visible, out.stop)
   // Where a row could start with a space, the engine's drawing isn't followed here.
-  if (LEADING_SPACE.test(text)) return null
-  return { text, source: out.source.slice(lead, lead + kept) }
+  const space = LEADING_SPACE.exec(visible.text)
+  if (space) {
+    if (!partial) return null
+    visible = cutPartial(visible, visible.stop ?? Infinity, space.index + 1)
+  }
+  return visible
 }
 
 function emit(out: VisibleText, text: string, offset: number): void {
@@ -142,8 +170,29 @@ function emit(out: VisibleText, text: string, offset: number): void {
 export function inline(out: VisibleText, tokens: readonly Token[], src: string, offset: number, glue = false, links: InlineLinks = {}): boolean {
   let at = 0
   for (const token of tokens) {
-    if (!src.startsWith(token.raw, at)) return false
+    if (!src.startsWith(token.raw, at)) return stopAt(out, out.text.length, offset + at)
     const base = offset + at
+    const drawn = out.text.length
+    if (!inlineToken(out, token, base, glue, links)) return stopAt(out, drawn, base)
+    at += token.raw.length
+  }
+  return at === src.length || stopAt(out, out.text.length, offset + at)
+}
+
+/**
+ * A token that isn't followed: the text is cut back to what came before it
+ * (`drawn` units), and `stop` notes its markdown offset. Always false.
+ */
+function stopAt(out: VisibleText, drawn: number, offset: number): false {
+  out.text = out.text.slice(0, drawn)
+  out.source.length = drawn
+  out.stop = Math.min(out.stop ?? Infinity, offset)
+  return false
+}
+
+/** Appends one inline token's drawing (see inline); false when it isn't followed. */
+function inlineToken(out: VisibleText, token: Token, base: number, glue: boolean, links: InlineLinks): boolean {
+  {
     switch (token.type) {
       case 'text': {
         const text = token as Tokens.Text
@@ -212,9 +261,8 @@ export function inline(out: VisibleText, tokens: readonly Token[], src: string, 
       default:
         return false
     }
-    at += token.raw.length
   }
-  return at === src.length
+  return true
 }
 
 /**
