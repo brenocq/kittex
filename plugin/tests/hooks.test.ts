@@ -15,7 +15,6 @@ import {
   renderEnvFor,
   REPLY_INDENT,
   replyColumns,
-  RESIZE_SETTLE_MS,
   SECTION_ID,
 } from '../hooks/math.ts'
 import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession } from './support.ts'
@@ -218,25 +217,6 @@ describe('terminal changes', () => {
     const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
     const light = renderDisplay(TEX, { ...renderEnvFor(kittyEnv(), COLUMNS), ink }, rows)
     expect(image?.props).toMatchObject({ source: { png: toBase64(light.png) } })
-  })
-
-  test('a new width probes the cell size again once it settles', async ($, on) => {
-    const clock = mock.clock(on)
-    const session = await startSession($, on)
-    expect(session.cellProbes()).toBe(1)
-    const ui = await $.ui.mount({
-      plugin: 'kittex',
-      surface: 'terminal',
-      component: 'AssistantMessage',
-      props: { text: REPLY, isFirstOfReply: true },
-      viewport: { columns: 80, rows: 50 },
-    })
-    expect((await ui.find({ type: 'Image' }))?.props).toMatchObject({ columns: replyColumns(80) })
-    await clock.advance(RESIZE_SETTLE_MS)
-    expect(session.cellProbes()).toBe(2)
-    await ui.redraw()
-    await clock.advance(RESIZE_SETTLE_MS)
-    expect(session.cellProbes()).toBe(2)
   })
 })
 

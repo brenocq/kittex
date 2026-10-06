@@ -137,8 +137,18 @@ export const FALLBACK_PIXEL_SCALE = 2
 export const FALLBACK_COLUMNS = 80
 /** How long a probe command may run. */
 export const PROBE_TIMEOUT_MS = 2000
-/** Wait after a change of width before probing the cell size again (font zoom changes both). */
+/**
+ * Wait after the last change of width before probing the cell size once more
+ * (a font zoom changes both); every change restarts it, so a drag ends with
+ * the final size.
+ */
 export const RESIZE_SETTLE_MS = 400
+/**
+ * How often the cell size is probed once an image has been drawn: a move to a
+ * monitor of another scale changes the cells' pixels and may keep the width,
+ * so no render says so. A probe is one short process.
+ */
+export const CELL_POLL_MS = 2500
 /** Preview records kept for mapping landed replies back to TeX (inline ones included). */
 export const RECORD_LIMIT = 512
 /** Streaming messages tracked at once (a message that never sees `final` is dropped past this). */
