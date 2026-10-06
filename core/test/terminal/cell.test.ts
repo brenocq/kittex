@@ -10,6 +10,9 @@ describe('parseWinsize', () => {
   test('kitty on this machine: 13×26 px cells', () => {
     // Captured from the perl probe under Claude Code in kitty 0.49.1 (Roboto Mono 11 pt).
     expect(parseWinsize(fixture('winsize-kitty.txt'))).toEqual({ cellWidth: 13, cellHeight: 26, columns: 102, rows: 79 })
+    // Ghostty reports its whole area, padding included: the cells are whole pixels underneath.
+    expect(parseWinsize('48 68 681 1014\n')).toEqual({ cellWidth: 10, cellHeight: 21, columns: 68, rows: 48 })
+    expect(parseWinsize('65 90 1726 2746\n')).toEqual({ cellWidth: 19, cellHeight: 42, columns: 90, rows: 65 })
   })
 
   test('rejects terminals that report no pixels', () => {
@@ -25,8 +28,8 @@ describe('parseWinsize', () => {
     expect(parseWinsize('-1 2 3 4')).toBeUndefined()
   })
 
-  test('ignores noise on other lines and keeps fractional cells', () => {
-    expect(parseWinsize('warning: something\n24 80 1000 600\n')).toEqual({ cellWidth: 12.5, cellHeight: 25, columns: 80, rows: 24 })
+  test('ignores noise on other lines and rounds cells down to whole pixels', () => {
+    expect(parseWinsize('warning: something\n24 80 1000 600\n')).toEqual({ cellWidth: 12, cellHeight: 25, columns: 80, rows: 24 })
   })
 })
 
