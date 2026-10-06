@@ -150,6 +150,8 @@ export interface CellSize {
 export interface TerminalColors {
   foreground?: RGB
   background?: RGB
+  /** The 16 ANSI colours (0-7 normal, 8-15 bright), when known; ANSI Claude themes draw text in these. */
+  palette?: RGB[]
 }
 
 export type TerminalKind = 'kitty' | 'ghostty' | 'wezterm' | 'iterm2' | 'other'
@@ -160,6 +162,10 @@ export interface TerminalInfo {
   images: boolean
   /** Inside tmux, screen or zellij. */
   multiplexed: boolean
+  /** Which multiplexer, when multiplexed. */
+  multiplexer?: 'tmux' | 'screen' | 'zellij'
+  /** Over ssh: the terminal (and its config files) is on another machine, so colour probes don't apply. */
+  ssh?: boolean
 }
 
 /** A host command for the adapter to run (no shell), and how to read its output. */
