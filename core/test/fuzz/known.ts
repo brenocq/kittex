@@ -30,15 +30,11 @@ export const KNOWN: readonly Known[] = [
     keys: [/preview-wider-than-prose\((indent|quote|wide)\)/],
   },
   {
+    // Mostly fixed on main (90c1bba: list display math is drawn in its item); what is left: a list whose
+    // display formula keeps its preview or its source (refused, a glyph the font lacks) is still cut there.
     id: 'FUZZ-1',
-    title: 'a display formula in a list item cuts the list: the rest is drawn as a new text (a blank row added, nesting and numbering lost)',
-    keys: [
-      /^moved\/(rows|cells):list>/,
-      /^moved\/(rows|cells):(blank|paragraph)>(paragraph|list)$/,
-      /^unverified\/structure:.*list/,
-      /^resumed\/(resumed-only-i|images-differ|live-only-i)$/,
-      /^overPreview\/display:list>/,
-    ],
+    title: 'a list holding a display formula that is not drawn (refused, kept as preview) is cut at it: the rest is drawn as a new text (a blank row added, indent and numbering lost)',
+    keys: [/^moved\/(rows|cells):list>/],
   },
   {
     id: 'FUZZ-3',
@@ -61,6 +57,9 @@ export const KNOWN: readonly Known[] = [
       // The formula after such a wrapped preview, misplaced by a cell (the replay's hard wrap puts its zero-width mark on the next row).
       /^predicted\/inline$/,
       /^overPreview\/inline:list>list$/,
+      // A table's header row is padded as a paragraph until its delimiter row arrives; in a narrow cell the preview wraps.
+      /^imageShape\/inline-columns$/,
+      /^overPreview\/inline:table>table$/,
     ],
   },
   {
@@ -71,7 +70,7 @@ export const KNOWN: readonly Known[] = [
   {
     id: 'FUZZ-7',
     title: 'two formulas with the same preview (\\tfrac12 and \\frac12, A^T and A^\\top) both land with the later one\'s image',
-    keys: [/^impure\/collision$/, /^inlineImage\/inline-extra$/, /^inlineImage\/inline-missing:collision$/],
+    keys: [/^impure\/collision$/, /^inlineImage\/inline-extra$/, /^inlineImage\/inline-missing:collision$/, /^resumed\/images-swapped$/],
   },
   {
     id: 'FUZZ-8',
@@ -99,12 +98,23 @@ export const KNOWN: readonly Known[] = [
     // Not failures: where the replay can't follow a part (rows unknown), the comparison can't be made.
     id: 'UNVERIFIED',
     title: 'parts the replay cannot follow differ between the streamed and landed drawings (can not be told offline)',
-    keys: [/^unverified\/structure:opaque-/, /^unverified\/structure:\w+>opaque-/],
+    keys: [/^unverified\/structure:/],
+  },
+  {
+    id: 'FUZZ-15',
+    title: 'in a list longer than the writer\'s 2 KB tail, a nested item\'s display image is sized for the wrong depth and passes the right edge',
+    keys: [/^overlap\/edge-(quoted|display)$/],
+    // Also without a long list: a display in an item nested under a lazy line (seed 7952).
+  },
+  {
+    id: 'FUZZ-16',
+    title: 'resumed lands images where the live landing keeps Unicode: streaming refuses a part (its block so far) that the landing lays out alone',
+    keys: [/^resumed\/(resumed|live)-only-[diq]+$/, /^resumed\/images-differ$/],
   },
   {
     id: 'FUZZ-10',
-    title: 'MessageDisplay re-lexes the block written so far for every inline formula: a flush of a whole long reply takes about a second',
-    keys: [/^slow\/push$/],
+    title: 'MessageDisplay re-lexes the block written so far for every inline formula: a flush of a long list takes seconds (and a huge resumed reply lands in ~2 s)',
+    keys: [/^slow\/(push|land|resume)$/],
   },
 ]
 

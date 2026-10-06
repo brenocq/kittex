@@ -36,6 +36,8 @@ export interface Placed {
   columns: number
   /** The column it may not pass: the prose width, or the reply column in a table. */
   bound: number
+  /** Its piece, or a row above it, is a part the replay can't follow: its row here is not known. */
+  unknown?: boolean
 }
 
 export interface Drawing {
@@ -168,7 +170,24 @@ function laidOut(lines: string[], source: string, sequences: boolean): Row[] {
  * image or note sits in the reply column, a blank row above it where it has a
  * gap; an inline image lies over its piece at the preview's row and column.
  */
-export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext): Drawing {
+/**
+ * What the formulas of a reply were streamed as: each inline one's slot
+ * widths, and the display ones laid over a preview in a quote or a list item
+ * (drawn as a prose piece's overlay, as inline images are).
+ */
+export interface Streamed {
+  inline: ReadonlyMap<string, readonly number[]>
+  overlays: ReadonlySet<string>
+}
+
+/** Whether a prose piece's overlay is a display formula's (in a quote or a list item) rather than an inline one's. */
+function isOverlay(tex: string, rows: number, columns: number, streamed: Streamed | undefined): boolean {
+  if (rows > 1) return true
+  if (streamed?.inline.get(tex)?.includes(columns)) return false
+  return streamed?.overlays.has(tex) === true
+}
+
+export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext, streamed?: Streamed): Drawing {
   const rows: Row[] = []
   const images: Placed[] = []
   for (const [i, piece] of pieces.entries()) {
@@ -176,12 +195,14 @@ export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext): Drawi
     const top = rows.length
     if (piece.kind === 'prose') {
       const drawn = engineRows(piece.text, ctx)
+      // kittex lays a part out up to what the replay can't follow; this model can't, so it can't tell those rows.
+      const unknown = rows.some(row => row.opaque !== undefined) || drawn.some(row => row.opaque !== undefined)
       rows.push(...drawn)
       const table = drawn.some(row => row.part === 'table')
       for (const inline of piece.inline ?? []) {
-        // A display formula in a quote is drawn over its preview as the inline ones are: as wide as the quote's text.
-        const quoted = inline.image.rows > 1 || (inline.col === 2 && inline.image.columns === ctx.width - 2 && drawn.some(row => row.part === 'blockquote'))
-        images.push({ kind: quoted ? 'quoted' : 'inline', tex: inline.tex, row: top + inline.row, col: inline.col, rows: inline.image.rows, columns: inline.image.columns, bound: table ? ctx.columns - 2 : ctx.width })
+        // A display formula in a quote or a list item is drawn over its preview as the inline ones are.
+        const quoted = isOverlay(inline.tex, inline.image.rows, inline.image.columns, streamed)
+        images.push({ kind: quoted ? 'quoted' : 'inline', tex: inline.tex, row: top + inline.row, col: inline.col, rows: inline.image.rows, columns: inline.image.columns, bound: table ? ctx.columns - 2 : ctx.width, ...(unknown ? { unknown } : {}) })
       }
     } else if (piece.kind === 'image') {
       for (let r = 0; r < piece.image.rows; r++) rows.push({ cells: [], part: 'image' })

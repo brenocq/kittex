@@ -275,8 +275,11 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
   if (resumed.ms > SLOW_LAND_MS) fail('slow', 'resume', `the resumed landing plan took ${resumed.ms.toFixed(0)} ms`)
 
   const streamDrawing: Drawing = { rows: engineRows(landedText, ctx), images: [] }
-  const liveDrawing = landedDrawing(live.pieces, ctx)
-  const resumedDrawing = landedDrawing(resumed.pieces, ctx)
+  const slots = new Map<string, number[]>()
+  for (const record of streamed.written) if (record.inline) slots.set(record.tex, [...(slots.get(record.tex) ?? []), record.columns ?? 0])
+  const formulas = { inline: slots, overlays: new Set(streamed.written.filter(record => !record.inline && (record.quote !== undefined || record.indent !== undefined)).map(record => record.tex)) }
+  const liveDrawing = landedDrawing(live.pieces, ctx, formulas)
+  const resumedDrawing = landedDrawing(resumed.pieces, ctx, formulas)
   result.streamDrawing = streamDrawing
   result.liveDrawing = liveDrawing
   result.resumedDrawing = resumedDrawing
@@ -359,7 +362,7 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
   // The preview is a pure function of the formula (and its context).
   const seen = new Map<string, string>()
   for (const record of streamed.written) {
-    const key = `${record.inline ? 'i' : 'd'}\n${record.columns ?? ''}\n${record.rows}\n${record.quote ?? 0}\n${record.tex}`
+    const key = `${record.inline ? 'i' : 'd'}\n${record.columns ?? ''}\n${record.rows}\n${record.quote ?? 0}\n${record.indent ?? ''}\n${record.tex}`
     const before = seen.get(key)
     if (before !== undefined && before.replace(/^[ \t>]+/gm, '') !== record.preview.replace(/^[ \t>]+/gm, '')) {
       fail('impure', 'preview', `${JSON.stringify(record.tex.slice(0, 50))} was previewed as ${JSON.stringify(before.slice(0, 60))} and as ${JSON.stringify(record.preview.slice(0, 60))}`)
@@ -511,7 +514,7 @@ function predictedOverPreview(landed: Drawing, streamed: Drawing, stream: Stream
     return want.length <= image.columns
   }
   for (const image of landed.images) {
-    if (image.kind !== 'inline') continue
+    if (image.kind !== 'inline' || image.unknown) continue
     const wants = previewsOf.get(image.tex)
     if (!wants) continue // a formula read back as LaTeX: its preview is the plan's own
     const own = landed.rows[image.row]
@@ -526,7 +529,7 @@ function predictedOverPreview(landed: Drawing, streamed: Drawing, stream: Stream
     }
   }
   for (const image of landed.images) {
-    if (image.kind === 'inline' || image.row + image.rows > aligned) continue
+    if (image.kind === 'inline' || image.unknown || image.row + image.rows > aligned) continue
     for (let r = image.row; r < image.row + image.rows; r++) {
       const row = streamed.rows[r]
       // A quoted display's rows hold the quote's bar too; a display image's rows hold only the preview.
@@ -598,7 +601,10 @@ function compareResumed(live: Drawing, resumed: Drawing, fail: Fail, padsLeft: b
   const onlyResumed = multisetMinus(b, a)
   if (onlyLive.length > 0 || onlyResumed.length > 0) {
     const kinds = (keys: string[]) => [...new Set(keys.map(key => key[0]))].sort().join('')
-    const cause = onlyLive.length > 0 && onlyResumed.length > 0 ? 'images-differ' : onlyLive.length > 0 ? `live-only-${kinds(onlyLive)}` : `resumed-only-${kinds(onlyResumed)}`
+    // The same cells, another formula: the live one is another formula's image (records map previews by content).
+    const at = (key: string) => key.slice(0, key.indexOf(' ', key.indexOf(' ') + 1))
+    const swapped = onlyLive.length > 0 && onlyLive.length === onlyResumed.length && onlyLive.every(key => onlyResumed.some(other => at(other) === at(key)))
+    const cause = swapped ? 'images-swapped' : onlyLive.length > 0 && onlyResumed.length > 0 ? 'images-differ' : onlyLive.length > 0 ? `live-only-${kinds(onlyLive)}` : `resumed-only-${kinds(onlyResumed)}`
     fail('resumed', cause, `live only: ${onlyLive.slice(0, 3).join('; ') || '-'}; resumed only: ${onlyResumed.slice(0, 3).join('; ') || '-'}`)
     return
   }

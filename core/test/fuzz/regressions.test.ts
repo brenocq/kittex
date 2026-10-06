@@ -1,16 +1,19 @@
 // Minimal repros of the failures the fuzz suite found (known.ts names them
 // FUZZ-n), each shrunk from a fuzz case and skipped until it is fixed: the
-// comment says what breaks, where, and why. "Live" marks the ones confirmed on
-// the real engine (Claude Code 2.1.291, research/fuzzcheck.py: the streamed
-// text drawn by the engine alone against the LaTeX landed through kittex on a
-// resumed session, at no model cost).
+// comment says what breaks, where, and why. "Live" marks the ones confirmed
+// on the real engine (Claude Code 2.1.291, research/fuzzcheck.py: the
+// streamed text drawn by the engine alone against the LaTeX landed through
+// kittex on a resumed session, at no model cost). Most of FUZZ-1, -4, -5, -6
+// and -12 was fixed on main while the suite ran (90c1bba, 1bbf44c, 37c5e74;
+// FUZZ-1, -4 and -5 confirmed fixed live): those tests run, as guards, and
+// what is left of them is pinned skipped.
 
 import { describe, expect, test } from 'vitest'
 
 import { init, previewInline } from '../../../plugin/hooks/core.js'
 import { performance } from 'node:perf_hooks'
 
-import { inlineText, MessageStream, RECORD_LIMIT } from '../../../plugin/hooks/math.js'
+import { MessageStream, RECORD_LIMIT } from '../../../plugin/hooks/math.js'
 import { envFor, land, remember, runCase, streamReply } from './drive.js'
 import type { CheckName, Shape } from './drive.js'
 
@@ -36,7 +39,7 @@ describe('fuzz regressions', () => {
   // a row at landing. Fix: keep the list whole and lay the image over its
   // preview rows (as placeQuote does for quotes), or give the rest piece
   // marginTop -1 where the list had no blank row.
-  test.skip('FUZZ-1: a display in a list item, then the next item: no row moves', () => {
+  test('FUZZ-1: a display in a list item, then the next item: no row moves', () => {
     const md = '1. Compute:\n   $$\n   x^2\n   $$\n2. Then $\\alpha$.\n'
     expect(failures(md, {}, ['moved'])).toEqual([])
     const loose = '1. Compute:\n\n   $$\n   x^2\n   $$\n\n   which gives $y$.\n\n2. Then.\n'
@@ -46,16 +49,25 @@ describe('fuzz regressions', () => {
   // FUZZ-1 (live). The same cut makes a nested item after the display a
   // top-level one (`  - next` drawn at the list's left edge), and an ordered
   // item written `3)` after a continuation line plain text (`2.` while streaming).
-  test.skip('FUZZ-1: a display in a nested item keeps the items after it nested and numbered', () => {
+  test('FUZZ-1: a display in a nested item keeps the items after it nested and numbered', () => {
     expect(failures('- Outer:\n  - inner $a$:\n\n    $$\n    x^2\n    $$\n\n  - next $b$\n- last\n', {}, ['moved'])).toEqual([])
     expect(failures('1) f\n   \\begin{aligned}\n\\varepsilon\n\\end{aligned}\n   $\\sqrt{2}$\n3) eigenvalue:\n', {}, ['moved'])).toEqual([])
+  })
+
+  // FUZZ-1, what main left (live on 3451481: a refused display in an item,
+  // then `which gives y.` and `2. Norm.`: the note lands at the reply's edge
+  // instead of the item's, and `2. Norm.` a row lower). A list whose display
+  // formula is not drawn (refused, or kept as its preview) is still cut there.
+  test.skip('FUZZ-1: a list holding a display formula that is not drawn is not cut', () => {
+    const md = '* integral\n  \\[\n\\sum_{\\begin{subarray}{l} < n \\end{subarray}}\n\\]\n  $$\nT_{\\mu\\nu}\n$$\n  $[0, 1)$ gives that sum!\n'
+    expect(failures(md, { columns: 21 }, ['moved'])).toEqual([])
   })
 
   // FUZZ-1. While streaming, placeable refuses the list once it holds a
   // display preview (the replay can't lay one out in a list), so inline math
   // in later items streams as plain Unicode; resumed, the cut list's rest is
   // laid out alone and gets images: live and resumed differ.
-  test.skip('FUZZ-1: inline math in items after a display gets its image live as it does resumed', () => {
+  test('FUZZ-1: inline math in items after a display gets its image live as it does resumed', () => {
     const md = '1. Compute the gradient of $f$:\n\n   $$\n   \\nabla f(x) = 2x\n   $$\n\n2. Then step with $\\alpha$.\n'
     expect(failures(md, {}, ['resumed'])).toEqual([])
   })
@@ -95,7 +107,7 @@ describe('fuzz regressions', () => {
   // narrower than the preview, a list item's text (the marker's cells
   // narrower), or the row left after punctuation glued to the formula. The
   // padded preview wraps, gets no image, and its pads stay.
-  test.skip('FUZZ-4: an inline preview wider than its cell or item is not padded', () => {
+  test('FUZZ-4: an inline preview wider than its cell or item is not padded', () => {
     const table = '| quantity | value | note |\n|---|---|---|\n| loss | $(AB)^* = B^*A^*$ | adjoint |\n| norm | $\\|x\\|_2$ | ok |\n'
     expect(failures(table, { columns: 40 }, ['padVisible', 'inlineImage'])).toEqual([])
     expect(failures('1) $10 = a_0 + a_1 + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5 + a_6 x^6$!\n', { columns: 45 }, ['padVisible', 'inlineImage'])).toEqual([])
@@ -103,21 +115,31 @@ describe('fuzz regressions', () => {
     expect(failures(quote, { maxProseWidth: 67 }, ['padVisible', 'inlineImage'])).toEqual([])
   })
 
+  // FUZZ-4, what main left: a table's header row is padded as a paragraph
+  // until its delimiter row arrives, so in a narrow column its preview wraps
+  // inside the cell; the landing draws the part left on the row (6 columns
+  // for a 7-column slot) and the pad stays on the next row.
+  test.skip('FUZZ-4: a formula in a narrow header cell is not padded', () => {
+    const md = '[note](https://en.wikipedia.org/wiki/Kalman_filter) | | $\\cos^2 + 1$\n--- | ---: | :---:\n\\frac{\\rho}{\\varepsilon_0}$ | [derivative](https://en.wikipedia.org/wiki/Kalman_filter)\n'
+    expect(failures(md, { columns: 100, links: 'text' }, ['imageShape', 'overPreview', 'padVisible'])).toEqual([])
+  })
+
   // FUZZ-5. A display preview in a list item is centred in the reply column
   // and then indented by the item's text: its lines (the raw-TeX fallback
   // line especially, as wide as the column) are wider than the item's box
   // and wrap while streaming; the image lands shorter and the rows below move.
-  test.skip('FUZZ-5: a display preview in a list item fits the item', () => {
+  test('FUZZ-5: a display preview in a list item fits the item', () => {
     const md = '3. =\n   \\begin{aligned}\n\\sqrt{n}\\left(\\bar{X}_n \\mu\\right) \\mathcal{N}(0,\n\\end{aligned}\nholds?\n'
     expect(failures(md, {}, ['moved'])).toEqual([])
   })
 
-  // FUZZ-6 (stress report F5, still open). Inline math with no one-line
-  // Unicode (matrices, cases, \underbrace) gets neither an image (too tall
-  // for a row) nor Unicode: its LaTeX source stays in the prose.
-  test.skip('FUZZ-6: inline matrices and cases do not stay raw LaTeX', () => {
+  // FUZZ-6 (stress report F5). Inline math with no one-line Unicode
+  // (matrices, cases) got neither an image (too tall for a row) nor Unicode:
+  // its LaTeX source stayed in the prose. Fixed on main (37c5e74: a matrix is
+  // written on one line, `(a, b; c, d)`; what has no form, \underbrace, is
+  // shown as a code span): a guard.
+  test('FUZZ-6: inline matrices and cases do not stay raw LaTeX', () => {
     expect(failures('Let $\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$ be invertible.\n', {}, ['rawLatex'])).toEqual([])
-    expect(inlineText('\\underbrace{a + b}_{n}')).not.toBeNull()
   })
 
   // FUZZ-7. Records map a landed preview back to its TeX by content, the
@@ -171,7 +193,7 @@ describe('fuzz regressions', () => {
   // signs the streaming left as text (currency, a raw formula's own `$`, a
   // `$` in a formula's Unicode from `\$`) pair into formulas the reply never
   // had.
-  test.skip('FUZZ-12: no formula appears at landing that the reply did not have', () => {
+  test('FUZZ-12: no formula appears at landing that the reply did not have', () => {
     // Live (the streamed text landed with no records, as with `inline` off): the two rows land as one,
     // `$100 per seat, or † and [$` drawn as a formula.
     const md = 'The fee is $100 per seat, or\n$\\dagger$ and [$\\begin{pmatrix} 1 \\\\ 0 \\end{pmatrix}$] for both.\n'
@@ -185,6 +207,17 @@ describe('fuzz regressions', () => {
   test.skip('FUZZ-13: a fraction in a script keeps its numerator grouped', () => {
     expect(previewInline('a^{\\frac{p-1}{2}}', undefined, { tight: false })).toBe('a^((p−1)/2)')
     expect(previewInline('\\sqrt{\\frac{a-b}{c}}')).toBe('√((a−b)/c)')
+  })
+
+  // FUZZ-15. MarkdownWriter keeps only WRITER_TAIL (2 KB) of what it wrote:
+  // in a list longer than that, a display formula in a nested item is sized
+  // from a tail that no longer holds the outer item (displayColumns), so its
+  // image is two cells too wide for the item and passes the window's right
+  // edge (resumed, with the whole list, it fits).
+  test.skip('FUZZ-15: a display in a nested item of a long list fits the window', () => {
+    const items = Array.from({ length: 30 }, (_, i) => `  - nested item ${i} with a sentence of ordinary words to make it long enough`)
+    const md = ['- Outer item', ...items, '  - last one:', '', '    $$', '    \\gcd(a, b) = \\gcd(b, a \\bmod b), \\qquad x \\equiv 3 \\mod 7', '    $$', ''].join('\n')
+    expect(failures(md, { columns: 118, cellWidth: 10, cellHeight: 20 }, ['overlap', 'resumed'])).toEqual([])
   })
 
   // FUZZ-14. remember() keeps the newest RECORD_LIMIT (512) previews for the
