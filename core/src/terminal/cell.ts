@@ -122,7 +122,14 @@ export function parseWinsize(stdout: string): CellSize | undefined {
   if (!match) return undefined
   const [rows, columns, xpixels, ypixels] = match.slice(1).map(Number) as [number, number, number, number]
   if (!(rows > 0 && columns > 0 && xpixels > 0 && ypixels > 0)) return undefined
-  return { cellWidth: xpixels / columns, cellHeight: ypixels / rows, columns, rows }
+  // Terminals draw whole-pixel cells, but some report the whole drawing area,
+  // padding included (Ghostty: 681 px over 68 columns of 10 px). Dividing gives
+  // a fraction of a pixel too much per cell, and an image drawn for 10.01 px
+  // cells is rescaled by the terminal into its 10 px cells, blurring all of it.
+  const cellWidth = Math.floor(xpixels / columns)
+  const cellHeight = Math.floor(ypixels / rows)
+  if (cellWidth < 1 || cellHeight < 1) return undefined
+  return { cellWidth, cellHeight, columns, rows }
 }
 
 /** Measures the terminal's cells in pixels with perl (Linux and macOS). */
