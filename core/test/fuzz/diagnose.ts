@@ -4,7 +4,7 @@
 // drawn in. The fuzz report groups failures by these names, and the default
 // run tells known causes (known.ts) from new ones by them.
 
-import { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, textWidth, visibleProse } from '../../../plugin/hooks/core.js'
+import { blockParts, charsOf, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, textWidth, visibleProse } from '../../../plugin/hooks/core.js'
 import type { BlockPart, LinkMode } from '../../../plugin/hooks/core.js'
 import { replyColumns } from '../../../plugin/hooks/math.js'
 import type { Piece, PreviewRecord } from '../../../plugin/hooks/math.js'
@@ -33,8 +33,9 @@ export function refusal(text: string, mode: LinkMode): string {
   if (/\r/.test(text)) return 'cr'
   if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(text)) return 'control'
   if (/<[A-Za-z/!?]/.test(text.replace(/<(?:https?|mailto):[^\s<>]*>/g, ''))) return 'html'
-  for (const char of text) {
-    if (char === '\n' || textWidth(char) >= 0) continue
+  for (const { start, end } of charsOf(text, mode.emojiSequences === true)) {
+    const char = text.slice(start, end)
+    if (char === '\n' || textWidth(char, mode.emojiSequences === true) >= 0) continue
     if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}　-〿＀-￯]/u.test(char)) return 'cjk'
     if (/[‍️⃣\u{1f3fb}-\u{1f3ff}\u{1f1e6}-\u{1f1ff}]|\p{Extended_Pictographic}/u.test(char)) return 'emoji-sequence'
     return `char-U+${char.codePointAt(0)!.toString(16).toUpperCase()}`
@@ -114,7 +115,8 @@ function overflowing(c: CaseContext): string | undefined {
     for (const line of (lead + record.preview).split('\n')) {
       const prefix = /^[ \t>]*/.exec(line)![0]
       const body = line.slice(prefix.length).replace(/&nbsp;/g, ' ').replace(/\\(.)/g, '$1')
-      const width = textWidth(prefix.replace(/>/g, '▎')) + Math.max(0, textWidth(body))
+      const sequences = c.ctx.mode.emojiSequences === true
+      const width = textWidth(prefix.replace(/>/g, '▎')) + Math.max(0, textWidth(body, sequences))
       if (width > c.ctx.width) {
         if (c.maxProseWidth !== undefined && c.ctx.width < replyColumns(c.columns)) return 'maxProseWidth'
         if (/\S/.test(prefix)) return 'quote'
@@ -132,11 +134,21 @@ function part(row: Row | undefined, mode: LinkMode = {}): string {
   return row.part ?? 'blank'
 }
 
+function count$(row: Row | undefined): number {
+  return ((row?.opaque ?? (row?.cells ?? []).join('')).match(/\$/g) ?? []).length
+}
+
 /** A row-level failure (moved, overPreview, unverified): the parts of the first rows that differ, and a preview line too wide. */
 export function rowCause(row: number, c: CaseContext): string {
   const over = overflowing(c)
   const notes = c.written.some(record => record.error !== undefined) && c.maxProseWidth !== undefined && c.ctx.width < replyColumns(c.columns)
-  const tail = over ? `:preview-wider-than-prose(${over})` : notes ? ':refused-note-wraps(maxProseWidth)' : ''
+  // Dollar signs that streamed and did not land: the landed text was scanned again and paired them into formulas.
+  // (Display previews' lines aside: their Unicode may show a `$`, and an image takes their place.)
+  const dollars = (text: string) => (text.replace(/^.*&nbsp;.*$/gm, '').match(/\$/g) ?? []).length
+  const rescanned = dollars(c.shown) > dollars(c.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join(''))
+    // or on the very row that differs, when the rows still line up (a preview kept as text, in a nested quote)
+    || (c.streamed.rows.length === c.live.rows.length && count$(c.streamed.rows[row]) > count$(c.live.rows[row]))
+  const tail = over ? `:preview-wider-than-prose(${over})` : notes ? ':refused-note-wraps(maxProseWidth)' : rescanned ? ':dollars-paired' : ''
   return `${part(c.streamed.rows[row], c.ctx.mode)}>${part(c.live.rows[row], c.ctx.mode)}${tail}`
 }
 

@@ -2,7 +2,8 @@
 // and record keeping register.tsx does. Here, pure (no Node API), so the
 // mod's own tests (plugin/tests/fuzz.test.ts) can use them too.
 
-import { emPxForCell } from '../../hooks/core.js'
+import { drawsEmojiSequences, emPxForCell, fontCell } from '../../hooks/core.js'
+import type { CellAdjust, TerminalInfo } from '../../hooks/core.js'
 import { linkEnv, RECORD_LIMIT } from '../../hooks/math.ts'
 import type { KittexEnv, PreviewRecord } from '../../hooks/math.ts'
 import { Rng } from './rng.ts'
@@ -23,6 +24,10 @@ export interface Shape {
   flushSeed: number
   /** The landed text's trailing whitespace is trimmed by the engine (not known: both are tried). */
   trimLanded: boolean
+  /** Ghostty only: `grapheme-width-method = legacy` (emoji sequences not drawn as the engine counts them). */
+  graphemeLegacy?: boolean
+  /** Ghostty only: adjust-cell-height / adjust-font-baseline, as its config probe reads them. */
+  cellAdjust?: CellAdjust
 }
 
 /** Cell sizes: kitty's at common fonts and scales, Ghostty's (10×21, 9×19 at 1x), and odd ones. */
@@ -45,7 +50,20 @@ export function shapeFor(seed: number): Shape {
     ...(r.chance(0.2) ? { maxProseWidth: r.int(40, 120) } : {}),
     flushSeed: r.int(0, 2 ** 30),
     trimLanded: r.chance(0.3),
+    ...ghosttyOptions(r),
   }
+}
+
+/** Ghostty's settings that change the drawing (drawn for every shape, kept for Ghostty ones). */
+function ghosttyOptions(r: Rng): Pick<Shape, 'graphemeLegacy' | 'cellAdjust'> {
+  const legacy = r.chance(0.2)
+  const adjust = r.weighted<CellAdjust | undefined>([
+    [6, undefined],
+    [1, { height: { factor: 1.2 } }],
+    [1, { height: { px: 2 }, baseline: { px: 1 } }],
+    [1, { width: { factor: 1.05 } }],
+  ])
+  return { ...(legacy ? { graphemeLegacy: true } : {}), ...(adjust ? { cellAdjust: adjust } : {}) }
 }
 
 export function variablesFor(shape: Shape): Record<string, string> {
@@ -61,23 +79,29 @@ export function variablesFor(shape: Shape): Record<string, string> {
 /** The env session.start stores for this terminal (kittex.env). */
 export function envFor(shape: Shape): KittexEnv {
   const cell = { cellWidth: shape.cellWidth, cellHeight: shape.cellHeight }
+  const ghostty = shape.terminal === 'ghostty'
+  const cellAdjust = ghostty ? shape.cellAdjust : undefined
+  const terminal: TerminalInfo = { kind: shape.terminal, images: true, multiplexed: false }
   return {
     kind: shape.terminal,
     images: true,
     ...cell,
+    ...(cellAdjust ? { cellAdjust } : {}),
     columns: shape.columns,
-    emPx: emPxForCell(cell),
+    emPx: emPxForCell(fontCell(cell, cellAdjust)),
     ink: { r: 0xdd, g: 0xdd, b: 0xdd },
     measured: true,
     bullet: '●',
     ...(shape.maxProseWidth !== undefined ? { maxProseWidth: shape.maxProseWidth } : {}),
     ...linkEnv(variablesFor(shape)),
+    emojiSequences: drawsEmojiSequences(terminal, ghostty && shape.graphemeLegacy ? { graphemeWidth: 'legacy' } : {}),
   }
 }
 
 export function describeShape(shape: Shape): string {
   const mpw = shape.maxProseWidth !== undefined ? ` maxProseWidth=${shape.maxProseWidth}` : ''
-  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}, inline ${shape.inline ? 'on' : 'off'}, links ${shape.links}${mpw}`
+  const ghostty = shape.terminal !== 'ghostty' ? '' : `${shape.graphemeLegacy ? ' grapheme-width-method=legacy' : ''}${shape.cellAdjust ? ` cell adjust ${JSON.stringify(shape.cellAdjust)}` : ''}`
+  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}${ghostty}, inline ${shape.inline ? 'on' : 'off'}, links ${shape.links}${mpw}`
 }
 
 /** MessageDisplay flushes for a reply: whole-line batches, the last final (it may end mid-line, or be empty). */

@@ -15,6 +15,21 @@ export interface Known {
 
 export const KNOWN: readonly Known[] = [
   {
+    id: 'FUZZ-12',
+    title: 'the landed text is scanned again: dollar signs the streaming left (currency, a `\\$` inside a formula) pair into new formulas',
+    keys: [/^resumed\/rows$/, /^phantom\/rescan$/, /:dollars-paired$/],
+  },
+  {
+    id: 'FUZZ-2',
+    title: 'with maxProseWidth narrower than the window, display previews (and refused notes) are laid out for the window and wrap',
+    keys: [/preview-wider-than-prose\(maxProseWidth\)/, /refused-note-wraps\(maxProseWidth\)/],
+  },
+  {
+    id: 'FUZZ-5',
+    title: 'a display preview line in a list item or quote is wider than the item text: it wraps while streaming',
+    keys: [/preview-wider-than-prose\((indent|quote|wide)\)/],
+  },
+  {
     id: 'FUZZ-1',
     title: 'a display formula in a list item cuts the list: the rest is drawn as a new text (a blank row added, nesting and numbering lost)',
     keys: [
@@ -24,11 +39,6 @@ export const KNOWN: readonly Known[] = [
       /^resumed\/(resumed-only-i|images-differ|live-only-i)$/,
       /^overPreview\/display:list>/,
     ],
-  },
-  {
-    id: 'FUZZ-2',
-    title: 'with maxProseWidth narrower than the window, display previews (and refused notes) are laid out for the window and wrap',
-    keys: [/preview-wider-than-prose\(maxProseWidth\)/, /refused-note-wraps\(maxProseWidth\)/],
   },
   {
     id: 'FUZZ-3',
@@ -44,19 +54,14 @@ export const KNOWN: readonly Known[] = [
   },
   {
     id: 'FUZZ-4',
-    title: 'an inline preview wider than its table cell or list item text is padded, wraps, and never gets its image',
+    title: 'an inline preview wider than its table cell or list item text, or than the row with punctuation glued to it, is padded, wraps, and never gets its image',
     keys: [
       /^inlineImage\/inline-missing:(table|list|heading|blockquote|paragraph)-laid-out$/,
-      /^padVisible\/pad:(table|list|blockquote)$/,
+      /^padVisible\/pad:(table|list|blockquote|paragraph)$/,
       // The formula after such a wrapped preview, misplaced by a cell (the replay's hard wrap puts its zero-width mark on the next row).
       /^predicted\/inline$/,
       /^overPreview\/inline:list>list$/,
     ],
-  },
-  {
-    id: 'FUZZ-5',
-    title: 'a display preview line in a list item or quote is wider than the item text: it wraps while streaming',
-    keys: [/preview-wider-than-prose\((indent|quote|wide)\)/],
   },
   {
     id: 'FUZZ-6',
@@ -81,7 +86,7 @@ export const KNOWN: readonly Known[] = [
       /^displayImage\/display-missing$/,
       /^overPreview\/quoted:/,
       /^unverified\/structure:opaque-blockquote/,
-      /^resumed\/resumed-only-q$/,
+      /^resumed\/(resumed|live)-only-q$/,
       /^overlap\/images-below-opaque$/,
     ],
   },
@@ -91,15 +96,10 @@ export const KNOWN: readonly Known[] = [
     keys: [/^moved\/(cells|rows):paragraph>text/],
   },
   {
-    id: 'FUZZ-12',
-    title: 'the landed text is scanned again: dollar signs the streaming left (currency, a `\\$` inside a formula) pair into new formulas',
-    keys: [/^resumed\/rows$/, /^phantom\/rescan$/],
-  },
-  {
     // Not failures: where the replay can't follow a part (rows unknown), the comparison can't be made.
     id: 'UNVERIFIED',
     title: 'parts the replay cannot follow differ between the streamed and landed drawings (can not be told offline)',
-    keys: [/^unverified\/structure:opaque-/],
+    keys: [/^unverified\/structure:opaque-/, /^unverified\/structure:\w+>opaque-/],
   },
   {
     id: 'FUZZ-10',
@@ -108,7 +108,7 @@ export const KNOWN: readonly Known[] = [
   },
 ]
 
-/** The finding that explains a failure, if any. */
+/** The finding that explains a failure, if any (the first that does: those named by a cause's tail come first). */
 export function knownCause(failure: Failure): Known | undefined {
   const key = `${failure.check}/${failure.cause}`
   return KNOWN.find(known => known.keys.some(pattern => pattern.test(key)))

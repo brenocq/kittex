@@ -16,7 +16,7 @@ import {
   scan,
   TexError,
 } from '../../../plugin/hooks/core.js'
-import type { RenderedImage, RenderEnv, InlineEnv } from '../../../plugin/hooks/core.js'
+import type { InkPlace, InlineEnv, RenderedImage, RenderEnv } from '../../../plugin/hooks/core.js'
 import {
   inlineEnvFor,
   inlineText,
@@ -74,7 +74,7 @@ function cached(key: string, draw: () => RenderedImage): ImageInfo {
 }
 
 function geometry(env: RenderEnv): string {
-  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx].join(',')
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.inkOver ? 'over' : ''].join(',')
 }
 
 function displayImage(tex: string, env: RenderEnv, rows?: number): ImageInfo {
@@ -82,8 +82,8 @@ function displayImage(tex: string, env: RenderEnv, rows?: number): ImageInfo {
   return cached(`d\n${geometry(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
 }
 
-function inlineImage(tex: string, env: InlineEnv, columns: number): ImageInfo {
-  return cached(`i\n${geometry(env)},${env.baselinePx}\n${columns}\n${tex}`, () => renderInline(tex, env, columns))
+function inlineImage(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): ImageInfo {
+  return cached(`i\n${geometry(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
 }
 
 // ─── Streaming ───────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export function land(text: string, store: readonly PreviewRecord[], shape: Shape
     draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
     width: proseWidthFor(env, columns),
     measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-    inline: images && shape.inline ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks } : undefined,
+    inline: images && shape.inline ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
   })
   const ms = performance.now() - start
   let pieces: Piece[]
@@ -164,7 +164,7 @@ export function land(text: string, store: readonly PreviewRecord[], shape: Shape
 
 export function contextFor(shape: Shape): DrawContext {
   const env = envFor(shape)
-  return { width: proseWidthFor(env, shape.columns), columns: shape.columns, mode: { hyperlinks: env.hyperlinks } }
+  return { width: proseWidthFor(env, shape.columns), columns: shape.columns, mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } }
 }
 
 // ─── Checks ──────────────────────────────────────────────────────────────────
@@ -335,16 +335,18 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
   for (const piece of live.pieces) {
     if (piece.kind !== 'prose') continue
     for (const inline of piece.inline ?? []) {
-      const record = streamed.store.find(record => record.inline && record.tex === inline.tex)
-      if (record?.columns !== undefined && inline.image.rows === 1 && inline.image.columns !== record.columns) {
-        fail('imageShape', 'inline-columns', `inline image ${JSON.stringify(inline.tex)} is ${inline.image.columns} columns for a ${record.columns}-column slot`)
+      // (A quoted display formula is drawn the same way, as wide as the quote: only an inline record's slot counts.)
+      const slots = streamed.store.filter(record => record.inline && record.tex === inline.tex).map(record => record.columns)
+      const quoted = streamed.store.some(record => !record.inline && record.quote !== undefined && record.tex === inline.tex)
+      if (!quoted && slots.length > 0 && inline.image.rows === 1 && !slots.includes(inline.image.columns)) {
+        fail('imageShape', 'inline-columns', `inline image ${JSON.stringify(inline.tex)} is ${inline.image.columns} columns for a ${slots[0]}-column slot`)
       }
     }
   }
 
   // Nothing moves; each image over its preview.
   const aligned = compareDrawings(streamDrawing, liveDrawing, fail, 'moved')
-  predictedOverPreview(liveDrawing, streamDrawing, streamed, fail, aligned)
+  predictedOverPreview(liveDrawing, streamDrawing, streamed, fail, aligned, ctx.mode.emojiSequences === true)
 
   // Raw LaTeX left at landing.
   rawLatex(markdown, live, shape, fail)
@@ -476,8 +478,8 @@ function firstDifference(streamed: Drawing, landed: Drawing, covered: Set<string
 }
 
 /** An inline preview's markdown as drawn: escapes read, as cells. */
-function previewCells(preview: string): string[] {
-  return cellsOf(preview.replace(/\\([`*_[|~#>])/g, '$1'))
+function previewCells(preview: string, sequences: boolean): string[] {
+  return cellsOf(preview.replace(/\\([`*_[|~#>])/g, '$1'), sequences)
 }
 
 /**
@@ -487,12 +489,12 @@ function previewCells(preview: string): string[] {
  * inline image are its preview's, and the rows under a display image are a
  * display preview's lines.
  */
-function predictedOverPreview(landed: Drawing, streamed: Drawing, stream: Streamed, fail: Fail, aligned: number): void {
+function predictedOverPreview(landed: Drawing, streamed: Drawing, stream: Streamed, fail: Fail, aligned: number, sequences: boolean): void {
   const previewsOf = new Map<string, string[][]>()
   for (const record of stream.store) {
     if (!record.inline) continue
     const list = previewsOf.get(record.tex) ?? []
-    list.push(previewCells(record.preview))
+    list.push(previewCells(record.preview, sequences))
     previewsOf.set(record.tex, list)
   }
   const matches = (row: Row | undefined, image: Placed, want: string[]) => {

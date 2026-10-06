@@ -56,7 +56,7 @@ function planned(text: string, records: readonly PreviewRecord[], shape: Shape):
     },
     width: proseWidthFor(env, shape.columns),
     measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-    inline: shape.inline ? { env: inlineEnv, width: proseWidthFor(env, shape.columns), columns: shape.columns, draw: (tex, cells) => renderInline(tex, inlineEnv, cells), hyperlinks: env.hyperlinks } : undefined,
+    inline: shape.inline ? { env: inlineEnv, width: proseWidthFor(env, shape.columns), columns: shape.columns, draw: (tex, cells, place) => renderInline(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
   })
   if (!plan.changed || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) return 0
   return plan.pieces.reduce((sum, piece) => sum + (piece.kind === 'image' ? 1 : piece.kind === 'prose' ? (piece.inline?.length ?? 0) : 0), 0)
@@ -65,7 +65,9 @@ function planned(text: string, records: readonly PreviewRecord[], shape: Shape):
 describe('the fuzz driver against register.tsx', () => {
   for (const seed of [11, 23, 42, 77, 108]) {
     test(`seed ${seed}: streamed and landed as the driver does`, { timeoutMs: 60_000 }, async ($, on) => {
-      const shape = { ...shapeFor(seed), inline: true }
+      // Ghostty's config (cell adjustments, grapheme width) isn't in this world: the plain terminal.
+      const { cellAdjust: _adjust, graphemeLegacy: _legacy, ...plain } = shapeFor(seed)
+      const shape: Shape = { ...plain, inline: true }
       await startIn($, on, shape)
       await init()
       const reply = writeReply(generateReply(seed))

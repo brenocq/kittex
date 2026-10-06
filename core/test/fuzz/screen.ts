@@ -5,7 +5,7 @@
 // over their pieces). Parts the replay can't follow are kept as opaque rows,
 // equal only to a part of the very same text.
 
-import { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, textWidth, wrapRows } from '../../../plugin/hooks/core.js'
+import { blockParts, charsOf, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, wrapRows } from '../../../plugin/hooks/core.js'
 import type { LinkMode } from '../../../plugin/hooks/core.js'
 import { REPLY_INDENT } from '../../../plugin/hooks/math.js'
 import type { Piece } from '../../../plugin/hooks/math.js'
@@ -53,20 +53,23 @@ export interface DrawContext {
 
 const BLANK: Row = { cells: [] }
 
-/** A text line as cells: wide characters take two, combining marks join the cell before. */
-export function cellsOf(line: string): string[] {
+/**
+ * A text line as cells: wide characters take two, combining marks join the
+ * cell before; with `sequences` (a terminal that draws emoji sequences as the
+ * engine counts them) an emoji sequence is one two-cell character.
+ */
+export function cellsOf(line: string, sequences = false): string[] {
   const cells: string[] = []
-  for (const char of line) {
-    const width = textWidth(char)
-    if (width === 0 && cells.length > 0) {
-      // a combining mark (or a zero-width mark) joins the cell before it, the second half of a wide one included
+  for (const char of charsOf(line, sequences)) {
+    const text = line.slice(char.start, char.end)
+    if (char.width === 0 && cells.length > 0) {
       let at = cells.length - 1
       while (at > 0 && cells[at] === '') at--
-      cells[at] += char
-    } else if (width === 2) {
-      cells.push(char, '')
+      cells[at] += text
+    } else if (char.width === 2) {
+      cells.push(text, '')
     } else {
-      cells.push(char)
+      cells.push(text)
     }
   }
   return cells
@@ -111,9 +114,9 @@ export function engineRows(text: string, ctx: DrawContext): Row[] {
     // As written: its lines wrapped, leading newlines and trailing whitespace dropped.
     const rows: Row[] = []
     for (const line of text.replace(/^\n+/, '').trimEnd().split('\n')) {
-      const wrapped = wrapRows(line, ctx.width)
+      const wrapped = wrapRows(line, ctx.width, ctx.mode.emojiSequences === true)
       if (!wrapped) return [{ opaque: text, part: 'text', source: text }]
-      rows.push(...wrapped.map(row => ({ cells: cellsOf(row), part: 'text', source: text })))
+      rows.push(...wrapped.map(row => ({ cells: cellsOf(row, ctx.mode.emojiSequences === true), part: 'text', source: text })))
     }
     return text.trim() === '' ? [] : rows
   }
@@ -146,15 +149,15 @@ function partRows(source: string, part: NonNullable<ReturnType<typeof blockParts
   else if (part.quote) lines = layoutQuote(markdown, ctx.width, [], ctx.mode)?.lines
   else if (part.table) lines = layoutTable(markdown, ctx.columns, [], ctx.width, ctx.mode)?.lines
   if (!lines) return [{ opaque: source, source }]
-  return laidOut(lines, source)
+  return laidOut(lines, source, ctx.mode.emojiSequences === true)
 }
 
 /** A part's laid-out lines as rows (preview lines' glyphs drawn back as blanks), each knowing its part's source. */
-function laidOut(lines: string[], source: string): Row[] {
+function laidOut(lines: string[], source: string, sequences: boolean): Row[] {
   return lines.map(line =>
     line.includes(PAD_GLYPH)
-      ? { cells: cellsOf(line.replaceAll(PAD_GLYPH, ' ').replaceAll(SPACE_GLYPH, ' ').replaceAll(LT_GLYPH, '<')), preview: true, source }
-      : { cells: cellsOf(line.replaceAll(SPACE_GLYPH, ' ')), source },
+      ? { cells: cellsOf(line.replaceAll(PAD_GLYPH, ' ').replaceAll(SPACE_GLYPH, ' ').replaceAll(LT_GLYPH, '<'), sequences), preview: true, source }
+      : { cells: cellsOf(line.replaceAll(SPACE_GLYPH, ' '), sequences), source },
   )
 }
 
@@ -184,7 +187,7 @@ export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext): Drawi
       for (let r = 0; r < piece.image.rows; r++) rows.push({ cells: [], part: 'image' })
       images.push({ kind: 'display', tex: piece.tex, row: top, col: 0, rows: piece.image.rows, columns: piece.image.columns, bound: ctx.columns - 2 })
     } else {
-      rows.push({ cells: cellsOf(piece.text), note: 'note', part: 'note' })
+      rows.push({ cells: cellsOf(piece.text, ctx.mode.emojiSequences === true), note: 'note', part: 'note' })
     }
   }
   return { rows, images }
