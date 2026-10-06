@@ -7,6 +7,7 @@
 
 import {
   createLineScanner,
+  blockParts,
   layoutList,
   layoutProse,
   measureDisplay,
@@ -14,7 +15,6 @@ import {
   previewDisplay,
   GlyphError,
   previewInline,
-  proseBlocks,
   scan,
   TexError,
   textWidth,
@@ -582,19 +582,22 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 }
 
 /**
- * Whether inline math written next, after `written`, lands in a block whose
- * inline previews get images at landing (proseBlocks, the rule the landed
- * drawing uses): a plain paragraph, or the text of a list item in a list the
- * replay follows so far (`width`: the width prose wraps at). Anywhere else (a
- * heading, a quote, a table) the formula is drawn as plain Unicode, so
- * streaming writes it unpadded: padding there would stay behind as gaps.
+ * Whether inline math written next, after `written`, lands in a part whose
+ * inline previews get images at landing (blockParts, the rule the landed
+ * drawing uses): a paragraph, or the text of a list item in a list the replay
+ * follows so far (`width`: the width prose wraps at), whether or not a blank
+ * line sets it apart from a heading, a code block or a list before it. A
+ * part's drawing never depends on what comes after it, so the decision holds
+ * whatever the next lines are. Anywhere else (a heading, a quote, a table) the
+ * formula is drawn as plain Unicode, so streaming writes it unpadded: padding
+ * there would stay behind as gaps.
  */
 export function placeable(written: string, width: number): boolean {
   // A table's first row reads as a paragraph until its delimiter row arrives.
   if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
-  const last = proseBlocks(text)?.at(-1)
+  const last = blockParts(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
   if (last.paragraph) return true
   return last.list === true && layoutList(text.slice(last.start, last.end), width) !== null
@@ -912,11 +915,15 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
 
 /**
  * Gives the inline previews marked in prose pieces their images. A paragraph
- * or a list holding previews, set apart by blank lines, is drawn as a piece of
- * its own (so its first row is the piece's), laid out as the engine lays it
- * out, and each preview drawn whole on one row gets its image there. Everything else
- * keeps its text: previews streamed padded stay as they were shown, math read
- * back as LaTeX goes back to its plain Unicode.
+ * or a list holding previews is drawn as a piece of its own (so its first row
+ * is the piece's), laid out as the engine lays it out, and each preview drawn
+ * whole on one row gets its image there. It is cut out of the text at the
+ * blank lines around it, or, inside a block of several parts (a heading or a
+ * paragraph right above it, a code block right under it), between its tokens:
+ * each piece then has a blank row above it where the engine's drawing of the
+ * whole has one (blockParts). Everything else keeps its text: previews
+ * streamed padded stay as they were shown, math read back as LaTeX goes back
+ * to its plain Unicode.
  */
 function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], options: PlanOptions): Piece[] {
   const out: Piece[] = []
@@ -939,10 +946,11 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
     text += piece.text.slice(last)
 
     // The paragraphs and lists whose inline previews get images, and the quotes whose display previews do.
-    const parts: { start: number; end: number; images: InlineImage[] }[] = []
+    const parts: { start: number; end: number; gap: boolean; images: InlineImage[] }[] = []
     const placed = new Set<SourceSpan>()
     const overlays = spans.some(span => span.mark.rows !== undefined)
-    for (const block of (options.inline || overlays ? proseBlocks(text) : null) ?? []) {
+    const blocks = (options.inline || overlays ? blockParts(text) : null) ?? []
+    for (const block of blocks) {
       const inside = spans.filter(span => span.start >= block.start && span.end <= block.end)
       const inline = inside.filter(span => span.mark.rows === undefined)
       const quoted = inside.filter(span => span.mark.rows !== undefined)
@@ -953,7 +961,7 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
         images = placeQuoted(text.slice(block.start, block.end), quoted, block.start, options)
       }
       for (const [span] of images) placed.add(span)
-      if (images.length > 0) parts.push({ start: block.start, end: block.end, images: images.map(([, image]) => image) })
+      if (images.length > 0) parts.push({ start: block.start, end: block.end, gap: block.gap, images: images.map(([, image]) => image) })
     }
 
     // Text outside those images, with math read back as LaTeX in its plain form.
@@ -967,26 +975,24 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
       }
       return written + text.slice(at, to)
     }
-    // Split at the blank lines around them: each later piece has a blank row above it, as the whole had.
+    // Split around them: each later piece has a blank row above it where the whole had one.
+    // The text after a piece starts with the next part: its gap is that part's.
+    const gapAt = (from: number) => blocks.find(block => block.start >= from)?.gap ?? true
     let at = 0
-    let gap = piece.gap
     for (const part of parts) {
       let before = plain(at, part.start).replace(/(?:\n[ \t]*)+$/, '')
       if (at > 0) before = before.replace(/^(?:[ \t]*\n)+/, '')
-      if (before.trim() !== '') {
-        out.push({ kind: 'prose', text: before, gap })
-        gap = true
-      }
+      const first = at === 0 && before.trim() === ''
+      if (before.trim() !== '') out.push({ kind: 'prose', text: before, gap: at === 0 ? piece.gap : gapAt(at) })
       // As laid out: previews that got no image keep their padded form (their plain one could move the others).
-      out.push({ kind: 'prose', text: text.slice(part.start, part.end), gap, inline: part.images })
-      gap = true
+      out.push({ kind: 'prose', text: text.slice(part.start, part.end), gap: first ? piece.gap : part.gap, inline: part.images })
       at = part.end
     }
     const after = plain(at, text.length)
     if (at === 0) {
       out.push({ kind: 'prose', text: after, gap: piece.gap })
     } else if (after.trim() !== '') {
-      out.push({ kind: 'prose', text: after.replace(/^(?:[ \t]*\n)+/, ''), gap: true })
+      out.push({ kind: 'prose', text: after.replace(/^(?:[ \t]*\n)+/, ''), gap: gapAt(at) })
     }
   }
   return out
