@@ -5,7 +5,20 @@ import type { CellBox, RasterOptions, RGB, TypesetResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
-export { cellProbe, chooseInk, colorProbes, detectTerminal, emPxForCell } from './terminal/index.js'
+export {
+  cellProbe,
+  cellProbes,
+  chooseInk,
+  claudeCustomThemePath,
+  claudeThemeInk,
+  claudeThemeScheme,
+  colorProbes,
+  detectTerminal,
+  emPxForCell,
+  readTerminalColors,
+  toHex,
+} from './terminal/index.js'
+export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
 export { createLineScanner, encodePng, initTypeset, measure, rasterize, scan, TexError, texToMathML, toUnicode, typeset }
 
 /** Where a display formula is drawn. */
