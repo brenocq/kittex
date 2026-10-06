@@ -596,7 +596,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
       const width = proseWidthFor(env)
       // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
       const inline =
-        env.inline && env.images && placeable(written, width, env.columns, { hyperlinks: env.hyperlinks })
+        env.inline && env.images && placeable(written, width, env.columns, { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences })
           ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written))
           : null
       if (inline) {
@@ -639,15 +639,15 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
  * drawing uses): a paragraph, a heading, a list, a blockquote or a table the
  * replay follows so far (`width`: the width prose wraps at; `columns`: the
  * terminal's width, which tables are laid out in; `mode`: how the engine
- * draws links), whether or not a blank line sets it apart from the part
- * before it. A part's drawing never depends on what comes after it, so once
- * the part written so far can't be laid out (a character of unknown width,
- * an image) it never will be. A table's first row reads as a paragraph until
- * its delimiter row arrives, and is padded as one. Anywhere else (a code
- * block, a part the replay doesn't follow) the formula is drawn as plain
- * Unicode, so streaming writes it unpadded: padding there would stay behind
- * as gaps. What comes later in the part may still refuse it, leaving the
- * formulas padded before it as gaps: the stream can't tell.
+ * draws links and the terminal emoji sequences), whether or not a blank line
+ * sets it apart from the part before it. A part's drawing never depends on
+ * what comes after it, so once the part written so far can't be laid out (a
+ * character of unknown width, an image) it never will be. A table's first row
+ * reads as a paragraph until its delimiter row arrives, and is padded as one.
+ * Anywhere else (a code block, a part the replay doesn't follow) the formula
+ * is drawn as plain Unicode, so streaming writes it unpadded: padding there
+ * would stay behind as gaps. What comes later in the part may still refuse
+ * it, leaving the formulas padded before it as gaps: the stream can't tell.
  */
 export function placeable(written: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
@@ -759,10 +759,10 @@ export interface PlanOptions {
    * Inline math drawn as images: where (one text row), the width prose wraps
    * at, the terminal's width (tables are laid out in it; the reply column and
    * two cells when absent), the drawing (throws TexError), and how the engine
-   * draws links (`hyperlinks`, KittexEnv's). Absent: inline math stays
-   * Unicode.
+   * draws links and the terminal emoji sequences (`hyperlinks`,
+   * `emojiSequences`, KittexEnv's). Absent: inline math stays Unicode.
    */
-  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined }
+  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined; emojiSequences?: boolean | undefined }
 }
 
 interface Span {
@@ -1074,6 +1074,11 @@ function maxColumnsOf(options: PlanOptions): number {
   return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
 }
 
+/** How the engine draws links and the terminal emoji sequences, for the replays. */
+function modeOf(inline: PlanOptions['inline']): LinkMode {
+  return { hyperlinks: inline?.hyperlinks, emojiSequences: inline?.emojiSequences }
+}
+
 /** A replay of the engine's drawing of a part (layoutProse and the others). */
 type Layout = (markdown: string, width: number, spans: readonly SourceSpan[], mode: LinkMode) => ProseLayout | null
 
@@ -1095,7 +1100,7 @@ function placeImages(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
-    { hyperlinks: inline.hyperlinks },
+    modeOf(inline),
   )
   return layout ? inlineImages(spans, layout.places, inline) : []
 }
@@ -1145,7 +1150,7 @@ function placeQuote(
   const layout = layoutQuote(quote, options.inline?.width ?? options.width ?? options.maxColumns, [
     ...inline.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
     ...quoted.map(firstLine),
-  ], { hyperlinks: options.inline?.hyperlinks })
+  ], modeOf(options.inline))
   if (!layout) return placeQuoted(quote, quoted, offset, options)
   const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline) : []
   for (const [k, span] of quoted.entries()) {
@@ -1188,7 +1193,7 @@ function placeQuoted(
   for (const span of spans) {
     const before = inner(at, span.start - offset)
     if (before !== '') {
-      const layout = layoutProse(before, span.mark.columns)
+      const layout = layoutProse(before, span.mark.columns, [], modeOf(options.inline))
       if (!layout) break
       row += layout.rows + 1
     }

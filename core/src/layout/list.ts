@@ -55,7 +55,11 @@ export class Canvas {
   private readonly cells: string[][] = []
   rows = 0
 
-  constructor(readonly width: number) {}
+  /** `sequences`: emoji sequences are characters (charAt). */
+  constructor(
+    readonly width: number,
+    readonly sequences = false,
+  ) {}
 
   /** Puts text that isn't from a span (a marker) at a cell. */
   put(text: string, row: number, col: number): void {
@@ -72,11 +76,11 @@ export class Canvas {
     let r = top
     let at = 0
     for (const line of visible.text.split('\n')) {
-      const wrapped = wrapLine(line, width)
+      const wrapped = wrapLine(line, width, true, this.sequences)
       if (!wrapped) return false
       this.grow(r + wrapped.rows)
       for (let i = 0; i < line.length; i++) {
-        this.unit(line[i]!, visible.source[at + i]!, r + wrapped.row[i]!, left + wrapped.col[i]!, !wrapped.hidden[i])
+        this.unit(line[i]!, visible.source[at + i]!, r + wrapped.row[i]!, left + wrapped.col[i]!, !wrapped.hidden[i], wrapped.cells[i]!)
       }
       // The line break itself, as layoutProse counts it.
       this.text.push('\n')
@@ -100,9 +104,11 @@ export class Canvas {
   /**
    * Puts one UTF-16 unit of drawn text at a cell (its column as wrapLine
    * gives it); `drawn: false` counts it without drawing it (a space the
-   * engine hides at a row's start).
+   * engine hides at a row's start). `cells`: the cells of the character the
+   * unit starts, as wrapLine gives them (-1: the unit continues the character
+   * before it, in its cell); by default, its code point's.
    */
-  unit(unit: string, source: number, row: number, col: number, drawn = true): void {
+  unit(unit: string, source: number, row: number, col: number, drawn = true, cells?: number): void {
     this.grow(row + 1)
     this.text.push(unit)
     this.source.push(source)
@@ -110,24 +116,24 @@ export class Canvas {
     this.col.push(col)
     this.end.push(false)
     if (!drawn) return
-    const cells = this.cells[row]!
+    const line = this.cells[row]!
     const code = unit.charCodeAt(0)
     let width: number
-    if (code >= 0xdc00 && code <= 0xdfff) {
-      // The low half of a pair joins its high half, in the same cell: the pair is one character.
-      cells[col] = (cells[col] ?? '') + unit
-      width = codeWidth(cells[col]!.codePointAt(0)!)
+    if (cells === undefined ? code >= 0xdc00 && code <= 0xdfff : cells < 0) {
+      // The rest of a character (a pair's low half, a combining mark, an emoji sequence) joins its cell.
+      line[col] = (line[col] ?? '') + unit
+      width = cells === undefined ? codeWidth(line[col]!.codePointAt(0)!) : 0
     } else if (code < 0xd800 && codeWidth(code) === 0) {
       // A combining mark joins the cell before it.
       const at = Math.max(0, col - 1)
-      cells[at] = (cells[at] ?? '') + unit
+      line[at] = (line[at] ?? '') + unit
       return
     } else {
-      cells[col] = unit
-      width = codeWidth(code)
+      line[col] = unit
+      width = cells ?? codeWidth(code)
     }
     // A wide character (an emoji) covers the cell after it too.
-    if (width === 2) cells[col + 1] = ''
+    if (width === 2) line[col + 1] = ''
   }
 
   lines(): string[] {
@@ -155,7 +161,7 @@ export function drawList(markdown: string, width: number, mode: LinkMode = {}): 
   } catch {
     return null
   }
-  const canvas = new Canvas(width)
+  const canvas = new Canvas(width, mode.emojiSequences === true)
   let at = 0
   let listed = false
   let after = ''

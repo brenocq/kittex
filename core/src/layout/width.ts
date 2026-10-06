@@ -2,9 +2,10 @@
  * Terminal cells a character takes, as Claude Code measures it
  * (`Bun.stringWidth` with ambiguous characters narrow) and as kitty and
  * Ghostty draw it, for the characters kittex can be sure of. Everything else
- * is unknown (-1): emoji sequences and presentation selectors, wide East Asian
- * text, control and format characters, private use. A line holding an unknown
- * character can't be laid out exactly, so it keeps its Unicode math.
+ * is unknown (-1): wide East Asian text, control and format characters,
+ * private use, and the emoji sequences the terminal may draw otherwise. A line
+ * holding an unknown character can't be laid out exactly, so it keeps its
+ * Unicode math.
  */
 
 /**
@@ -80,10 +81,7 @@ const NARROW: readonly (readonly [number, number])[] = [
  * since 0.26.4 (Unicode 15.0). Left out: newer emoji (a terminal older than
  * its Unicode 16 update draws them one cell wide), regional indicators (a
  * lone one is one cell to the engine and two to both terminals) and skin-tone
- * modifiers (they join the emoji before them). Whatever joins an emoji (a
- * presentation selector, a modifier, a zero-width joiner, a keycap, tags, a
- * combining mark) is unknown, so sequences are refused: the terminals' widths
- * for them vary with version and settings (Ghostty's grapheme-width-method).
+ * modifiers (they join the emoji before them). Sequences are read by charAt.
  */
 const EMOJI: readonly (readonly [number, number])[] = [
   [0x231a, 0x231b],
@@ -169,6 +167,45 @@ const EMOJI: readonly (readonly [number, number])[] = [
   [0x1faf0, 0x1faf8],
 ]
 
+/**
+ * Code points that are emoji with U+FE0F after them and text without it
+ * (emoji-variation-sequences, Unicode 15.1), the keycap bases `#*0-9` left
+ * out: `1️` is one cell to the engine and two to kitty.
+ */
+const TEXT_EMOJI: readonly (readonly [number, number])[] = [
+  [0xa9, 0xa9], [0xae, 0xae], [0x203c, 0x203c], [0x2049, 0x2049], [0x2122, 0x2122], [0x2139, 0x2139],
+  [0x2194, 0x2199], [0x21a9, 0x21aa], [0x2328, 0x2328], [0x23cf, 0x23cf], [0x23ed, 0x23ef], [0x23f1, 0x23f2],
+  [0x23f8, 0x23fa], [0x24c2, 0x24c2], [0x25aa, 0x25ab], [0x25b6, 0x25b6], [0x25c0, 0x25c0], [0x25fb, 0x25fc],
+  [0x2600, 0x2604], [0x260e, 0x260e], [0x2611, 0x2611], [0x2618, 0x2618], [0x261d, 0x261d], [0x2620, 0x2620],
+  [0x2622, 0x2623], [0x2626, 0x2626], [0x262a, 0x262a], [0x262e, 0x262f], [0x2638, 0x263a], [0x2640, 0x2640],
+  [0x2642, 0x2642], [0x265f, 0x2660], [0x2663, 0x2663], [0x2665, 0x2666], [0x2668, 0x2668], [0x267b, 0x267b],
+  [0x267e, 0x267e], [0x2692, 0x2692], [0x2694, 0x2697], [0x2699, 0x2699], [0x269b, 0x269c], [0x26a0, 0x26a0],
+  [0x26a7, 0x26a7], [0x26b0, 0x26b1], [0x26c8, 0x26c8], [0x26cf, 0x26cf], [0x26d1, 0x26d1], [0x26d3, 0x26d3],
+  [0x26e9, 0x26e9], [0x26f0, 0x26f1], [0x26f4, 0x26f4], [0x26f7, 0x26f9], [0x2702, 0x2702], [0x2708, 0x2709],
+  [0x270c, 0x270d], [0x270f, 0x270f], [0x2712, 0x2712], [0x2714, 0x2714], [0x2716, 0x2716], [0x271d, 0x271d],
+  [0x2721, 0x2721], [0x2733, 0x2734], [0x2744, 0x2744], [0x2747, 0x2747], [0x2763, 0x2764], [0x27a1, 0x27a1],
+  [0x2934, 0x2935], [0x2b05, 0x2b07], [0x3030, 0x3030], [0x303d, 0x303d], [0x3297, 0x3297], [0x3299, 0x3299],
+  [0x1f170, 0x1f171], [0x1f17e, 0x1f17f], [0x1f202, 0x1f202], [0x1f237, 0x1f237], [0x1f321, 0x1f321], [0x1f324, 0x1f32c],
+  [0x1f336, 0x1f336], [0x1f37d, 0x1f37d], [0x1f396, 0x1f397], [0x1f399, 0x1f39b], [0x1f39e, 0x1f39f], [0x1f3cb, 0x1f3ce],
+  [0x1f3d4, 0x1f3df], [0x1f3f3, 0x1f3f3], [0x1f3f5, 0x1f3f5], [0x1f3f7, 0x1f3f7], [0x1f43f, 0x1f43f], [0x1f441, 0x1f441],
+  [0x1f4fd, 0x1f4fd], [0x1f549, 0x1f54a], [0x1f56f, 0x1f570], [0x1f573, 0x1f579], [0x1f587, 0x1f587], [0x1f58a, 0x1f58d],
+  [0x1f590, 0x1f590], [0x1f5a5, 0x1f5a5], [0x1f5a8, 0x1f5a8], [0x1f5b1, 0x1f5b2], [0x1f5bc, 0x1f5bc], [0x1f5c2, 0x1f5c4],
+  [0x1f5d1, 0x1f5d3], [0x1f5dc, 0x1f5de], [0x1f5e1, 0x1f5e1], [0x1f5e3, 0x1f5e3], [0x1f5e8, 0x1f5e8], [0x1f5ef, 0x1f5ef],
+  [0x1f5f3, 0x1f5f3], [0x1f5fa, 0x1f5fa], [0x1f6cb, 0x1f6cb], [0x1f6cd, 0x1f6cf], [0x1f6e0, 0x1f6e5], [0x1f6e9, 0x1f6e9],
+  [0x1f6f0, 0x1f6f0], [0x1f6f3, 0x1f6f3],
+]
+
+/** Emoji a skin-tone modifier may follow (Emoji_Modifier_Base, Unicode 15.1). */
+const MODIFIER_BASE: readonly (readonly [number, number])[] = [
+  [0x261d, 0x261d], [0x26f9, 0x26f9], [0x270a, 0x270d], [0x1f385, 0x1f385], [0x1f3c2, 0x1f3c4], [0x1f3c7, 0x1f3c7],
+  [0x1f3ca, 0x1f3cc], [0x1f442, 0x1f443], [0x1f446, 0x1f450], [0x1f466, 0x1f478], [0x1f47c, 0x1f47c], [0x1f481, 0x1f483],
+  [0x1f485, 0x1f487], [0x1f48f, 0x1f48f], [0x1f491, 0x1f491], [0x1f4aa, 0x1f4aa], [0x1f574, 0x1f575], [0x1f57a, 0x1f57a],
+  [0x1f590, 0x1f590], [0x1f595, 0x1f596], [0x1f645, 0x1f647], [0x1f64b, 0x1f64f], [0x1f6a3, 0x1f6a3], [0x1f6b4, 0x1f6b6],
+  [0x1f6c0, 0x1f6c0], [0x1f6cc, 0x1f6cc], [0x1f90c, 0x1f90c], [0x1f90f, 0x1f90f], [0x1f918, 0x1f91f], [0x1f926, 0x1f926],
+  [0x1f930, 0x1f939], [0x1f93c, 0x1f93e], [0x1f977, 0x1f977], [0x1f9b5, 0x1f9b6], [0x1f9b8, 0x1f9b9], [0x1f9bb, 0x1f9bb],
+  [0x1f9cd, 0x1f9cf], [0x1f9d1, 0x1f9dd], [0x1fac3, 0x1fac5], [0x1faf0, 0x1faf8],
+]
+
 function within(ranges: readonly (readonly [number, number])[], code: number): boolean {
   let lo = 0
   let hi = ranges.length - 1
@@ -190,18 +227,104 @@ export function codeWidth(code: number): number {
   return -1
 }
 
+const VS16 = 0xfe0f
+const ZWJ = 0x200d
+const KEYCAP = 0x20e3
+const isTone = (code: number) => code >= 0x1f3fb && code <= 0x1f3ff
+const isRegional = (code: number) => code >= 0x1f1e6 && code <= 0x1f1ff
+const isKeycapBase = (code: number) => code === 0x23 || code === 0x2a || (code >= 0x30 && code <= 0x39)
+const unitsOf = (code: number) => (code > 0xffff ? 2 : 1)
+
+/** One character of a text: the UTF-16 units `[start, end)` and the cells it takes (-1: unknown). */
+export interface Char {
+  start: number
+  end: number
+  width: number
+}
+
 /**
- * Cells a string takes, or -1 when it holds a character of unknown width or a
- * combining mark on an emoji (the cluster's width isn't certain).
+ * The character at `at`: a code point and the combining marks after it, or,
+ * with `sequences` (a terminal that draws them as the engine counts them),
+ * one emoji grapheme cluster, two cells wide. The engine wraps each such
+ * multi-code-point cluster as one two-cell stand-in (its wrap swaps it for
+ * U+2FA1D before Bun.wrapAnsi), so it never breaks across rows. A cluster is
+ * an emoji followed by U+FE0F or a skin-tone modifier, zero-width joiners
+ * chaining such emoji, a pair of regional indicators (a flag), or a keycap
+ * with U+FE0F (`1️⃣`). Unknown: a lone regional indicator or modifier, a
+ * keycap without U+FE0F (one cell to kitty), tags (subdivision flags), U+FE0E,
+ * emoji newer than Unicode 15.1, a combining mark on an emoji or on a space
+ * (the engine joins it to the space, which then breaks no line). The engine
+ * draws a cluster of three UTF-16 units or more that lands in the terminal's
+ * last two columns as `…` (measured): nothing on the row moves, so laid-out
+ * rows keep the cluster.
  */
-export function textWidth(text: string): number {
+export function charAt(text: string, at: number, sequences = false): Char {
+  const code = text.codePointAt(at)!
+  let end = at + unitsOf(code)
+  let width = codeWidth(code)
+  if (sequences) {
+    const cluster = emojiEnd(text, at)
+    if (cluster > end) {
+      end = cluster
+      width = 2
+    }
+  }
+  while (end < text.length && within(COMBINING, text.charCodeAt(end))) {
+    if (width === 2 || code === 0x20) width = -1
+    end += 1
+  }
+  return { start: at, end, width }
+}
+
+/** Where the emoji sequence at `at` ends (at `at` when there is none). */
+function emojiEnd(text: string, at: number): number {
+  const code = text.codePointAt(at)!
+  const next = at + unitsOf(code)
+  if (isRegional(code)) return isRegional(text.codePointAt(next) ?? 0) ? next + 2 : at
+  if (isKeycapBase(code)) return text.charCodeAt(next) === VS16 && text.charCodeAt(next + 1) === KEYCAP ? next + 2 : at
+  let end = emojiElement(text, at, true)
+  while (end > at && text.charCodeAt(end) === ZWJ) {
+    const joined = emojiElement(text, end + 1, false)
+    if (joined < 0) break
+    end = joined
+  }
+  return Math.max(at, end)
+}
+
+/**
+ * Where the emoji at `at` ends, with its U+FE0F or skin tone, or -1 when there
+ * is none. The first of a sequence is drawn as an emoji (by default or with
+ * U+FE0F), and sets its width; a joined one may be a text-default emoji.
+ */
+function emojiElement(text: string, at: number, first: boolean): number {
+  const code = text.codePointAt(at)
+  if (code === undefined) return -1
+  const end = at + unitsOf(code)
+  const pictured = within(EMOJI, code)
+  if (!pictured && !within(TEXT_EMOJI, code)) return -1
+  const next = text.codePointAt(end) ?? 0
+  if (next === VS16) return end + 1
+  if (isTone(next) && within(MODIFIER_BASE, code)) return end + 2
+  return pictured || !first ? end : -1
+}
+
+/** The characters of a text, in order (see charAt). */
+export function charsOf(text: string, sequences = false): Char[] {
+  const chars: Char[] = []
+  for (let at = 0; at < text.length; ) {
+    const char = charAt(text, at, sequences)
+    chars.push(char)
+    at = char.end
+  }
+  return chars
+}
+
+/** Cells a string takes, or -1 when it holds a character of unknown width (see charAt). */
+export function textWidth(text: string, sequences = false): number {
   let cells = 0
-  let wide = false
-  for (const char of text) {
-    const width = codeWidth(char.codePointAt(0)!)
-    if (width < 0 || (width === 0 && wide)) return -1
-    wide = width === 2
-    cells += width
+  for (const char of charsOf(text, sequences)) {
+    if (char.width < 0) return -1
+    cells += char.width
   }
   return cells
 }

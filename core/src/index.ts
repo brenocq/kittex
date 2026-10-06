@@ -1,4 +1,4 @@
-import { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
+import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
@@ -15,14 +15,15 @@ export {
   claudeThemeScheme,
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   emPxForCell,
   readTerminalColors,
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
-export { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
-export type { BlockPart, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
+export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
+export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
 /** Where a display formula is drawn. */
 export interface RenderEnv {

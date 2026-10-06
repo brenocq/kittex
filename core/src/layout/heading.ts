@@ -20,7 +20,7 @@ import type { VisibleText } from './prose.js'
 export function drawHeading(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
   const visible = visibleHeading(markdown, mode)
   if (!visible || !(width >= 1)) return null
-  const canvas = new Canvas(width)
+  const canvas = new Canvas(width, mode.emojiSequences === true)
   return canvas.draw(visible, 0, 0, width) ? canvas : null
 }
 
