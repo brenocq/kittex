@@ -32,6 +32,8 @@ export { recolorPng }
  *   by default) and the baseline sits at the given pixel row, the terminal
  *   font's own; scale < 1 also when the formula's height above the baseline or
  *   depth below it, plus the dilation, would leave the image (rows never grow).
+ *   Before shrinking, the baseline may move by up to BASELINE_SHIFT of the cell
+ *   height (a pixel at 26 px) towards the side with room.
  */
 
 /**
@@ -49,6 +51,9 @@ export { recolorPng }
  * formula looks the same at every resolution.
  */
 export const DEFAULT_WEIGHT = 15
+
+/** How far an inline formula's baseline may move from the font's, as a fraction of the cell height (at least a pixel). */
+export const BASELINE_SHIFT = 0.04
 
 interface Layout extends CellBox {
   widthPx: number
@@ -77,6 +82,7 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
   const availHeight = 255 * cellHeight - 2 * pad
   const inline = options.baselinePx !== undefined
   let scale = 1
+  let inlineBaseline = 0
   if (width * emPx > availWidth) scale = Math.max(0, availWidth) / (width * emPx)
   if (inline) {
     // The dilation scales with the formula, so the ink at scale s spans (height × emPx + dilation) × s above the baseline.
@@ -84,8 +90,18 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     const baseline = Math.min(heightPx, Math.max(0, Math.round(options.baselinePx!)))
     const above = Math.max(0, result.height) * emPx + dilation0
     const below = Math.max(0, result.depth) * emPx + dilation0
-    if (above * scale > baseline) scale = baseline / above
-    if (below * scale > heightPx - baseline) scale = (heightPx - baseline) / below
+    // The baseline may move a pixel or so (towards the side with room) rather
+    // than shrink the formula: a subscript with a descender (a_{ij}) fits.
+    const shift = Math.max(1, Math.round(cellHeight * BASELINE_SHIFT))
+    const fit = (at: number) => Math.min(scale, above > 0 ? at / above : Infinity, below > 0 ? (heightPx - at) / below : Infinity)
+    let best = baseline
+    for (let d = 1; d <= shift; d++) {
+      for (const at of [baseline - d, baseline + d]) {
+        if (at >= 0 && at <= heightPx && fit(at) > fit(best) + 1e-9) best = at
+      }
+    }
+    inlineBaseline = best
+    scale = fit(best)
   } else if (boxHeight * emPx * scale > availHeight) {
     scale = Math.max(0, availHeight) / (boxHeight * emPx)
   }
@@ -93,14 +109,15 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
   const inkWidth = width * k + 2 * pad
   const inkHeight = boxHeight * k + 2 * pad
 
+  const minColumns = Math.max(1, Math.floor(options.minColumns ?? 1))
   const columns =
-    options.align === 'center' ? maxColumns : Math.min(maxColumns, Math.max(1, Math.ceil(inkWidth / cellWidth - 1e-9)))
+    options.align === 'center' ? maxColumns : Math.min(maxColumns, Math.max(minColumns, Math.ceil(inkWidth / cellWidth - 1e-9)))
   const rows = inline ? minRows : Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)))
   const widthPx = Math.max(1, Math.round(columns * cellWidth))
   const heightPx = Math.max(1, Math.round(rows * cellHeight))
   const originX = options.align === 'center' ? Math.round((widthPx - width * k) / 2) : pad
   const baselinePx = inline
-    ? Math.min(heightPx, Math.max(0, Math.round(options.baselinePx!)))
+    ? inlineBaseline
     : Math.round((heightPx - inkHeight) / 2 + pad + Math.max(0, result.height) * k)
   return { columns, rows, scale, widthPx, heightPx, k, dilation: dilation0 * scale, originX, baselinePx }
 }

@@ -330,6 +330,22 @@ describe('display $$', () => {
   })
 })
 
+describe('a blank line inside a display block', () => {
+  test('is held while an environment in the block is open', () => {
+    const tex = '\\begin{aligned}\na &= b \\\\\n\nc &= d\n\\end{aligned}'
+    expect(maths(`$$\n${tex}\n$$`)).toMatchObject([{ tex, display: true, delimiter: '$$' }])
+    expect(maths(`\\[\n${tex}\n\\]`)).toMatchObject([{ tex, display: true }])
+    expect(maths(tex)).toMatchObject([{ tex, display: true, delimiter: 'env' }])
+  })
+
+  test('ends the block otherwise: no environment open, or two blank lines', () => {
+    expect(maths('$$\na = b\n\nc = d\n$$')).toEqual([])
+    expect(maths('$$\n\\begin{aligned}\na &= b\n\n\nc &= d\n\\end{aligned}\n$$')).toEqual([])
+    // The $$ block gives up; the aligned on lines of its own is still display math.
+    expect(maths('$$\n\\begin{aligned}\na &= b\n\\end{aligned}\n\nc\n$$')).toMatchObject([{ delimiter: 'env', tex: '\\begin{aligned}\na &= b\n\\end{aligned}' }])
+  })
+})
+
 describe('display \\[ \\]', () => {
   test('multi-line and one-line', () => {
     expect(view('\\[\nx\n\\]')).toEqual([['\\[', true, 'x']])
@@ -387,9 +403,18 @@ describe('display environments', () => {
     ])
   })
 
+  test('bare matrices, cases, aligned, array and CD are display math, their \\\\ kept', () => {
+    for (const env of ['pmatrix', 'bmatrix', 'vmatrix', 'Bmatrix', 'cases', 'aligned', 'gathered', 'CD']) {
+      const tex = `\\begin{${env}}\na & b \\\\\nc & d\n\\end{${env}}`
+      expect(maths(`Text.\n\n${tex}\n\nMore.`), env).toMatchObject([{ tex, display: true, delimiter: 'env' }])
+    }
+    const array = '\\begin{array}{cc}\n1 & 2 \\\\\n3 & 4\n\\end{array}'
+    expect(maths(array)).toMatchObject([{ tex: array, display: true, delimiter: 'env' }])
+  })
+
   test('other environments are text', () => {
-    expect(maths('\\begin{aligned}\na &= b\n\\end{aligned}')).toEqual([])
     expect(maths('\\begin{itemize}\n\\item x\n\\end{itemize}')).toEqual([])
+    expect(maths('\\begin{tikzcd}\nA \\arrow[r] & B\n\\end{tikzcd}')).toEqual([])
   })
 
   test('mid-line \\begin is text', () => {

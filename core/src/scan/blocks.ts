@@ -47,8 +47,16 @@ export function looksLikeFence(body: string): boolean {
 
 // ─── display math ────────────────────────────────────────────────────────────
 
-/** The environments whose bare `\begin{…}` at the start of a line is display math. */
-const ENVS = new Set(['equation', 'align', 'gather', 'multline', 'flalign', 'alignat', 'eqnarray', 'displaymath'])
+/**
+ * The environments whose bare `\begin{…}` at the start of a line is display
+ * math: amsmath's display environments, and the ones models write bare though
+ * they belong inside math (matrices, cases, aligned, array, CD).
+ */
+const ENVS = new Set([
+  'equation', 'align', 'gather', 'multline', 'flalign', 'alignat', 'eqnarray', 'displaymath', 'subequations',
+  'matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix',
+  'cases', 'dcases', 'rcases', 'aligned', 'alignedat', 'gathered', 'split', 'multlined', 'array', 'CD', 'empheq',
+])
 const BEGIN = /^\\begin\{([A-Za-z]+)(\*?)\}/
 
 /**
