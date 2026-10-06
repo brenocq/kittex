@@ -28,6 +28,10 @@ export { recolorPng }
  * - The formula is centred in the image (horizontally only for `center`;
  *   `left` puts the ink box at x = 0), with its origin on whole pixels, so the
  *   baseline is a pixel boundary and glyphs land the same way in every image.
+ * - Inline placement (`baselinePx`): the image is exactly `minRows` rows (one
+ *   by default) and the baseline sits at the given pixel row, the terminal
+ *   font's own; scale < 1 also when the formula's height above the baseline or
+ *   depth below it, plus the dilation, would leave the image (rows never grow).
  */
 
 /**
@@ -71,20 +75,33 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
   const pad = Math.ceil(dilation0 - 1e-9)
   const availWidth = maxColumns * cellWidth - 2 * pad
   const availHeight = 255 * cellHeight - 2 * pad
+  const inline = options.baselinePx !== undefined
   let scale = 1
   if (width * emPx > availWidth) scale = Math.max(0, availWidth) / (width * emPx)
-  if (boxHeight * emPx * scale > availHeight) scale = Math.max(0, availHeight) / (boxHeight * emPx)
+  if (inline) {
+    // The dilation scales with the formula, so the ink at scale s spans (height × emPx + dilation) × s above the baseline.
+    const heightPx = Math.max(1, Math.round(minRows * cellHeight))
+    const baseline = Math.min(heightPx, Math.max(0, Math.round(options.baselinePx!)))
+    const above = Math.max(0, result.height) * emPx + dilation0
+    const below = Math.max(0, result.depth) * emPx + dilation0
+    if (above * scale > baseline) scale = baseline / above
+    if (below * scale > heightPx - baseline) scale = (heightPx - baseline) / below
+  } else if (boxHeight * emPx * scale > availHeight) {
+    scale = Math.max(0, availHeight) / (boxHeight * emPx)
+  }
   const k = emPx * scale
   const inkWidth = width * k + 2 * pad
   const inkHeight = boxHeight * k + 2 * pad
 
   const columns =
     options.align === 'center' ? maxColumns : Math.min(maxColumns, Math.max(1, Math.ceil(inkWidth / cellWidth - 1e-9)))
-  const rows = Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)))
+  const rows = inline ? minRows : Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)))
   const widthPx = Math.max(1, Math.round(columns * cellWidth))
   const heightPx = Math.max(1, Math.round(rows * cellHeight))
   const originX = options.align === 'center' ? Math.round((widthPx - width * k) / 2) : pad
-  const baselinePx = Math.round((heightPx - inkHeight) / 2 + pad + Math.max(0, result.height) * k)
+  const baselinePx = inline
+    ? Math.min(heightPx, Math.max(0, Math.round(options.baselinePx!)))
+    : Math.round((heightPx - inkHeight) / 2 + pad + Math.max(0, result.height) * k)
   return { columns, rows, scale, widthPx, heightPx, k, dilation: dilation0 * scale, originX, baselinePx }
 }
 

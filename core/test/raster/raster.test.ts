@@ -251,3 +251,35 @@ describe('rasterize', () => {
     }
   })
 })
+
+describe('inline placement (baselinePx)', () => {
+  const inline: RasterOptions = { ...base, align: 'left', minRows: 1, baselinePx: 21, weight: 0 }
+
+  test('the image is one row, the baseline on the given pixel row', () => {
+    const r = rasterize(box(1, 0.4, 0), inline)
+    expect([r.rows, r.heightPx, r.baselinePx, r.scale]).toEqual([1, 26, 21, 1])
+    // A box from 0.4 em above the baseline down to it: 10 px of ink ending on row 21.
+    expect(inkBox(r)).toMatchObject({ y0: 11, y1: 21 })
+  })
+
+  test('a formula too tall above the baseline is scaled until it fits, never the rows grown', () => {
+    const r = rasterize(box(1, 1.2, 0), inline)
+    expect(r.rows).toBe(1)
+    expect(r.scale).toBeCloseTo(21 / 30, 6)
+    expect(inkBox(r)).toMatchObject({ y0: 0, y1: 21 })
+  })
+
+  test('the depth below the baseline is fitted to the rows under it, dilation included', () => {
+    expect(measure(box(1, 0.4, 0.2), inline).scale).toBeCloseTo(5 / 5, 6)
+    expect(measure(box(1, 0.4, 0.25), inline).scale).toBeCloseTo(5 / 6.25, 6)
+    const weighted = measure(box(1, 0.4, 0.2), { ...inline, weight: DEFAULT_WEIGHT })
+    expect(weighted.scale).toBeCloseTo(5 / (0.2 * 25 + (DEFAULT_WEIGHT / 1000) * 25), 6)
+  })
+
+  test('centred across the columns asked for', () => {
+    const r = rasterize(box(1, 0.4, 0), { ...inline, align: 'center', maxColumns: 4 })
+    expect([r.columns, r.widthPx]).toEqual([4, 52])
+    const { x0, x1 } = inkBox(r)
+    expect(Math.abs(x0 + x1 - 52)).toBeLessThanOrEqual(1)
+  })
+})
