@@ -6,8 +6,9 @@ import { mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { cellProbe, emPxForCell } from '../hooks/core.js'
+import { cellProbe, chooseInk, emPxForCell } from '../hooks/core.js'
 import type { LineScanner, Segment } from '../hooks/core.js'
+import { INK_PREFER } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
 
 /**
@@ -78,7 +79,7 @@ export const KITTY = { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' }
 export const CELL = { cellWidth: 13, cellHeight: 20 }
 export const COLUMNS = 100
 
-/** The env session.start stores for KITTY (dark theme, no terminal colours known). */
+/** The env session.start stores for KITTY (dark theme, no terminal colours readable). */
 export function kittyEnv(): KittexEnv {
   return {
     kind: 'kitty',
@@ -86,7 +87,7 @@ export function kittyEnv(): KittexEnv {
     ...CELL,
     columns: COLUMNS,
     emPx: emPxForCell(CELL),
-    ink: { r: 0xe6, g: 0xe6, b: 0xe6 },
+    ink: chooseInk({ theme: 'dark', prefer: INK_PREFER }),
     measured: true,
   }
 }
@@ -103,7 +104,7 @@ export const COMPOSE = { model: 'claude', promptModel: 'claude', surfaces: ['ter
  * session.start, system prompt, MessageDisplay and reply drawing (a Text of the
  * reply's text), then session.start itself.
  */
-export async function startSession($: Engine, on: On, terminal: Record<string, string> = KITTY): Promise<{ cellProbes: () => number }> {
+export async function startSession($: Engine, on: On, terminal: Record<string, string> = KITTY, theme = 'dark'): Promise<{ cellProbes: () => number }> {
   mock.env(on, terminal)
   const rows = 50
   let cellProbes = 0
@@ -114,7 +115,7 @@ export async function startSession($: Engine, on: On, terminal: Record<string, s
     return { value: { exitCode: isCellProbe ? 0 : 1, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('config.list', () => ({
-    value: [{ key: 'theme', label: 'Theme', kind: 'choice', value: 'dark', provider: { plugin: 'engine', tier: 'core' }, isLocked: false }],
+    value: [{ key: 'theme', label: 'Theme', kind: 'choice', value: theme, provider: { plugin: 'engine', tier: 'core' }, isLocked: false }],
   }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('prompt.compose', () => ({ sections: [INTRO] }))

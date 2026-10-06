@@ -68,6 +68,14 @@ export const IMAGE_MARGIN_BOTTOM = 0
  */
 export const MAP_BY = 'content' as const
 
+/**
+ * Which colour the formulas take when the Claude theme's `text` colour and the
+ * terminal's configured foreground disagree (chooseInk's `prefer`). GUESS:
+ * reply text is drawn in the terminal's default foreground (design notes, open
+ * question 4), so the terminal's wins and the theme's is the fallback.
+ */
+export const INK_PREFER: 'theme' | 'terminal' = 'terminal'
+
 // ─── Engine-independent settings ─────────────────────────────────────────────
 
 /** Cells assumed when the cell probe fails, at FALLBACK_PIXEL_SCALE resolution (the terminal scales the image to the cells). */

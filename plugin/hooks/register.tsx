@@ -14,13 +14,26 @@
 import { update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { cellProbe, chooseInk, colorProbes, detectTerminal, emPxForCell, init, renderDisplay, toBase64 } from './core.js'
+import {
+  cellProbes,
+  chooseInk,
+  claudeCustomThemePath,
+  claudeThemeScheme,
+  colorProbes,
+  detectTerminal,
+  emPxForCell,
+  init,
+  readTerminalColors,
+  renderDisplay,
+  toBase64,
+} from './core.js'
 import type { CellSize, TerminalColors, TerminalInfo } from './core.js'
 import {
   cellOrFallback,
   FALLBACK_COLUMNS,
   IMAGE_MARGIN_BOTTOM,
   IMAGE_MARGIN_TOP,
+  INK_PREFER,
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
   MessageStream,
@@ -47,8 +60,15 @@ const RECORDS = { plugin: 'kittex', key: 'records' } as const
 // session.start runs again then).
 /** Messages streaming through MessageDisplay; null for one kittex gave up on (it passes as written). */
 const streams = new Map<string, MessageStream | null>()
+/** Claude Code's environment as the terminal helpers read it. */
+let processEnv: Record<string, string | undefined> = {}
+let terminal: TerminalInfo | undefined
 let terminalColors: TerminalColors | undefined
+/** The light/dark scheme terminalColors were read for (kitty's auto themes, Ghostty's pairs follow it). */
+let colorScheme: 'dark' | 'light' | undefined
 let theme: string | undefined
+/** A custom theme's file contents, when `theme` is `custom:<slug>`. */
+let customTheme: string | undefined
 /** prompt.compose's section did not reach the prompt: instructions ride prompt.submit's context. */
 let instructByContext = false
 /** The next prompt carries the instructions (first of a conversation, after /clear or compaction). */
@@ -72,10 +92,7 @@ export const register: Register = (on, options) => {
 
   on('config.set', { key: 'theme' }, async ($, e, next) => {
     const result = await next(e)
-    if (result.deny === undefined && typeof result.value === 'string') {
-      theme = result.value
-      await refreshInk($).catch(() => undefined)
-    }
+    if (result.deny === undefined && typeof result.value === 'string') await refreshInk($, result.value).catch(() => undefined)
     return result
   }).catch(($, e, next) => next(e))
 
@@ -210,10 +227,9 @@ function instructs(env: KittexEnv | null): boolean {
 
 async function setUp($: $, surface: string | null): Promise<void> {
   await init()
-  const terminal = detectTerminal(await readTerminalEnv($))
-  const [cell, colors, themeName] = await Promise.all([probeCell($), probeColors($, terminal), readTheme($)])
-  terminalColors = colors
-  theme = themeName
+  processEnv = await readProcessEnv($)
+  terminal = detectTerminal(processEnv)
+  const [cell] = await Promise.all([probeCell($), resolveTheme($)])
   const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
   const env: KittexEnv = {
     kind: terminal.kind,
@@ -222,7 +238,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     cellHeight,
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     emPx: emPxForCell({ cellWidth, cellHeight }),
-    ink: chooseInk({ theme, terminal: terminalColors }),
+    ink: inkNow(),
     measured,
   }
   await $.state.set(ENV, env)
@@ -244,38 +260,88 @@ async function setUp($: $, surface: string | null): Promise<void> {
   contextPending = instructByContext
 }
 
-/** The variables detectTerminal reads (and a few it may come to read); names must be literals. */
-async function readTerminalEnv($: $): Promise<Record<string, string | undefined>> {
-  const [TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, KITTY_WINDOW_ID, KITTY_PID, GHOSTTY_RESOURCES_DIR, TMUX, STY, ZELLIJ, WEZTERM_EXECUTABLE, ITERM_SESSION_ID, LC_TERMINAL, SSH_TTY] =
-    await Promise.all([
-      $.env.get('TERM'),
-      $.env.get('TERM_PROGRAM'),
-      $.env.get('TERM_PROGRAM_VERSION'),
-      $.env.get('KITTY_WINDOW_ID'),
-      $.env.get('KITTY_PID'),
-      $.env.get('GHOSTTY_RESOURCES_DIR'),
-      $.env.get('TMUX'),
-      $.env.get('STY'),
-      $.env.get('ZELLIJ'),
-      $.env.get('WEZTERM_EXECUTABLE'),
-      $.env.get('ITERM_SESSION_ID'),
-      $.env.get('LC_TERMINAL'),
-      $.env.get('SSH_TTY'),
-    ])
-  return { TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, KITTY_WINDOW_ID, KITTY_PID, GHOSTTY_RESOURCES_DIR, TMUX, STY, ZELLIJ, WEZTERM_EXECUTABLE, ITERM_SESSION_ID, LC_TERMINAL, SSH_TTY }
+/**
+ * The variables the terminal helpers read (detection, the colour probes'
+ * binaries, the config files' locations, Claude's config dir); names must be
+ * literals.
+ */
+async function readProcessEnv($: $): Promise<Record<string, string | undefined>> {
+  const values = await Promise.all([
+    $.env.get('TERM'),
+    $.env.get('TERM_PROGRAM'),
+    $.env.get('TERM_PROGRAM_VERSION'),
+    $.env.get('LC_TERMINAL'),
+    $.env.get('KITTY_WINDOW_ID'),
+    $.env.get('KITTY_PID'),
+    $.env.get('KITTY_INSTALLATION_DIR'),
+    $.env.get('KITTY_CONFIG_DIRECTORY'),
+    $.env.get('GHOSTTY_RESOURCES_DIR'),
+    $.env.get('GHOSTTY_BIN_DIR'),
+    $.env.get('WEZTERM_PANE'),
+    $.env.get('WEZTERM_EXECUTABLE'),
+    $.env.get('ITERM_SESSION_ID'),
+    $.env.get('TMUX'),
+    $.env.get('STY'),
+    $.env.get('ZELLIJ'),
+    $.env.get('ZELLIJ_SESSION_NAME'),
+    $.env.get('SSH_CONNECTION'),
+    $.env.get('SSH_CLIENT'),
+    $.env.get('SSH_TTY'),
+    $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES'),
+    $.env.get('CLAUDE_CODE_SESSION_KIND'),
+    $.env.get('CLAUDE_CONFIG_DIR'),
+    $.env.get('HOME'),
+    $.env.get('XDG_CONFIG_HOME'),
+    $.env.get('XDG_CONFIG_DIRS'),
+  ])
+  const names = [
+    'TERM',
+    'TERM_PROGRAM',
+    'TERM_PROGRAM_VERSION',
+    'LC_TERMINAL',
+    'KITTY_WINDOW_ID',
+    'KITTY_PID',
+    'KITTY_INSTALLATION_DIR',
+    'KITTY_CONFIG_DIRECTORY',
+    'GHOSTTY_RESOURCES_DIR',
+    'GHOSTTY_BIN_DIR',
+    'WEZTERM_PANE',
+    'WEZTERM_EXECUTABLE',
+    'ITERM_SESSION_ID',
+    'TMUX',
+    'STY',
+    'ZELLIJ',
+    'ZELLIJ_SESSION_NAME',
+    'SSH_CONNECTION',
+    'SSH_CLIENT',
+    'SSH_TTY',
+    'CLAUDE_CODE_FORCE_TERMINAL_IMAGES',
+    'CLAUDE_CODE_SESSION_KIND',
+    'CLAUDE_CONFIG_DIR',
+    'HOME',
+    'XDG_CONFIG_HOME',
+    'XDG_CONFIG_DIRS',
+  ]
+  return Object.fromEntries(names.map((name, i) => [name, values[i]]))
 }
 
+/** The cell size from the first cell probe that answers (perl, then python3). */
 async function probeCell($: $): Promise<CellSize | undefined> {
-  try {
-    const { exitCode, stdout } = await $.process.run(cellProbe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
-    return exitCode === 0 ? cellProbe.parse(stdout) : undefined
-  } catch {
-    return undefined
+  for (const probe of cellProbes) {
+    try {
+      const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
+      const cell = exitCode === 0 ? probe.parse(stdout) : undefined
+      if (cell) return cell
+    } catch {
+      // the next probe
+    }
   }
+  return undefined
 }
 
-async function probeColors($: $, info: TerminalInfo): Promise<TerminalColors | undefined> {
-  for (const probe of colorProbes(info)) {
+/** The terminal's configured colours: its probes, else its config files. */
+async function readColors($: $, info: TerminalInfo, scheme: 'dark' | 'light'): Promise<TerminalColors | undefined> {
+  for (const probe of colorProbes(info, { env: processEnv, scheme })) {
     try {
       const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
       const colors = exitCode === 0 ? probe.parse(stdout) : undefined
@@ -284,10 +350,22 @@ async function probeColors($: $, info: TerminalInfo): Promise<TerminalColors | u
       // the next probe
     }
   }
-  return undefined
+  try {
+    return await readTerminalColors(info, path => readText($, path), { env: processEnv, scheme })
+  } catch {
+    return undefined
+  }
 }
 
-async function readTheme($: $): Promise<string | undefined> {
+async function readText($: $, path: string): Promise<string | undefined> {
+  try {
+    return await $.fs.read(path)
+  } catch {
+    return undefined
+  }
+}
+
+async function readThemeSetting($: $): Promise<string | undefined> {
   try {
     const row = (await $.config.list()).find(one => one.key === 'theme')
     return typeof row?.value === 'string' ? row.value : undefined
@@ -296,11 +374,35 @@ async function readTheme($: $): Promise<string | undefined> {
   }
 }
 
+/**
+ * Reads what the ink depends on: the theme setting (unless given), a custom
+ * theme's file, and the terminal's colours for the theme's light/dark scheme
+ * (read again only when the scheme changes).
+ */
+async function resolveTheme($: $, setting?: string): Promise<void> {
+  theme = setting ?? (await readThemeSetting($))
+  const configDir = processEnv.CLAUDE_CONFIG_DIR ?? (processEnv.HOME ? `${processEnv.HOME}/.claude` : undefined)
+  const path = configDir ? claudeCustomThemePath(theme, configDir) : undefined
+  customTheme = path ? await readText($, path) : undefined
+  // `auto` follows the terminal's background, so read the colours (dark first) before settling the scheme.
+  for (let pass = 0; pass < 2 && terminal; pass += 1) {
+    const scheme = claudeThemeScheme(theme, customTheme, terminalColors)
+    if (scheme === colorScheme) break
+    terminalColors = await readColors($, terminal, scheme)
+    colorScheme = scheme
+  }
+}
+
+function inkNow() {
+  return chooseInk({ theme, customTheme, terminal: terminalColors, prefer: INK_PREFER })
+}
+
 /** The theme changed: the formulas' ink may follow it. */
-async function refreshInk($: $): Promise<void> {
+async function refreshInk($: $, setting: string): Promise<void> {
+  await resolveTheme($, setting)
   const env = await readEnv($)
   if (!env) return
-  const ink = chooseInk({ theme, terminal: terminalColors })
+  const ink = inkNow()
   if (ink.r !== env.ink.r || ink.g !== env.ink.g || ink.b !== env.ink.b) await $.state.set(ENV, { ...env, ink })
 }
 

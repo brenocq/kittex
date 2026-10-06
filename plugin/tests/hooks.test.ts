@@ -4,9 +4,9 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { init, measureDisplay } from '../hooks/core.js'
+import { init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
 import { MATH_INSTRUCTIONS, renderEnvFor, REPLY_INDENT, replyColumns, RESIZE_SETTLE_MS, SECTION_ID } from '../hooks/math.ts'
-import { COLUMNS, COMPOSE, INTRO, kittyEnv, startSession } from './support.ts'
+import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
 const REPLY = `Euler's identity:\n\n$$${TEX}$$\n\nis beautiful.`
@@ -101,6 +101,22 @@ describe('terminal changes', () => {
     const after = await ui.find({ type: 'Image' })
     expect(after).toBeDefined()
     expect(JSON.stringify(after)).not.toBe(JSON.stringify(before))
+  })
+
+  test('the text colour of a custom theme is read from its file', async ($, on) => {
+    const read: string[] = []
+    on('fs.read', ($, e) => {
+      read.push(e.path)
+      return e.path === '/home/me/.claude/themes/sepia.json'
+        ? { value: JSON.stringify({ base: 'light', overrides: { text: '#704214' } }) }
+        : { deny: 'no such file' }
+    })
+    await startSession($, on, { ...KITTY, HOME: '/home/me' }, 'custom:sepia')
+    const image = await (await mountReply($, REPLY)).find({ type: 'Image' })
+    expect(read).toContain('/home/me/.claude/themes/sepia.json')
+    await init()
+    const sepia = renderDisplay(TEX, { ...renderEnvFor(kittyEnv(), COLUMNS), ink: { r: 0x70, g: 0x42, b: 0x14 } })
+    expect(image?.props).toMatchObject({ source: { png: toBase64(sepia.png) } })
   })
 
   test('a new width probes the cell size again once it settles', async ($, on) => {
