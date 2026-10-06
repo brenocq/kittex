@@ -180,12 +180,12 @@ class Session:
         """One character at a time, at a human's uneven pace."""
         for i, c in enumerate(text):
             self.send(c)
-            delay = rng.gauss(0.065, 0.022)
+            delay = rng.gauss(0.05, 0.018)
             if c == ' ':
-                delay += rng.uniform(0.0, 0.06)
+                delay += rng.uniform(0.0, 0.04)
             if c in ',.?' and i + 1 < len(text):
-                delay += rng.uniform(0.15, 0.3)
-            self.pump(min(max(delay, 0.025), 0.4))
+                delay += rng.uniform(0.08, 0.18)
+            self.pump(min(max(delay, 0.02), 0.3))
 
     def close(self):
         try:

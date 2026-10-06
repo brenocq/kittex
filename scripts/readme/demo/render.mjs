@@ -11,8 +11,9 @@
 // libx264, fc-match, and the fonts named in LOOK (the window title is set in
 // Inter from Google Fonts, Cantarell or another sans when offline).
 //
-// Retiming only (the content is never edited): the time before typing, the
-// wait for the first words and every idle gap are capped at about a second,
+// Retiming only (the content is never edited): the prompt's typing plays in
+// about two seconds, the time before typing, the wait for the first words and
+// every idle gap are capped at about a second,
 // the streamed reply plays up to `--speed` times faster, the landed screen is
 // held, then cross-fades to the first frame so the loop has no hard seam.
 
@@ -57,6 +58,7 @@ const LOOK = {
 const TIMING = {
   fps: 25, // ffmpeg's concat demuxer times images in 1/25 s: anything finer rounds, some frames to 0 ms
   lead: 1.0, // the empty prompt before the first key
+  typing: 2.0, // the prompt typed, first key to Enter (still key by key, in quick bursts)
   cap: 1.0, // longest idle gap
   thinkHead: 0.9, // the spinner shown after submitting...
   thinkTail: 0.5, // ...and just before the first words
@@ -93,6 +95,9 @@ export function timeline(screens, marks, speed) {
   if (reply < 0) throw new Error('no reply in the recording')
   const typed = screens.findIndex((s, i) => i > first && s.t > marks.ready)
   const thinkStart = marks.submit, thinkEnd = screens[reply].t
+  // Typing plays faster, so the whole prompt takes about T.typing.
+  const typeStart = screens[typed].t
+  const typeSpeed = Math.max(1, (thinkStart - typeStart) / T.typing)
 
   // Warped time of each screen from `first` to `end`.
   const at = new Map([[first, 0]])
@@ -107,6 +112,7 @@ export function timeline(screens, marks, speed) {
         Math.max(0, Math.min(t1, thinkEnd) - Math.max(t0, thinkEnd - T.thinkTail))
       dt = Math.min(keep(a, b), b - a)
     } else if (a >= thinkEnd) dt = (b - a) / speed
+    else if (a >= typeStart && b <= thinkStart) dt = (b - a) / typeSpeed
     else dt = b - a
     out += Math.min(dt, T.cap)
     at.set(i, out)
