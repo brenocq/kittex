@@ -1,0 +1,103 @@
+// Terminal shapes for the fuzz suite (core/test/fuzz), and the flush chunking
+// and record keeping register.tsx does. Here, pure (no Node API), so the
+// mod's own tests (plugin/tests/fuzz.test.ts) can use them too.
+
+import { emPxForCell } from '../../hooks/core.js'
+import { linkEnv, RECORD_LIMIT } from '../../hooks/math.ts'
+import type { KittexEnv, PreviewRecord } from '../../hooks/math.ts'
+import { Rng } from './rng.ts'
+
+// ─── Terminal shapes ─────────────────────────────────────────────────────────
+
+export interface Shape {
+  columns: number
+  cellWidth: number
+  cellHeight: number
+  terminal: 'kitty' | 'ghostty'
+  /** The `inline` option. */
+  inline: boolean
+  /** How the engine draws links: FORCE_HYPERLINK unset (osc8 in kitty and Ghostty), `0` (text), `` (unknown). */
+  links: 'osc8' | 'text' | 'unknown'
+  maxProseWidth?: number
+  /** Seed of the flush chunking. */
+  flushSeed: number
+  /** The landed text's trailing whitespace is trimmed by the engine (not known: both are tried). */
+  trimLanded: boolean
+}
+
+/** Cell sizes: kitty's at common fonts and scales, Ghostty's (10×21, 9×19 at 1x), and odd ones. */
+export const CELLS: readonly (readonly [number, number])[] = [
+  [8, 16], [9, 18], [9, 19], [10, 20], [10, 21], [11, 22], [11, 23], [12, 24], [13, 26], [13, 20],
+  [14, 28], [15, 30], [16, 32], [17, 35], [18, 36], [19, 42], [20, 40], [22, 44], [7, 15],
+]
+
+export function shapeFor(seed: number): Shape {
+  const r = new Rng(seed ^ 0x5eed)
+  const columns = r.weighted<number>([[3, r.int(20, 60)], [6, r.int(60, 130)], [2, r.int(130, 200)], [2, r.pick([80, 100, 120])]])
+  const [cellWidth, cellHeight] = r.pick(CELLS)
+  return {
+    columns,
+    cellWidth,
+    cellHeight,
+    terminal: r.chance(0.7) ? 'kitty' : 'ghostty',
+    inline: r.chance(0.85),
+    links: r.weighted([[6, 'osc8'], [1, 'text'], [1, 'unknown']]),
+    ...(r.chance(0.2) ? { maxProseWidth: r.int(40, 120) } : {}),
+    flushSeed: r.int(0, 2 ** 30),
+    trimLanded: r.chance(0.3),
+  }
+}
+
+export function variablesFor(shape: Shape): Record<string, string> {
+  const base: Record<string, string> =
+    shape.terminal === 'kitty'
+      ? { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1', TERM_PROGRAM: 'kitty' }
+      : { TERM: 'xterm-ghostty', TERM_PROGRAM: 'ghostty', TERM_PROGRAM_VERSION: '1.2.0' }
+  if (shape.links === 'text') base.FORCE_HYPERLINK = '0'
+  if (shape.links === 'unknown') base.FORCE_HYPERLINK = ''
+  return base
+}
+
+/** The env session.start stores for this terminal (kittex.env). */
+export function envFor(shape: Shape): KittexEnv {
+  const cell = { cellWidth: shape.cellWidth, cellHeight: shape.cellHeight }
+  return {
+    kind: shape.terminal,
+    images: true,
+    ...cell,
+    columns: shape.columns,
+    emPx: emPxForCell(cell),
+    ink: { r: 0xdd, g: 0xdd, b: 0xdd },
+    measured: true,
+    bullet: '●',
+    ...(shape.maxProseWidth !== undefined ? { maxProseWidth: shape.maxProseWidth } : {}),
+    ...linkEnv(variablesFor(shape)),
+  }
+}
+
+export function describeShape(shape: Shape): string {
+  const mpw = shape.maxProseWidth !== undefined ? ` maxProseWidth=${shape.maxProseWidth}` : ''
+  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}, inline ${shape.inline ? 'on' : 'off'}, links ${shape.links}${mpw}`
+}
+
+/** MessageDisplay flushes for a reply: whole-line batches, the last final (it may end mid-line, or be empty). */
+export function flushesOf(markdown: string, seed: number): string[] {
+  const r = new Rng(seed)
+  const lines = markdown.split(/(?<=\n)/)
+  const out: string[] = []
+  const per = r.weighted<() => number>([[4, () => 1], [3, () => r.int(1, 3)], [2, () => r.int(1, 8)], [1, () => lines.length]])
+  for (let i = 0; i < lines.length; ) {
+    const n = Math.max(1, per())
+    out.push(lines.slice(i, i + n).join(''))
+    i += n
+  }
+  if (markdown.endsWith('\n') && r.chance(0.3)) out.push('')
+  return out.length > 0 ? out : ['']
+}
+
+/** Keeps records as register.tsx's remember does: a preview recorded again replaces the older one; the newest RECORD_LIMIT kept. */
+export function remember(store: readonly PreviewRecord[], records: readonly PreviewRecord[]): PreviewRecord[] {
+  const fresh = new Set(records.map(record => record.preview))
+  return [...store.filter(record => !fresh.has(record.preview)), ...records].slice(-RECORD_LIMIT)
+}
+
