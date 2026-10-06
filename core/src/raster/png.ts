@@ -8,43 +8,94 @@ import type { RGB } from '../types.js'
  * rewrites only the 780-byte PLTE chunk (recolorPng). No pHYs, gAMA, sRGB or
  * other ancillary chunks: Ghostty misreads DPI chunks and the alpha is linear
  * coverage that should be composited as is.
+ *
+ * As is, unless the terminal blends its text in a way it doesn't blend images:
+ * then `over` (the background the text is corrected against) gives each alpha
+ * level the correction the terminal's text gets (inkAlpha), still in the tRNS
+ * chunk, so a formula's strokes weigh what the text's do.
  */
 
 const SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
 /** Byte offset of the PLTE chunk: signature (8) + IHDR (12 + 13). */
 const PLTE_AT = 33
 
-/** Encodes `alpha` (width × height coverage bytes) as a palette PNG in one ink colour. */
-export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number, ink: RGB): Uint8Array {
+/** Byte offset of the tRNS chunk, right after the PLTE chunk's 768 bytes. */
+const TRNS_AT = PLTE_AT + 12 + 768
+
+/**
+ * Encodes `alpha` (width × height coverage bytes) as a palette PNG in one ink
+ * colour, its alpha levels corrected against `over` when given (inkAlpha).
+ */
+export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number, ink: RGB, over?: RGB): Uint8Array {
   const ihdr = new Uint8Array(13)
   const view = new DataView(ihdr.buffer)
   view.setUint32(0, width)
   view.setUint32(4, height)
   ihdr.set([8, 3, 0, 0, 0], 8) // bit depth 8, colour type 3 (indexed), deflate, filter method 0, no interlace
-  const trns = new Uint8Array(256)
-  for (let i = 0; i < 256; i++) trns[i] = i
   return concat([
     SIGNATURE,
     chunk('IHDR', ihdr),
     chunk('PLTE', palette(ink)),
-    chunk('tRNS', trns),
+    chunk('tRNS', alphaTable(ink, over)),
     chunk('IDAT', zlibSync(filter(alpha, width, height), { level: 6 })),
     chunk('IEND', new Uint8Array(0)),
   ])
 }
 
-/** The same PNG in another ink colour: only the palette is rewritten. Throws if `png` is not one of encodePng's. */
-export function recolorPng(png: Uint8Array, ink: RGB): Uint8Array {
+/**
+ * The same PNG in another ink colour (and alpha correction, see
+ * encodeAlphaPng): only the PLTE and tRNS chunks are rewritten. Throws if
+ * `png` is not one of encodePng's.
+ */
+export function recolorPng(png: Uint8Array, ink: RGB, over?: RGB): Uint8Array {
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength)
   const isPlte =
-    png.length > PLTE_AT + 12 + 768 &&
+    png.length > TRNS_AT + 12 + 256 &&
     view.getUint32(PLTE_AT) === 768 &&
-    png[PLTE_AT + 4] === 0x50 && png[PLTE_AT + 5] === 0x4c && png[PLTE_AT + 6] === 0x54 && png[PLTE_AT + 7] === 0x45
+    png[PLTE_AT + 4] === 0x50 && png[PLTE_AT + 5] === 0x4c && png[PLTE_AT + 6] === 0x54 && png[PLTE_AT + 7] === 0x45 &&
+    view.getUint32(TRNS_AT) === 256 &&
+    png[TRNS_AT + 4] === 0x74 && png[TRNS_AT + 5] === 0x52 && png[TRNS_AT + 6] === 0x4e && png[TRNS_AT + 7] === 0x53
   if (!isPlte) throw new Error('recolorPng: not a kittex palette PNG')
   const out = png.slice()
   out.set(chunk('PLTE', palette(ink)), PLTE_AT)
+  out.set(chunk('tRNS', alphaTable(ink, over)), TRNS_AT)
   return out
 }
+
+/**
+ * Coverage `alpha` (0 to 1) of ink over `over`, corrected the way Ghostty's
+ * `alpha-blending = linear-corrected` (its default outside macOS) corrects text
+ * glyphs: Ghostty blends in linear light, which draws dark text on a light
+ * background much thinner and light text on a dark one much bolder than the
+ * gamma (sRGB) blending fonts are designed for, so its text shader
+ * (cell_text.f.glsl) moves each glyph's alpha to where the gamma blend's
+ * luminance lands. Its image shader has no such step: an image's alpha is
+ * blended in linear light as it is. With this applied to a formula's alpha
+ * levels, a formula and the text beside it reach the same luminances.
+ *
+ * The same arithmetic as the shader: luminances of the linear colours, blended
+ * gamma-encoded, linearised again, and mapped back to [0, 1] between the
+ * background's and the ink's; no correction within 0.001 of luminance.
+ */
+export function inkAlpha(alpha: number, ink: RGB, over: RGB): number {
+  const fg = linearLuminance(ink)
+  const bg = linearLuminance(over)
+  if (!(Math.abs(fg - bg) > 0.001)) return alpha
+  const blend = linearize(unlinearize(fg) * alpha + unlinearize(bg) * (1 - alpha))
+  return Math.min(1, Math.max(0, (blend - bg) / (fg - bg)))
+}
+
+/** tRNS: alpha level i is i, or i corrected against `over` (inkAlpha); 0 and 255 stay put. */
+function alphaTable(ink: RGB, over: RGB | undefined): Uint8Array {
+  const trns = new Uint8Array(256)
+  for (let i = 0; i < 256; i++) trns[i] = over && i > 0 && i < 255 ? Math.round(255 * inkAlpha(i / 255, ink, over)) : i
+  return trns
+}
+
+const linearize = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+const unlinearize = (v: number) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)
+const linearLuminance = (c: RGB) =>
+  0.2126 * linearize(clampByte(c.r) / 255) + 0.7152 * linearize(clampByte(c.g) / 255) + 0.0722 * linearize(clampByte(c.b) / 255)
 
 function palette(ink: RGB): Uint8Array {
   const plte = new Uint8Array(768)

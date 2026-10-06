@@ -22,6 +22,7 @@ import {
   colorProbes,
   detectTerminal,
   emPxForCell,
+  imageInkBackground,
   init,
   measureDisplay,
   readTerminalColors,
@@ -386,6 +387,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     ...cellEnv(cell),
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     ink: inkNow(),
+    ...inkOverNow(),
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
     ...linkEnv(processEnv),
@@ -571,6 +573,14 @@ function inkNow() {
   return chooseInk({ theme, customTheme: withoutTextOverride(customTheme), terminal: terminalColors, prefer: INK_PREFER })
 }
 
+/** The background the ink's alpha is corrected against (imageInkBackground), as kittex.env's `inkOver`: none where images blend as text does. */
+function inkOverNow(): Pick<KittexEnv, 'inkOver'> {
+  const over = terminal ? imageInkBackground(terminal.kind, terminalColors) : undefined
+  return over ? { inkOver: { r: over.r, g: over.g, b: over.b } } : {}
+}
+
+const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b || (!!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b)
+
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
 async function readProseWidth($: $): Promise<number | undefined> {
   try {
@@ -595,7 +605,10 @@ async function refreshInk($: $, setting: string): Promise<void> {
   const env = await readEnv($)
   if (!env) return
   const ink = inkNow()
-  if (ink.r !== env.ink.r || ink.g !== env.ink.g || ink.b !== env.ink.b) await $.state.set(ENV, { ...env, ink })
+  const over = inkOverNow()
+  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver)) return
+  const { inkOver: _, ...rest } = env
+  await $.state.set(ENV, { ...rest, ink, ...over })
 }
 
 /**
@@ -714,7 +727,8 @@ function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
 }
 
 function geometryKey(env: RenderEnv): string {
-  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b].join(',')
+  const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b] : []
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
 }
 
 /** A display formula's image, `rows` tall (measured when not given). Throws TexError. */

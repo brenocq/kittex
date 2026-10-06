@@ -265,7 +265,9 @@ export function previewColumns(maxColumns: number): number {
 }
 
 export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
-  return { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: replyColumns(columns), emPx: env.emPx, ink: env.ink }
+  const renderEnv: RenderEnv = { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: replyColumns(columns), emPx: env.emPx, ink: env.ink }
+  if (env.inkOver) renderEnv.inkOver = env.inkOver
+  return renderEnv
 }
 
 /** Where inline formulas are drawn: one text row, the math on the font's baseline. */

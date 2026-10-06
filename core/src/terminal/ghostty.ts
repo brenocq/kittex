@@ -47,15 +47,30 @@ export function parseGhosttyTheme(value: string): { light: string; dark: string 
 interface GhosttyColors {
   values: Map<'foreground' | 'background', RGB>
   palette: Map<number, RGB>
+  alphaBlending?: TerminalColors['alphaBlending']
 }
 
 function emptyColors(): GhosttyColors {
   return { values: new Map(), palette: new Map() }
 }
 
+/** An `alpha-blending` value (Ghostty 1.1 and later). */
+export function parseAlphaBlending(value: string): TerminalColors['alphaBlending'] {
+  const v = value.trim()
+  return v === 'native' || v === 'linear' || v === 'linear-corrected' ? v : undefined
+}
+
+/** Ghostty's `alpha-blending` when nothing sets it: native on macOS, linear-corrected elsewhere (Config.zig). */
+export function ghosttyDefaultAlphaBlending(platform: string): NonNullable<TerminalColors['alphaBlending']> {
+  return platform === 'darwin' ? 'native' : 'linear-corrected'
+}
+
 // Applies one colour entry; an empty value resets the key to its default.
 function applyColor(into: GhosttyColors, key: string, value: string): void {
-  if (key === 'foreground' || key === 'background') {
+  if (key === 'alpha-blending') {
+    // An empty value resets it to the default, which depends on the platform.
+    into.alphaBlending = parseAlphaBlending(value)
+  } else if (key === 'foreground' || key === 'background') {
     if (!value) {
       into.values.delete(key)
       return
@@ -73,20 +88,24 @@ function applyColor(into: GhosttyColors, key: string, value: string): void {
 
 function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   const pick = (key: 'foreground' | 'background') => layers.reduce<RGB | undefined>((c, l) => l.values.get(key) ?? c, undefined)
-  return {
+  const colors: TerminalColors = {
     foreground: pick('foreground') ?? GHOSTTY_DEFAULT_FOREGROUND,
     background: pick('background') ?? GHOSTTY_DEFAULT_BACKGROUND,
     palette: GHOSTTY_DEFAULT_PALETTE.map((c, i) => layers.reduce((acc, l) => l.palette.get(i) ?? acc, c)),
   }
+  const blending = layers.reduce<TerminalColors['alphaBlending']>((b, l) => l.alphaBlending ?? b, undefined)
+  if (blending) colors.alphaBlending = blending
+  return colors
 }
 
 /**
  * Reads `ghostty +show-config --changes-only=false`: every option as
  * `key = value`, colours as `#rrggbb`, the palette as `palette = N=#rrggbb`,
- * with the theme already applied (Config.load runs finalize, which loads the
- * theme under the user's own settings). For `theme = light:A,dark:B` the CLI
- * resolves the light theme (the GUI alone follows the desktop), so with scheme
- * `dark` and two different themes the answer is known to be wrong: undefined.
+ * `alpha-blending` resolved for the platform, with the theme already applied
+ * (Config.load runs finalize, which loads the theme under the user's own
+ * settings). For `theme = light:A,dark:B` the CLI resolves the light theme
+ * (the GUI alone follows the desktop), so with scheme `dark` and two
+ * different themes the answer is known to be wrong: undefined.
  */
 export function parseGhosttyConfig(stdout: string, scheme?: Scheme): TerminalColors | undefined {
   const colors = emptyColors()
@@ -150,6 +169,8 @@ function ghosttyThemeDirs(env: Env): string[] {
  * ~/.config/ghostty/themes and the resources dir, or an absolute path) under
  * the user's own colours. A light/dark theme pair follows `scheme` (light when
  * not given, as the CLI does). Ghostty's defaults when nothing sets a colour.
+ * `alpha-blending` as configured, else the platform's default when
+ * `platform` is given (unknown otherwise).
  */
 export async function readGhosttyColors(read: FileReader, options: ConfigReadOptions): Promise<TerminalColors> {
   const { env } = options
@@ -184,5 +205,7 @@ export async function readGhosttyColors(read: FileReader, options: ConfigReadOpt
       break
     }
   }
-  return toTerminalColors(themeColors, user)
+  const colors = toTerminalColors(themeColors, user)
+  if (!colors.alphaBlending && options.platform !== undefined) colors.alphaBlending = ghosttyDefaultAlphaBlending(options.platform)
+  return colors
 }

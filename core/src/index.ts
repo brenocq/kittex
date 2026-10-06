@@ -1,5 +1,5 @@
 import { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
+import { encodePng, inkAlpha, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
@@ -16,11 +16,12 @@ export {
   colorProbes,
   detectTerminal,
   emPxForCell,
+  imageInkBackground,
   readTerminalColors,
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
+export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
 export { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
@@ -35,6 +36,12 @@ export interface RenderEnv {
   emPx: number
   /** The colour to draw in. */
   ink: RGB
+  /**
+   * The background to correct the ink's alpha against, as the terminal
+   * corrects its text's (imageInkBackground): absent where images and text
+   * blend alike.
+   */
+  inkOver?: RGB
 }
 
 /** Where an inline formula is drawn: one text row. */
@@ -139,9 +146,9 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 /**
@@ -231,9 +238,9 @@ export function renderInline(tex: string, env: InlineEnv, columns: number): Rend
     const result = typesetInline(tex)
     const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, centerInk: true }
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 export interface InlinePreviewOptions {

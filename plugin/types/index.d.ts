@@ -15,6 +15,8 @@ export type KittexEnv = {
   emPx: number
   /** The formulas' colour. */
   ink: { r: number; g: number; b: number }
+  /** The background the ink's alpha is corrected against, as the terminal corrects its text (Ghostty's linear-corrected blending); absent where images and text blend alike. */
+  inkOver?: { r: number; g: number; b: number }
   /** Whether the cell size was measured (false: the fallback cell). */
   measured: boolean
   /** The glyph the engine opens a reply with (`⏺` on macOS, `●` elsewhere); `●` when absent. */

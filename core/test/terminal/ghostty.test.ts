@@ -1,11 +1,21 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { colorProbes, detectTerminal, ghosttyEntries, parseGhosttyConfig, readGhosttyColors, readTerminalColors, toHex } from '../../src/terminal/index.js'
+import {
+  colorProbes,
+  detectTerminal,
+  ghosttyEntries,
+  imageInkBackground,
+  parseGhosttyConfig,
+  readGhosttyColors,
+  readTerminalColors,
+  toHex,
+} from '../../src/terminal/index.js'
 import type { TerminalColors } from '../../src/types.js'
 
-// Ghostty isn't installed here: ghostty-show-config.txt is built from the
-// formatter in Ghostty's source (src/config/formatter.zig: `key = value`,
-// colours `#rrggbb`, `palette = N=#rrggbb` for all 256 entries).
+// ghostty-show-config.txt is built from the formatter in Ghostty's source
+// (src/config/formatter.zig: `key = value`, colours `#rrggbb`, `palette =
+// N=#rrggbb` for all 256 entries); ghostty-1.3.1-show-config.txt is the real
+// output of Ghostty 1.3.1 on Linux.
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
 const memFs = (files: Record<string, string>) => async (path: string) => files[path]
 const hex = (c: TerminalColors | undefined) => c && { foreground: toHex(c.foreground!), background: toHex(c.background!), palette: c.palette!.map(toHex) }
@@ -127,5 +137,33 @@ describe('readGhosttyColors', () => {
     expect(hex(await readTerminalColors(detectTerminal({ TERM: 'xterm-ghostty' }), memFs(files), { env }))).toMatchObject({ foreground: '#123456' })
     expect(await readTerminalColors(detectTerminal({ TERM: 'xterm-ghostty', SSH_TTY: '/dev/pts/1' }), memFs(files), { env })).toBeUndefined()
     expect(await readTerminalColors(detectTerminal({ TERM_PROGRAM: 'WezTerm' }), memFs(files), { env })).toBeUndefined()
+  })
+})
+
+describe('alpha-blending', () => {
+  test('Ghostty 1.3.1 on Linux, theme Gruvbox Light: linear-corrected by default', () => {
+    // Captured on this machine: `ghostty +show-config --changes-only=false` with a config of one line, theme = Gruvbox Light.
+    const colors = parseGhosttyConfig(fixture('ghostty-1.3.1-show-config.txt'))
+    expect(hex(colors)).toMatchObject({ foreground: '#3c3836', background: '#fbf1c7' })
+    expect(colors?.alphaBlending).toBe('linear-corrected')
+  })
+
+  test('config files: alpha-blending as set, else the platform default once the platform is known', async () => {
+    const env = { HOME: '/h' }
+    const set = { '/h/.config/ghostty/config': 'alpha-blending = linear\n' }
+    expect((await readGhosttyColors(memFs(set), { env }))?.alphaBlending).toBe('linear')
+    expect((await readGhosttyColors(memFs({}), { env, platform: 'linux' }))?.alphaBlending).toBe('linear-corrected')
+    expect((await readGhosttyColors(memFs({}), { env, platform: 'darwin' }))?.alphaBlending).toBe('native')
+    expect((await readGhosttyColors(memFs({}), { env }))?.alphaBlending).toBeUndefined()
+  })
+
+  test('imageInkBackground: the background in Ghostty with linear-corrected blending only', () => {
+    const background = { r: 0xfb, g: 0xf1, b: 0xc7 }
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'linear-corrected' })).toEqual(background)
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'native' })).toBeUndefined()
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'linear' })).toBeUndefined()
+    expect(imageInkBackground('ghostty', { background })).toBeUndefined()
+    expect(imageInkBackground('ghostty', undefined)).toBeUndefined()
+    expect(imageInkBackground('kitty', { background, alphaBlending: 'linear-corrected' })).toBeUndefined()
   })
 })

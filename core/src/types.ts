@@ -199,6 +199,12 @@ export interface TerminalColors {
   background?: RGB
   /** The 16 ANSI colours (0-7 normal, 8-15 bright), when known; ANSI Claude themes draw text in these. */
   palette?: RGB[]
+  /**
+   * Ghostty's `alpha-blending`, when known: `linear-corrected` (its default
+   * outside macOS) corrects text glyphs to look gamma-blended but blends
+   * images in linear light as they are (see imageInkBackground).
+   */
+  alphaBlending?: 'native' | 'linear' | 'linear-corrected'
 }
 
 export type TerminalKind = 'kitty' | 'ghostty' | 'wezterm' | 'iterm2' | 'other'

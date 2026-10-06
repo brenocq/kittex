@@ -1,4 +1,4 @@
-import type { Probe, TerminalColors, TerminalInfo } from '../types.js'
+import type { Probe, RGB, TerminalColors, TerminalInfo } from '../types.js'
 import type { ConfigReadOptions, FileReader } from './color.js'
 import type { Env } from './detect.js'
 import { ghosttyColorProbes, readGhosttyColors } from './ghostty.js'
@@ -20,7 +20,7 @@ export {
 } from './claude-theme.js'
 export { type ConfigReadOptions, type FileReader, isDark, parseColorValue, toHex } from './color.js'
 export { detectTerminal, type Env } from './detect.js'
-export { ghosttyEntries, parseGhosttyConfig, readGhosttyColors } from './ghostty.js'
+export { ghosttyDefaultAlphaBlending, ghosttyEntries, parseAlphaBlending, parseGhosttyConfig, readGhosttyColors } from './ghostty.js'
 export { kittyConfigDirs, parseKittyColors, readKittyColors } from './kitty.js'
 
 export interface ColorProbeOptions {
@@ -63,4 +63,23 @@ export async function readTerminalColors(terminal: TerminalInfo, read: FileReade
     default:
       return undefined
   }
+}
+
+/**
+ * The background an image's ink alpha must be corrected against so a formula
+ * weighs what the terminal's text weighs (raster's inkAlpha), or undefined
+ * where the terminal blends images and text alike.
+ *
+ * Ghostty with `alpha-blending = linear-corrected` (its default outside macOS)
+ * blends everything in linear light but corrects text glyphs to look
+ * gamma-blended; images get no correction, so measured on Ghostty 1.3.1 a
+ * formula drew thinner than the text beside it on a light background and
+ * bolder on a dark one. Text is corrected against the cell's background, the
+ * default background under reply text. With `native` or `linear` Ghostty
+ * blends images as it blends text, and kitty blends both in linear light (its
+ * `text_composition_strategy` on Linux, 1.0 0, adds nothing to that).
+ */
+export function imageInkBackground(kind: TerminalInfo['kind'], colors: TerminalColors | undefined): RGB | undefined {
+  if (kind !== 'ghostty' || colors?.alphaBlending !== 'linear-corrected') return undefined
+  return colors.background
 }
