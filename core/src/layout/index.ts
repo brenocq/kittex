@@ -3,6 +3,8 @@ import { visibleProse } from './prose.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
+export { blockParts, gapBetween } from './blocks.js'
+export type { BlockPart } from './blocks.js'
 export { markerOf } from './list.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
