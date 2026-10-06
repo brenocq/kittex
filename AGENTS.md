@@ -40,9 +40,11 @@ npm run check:sandbox  # run the bundle under sandbox rules
 claude plugin validate plugin
 ```
 
-`plugin/hooks/core.js` is a build output that is committed for installs from
-git. Only the integration on `main` commits it: before committing on a branch,
-`git checkout plugin/hooks/core.js` if the build changed it.
+`plugin/hooks/core.js` and `plugin/hooks/core-parts/` are build outputs,
+committed for installs from git. Claude Code refuses to read any plugin file
+over 1 MiB, so the build splits the bundle and fails if a file passes 900 KiB.
+Only the integration on `main` commits them: before committing on a branch,
+`git checkout plugin/hooks/core.js plugin/hooks/core-parts` if the build changed them.
 
 ## Commits
 
