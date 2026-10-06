@@ -24,6 +24,14 @@ export const REPLY_INDENT = 2
  */
 export const BULLET = { macos: '⏺', other: '●' } as const
 
+/** The label of the copy button shown over a formula image while the pointer is on it. */
+export const COPY_LABEL = '⧉ copy LaTeX'
+
+/** What the copy button puts on the clipboard: the formula as a display block, ready to paste back into markdown. */
+export function copiedFormula(tex: string): string {
+  return `$$\n${tex.trim()}\n$$`
+}
+
 /**
  * What stands for a space at the start of a preview line, and for a padding
  * line: markdown would strip a leading space (or read four of them as code)

@@ -7,6 +7,8 @@ import type { Engine } from 'claude-code/testing'
 import { chooseInk, init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
 import {
   BULLET,
+  copiedFormula,
+  COPY_LABEL,
   HELD_DISPLAY,
   MATH_INSTRUCTIONS,
   PREVIEW_PAD,
@@ -29,6 +31,17 @@ function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = '
     props: { text, isFirstOfReply },
     viewport: { columns: COLUMNS, rows: 50 },
   })
+}
+
+/** A formula as kittex draws it: its Image, with a copy button revealed on hover over it. */
+function formula(image: Record<string, unknown>) {
+  return {
+    type: 'Box',
+    children: [
+      { type: 'Image', ...image },
+      { type: 'Box', props: { position: 'absolute', top: 0, right: 0, display: 'none' }, hover: { display: 'flex' }, children: [{ type: 'Button', props: { label: COPY_LABEL } }] },
+    ],
+  }
 }
 
 describe('off switch', () => {
@@ -55,11 +68,28 @@ describe('AssistantMessage', () => {
         {
           type: 'Box',
           props: { marginLeft: REPLY_INDENT, marginTop: 1 },
-          children: [{ type: 'Image', props: { columns: replyColumns(COLUMNS), rows, alt: TEX, source: { png: expect.any(String) } } }],
+          children: [formula({ props: { columns: replyColumns(COLUMNS), rows, alt: TEX, source: { png: expect.any(String) } } })],
         },
         { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
       ],
     })
+  })
+
+  test('each formula has a copy button that puts its LaTeX on the clipboard', async ($, on) => {
+    // The engine's clipboard, beneath the plugin: registered before the test's first $ call.
+    const copied: string[] = []
+    on('ui.copy', ($, e) => {
+      copied.push(e.text)
+      return { value: { isCopied: true } }
+    })
+    await startSession($, on)
+    await init()
+    const ui = await mountReply($, REPLY)
+    const button = await ui.find({ type: 'Button' })
+    expect(button?.props).toMatchObject({ label: COPY_LABEL })
+    await ui.press({ key: String(button?.key) })
+    expect(copied).toEqual([copiedFormula(TEX)])
+    expect(copiedFormula(TEX)).toBe(`$$\n${TEX}\n$$`)
   })
 
   test('with no blank lines around the formula, nothing is added between the rows', async ($, on) => {
@@ -86,7 +116,7 @@ describe('AssistantMessage', () => {
           props: { flexDirection: 'row', marginTop: 1 },
           children: [
             { type: 'Box', props: { minWidth: REPLY_INDENT }, children: [{ type: 'Text', props: { color: 'text' }, children: [BULLET.other] }] },
-            { type: 'Image', props: { alt: TEX } },
+            formula({ props: { alt: TEX } }),
           ],
         },
         { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
@@ -100,7 +130,7 @@ describe('AssistantMessage', () => {
     const ui = await mountReply($, `$$${TEX}$$\n\nis beautiful.`, 'terminal', false)
     expect(await ui.drawn()).toMatchObject({
       children: [
-        { type: 'Box', props: { flexDirection: 'row', marginTop: 1 }, children: [{ type: 'Image' }] },
+        { type: 'Box', props: { flexDirection: 'row', marginTop: 1 }, children: [formula({})] },
         { type: 'Box', props: { paddingLeft: 0, marginTop: 0 } },
       ],
     })
@@ -258,7 +288,7 @@ describe('MessageDisplay', () => {
     expect(await ui.drawn()).toMatchObject({
       children: [
         { type: 'Text', children: ["Euler's identity:"] },
-        { props: { marginLeft: REPLY_INDENT, marginTop: 1 }, children: [{ type: 'Image', props: { rows, alt: TEX } }] },
+        { props: { marginLeft: REPLY_INDENT, marginTop: 1 }, children: [formula({ props: { rows, alt: TEX } })] },
         { props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
       ],
     })

@@ -33,6 +33,8 @@ import {
   BULLET,
   bulletFor,
   cellOrFallback,
+  COPY_LABEL,
+  copiedFormula,
   FALLBACK_COLUMNS,
   INK_PREFER,
   INSTRUCT_WITHOUT_IMAGES,
@@ -204,12 +206,25 @@ export const register: Register = (on, options) => {
       // opens with a formula gets the bullet beside the image's first row,
       // where the preview's first line had it.
       const { pieces } = plan
-      const { Box, Image, Text } = $.ui.resolve(e)
+      const { Box, Button, Image, Text } = $.ui.resolve(e)
       const first = e.props.isFirstOfReply
       const indent = first ? REPLY_INDENT : 0
-      const own = (piece: Exclude<Piece, { kind: 'prose' }>) =>
+      // A selection over an image copies the terminal's placeholder cells, not the
+      // formula (the engine copies screen cells and offers no hook), so each image
+      // carries a copy button, shown while the pointer is over it (fullscreen), in
+      // its top-right corner: absolute, so it moves no row.
+      const copy = (tex: string) => async () => {
+        const copied = await $.ui.copy({ text: copiedFormula(tex), surface: e.surface })
+        $.ui.toast(copied.isCopied ? 'Copied the formula as LaTeX' : 'Could not copy the formula')
+      }
+      const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
         piece.kind === 'image' ? (
-          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+          <Box key={`kittex-formula-${i}`}>
+            <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+              <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
+            </Box>
+          </Box>
         ) : (
           <Text dimColor>{piece.text}</Text>
         )
@@ -226,7 +241,7 @@ export const register: Register = (on, options) => {
                     <Text color="text">{env.bullet ?? BULLET.other}</Text>
                   </Box>
                 ) : null}
-                {own(piece)}
+                {own(piece, i)}
               </Box>,
             )
           }
@@ -239,13 +254,13 @@ export const register: Register = (on, options) => {
         } else if (piece.kind === 'image') {
           drawn.push(
             <Box marginLeft={indent} marginTop={piece.gap ? 1 : 0}>
-              {own(piece)}
+              {own(piece, i)}
             </Box>,
           )
         } else {
           drawn.push(
             <Box paddingLeft={indent} marginTop={piece.gap ? 1 : 0}>
-              {own(piece)}
+              {own(piece, i)}
             </Box>,
           )
         }
