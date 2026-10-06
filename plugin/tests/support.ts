@@ -27,6 +27,14 @@ export function kittyEnv(): KittexEnv {
   }
 }
 
+/** The terminal window the cell probe measures: a test changes it to resize the window or zoom its font. */
+export interface Screen {
+  rows: number
+  columns: number
+  cellWidth: number
+  cellHeight: number
+}
+
 /** The system prompt beneath the plugins: one section. */
 export const INTRO = { id: 'intro', text: 'You are Claude Code.', scope: 'shared' as const }
 
@@ -39,14 +47,20 @@ export const COMPOSE = { model: 'claude', promptModel: 'claude', surfaces: ['ter
  * session.start, system prompt, MessageDisplay and reply drawing (a Text of the
  * reply's text), then session.start itself.
  */
-export async function startSession($: Engine, on: On, terminal: Record<string, string> = KITTY, theme = 'dark'): Promise<{ cellProbes: () => number }> {
+export async function startSession(
+  $: Engine,
+  on: On,
+  terminal: Record<string, string> = KITTY,
+  theme = 'dark',
+): Promise<{ cellProbes: () => number; screen: Screen }> {
   mock.env(on, terminal)
-  const rows = 50
+  const screen: Screen = { rows: 50, columns: COLUMNS, ...CELL }
   let cellProbes = 0
   on('process.run', ($, e) => {
     const isCellProbe = e.argv.join('\0') === cellProbe.argv.join('\0')
     if (isCellProbe) cellProbes += 1
-    const stdout = isCellProbe ? `${rows} ${COLUMNS} ${COLUMNS * CELL.cellWidth} ${rows * CELL.cellHeight}\n` : ''
+    const { rows, columns, cellWidth, cellHeight } = screen
+    const stdout = isCellProbe ? `${rows} ${columns} ${columns * cellWidth} ${rows * cellHeight}\n` : ''
     return { value: { exitCode: isCellProbe ? 0 : 1, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('config.list', () => ({
@@ -57,5 +71,5 @@ export async function startSession($: Engine, on: On, terminal: Record<string, s
   on('classic.MessageDisplay', () => ({}))
   on('ui.render', { component: 'AssistantMessage' }, ($, e) => ({ type: 'Text' as const, children: [e.props.text] }))
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
-  return { cellProbes: () => cellProbes }
+  return { cellProbes: () => cellProbes, screen }
 }

@@ -12,7 +12,7 @@
 // back to what the engine would have drawn.
 
 import { update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import {
   cellProbes,
@@ -33,6 +33,7 @@ import type { CellSize, TerminalColors, TerminalInfo } from './core.js'
 import {
   BULLET,
   bulletFor,
+  CELL_POLL_MS,
   cellOrFallback,
   COPY_LABEL,
   copiedFormula,
@@ -80,7 +81,8 @@ let customTheme: string | undefined
 let instructByContext = false
 /** The next prompt carries the instructions (first of a conversation, after /clear or compaction). */
 let contextPending = false
-let reprobePending = false
+/** The cell probes, bound to the `$` session.start received. */
+let cells: Cells | undefined
 
 export const register: Register = (on, options) => {
   if (options.enabled === false) return
@@ -91,6 +93,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    cells?.stop()
+    cells = cellsFor($)
     try {
       await setUp($, e.surface)
     } catch {
@@ -194,10 +198,19 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AssistantMessage', props: { text: LANDED_PATTERN } }, async ($, e, next) => {
     if (e.props.isSummary) return next(e)
     try {
-      const env = await readEnv($)
+      let env = await readEnv($)
       if (!env) return next(e)
+      const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
+      if (seen !== undefined && seen !== env.columns) {
+        // The window changed width since the cells were measured, and a font
+        // zoom changes the cells too: measure before drawing, so no image goes
+        // out for cells that are gone, and once more when the resize settles.
+        // A render may not write state, so the settle timer stores what it finds.
+        const cell = await cells?.probe()
+        if (cell) env = { ...env, ...cellEnv(cell), columns: seen }
+        cells?.settle(seen)
+      }
       const columns = e.viewport?.columns ?? env.columns
-      if (e.surface === 'terminal') watchWidth($, env, e.viewport?.columns)
       const images = e.surface === 'terminal' && env.images
       // The text may lack the block's last flush (or be empty) on the first
       // render: nothing here is final, and the render runs again when it lands.
@@ -224,6 +237,7 @@ export const register: Register = (on, options) => {
       // opens with a formula gets the bullet beside the image's first row,
       // where the preview's first line had it.
       const { pieces } = plan
+      if (images) cells?.poll()
       const { Box, Button, Image, Text } = $.ui.resolve(e)
       const first = e.props.isFirstOfReply
       const indent = first ? REPLY_INDENT : 0
@@ -237,7 +251,7 @@ export const register: Register = (on, options) => {
       }
       const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
         piece.kind === 'image' ? (
-          <Box key={`kittex-formula-${i}`}>
+          <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
             <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
             <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
               <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
@@ -260,7 +274,7 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column">
             {text}
             {piece.inline.map((inline: InlineImage, k: number) => (
-              <Box key={`kittex-inline-${k}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
+              <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
                 <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={1} alt={inline.tex} />
               </Box>
             ))}
@@ -327,16 +341,12 @@ async function setUp($: $, surface: string | null): Promise<void> {
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
-  const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
   const env: KittexEnv = {
     kind: terminal.kind,
     images: terminal.images,
-    cellWidth,
-    cellHeight,
+    ...cellEnv(cell),
     columns: cell?.columns ?? FALLBACK_COLUMNS,
-    emPx: emPxForCell({ cellWidth, cellHeight }),
     ink: inkNow(),
-    measured,
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
   }
@@ -535,33 +545,90 @@ async function refreshInk($: $, setting: string): Promise<void> {
 }
 
 /**
- * A render saw the viewport at another width: a resize, or a font zoom, which
- * also changes the cell size. Once the width settles, probe the cells again
- * and store both; at most one probe waits at a time.
+ * The cell probes after setup: for a render that sees a new width, once a
+ * resize settles, and periodically. Each measures the terminal's own
+ * TIOCGWINSZ (its columns and pixels); the timers store what they find in
+ * kittex.env when it changed, which redraws every block that read it.
  */
-function watchWidth($: $, env: KittexEnv, columns: number | undefined): void {
-  if (columns === undefined || columns === env.columns || reprobePending) return
-  reprobePending = true
-  try {
-    $.clock.after(RESIZE_SETTLE_MS, () => {
-      void reprobe($, columns)
-        .catch(() => undefined)
-        .finally(() => {
-          reprobePending = false
+interface Cells {
+  /** Probes now, for drawing: one probe at a time, shared by every render that asks meanwhile. Stores nothing (a render may not write state). */
+  probe(): Promise<CellSize | undefined>
+  /**
+   * Probes and stores once the width has stopped changing: every call
+   * restarts the wait, so a drag ends with the final size. `seen`: the width a
+   * render saw, kept when the probe can't tell the columns.
+   */
+  settle(seen?: number): void
+  /** Starts the periodic probe (once): a change of the cells' pixels alone draws nothing by itself. */
+  poll(): void
+  stop(): void
+}
+
+/**
+ * The probes on session.start's `$`: a render's `$` belongs to its one
+ * dispatch, and the timers outlive it. A timer's callback is a dispatch of its
+ * own, where a state write is allowed.
+ */
+function cellsFor($: $): Cells {
+  let probing: Promise<CellSize | undefined> | undefined
+  /** The stores, one after another (a settle never skipped for a periodic probe running). */
+  let stores: Promise<void> = Promise.resolve()
+  let settleTimer: Timer | undefined
+  let pollTimer: Timer | undefined
+  const store = (seen?: number) => {
+    stores = stores.then(async () => storeCells($, await probeCell($), seen)).catch(() => undefined)
+  }
+  return {
+    probe() {
+      return (probing ??= probeCell($).finally(() => {
+        probing = undefined
+      }))
+    },
+    settle(seen) {
+      settleTimer?.cancel()
+      try {
+        settleTimer = $.clock.after(RESIZE_SETTLE_MS, () => {
+          settleTimer = undefined
+          store(seen)
         })
-    })
-  } catch {
-    reprobePending = false
+      } catch {
+        settleTimer = undefined
+      }
+    },
+    poll() {
+      if (pollTimer) return
+      try {
+        pollTimer = $.clock.every(CELL_POLL_MS, () => {
+          store()
+        })
+      } catch {
+        pollTimer = undefined
+      }
+    },
+    stop() {
+      settleTimer?.cancel()
+      pollTimer?.cancel()
+    },
   }
 }
 
-async function reprobe($: $, columns: number): Promise<void> {
+/** A measured cell as kittex.env holds it. */
+function cellEnv(cell: CellSize | undefined): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
+  const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
+  return { cellWidth, cellHeight, measured, emPx: emPxForCell({ cellWidth, cellHeight }) }
+}
+
+/** Stores a probe's cells and columns in kittex.env when they changed (a failed probe changes only the columns, to `seen`). */
+async function storeCells($: $, cell: CellSize | undefined, seen: number | undefined): Promise<void> {
   const env = await readEnv($)
   if (!env) return
-  const cell = await probeCell($)
-  const { cellWidth, cellHeight, measured } = cell ? cellOrFallback(cell) : env
-  if (env.columns === columns && env.cellWidth === cellWidth && env.cellHeight === cellHeight) return
-  await $.state.set(ENV, { ...env, columns, cellWidth, cellHeight, measured, emPx: emPxForCell({ cellWidth, cellHeight }) })
+  const columns = cell?.columns ?? seen ?? env.columns
+  const measured = cell ? cellEnv(cell) : undefined
+  const same = measured === undefined || (measured.cellWidth === env.cellWidth && measured.cellHeight === env.cellHeight)
+  if (same && columns === env.columns) return
+  await $.state.set(ENV, { ...env, ...measured, columns })
+  // Every landed block draws for the new cells, those off screen included.
+  if (!same) $.ui.invalidate('ui.render')
 }
 
 async function remember($: $, records: readonly PreviewRecord[]): Promise<void> {
@@ -571,6 +638,24 @@ async function remember($: $, records: readonly PreviewRecord[]): Promise<void> 
 }
 
 const base64Cache = new WeakMap<Uint8Array, string>()
+const signatureCache = new WeakMap<Uint8Array, string>()
+
+/**
+ * A PNG's FNV-1a hash, for the key of the Box that holds its Image: an image
+ * whose pixels change (new cells, width or ink) is a new element, which the
+ * engine sends under a new image id, deleting the old one. Sent again under
+ * the same id, Ghostty keeps drawing an earlier transmission.
+ */
+function signatureOf(png: Uint8Array): string {
+  let signature = signatureCache.get(png)
+  if (signature === undefined) {
+    let hash = 0x811c9dc5
+    for (const byte of png) hash = Math.imul(hash ^ byte, 0x01000193)
+    signature = (hash >>> 0).toString(36)
+    signatureCache.set(png, signature)
+  }
+  return signature
+}
 
 function base64Of(png: Uint8Array): string {
   let base64 = base64Cache.get(png)
