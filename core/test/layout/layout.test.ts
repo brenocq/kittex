@@ -30,8 +30,6 @@ describe('cell widths', () => {
 
   test('emoji the engine and the terminals may draw differently are unknown', () => {
     for (const text of [
-      '\u2764', // text presentation by default (one cell)
-      '\u2600',
       '\u{1f170}', // ambiguous width
       '\u2764\ufe0f', // a presentation selector after it
       '\u{1f600}\ufe0f',
@@ -49,6 +47,22 @@ describe('cell widths', () => {
       '\u{1f6d8}', // Unicode 17
     ])
       expect(textWidth(text)).toBe(-1)
+  })
+
+  test('symbols and dingbats in text presentation take one cell, as the engine, kitty and Ghostty agree', () => {
+    // Bun.stringWidth (ambiguous narrow) 1, kitty 0.49 wcswidth 1, Ghostty 1 (neither wide nor emoji by default).
+    expect(textWidth('✓✔✗✘★☆☐☑☒♥♦♠♣⚠❤☀✦➜➤①⑳⒜Ⓐ␣')).toBe(24)
+    expect(textWidth('Check x = 1 ✓')).toBe(13)
+    // Emoji by default stay two cells; U+FE0F or U+FE0E after a text symbol, unknown outside emoji sequences.
+    expect(textWidth('✅❌⭐')).toBe(6)
+    expect(textWidth('\u2714\ufe0f')).toBe(-1)
+    expect(textWidth('\u2714\ufe0f', true)).toBe(2)
+    expect(textWidth('\u2713\ufe0f', true)).toBe(-1)
+  })
+
+  test('symbols the engine, kitty or Ghostty draw two cells wide stay unknown', () => {
+    // Trigrams and digrams are wide since Unicode 16; kitty draws the skin-tone bases two cells wide.
+    for (const char of ['☰', '⚊', '☝', '⛹', '✌', '✍', '〈']) expect([char, textWidth(char)]).toEqual([char, -1])
   })
 
   test('combining Cyrillic marks take no cell', () => {
@@ -294,5 +308,54 @@ describe('layoutList', () => {
       { start: 0, end: 14, paragraph: false, list: true },
       { start: 16, end: 21, paragraph: true },
     ])
+  })
+})
+
+describe('partial layouts', () => {
+  // A row's breaks depend only on the words before them, and a token's drawing
+  // on the tokens before it: what precedes the first thing the replay can't
+  // follow is laid out exactly, whatever comes after it (the engine's drawing
+  // of it doesn't change), so the formulas there still get their images.
+  const at = (markdown: string, part: string) => ({ start: markdown.indexOf(part), end: markdown.indexOf(part) + part.length })
+
+  test('a paragraph is laid out up to the word holding a character of unknown width', () => {
+    const markdown = 'The value x⠀ holds, then 中文 and y⠀ after it.'
+    expect(layoutProse(markdown, 20, [at(markdown, 'x⠀')])).toBeNull()
+    const layout = layoutProse(markdown, 20, [at(markdown, 'x⠀'), at(markdown, 'y⠀')], {}, true)!
+    expect(layout.places).toEqual([{ row: 0, col: 10, columns: 2 }, null])
+    // From the space before the word on (that space too: nothing after it is drawn).
+    expect(layout.stop).toBe(markdown.indexOf(' 中'))
+    expect(layout.lines).toEqual(['The value x⠀ holds, ', 'then'])
+    // A complete layout has no stop.
+    expect(layoutProse('The value x⠀ holds.', 20, [], {}, true)?.stop).toBeUndefined()
+  })
+
+  test('a formula glued to what is not followed is not placed: its word may wrap otherwise', () => {
+    const markdown = 'Here x⠀中 and more.'
+    expect(layoutProse(markdown, 40, [at(markdown, 'x⠀')], {}, true)?.places).toEqual([null])
+  })
+
+  test('a link the replay does not follow (no link mode), a double space: laid out up to it', () => {
+    const link = 'See x⠀ and [the docs](https://example.com) for y⠀.'
+    expect(layoutProse(link, 40, [at(link, 'x⠀'), at(link, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 4, columns: 2 }, null])
+    const spaces = 'See x⠀ here.  Then y⠀.'
+    expect(layoutProse(spaces, 40, [at(spaces, 'x⠀'), at(spaces, 'y⠀')])).toBeNull()
+    expect(layoutProse(spaces, 40, [at(spaces, 'x⠀'), at(spaces, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 4, columns: 2 }, null])
+  })
+
+  test('a list is laid out up to the item, or the word in it, the replay does not follow', () => {
+    const markdown = '- one x⠀\n- two y⠀ 中\n- [ ] three z⠀'
+    expect(layoutList(markdown, 40, [at(markdown, 'x⠀')])).toBeNull()
+    const layout = layoutList(markdown, 40, [at(markdown, 'x⠀'), at(markdown, 'y⠀'), at(markdown, 'z⠀')], {}, true)!
+    expect(layout.places).toEqual([{ row: 0, col: 6, columns: 2 }, { row: 1, col: 6, columns: 2 }, null])
+    const task = '- one x⠀\n- [ ] two y⠀'
+    expect(layoutList(task, 40, [at(task, 'x⠀'), at(task, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 6, columns: 2 }, null])
+  })
+
+  test("a display preview's lines in a list item, led by pads, are drawn as written where they fit", () => {
+    const markdown = '1. Roots:\n\n   &nbsp;&nbsp;&nbsp;x = 1\n   &nbsp;&nbsp;&nbsp;y = 2\n\n2. Next'
+    expect(layoutList(markdown, 30)?.lines).toEqual(['1. Roots:', '', '      x = 1', '      y = 2', '2. Next'])
+    // A line led by spaces that would wrap is not followed (a row could open with a space).
+    expect(layoutList(`1. Roots:\n\n   &nbsp;&nbsp;${'z'.repeat(40)}`, 30)).toBeNull()
   })
 })

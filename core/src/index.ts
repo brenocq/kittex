@@ -174,11 +174,12 @@ export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, 
 
 /**
  * The cells an inline formula's image takes: one row, the formula on the
- * terminal font's baseline, scaled down to fit the row when it must (`scale`).
- * Null when it would need less than MIN_INLINE_SCALE, or MathJax refuses it:
- * the formula then stays Unicode.
+ * terminal font's baseline, scaled down to fit the row when it must (`scale`),
+ * and to fit `columns` when given (a slot narrower than the formula). Null
+ * when it would need less than MIN_INLINE_SCALE, or MathJax refuses it: the
+ * formula then stays Unicode.
  */
-export function measureInline(tex: string, env: InlineEnv): CellBox | null {
+export function measureInline(tex: string, env: InlineEnv, columns = 255): CellBox | null {
   let result: TypesetResult
   try {
     result = typesetInline(tex)
@@ -186,7 +187,7 @@ export function measureInline(tex: string, env: InlineEnv): CellBox | null {
     if (error instanceof TexError) return null
     throw error
   }
-  const options = inlineOptions(env, 255, 'left')
+  const options = inlineOptions(env, columns, 'left')
   const box = measure(result, options)
   if (box.scale < MIN_INLINE_SCALE) return null
   // Drawn at the floor only because its ink may pass the row: allowed when what

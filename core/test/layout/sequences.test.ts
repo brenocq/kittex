@@ -41,7 +41,6 @@ const REFUSED = [
   '#⃣', // a keycap without U+FE0F: two cells to the engine, one to kitty
   '1️', // a keycap base with U+FE0F alone: one cell to the engine, two to kitty
   '\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}', // tags (England's flag)
-  '☀', // text presentation: one cell, and its width in other terminals varies
   '\u{1f170}',
   '☀︎', // U+FE0E
   '\u{1f600}︎',
@@ -66,6 +65,11 @@ describe('emoji clusters (sequences on)', () => {
 
   test('what still disagrees is unknown', () => {
     for (const text of REFUSED) expect([text, textWidth(text, true)]).toEqual([text, -1])
+  })
+
+  test('a text-default emoji standing alone is one cell, as it is with sequences off', () => {
+    // One cell to the engine, kitty 0.49 and Ghostty (measured in a Ghostty window, both grapheme-width-methods).
+    for (const text of ['☀', '❤', '✔', '⚠']) expect([text, textWidth(text, true), textWidth(text)]).toEqual([text, 1, 1])
   })
 
   test('sequences off (another terminal, Ghostty legacy, ssh), every sequence is unknown and single emoji stay two cells', () => {

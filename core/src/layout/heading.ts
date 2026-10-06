@@ -17,11 +17,11 @@ import type { VisibleText } from './prose.js'
  */
 
 /** A heading's visible text, laid out from the block's top-left cell. */
-export function drawHeading(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
+export function drawHeading(markdown: string, width: number, mode: LinkMode = {}, partial = false): Canvas | null {
   const visible = visibleHeading(markdown, mode)
   if (!visible || !(width >= 1)) return null
-  const canvas = new Canvas(width, mode.emojiSequences === true)
-  return canvas.draw(visible, 0, 0, width) ? canvas : null
+  const canvas = new Canvas(width, mode.emojiSequences === true, partial)
+  return canvas.draw(visible, 0, 0, width) || canvas.stop < Infinity ? canvas : null
 }
 
 /**

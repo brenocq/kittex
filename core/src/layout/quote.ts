@@ -66,7 +66,7 @@ const INNER_SPACES = /\S {2}/
  * `width` cells wide: the bar at column 0 of every row, the text from column
  * QUOTE_TEXT. Null when anything in it isn't followed (see above).
  */
-export function drawQuote(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
+export function drawQuote(markdown: string, width: number, mode: LinkMode = {}, partial = false): Canvas | null {
   if (unfollowable(markdown) || !(width > QUOTE_TEXT)) return null
   let tokens: Token[]
   try {
@@ -91,8 +91,8 @@ export function drawQuote(markdown: string, width: number, mode: LinkMode = {}):
     const cells = textWidth(line, sequences)
     if (INNER_SPACES.test(line) && !(cells >= 0 && cells <= width - QUOTE_TEXT)) return null
   }
-  const canvas = new Canvas(width, sequences)
-  if (!canvas.draw(visible, 0, QUOTE_TEXT, width - QUOTE_TEXT)) return null
+  const canvas = new Canvas(width, sequences, partial)
+  if (!canvas.draw(visible, 0, QUOTE_TEXT, width - QUOTE_TEXT) && canvas.stop === Infinity) return null
   for (let row = 0; row < canvas.rows; row++) canvas.put(QUOTE_BAR, row, 0)
   return canvas
 }
