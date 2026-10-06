@@ -195,6 +195,8 @@ export interface ProseBlock {
   list?: boolean
   /** A single blockquote, which the engine draws as one text box two cells in (a bar and a space). */
   quote?: boolean
+  /** A table, after one paragraph or none (layoutTable). */
+  table?: boolean
 }
 
 /**
@@ -225,6 +227,7 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
       paragraph: types === 'paragraph',
       ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}),
       ...(types === 'blockquote' ? { quote: true } : {}),
+      ...(/^(?:paragraph,)?table$/.test(types) ? { table: true } : {}),
     })
     block = undefined
   }

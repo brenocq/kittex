@@ -1,5 +1,6 @@
 import { drawList } from './list.js'
 import { visibleProse } from './prose.js'
+import { drawTable } from './table.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
@@ -85,6 +86,21 @@ export function layoutList(markdown: string, width: number, spans: readonly Sour
   if (!canvas) return null
   const text = canvas.text.join('')
   const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, i => canvas.end[i] === true))
+  return { rows: canvas.rows, places, lines: canvas.lines() }
+}
+
+/**
+ * Lays out a block that is a table (after one paragraph or none: a block
+ * proseBlocks marks `table`) as the engine draws it in a terminal `columns`
+ * wide (tables are not held to maxProseWidth; the paragraph wraps at
+ * `proseWidth`), and finds where each span lands, as layoutProse does. Null
+ * when the table holds anything its replay doesn't follow (see drawTable).
+ */
+export function layoutTable(markdown: string, columns: number, spans: readonly SourceSpan[] = [], proseWidth = columns - 2): ProseLayout | null {
+  const canvas = drawTable(markdown, columns, proseWidth)
+  if (!canvas) return null
+  const text = canvas.text.join('')
+  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, columns - 2, () => false))
   return { rows: canvas.rows, places, lines: canvas.lines() }
 }
 
