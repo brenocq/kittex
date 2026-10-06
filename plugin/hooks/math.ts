@@ -7,6 +7,7 @@
 
 import {
   createLineScanner,
+  engineHyperlinks,
   layoutList,
   layoutProse,
   measureDisplay,
@@ -19,7 +20,7 @@ import {
   TexError,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, RenderedImage, RenderEnv, Segment, SourceSpan } from './core.js'
+import type { CellSize, InlineEnv, LineScanner, LinkMode, RenderedImage, RenderEnv, Segment, SourceSpan } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -263,6 +264,16 @@ export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
  */
 export function quoteColumns(env: KittexEnv, depth: number, columns = env.columns): number {
   return Math.max(1, proseWidthFor(env, columns) - 2 * depth)
+}
+
+/**
+ * How the engine draws links in a terminal with these variables (as OSC 8
+ * hyperlinks, or as text with the url beside it), for KittexEnv; nothing when
+ * that isn't known, and links then keep their paragraph's math Unicode.
+ */
+export function linkEnv(variables: Readonly<Record<string, string | undefined>>): Pick<KittexEnv, 'hyperlinks'> {
+  const hyperlinks = engineHyperlinks(variables)
+  return hyperlinks === undefined ? {} : { hyperlinks }
 }
 
 /** The width reply prose wraps at: the reply column, or `maxProseWidth` when that is narrower. */
@@ -546,7 +557,10 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env)) : null
+      const inline =
+        env.inline && env.images && placeable(writer.recent(), proseWidthFor(env), { hyperlinks: env.hyperlinks })
+          ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env))
+          : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -585,11 +599,12 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
  * Whether inline math written next, after `written`, lands in a block whose
  * inline previews get images at landing (proseBlocks, the rule the landed
  * drawing uses): a plain paragraph, or the text of a list item in a list the
- * replay follows so far (`width`: the width prose wraps at). Anywhere else (a
- * heading, a quote, a table) the formula is drawn as plain Unicode, so
- * streaming writes it unpadded: padding there would stay behind as gaps.
+ * replay follows so far (`width`: the width prose wraps at; `mode`: how the
+ * engine draws links). Anywhere else (a heading, a quote, a table) the formula
+ * is drawn as plain Unicode, so streaming writes it unpadded: padding there
+ * would stay behind as gaps.
  */
-export function placeable(written: string, width: number): boolean {
+export function placeable(written: string, width: number, mode: LinkMode = {}): boolean {
   // A table's first row reads as a paragraph until its delimiter row arrives.
   if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
   // A stand-in for the formula, so the line it starts is part of the block read.
@@ -597,7 +612,7 @@ export function placeable(written: string, width: number): boolean {
   const last = proseBlocks(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
   if (last.paragraph) return true
-  return last.list === true && layoutList(text.slice(last.start, last.end), width) !== null
+  return last.list === true && layoutList(text.slice(last.start, last.end), width, [], mode) !== null
 }
 
 /** Why MathJax refuses a formula, or undefined when it doesn't. */
@@ -686,9 +701,10 @@ export interface PlanOptions {
   scan?: (markdown: string) => Segment[]
   /**
    * Inline math drawn as images: where (one text row), the width prose wraps
-   * at, and the drawing (throws TexError). Absent: inline math stays Unicode.
+   * at, and the drawing (throws TexError), and how the engine draws links
+   * (`hyperlinks`, KittexEnv's). Absent: inline math stays Unicode.
    */
-  inline?: { env: InlineEnv; width: number; draw: (tex: string, columns: number) => RenderedImage }
+  inline?: { env: InlineEnv; width: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined }
 }
 
 interface Span {
@@ -1004,6 +1020,7 @@ function placeImages(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
+    { hyperlinks: inline.hyperlinks },
   )
   if (!layout) return []
   const images: [SourceSpan, InlineImage][] = []

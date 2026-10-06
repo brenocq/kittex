@@ -21,6 +21,8 @@ export type KittexEnv = {
   bullet?: string
   /** The `maxProseWidth` setting: reply prose wraps at most this wide; absent when unset. */
   maxProseWidth?: number
+  /** Whether the engine draws links as OSC 8 hyperlinks (their text alone) or as text with the url beside it; absent when unknown (links aren't followed). */
+  hyperlinks?: boolean
 }
 
 /** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */
