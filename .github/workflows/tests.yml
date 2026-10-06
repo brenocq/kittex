@@ -1,0 +1,49 @@
+name: 🧪 Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Core tests
+        run: npm test
+
+      # The build fails when a bundle file passes the size Claude Code reads.
+      - name: Build
+        run: npm run build
+
+      # main commits the bundle for installs from git: it must be what the sources build.
+      - name: Committed bundle is up to date
+        if: github.event_name == 'push'
+        run: git diff --exit-code --stat -- plugin/hooks
+
+      - name: Sandbox check
+        run: npm run check:sandbox
+
+      # The plugin's own checks run against the Claude Code version kittex is built for.
+      - name: Install Claude Code
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s 2.1.291
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Plugin tests
+        run: |
+          claude plugin validate plugin
+          claude plugin test plugin
