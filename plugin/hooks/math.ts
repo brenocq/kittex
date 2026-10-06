@@ -5,8 +5,19 @@
 // The layout rules below were measured on the live engine (Claude Code
 // 2.1.290 and 2.1.291); docs/engine-findings.md has the recordings.
 
-import { createLineScanner, measureDisplay, previewDisplay, previewInline, scan, TexError } from './core.js'
-import type { CellSize, LineScanner, RenderedImage, RenderEnv, Segment } from './core.js'
+import {
+  createLineScanner,
+  layoutProse,
+  measureDisplay,
+  measureInline,
+  previewDisplay,
+  previewInline,
+  proseBlocks,
+  scan,
+  TexError,
+  textWidth,
+} from './core.js'
+import type { CellSize, InlineEnv, LineScanner, RenderedImage, RenderEnv, Segment, SourceSpan } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -82,6 +93,41 @@ export const INK_PREFER: 'theme' | 'terminal' = 'terminal'
 /** The prefix of the line drawn under a formula MathJax refused. */
 export const NOT_RENDERED = 'not rendered: '
 
+/**
+ * The terminal font's baseline in its cell, from the top, as a fraction of the
+ * cell's height: measured in kitty (DejaVu Sans Mono at 13×26 px cells: the
+ * baseline is 21 px down, glyphs reach 16 px above it and 4 below). Inline
+ * images put the math baseline there.
+ */
+export const TEXT_BASELINE = 21 / 26
+
+/**
+ * What joins the words of an inline preview: a no-break space, one cell that
+ * the engine's word wrap (Bun.wrapAnsi, which splits at U+0020 alone) never
+ * breaks at, and that marked and the engine draw as it is. Measured live.
+ */
+export const INLINE_JOIN = '\u00a0'
+
+/**
+ * What pads an inline preview to its image's width: U+2800, a blank cell that
+ * neither breaks a line nor counts as whitespace, so emphasis closing right
+ * after a formula (`*… $x$*`) still closes, and no trim takes it.
+ */
+export const INLINE_PAD = BLANK_CELL
+
+/**
+ * The ASCII an inline preview escapes (markdown could read it as syntax). Each
+ * is one that makes the engine read the text as markdown at all, so the escape
+ * is always read as one, never drawn as a backslash.
+ */
+export const INLINE_SPECIALS = /[`*_[|~#>]/g
+
+/**
+ * Rows from the top of a prose piece's drawing (a `next()` result) to its first
+ * row of text: the one-row top margin every AssistantMessage drawing brings.
+ */
+export const PIECE_TOP = 1
+
 // ─── Engine-independent settings ─────────────────────────────────────────────
 
 /** Cells assumed when the cell probe fails, at FALLBACK_PIXEL_SCALE resolution (the terminal scales the image to the cells). */
@@ -93,8 +139,8 @@ export const FALLBACK_COLUMNS = 80
 export const PROBE_TIMEOUT_MS = 2000
 /** Wait after a change of width before probing the cell size again (font zoom changes both). */
 export const RESIZE_SETTLE_MS = 400
-/** Preview records kept for mapping landed replies back to TeX. */
-export const RECORD_LIMIT = 256
+/** Preview records kept for mapping landed replies back to TeX (inline ones included). */
+export const RECORD_LIMIT = 512
 /** Streaming messages tracked at once (a message that never sees `final` is dropped past this). */
 export const STREAM_LIMIT = 64
 /** Also instruct the model where the terminal shows no images (math then reads as Unicode). */
@@ -116,11 +162,12 @@ export const MATH_INSTRUCTIONS =
 /**
  * The texts kittex may change once landed: math delimiters (a reply that never
  * streamed through MessageDisplay, or one read back after `--resume`), a
- * preview's pad, or a refused formula's source block. The AssistantMessage
+ * display preview's pad, an inline preview's join or pad, or a refused
+ * formula's source block. The AssistantMessage
  * hook is registered with this as its `props.text` matcher, so every other
  * block is drawn by the engine without a round trip through kittex.
  */
-export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex/
+export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800/
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
@@ -153,6 +200,56 @@ export function previewColumns(maxColumns: number): number {
 
 export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
   return { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: replyColumns(columns), emPx: env.emPx, ink: env.ink }
+}
+
+/** Where inline formulas are drawn: one text row, the math on the font's baseline. */
+export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
+  return { ...renderEnvFor(env, columns), baselinePx: Math.round(env.cellHeight * TEXT_BASELINE) }
+}
+
+/** The width reply prose wraps at: the reply column, or `maxProseWidth` when that is narrower. */
+export function proseWidthFor(env: KittexEnv, columns = env.columns): number {
+  const reply = replyColumns(columns)
+  return env.maxProseWidth !== undefined && env.maxProseWidth >= 1 ? Math.min(reply, Math.floor(env.maxProseWidth)) : reply
+}
+
+/** What a streamed message is rewritten for: the terminal, and whether inline math becomes images. */
+export type StreamEnv = KittexEnv & {
+  /** Inline math is drawn as images (the `inline` option, where the terminal draws images). */
+  inline?: boolean
+}
+
+/**
+ * An inline formula as it is written while it streams, when it will be drawn
+ * as an image once landed: its one-line Unicode, words joined by INLINE_JOIN,
+ * padded with INLINE_PAD to exactly the image's columns (the image is widened
+ * instead when the Unicode is wider, and by one pad when the preview would
+ * hold neither: a preview is found again by its content), markdown syntax
+ * escaped.
+ */
+export interface InlinePreview {
+  markdown: string
+  tex: string
+  columns: number
+}
+
+/**
+ * The preview of an inline formula drawn as an image, or null when it stays
+ * plain Unicode: too tall for a row (see measureInline), refused by MathJax,
+ * no one-line Unicode, a character whose width isn't certain, or a backslash.
+ */
+export function inlinePreview(tex: string, env: InlineEnv): InlinePreview | null {
+  const unicode = previewInline(tex, env.maxColumns)?.trim()
+  if (!unicode || /[\\\s]/.test(unicode.replaceAll(' ', ''))) return null
+  const width = textWidth(unicode)
+  if (width < 1) return null
+  const box = measureInline(tex, env)
+  if (!box) return null
+  let columns = Math.max(box.columns, width)
+  if (columns === width && !unicode.includes(' ')) columns += 1
+  if (columns > Math.min(255, env.maxColumns)) return null
+  const body = unicode.replaceAll(' ', INLINE_JOIN).replace(INLINE_SPECIALS, '\\$&')
+  return { markdown: body + INLINE_PAD.repeat(columns - width), tex, columns }
 }
 
 // ─── Markdown forms ──────────────────────────────────────────────────────────
@@ -311,12 +408,13 @@ export interface StreamRewrite {
 
 /**
  * Rewrites the segments one flush completed: inline math as one line of
- * Unicode, a display formula as its preview (exactly the rows its image will
+ * Unicode (padded to its image's width, with a record, when inline images are
+ * on and the formula gets one), a display formula as its preview (exactly the rows its image will
  * take when the terminal draws images), a formula MathJax refuses as its
  * source and a `not rendered` line. `writer` carries the line state across the
  * message's flushes.
  */
-export function rewriteSegments(segments: readonly Segment[], env: KittexEnv, writer: MarkdownWriter): StreamRewrite {
+export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, writer: MarkdownWriter): StreamRewrite {
   const renderEnv = renderEnvFor(env)
   const { maxColumns } = renderEnv
   const records: PreviewRecord[] = []
@@ -324,7 +422,13 @@ export function rewriteSegments(segments: readonly Segment[], env: KittexEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      writer.text(previewInline(segment.tex, maxColumns) ?? segment.raw)
+      const inline = env.inline && env.images ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
+      if (inline) {
+        writer.text(inline.markdown)
+        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
+      } else {
+        writer.text(previewInline(segment.tex, maxColumns) ?? segment.raw)
+      }
     } else {
       let rows: number | undefined
       try {
@@ -376,7 +480,7 @@ export class MessageStream {
   }
 
   /** The text to show for one flush (HELD_DISPLAY while a display block is held) and the previews it wrote. */
-  push(delta: string, final: boolean, env: KittexEnv): StreamRewrite {
+  push(delta: string, final: boolean, env: StreamEnv): StreamRewrite {
     this.pushed += delta
     const segments = this.scanner.push(delta, final)
     if (segments.length === 0) return { text: delta === '' ? '' : HELD_DISPLAY, records: [] }
@@ -398,9 +502,17 @@ export class MessageStream {
  * blank row).
  */
 export type Piece =
-  | { kind: 'prose'; text: string; gap: boolean }
+  | { kind: 'prose'; text: string; gap: boolean; inline?: InlineImage[] }
   | { kind: 'image'; tex: string; image: RenderedImage; gap: boolean }
   | { kind: 'note'; text: string; gap: boolean }
+
+/** An inline formula's image, drawn over its preview: the preview's row and column in its prose piece's text. */
+export interface InlineImage {
+  tex: string
+  image: RenderedImage
+  row: number
+  col: number
+}
 
 export interface LandedPlan {
   pieces: Piece[]
@@ -414,6 +526,11 @@ export interface PlanOptions {
   draw?: (tex: string, rows?: number) => RenderedImage
   /** Splits markdown into prose and math (core's scan unless given). */
   scan?: (markdown: string) => Segment[]
+  /**
+   * Inline math drawn as images: where (one text row), the width prose wraps
+   * at, and the drawing (throws TexError). Absent: inline math stays Unicode.
+   */
+  inline?: { env: InlineEnv; width: number; draw: (tex: string, columns: number) => RenderedImage }
 }
 
 interface Span {
@@ -430,7 +547,7 @@ interface Span {
 export function findPreviews(text: string, records: readonly PreviewRecord[]): Span[] {
   if (records.length === 0 || !(text.includes(PREVIEW_PAD) || text.includes('```'))) return []
   const latest = new Map<string, PreviewRecord>()
-  for (const record of records) latest.set(record.preview, record)
+  for (const record of records) if (!record.inline) latest.set(record.preview, record)
   const spans: Span[] = []
   for (const record of latest.values()) {
     const pattern = new RegExp(
@@ -448,6 +565,28 @@ export function findPreviews(text: string, records: readonly PreviewRecord[]): S
   return kept
 }
 
+/**
+ * The inline previews kittex recorded that a prose text holds, in order (a
+ * longer one wins where two overlap). Only previews written with a pad are
+ * recorded, so plain text can't be taken for one.
+ */
+export function findInlinePreviews(text: string, records: readonly PreviewRecord[]): Span[] {
+  const marked = (preview: string) => preview.includes(INLINE_PAD) || preview.includes(INLINE_JOIN)
+  if (!marked(text)) return []
+  const latest = new Map<string, PreviewRecord>()
+  for (const record of records) if (record.inline && marked(record.preview)) latest.set(record.preview, record)
+  const spans: Span[] = []
+  for (const record of latest.values()) {
+    for (let at = text.indexOf(record.preview); at >= 0; at = text.indexOf(record.preview, at + 1)) {
+      spans.push({ start: at, end: at + record.preview.length, record })
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || b.end - a.end)
+  const kept: Span[] = []
+  for (const span of spans) if (kept.length === 0 || span.start >= kept[kept.length - 1]!.end) kept.push(span)
+  return kept
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -457,6 +596,19 @@ const SLOT = /(\d+)/
 const slot = (index: number) => `${index}`
 
 type Item = { kind: 'image'; tex: string; image: RenderedImage } | { kind: 'note'; text: string }
+
+/** Marks an inline preview in planned markdown: open, its index, separator, the preview, close (private-use characters). */
+const MARK_OPEN = '\ue002'
+const MARK_SEP = '\ue003'
+const MARK_CLOSE = '\ue004'
+const MARK = /\ue002(\d+)\ue003([^\ue004]*)\ue004/g
+
+interface InlineMark {
+  tex: string
+  columns: number
+  /** What the formula is written as where it gets no image, when that may differ (math read back as LaTeX, never shown padded). */
+  plain?: string
+}
 
 /**
  * Plans the drawing of a landed block. The previews kittex wrote while it
@@ -501,16 +653,41 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
     else writer.text(fallback)
   }
 
+  const marks: InlineMark[] = []
+  const mark = (markdown: string, inline: InlineMark) => {
+    changed = true
+    marks.push(inline)
+    writer.text(MARK_OPEN + (marks.length - 1) + MARK_SEP + markdown + MARK_CLOSE)
+  }
+
+  // Prose: inline previews written while streaming are marked for their images.
   const prose = (source: string) => {
+    if (source === '' || !options.inline) return proseMath(source)
+    let at = 0
+    for (const span of findInlinePreviews(source, records)) {
+      proseMath(source.slice(at, span.start))
+      mark(source.slice(span.start, span.end), { tex: span.record.tex, columns: span.record.columns ?? 0 })
+      at = span.end
+    }
+    proseMath(source.slice(at))
+  }
+
+  // Prose that may still hold LaTeX.
+  const proseMath = (source: string) => {
     if (source === '') return
     if (!/\$|\\[([]|\\begin\{/.test(source)) return writer.text(source)
     for (const segment of (options.scan ?? scan)(source)) {
       if (segment.kind === 'text') {
         writer.text(segment.text)
       } else if (!segment.display) {
-        const inline = previewInline(segment.tex, maxColumns)
-        if (inline !== null) changed = true
-        writer.text(inline ?? segment.raw)
+        const plain = previewInline(segment.tex, maxColumns)
+        const padded = options.inline ? inlinePreview(segment.tex, options.inline.env) : null
+        if (padded) {
+          mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: plain ?? segment.raw })
+          continue
+        }
+        if (plain !== null) changed = true
+        writer.text(plain ?? segment.raw)
       } else {
         display(segment.tex, segment.raw)
       }
@@ -541,7 +718,105 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
     at = span.end
   }
   prose(text.slice(at))
-  return { pieces: piecesOf(writer.take(), items), changed }
+  return { pieces: placeInline(piecesOf(writer.take(), items), marks, options), changed }
+}
+
+/**
+ * Gives the inline previews marked in prose pieces their images. A paragraph
+ * holding previews, set apart by blank lines, is drawn as a piece of its own
+ * (so its first row is the piece's), laid out as the engine lays it out, and
+ * each preview drawn whole on one row gets its image there. Everything else
+ * keeps its text: previews streamed padded stay as they were shown, math read
+ * back as LaTeX goes back to its plain Unicode.
+ */
+function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], options: PlanOptions): Piece[] {
+  const out: Piece[] = []
+  for (const piece of pieces) {
+    if (piece.kind !== 'prose' || !piece.text.includes(MARK_OPEN)) {
+      out.push(piece)
+      continue
+    }
+    // The marks taken out: the text as streamed, and where each preview is in it.
+    let text = ''
+    const spans: (SourceSpan & { mark: InlineMark })[] = []
+    let last = 0
+    for (const match of piece.text.matchAll(MARK)) {
+      text += piece.text.slice(last, match.index)
+      const start = text.length
+      text += match[2]!
+      spans.push({ start, end: text.length, width: marks[Number(match[1])]!.columns, mark: marks[Number(match[1])]! })
+      last = match.index + match[0].length
+    }
+    text += piece.text.slice(last)
+
+    // The paragraphs whose previews get images.
+    const parts: { start: number; end: number; images: InlineImage[] }[] = []
+    for (const block of (options.inline ? proseBlocks(text) : null) ?? []) {
+      const inside = spans.filter(span => span.start >= block.start && span.end <= block.end)
+      if (!block.paragraph || inside.length === 0) continue
+      const images = placeImages(text.slice(block.start, block.end), inside, block.start, options.inline!)
+      if (images.length > 0) parts.push({ start: block.start, end: block.end, images })
+    }
+
+    // Text outside those paragraphs, with math read back as LaTeX in its plain form.
+    const plain = (from: number, to: number) => {
+      let written = ''
+      let at = from
+      for (const span of spans) {
+        if (span.start < from || span.end > to || span.mark.plain === undefined) continue
+        written += text.slice(at, span.start) + span.mark.plain
+        at = span.end
+      }
+      return written + text.slice(at, to)
+    }
+    // Split at the blank lines around them: each later piece has a blank row above it, as the whole had.
+    let at = 0
+    let gap = piece.gap
+    for (const part of parts) {
+      let before = plain(at, part.start).replace(/(?:\n[ \t]*)+$/, '')
+      if (at > 0) before = before.replace(/^(?:[ \t]*\n)+/, '')
+      if (before.trim() !== '') {
+        out.push({ kind: 'prose', text: before, gap })
+        gap = true
+      }
+      out.push({ kind: 'prose', text: text.slice(part.start, part.end), gap, inline: part.images })
+      gap = true
+      at = part.end
+    }
+    const after = plain(at, text.length)
+    if (at === 0) {
+      out.push({ kind: 'prose', text: after, gap: piece.gap })
+    } else if (after.trim() !== '') {
+      out.push({ kind: 'prose', text: after.replace(/^(?:[ \t]*\n)+/, ''), gap: true })
+    }
+  }
+  return out
+}
+
+/** Lays out one paragraph and draws the images of the previews found whole on a row. */
+function placeImages(
+  paragraph: string,
+  spans: readonly (SourceSpan & { mark: InlineMark })[],
+  offset: number,
+  inline: NonNullable<PlanOptions['inline']>,
+): InlineImage[] {
+  const layout = layoutProse(
+    paragraph,
+    inline.width,
+    spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
+  )
+  if (!layout) return []
+  const images: InlineImage[] = []
+  for (const [k, place] of layout.places.entries()) {
+    const { mark } = spans[k]!
+    if (!place || mark.columns < 1 || place.columns !== mark.columns) continue
+    try {
+      images.push({ tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col })
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+    }
+  }
+  return images
 }
 
 /** Splits planned markdown at its item slots into pieces, each knowing whether a blank line came before it. */
@@ -576,7 +851,7 @@ function piecesOf(markdown: string, items: readonly Item[]): Piece[] {
   return pieces
 }
 
-/** Prose pieces joined back into one text (a plan with no images or notes). */
+/** Prose pieces joined back into one text (a plan with no images, inline ones included, or notes). */
 export function joinProse(pieces: readonly Piece[]): string {
   return pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')
 }

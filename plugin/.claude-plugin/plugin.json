@@ -12,6 +12,12 @@
       "title": "Render LaTeX math",
       "description": "Show the LaTeX in Claude's replies as equations: images in kitty and Ghostty, text elsewhere. Off: replies show the raw LaTeX.",
       "default": true
+    },
+    "inline": {
+      "type": "boolean",
+      "title": "Render inline math as images",
+      "description": "Draw inline $…$ math as images on the text's baseline. Off: inline math is Unicode text.",
+      "default": true
     }
   }
 }

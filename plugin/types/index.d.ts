@@ -19,9 +19,11 @@ export type KittexEnv = {
   measured: boolean
   /** The glyph the engine opens a reply with (`⏺` on macOS, `●` elsewhere); `●` when absent. */
   bullet?: string
+  /** The `maxProseWidth` setting: reply prose wraps at most this wide; absent when unset. */
+  maxProseWidth?: number
 }
 
-/** One display preview written while a reply streamed, and the TeX it stands for (kittex.records). */
+/** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */
 export type KittexPreview = {
   /** The markdown exactly as written into the reply (lines after the first carry its indentation). */
   preview: string
@@ -30,6 +32,10 @@ export type KittexPreview = {
   rows: number
   /** MathJax refused the formula: why. The preview is its source and a `not rendered` line. */
   error?: string
+  /** An inline formula's preview (one row, `columns` cells, drawn over by its image once landed). */
+  inline?: true
+  /** Inline: the cells the preview and its image take. */
+  columns?: number
 }
 
 declare module 'claude-code' {
@@ -37,7 +43,7 @@ declare module 'claude-code' {
     kittex: {
       /** The terminal as drawing sees it; null until session.start set it up, or when that failed. */
       env: KittexEnv | null
-      /** Display previews written while streaming, newest last. */
+      /** Previews written while streaming, newest last. */
       records: KittexPreview[]
     }
   }

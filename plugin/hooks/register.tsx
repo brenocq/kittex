@@ -26,6 +26,7 @@ import {
   measureDisplay,
   readTerminalColors,
   renderDisplay,
+  renderInline,
   toBase64,
 } from './core.js'
 import type { CellSize, TerminalColors, TerminalInfo } from './core.js'
@@ -37,13 +38,16 @@ import {
   copiedFormula,
   FALLBACK_COLUMNS,
   INK_PREFER,
+  inlineEnvFor,
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
   LANDED_PATTERN,
   MessageStream,
   MATH_INSTRUCTIONS,
   planLanded,
+  PIECE_TOP,
   PROBE_TIMEOUT_MS,
+  proseWidthFor,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -52,7 +56,7 @@ import {
   STREAM_LIMIT,
   withoutTextOverride,
 } from './math.ts'
-import type { KittexEnv, Piece, PreviewRecord } from './math.ts'
+import type { InlineImage, KittexEnv, Piece, PreviewRecord } from './math.ts'
 
 type $ = EngineInterface
 
@@ -80,6 +84,8 @@ let reprobePending = false
 
 export const register: Register = (on, options) => {
   if (options.enabled === false) return
+  /** Inline math drawn as images where the terminal draws them (the `inline` option); off, it is Unicode text as before. */
+  const inlineImages = options.inline !== false
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +102,13 @@ export const register: Register = (on, options) => {
   on('config.set', { key: 'theme' }, async ($, e, next) => {
     const result = await next(e)
     if (result.deny === undefined && typeof result.value === 'string') await refreshInk($, result.value).catch(() => undefined)
+    return result
+  }).catch(($, e, next) => next(e))
+
+  // Prose wraps at maxProseWidth: inline images are placed by it.
+  on('config.set', { key: 'maxProseWidth' }, async ($, e, next) => {
+    const result = await next(e)
+    if (result.deny === undefined) await refreshProseWidth($).catch(() => undefined)
     return result
   }).catch(($, e, next) => next(e))
 
@@ -161,7 +174,7 @@ export const register: Register = (on, options) => {
         streams.set(e.message_id, stream)
         for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
       }
-      const rewrite = stream.push(delta, e.final, env)
+      const rewrite = stream.push(delta, e.final, { ...env, inline: inlineImages && env.images })
       if (e.final) streams.delete(e.message_id)
       if (rewrite.records.length > 0) await remember($, rewrite.records)
       return rewrite.text === delta ? below : { ...below, displayContent: rewrite.text }
@@ -188,14 +201,19 @@ export const register: Register = (on, options) => {
       const images = e.surface === 'terminal' && env.images
       // The text may lack the block's last flush (or be empty) on the first
       // render: nothing here is final, and the render runs again when it lands.
-      const records = images && /&nbsp;|```/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
+      const records = images && /&nbsp;|```|\u00a0|\u2800/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
       const renderEnv = renderEnvFor(env, columns)
+      const inlineEnv = inlineEnvFor(env, columns)
       const plan = planLanded(e.props.text, records, {
         maxColumns: renderEnv.maxColumns,
         draw: images ? (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows) : undefined,
+        inline:
+          images && inlineImages
+            ? { env: inlineEnv, width: proseWidthFor(env, columns), draw: (tex, cells) => renderInline(tex, inlineEnv, cells) }
+            : undefined,
       })
       if (!plan.changed) return next(e)
-      if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose')) {
+      if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
         return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
       }
       // Drawn as the engine drew the preview, row for row (measured live): the
@@ -228,11 +246,32 @@ export const register: Register = (on, options) => {
         ) : (
           <Text dimColor>{piece.text}</Text>
         )
+      // A prose piece is the engine's own drawing; its inline formulas' images
+      // lie over their previews, absolute (nothing moves), each at the cell
+      // its preview starts in: a row under the piece's top margin, the column
+      // after the bullet's where the piece draws one. The wrapper carries no
+      // `position` (the engine refuses its own drawing under one); a Box is
+      // the frame of its absolute children all the same.
+      const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
+        const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
+        if (!piece.inline?.length) return text
+        const left = isFirstOfReply ? REPLY_INDENT : 0
+        return (
+          <Box flexDirection="column">
+            {text}
+            {piece.inline.map((inline: InlineImage, k: number) => (
+              <Box key={`kittex-inline-${k}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={1} alt={inline.tex} />
+              </Box>
+            ))}
+          </Box>
+        )
+      }
       const drawn = []
       for (const [i, piece] of pieces.entries()) {
         if (i === 0) {
           if (piece.kind === 'prose') {
-            drawn.push(await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply: first } }))
+            drawn.push(await prose(piece, first))
           } else {
             drawn.push(
               <Box flexDirection="row" marginTop={1}>
@@ -248,7 +287,7 @@ export const register: Register = (on, options) => {
         } else if (piece.kind === 'prose') {
           drawn.push(
             <Box paddingLeft={indent} marginTop={piece.gap ? 0 : -1}>
-              {await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply: false } })}
+              {await prose(piece, false)}
             </Box>,
           )
         } else if (piece.kind === 'image') {
@@ -299,6 +338,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     ink: inkNow(),
     measured,
     bullet: bulletFor(uname, processEnv.HOME),
+    maxProseWidth: await readProseWidth($),
   }
   await $.state.set(ENV, env)
 
@@ -467,6 +507,24 @@ function inkNow() {
   return chooseInk({ theme, customTheme: withoutTextOverride(customTheme), terminal: terminalColors, prefer: INK_PREFER })
 }
 
+/** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
+async function readProseWidth($: $): Promise<number | undefined> {
+  try {
+    const value = (await $.settings.read()).maxProseWidth
+    return typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.floor(value) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** maxProseWidth changed: inline images are placed at the new width. */
+async function refreshProseWidth($: $): Promise<void> {
+  const env = await readEnv($)
+  if (!env) return
+  const maxProseWidth = await readProseWidth($)
+  if (maxProseWidth !== env.maxProseWidth) await $.state.set(ENV, { ...env, maxProseWidth })
+}
+
 /** The theme changed: the formulas' ink may follow it. */
 async function refreshInk($: $, setting: string): Promise<void> {
   await resolveTheme($, setting)
@@ -507,7 +565,9 @@ async function reprobe($: $, columns: number): Promise<void> {
 }
 
 async function remember($: $, records: readonly PreviewRecord[]): Promise<void> {
-  await update($, RECORDS, list => [...(list ?? []), ...records].slice(-RECORD_LIMIT))
+  // A preview recorded again replaces the older record (inline previews repeat).
+  const fresh = new Set(records.map(record => record.preview))
+  await update($, RECORDS, list => [...(list ?? []).filter(record => !fresh.has(record.preview)), ...records].slice(-RECORD_LIMIT))
 }
 
 const base64Cache = new WeakMap<Uint8Array, string>()
