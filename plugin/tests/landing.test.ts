@@ -99,6 +99,18 @@ describe('landing in the fullscreen layout', () => {
     expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
   })
 
+  // The README demo's reply blanked for 75 ms: its previews escape a `[` as
+  // `\[` (𝔼\[r(x, y)\]), which the LaTeX-source matcher took for `\[`
+  // math, so the block was hooked from its first render.
+  test('a preview holding a bracket (escaped as \\[) still leaves the first render to the engine', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'The objective:\n\n$$\n\\max_\\theta \\mathbb{E}[r(x, y)] - \\beta\n$$\n\nwith $\\mathbb{E}[x]$ inline.\n', 'f5')
+    expect(shown).toContain('\\[')
+    expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
+    expect(sources(await (await mountFullscreen($, shown, ON_SCREEN)).drawn()).length).toBeGreaterThan(0)
+  })
+
   test('once its rows on screen are reported, on screen or off, kittex draws its images', async ($, on) => {
     await startSession($, on)
     await init()

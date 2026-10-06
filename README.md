@@ -22,6 +22,11 @@ Type this in Claude Code, answer `y` to add the marketplace, and that's it:
 
 No TeX, no Python, nothing to configure. kittex typesets inside Claude Code
 itself, and tells Claude to write its math as LaTeX, so you never have to ask.
+Then ask Claude something with math in it:
+
+```
+Derive the quadratic formula step by step
+```
 
 ## What you get
 
@@ -73,3 +78,9 @@ when it sits outside such a mod (it then hands each piece of prose to it). If
 prismantis is already installed, reinstall it after kittex.
 
 </details>
+
+## License
+
+[MIT](LICENSE). kittex bundles MathJax and its New Computer Modern font
+(Apache 2.0), marked and fflate (MIT); their licenses are in
+[plugin/THIRD-PARTY-NOTICES](plugin/THIRD-PARTY-NOTICES).

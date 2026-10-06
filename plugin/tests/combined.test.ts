@@ -36,7 +36,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
     width: WIDTH,
-    inline: { env: inlineEnv, width: WIDTH, columns: env.columns, draw: (tex, columns) => renderInline(tex, inlineEnv, columns), hyperlinks: env.hyperlinks },
+    inline: { env: inlineEnv, width: WIDTH, columns: env.columns, draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place), hyperlinks: env.hyperlinks },
   })
 }
 

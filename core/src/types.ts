@@ -100,9 +100,17 @@ export interface RasterOptions {
    * split evenly (to a pixel) on both sides, instead of starting at its left
    * edge. For an inline slot, whose whole cells (and a preview wider than the
    * image) leave up to a cell or more of blank that would otherwise all fall
-   * after the formula and detach it from the text that follows.
+   * after the formula and detach it from the text that follows. The image is
+   * then also as narrow as the drawn ink needs (the advance width can be part
+   * of a cell wider: an italic's correction, the space after a subscript).
    */
   centerInk?: boolean
+  /**
+   * With `centerInk`: where the ink goes when the image is wider than it.
+   * `center` (the default), or against the image's left (`start`) or right
+   * (`end`) edge, so the blank joins a space beside the slot.
+   */
+  inkPlace?: 'center' | 'start' | 'end'
   /** Reserve at least this many rows (to match a streaming preview); the formula is centred vertically. */
   minRows?: number
   /** Stroke darkening: outlines grow by this many thousandths of an em on each side. 0 for none; the default (15) matches terminal text weight. */
@@ -199,6 +207,8 @@ export interface TerminalColors {
   background?: RGB
   /** The 16 ANSI colours (0-7 normal, 8-15 bright), when known; ANSI Claude themes draw text in these. */
   palette?: RGB[]
+  /** Ghostty's `grapheme-width-method`, read with its colours, when its config sets it (Ghostty's default is `unicode`). */
+  graphemeWidth?: 'unicode' | 'legacy'
 }
 
 export type TerminalKind = 'kitty' | 'ghostty' | 'wezterm' | 'iterm2' | 'other'

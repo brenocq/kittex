@@ -5,7 +5,7 @@ import type { Canvas } from './list.js'
 import { visibleProse } from './prose.js'
 import { drawQuote } from './quote.js'
 import { drawTable } from './table.js'
-import { codeWidth } from './width.js'
+import { textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
 export { blockParts, gapBetween } from './blocks.js'
@@ -17,7 +17,8 @@ export { markerOf } from './list.js'
 export { QUOTE_BAR, QUOTE_TEXT } from './quote.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
-export { codeWidth, textWidth } from './width.js'
+export { charAt, charsOf, codeWidth, textWidth } from './width.js'
+export type { Char } from './width.js'
 export { wrapLine, wrapRows } from './wrap.js'
 export type { WrappedLine } from './wrap.js'
 
@@ -69,7 +70,7 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
   let rows = 0
   let lineStart = 0
   for (const line of text.split('\n')) {
-    const wrapped = wrapLine(line, width)
+    const wrapped = wrapLine(line, width, true, mode.emojiSequences === true)
     if (!wrapped) return null
     const first = lines.length
     for (let r = 0; r < wrapped.rows; r++) lines.push('')
@@ -82,7 +83,7 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
     rows += wrapped.rows
     lineStart += line.length + 1
   }
-  const places = spans.map(span => placeSpan(markdown, span, text, source, rowOf, colOf, width, i => i === text.length - 1))
+  const places = spans.map(span => placeSpan(markdown, span, text, source, rowOf, colOf, width, i => i === text.length - 1, mode))
   return { rows, places, lines }
 }
 
@@ -93,7 +94,7 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
  * anything its replay doesn't follow (see drawList). `mode`: as layoutProse.
  */
 export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawList(markdown, width, mode), width, spans)
+  return layoutCanvas(markdown, drawList(markdown, width, mode), width, spans, mode)
 }
 
 /**
@@ -103,7 +104,7 @@ export function layoutList(markdown: string, width: number, spans: readonly Sour
  * holds anything prose can't (see visibleHeading). `mode`: as layoutProse.
  */
 export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawHeading(markdown, width, mode), width, spans)
+  return layoutCanvas(markdown, drawHeading(markdown, width, mode), width, spans, mode)
 }
 
 /**
@@ -115,7 +116,7 @@ export function layoutHeading(markdown: string, width: number, spans: readonly S
  * layoutProse.
  */
 export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawQuote(markdown, width, mode), width, spans)
+  return layoutCanvas(markdown, drawQuote(markdown, width, mode), width, spans, mode)
 }
 
 /**
@@ -133,7 +134,7 @@ export function layoutTable(
   proseWidth = columns - 2,
   mode: LinkMode = {},
 ): ProseLayout | null {
-  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, () => false)
+  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, mode, () => false)
 }
 
 /**
@@ -146,11 +147,12 @@ function layoutCanvas(
   canvas: Canvas | null,
   width: number,
   spans: readonly SourceSpan[],
+  mode: LinkMode,
   ends = (i: number) => canvas?.end[i] === true,
 ): ProseLayout | null {
   if (!canvas) return null
   const text = canvas.text.join('')
-  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, ends))
+  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, ends, mode))
   return { rows: canvas.rows, places, lines: canvas.lines() }
 }
 
@@ -167,6 +169,7 @@ function placeSpan(
   colOf: ArrayLike<number>,
   width: number,
   ends: (i: number) => boolean,
+  mode: LinkMode,
 ): SpanPlace | null {
   const inside = (i: number) => source[i]! >= span.start && source[i]! < span.end
   let first = -1
@@ -178,8 +181,7 @@ function placeSpan(
   }
   if (first < 0) return null
   for (let i = first; i <= last; i++) if (!inside(i) || rowOf[i] !== rowOf[first]) return null
-  let columns = 0
-  for (const char of text.slice(first, last + 1)) columns += Math.max(0, codeWidth(char.codePointAt(0)!))
+  let columns = Math.max(0, textWidth(text.slice(first, last + 1), mode.emojiSequences === true))
   if (span.width !== undefined && span.width !== columns) {
     // Only blanks the engine trimmed off the end of the prose may be missing.
     const rest = markdown.slice(source[last]! + 1, span.end)
