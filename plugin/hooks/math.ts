@@ -12,6 +12,7 @@ import {
   measureDisplay,
   measureInline,
   previewDisplay,
+  GlyphError,
   previewInline,
   proseBlocks,
   scan,
@@ -120,11 +121,43 @@ export const INLINE_JOIN = '\u00a0'
 export const INLINE_PAD = BLANK_CELL
 
 /**
- * The ASCII an inline preview escapes (markdown could read it as syntax). Each
- * is one that makes the engine read the text as markdown at all, so the escape
- * is always read as one, never drawn as a backslash.
+ * What marks an inline preview that holds neither a join nor a pad (its
+ * Unicode as wide as its image, one word): U+034F, a combining mark of no
+ * width that the engine, kitty and Ghostty draw as nothing, so the preview is
+ * found again by its content without a blank cell after the image.
+ */
+export const INLINE_MARK = '\u034f'
+
+/**
+ * The ASCII inline Unicode escapes, padded or not (markdown could read it as
+ * syntax: `_(…)` and `B*A*` as emphasis, a `|` as a table cell's end, `[a](b)`
+ * as a link). Each is one that makes the engine read the text as markdown at
+ * all, so the escape is always read as one, never drawn as a backslash; a `]`
+ * or a `<` is not (in a text the engine draws as written its escape would
+ * show), and needs none: `[` is escaped, so no link opens, and a `<` that
+ * could open a tag is kept apart from the letter after it (inlineUnicode).
  */
 export const INLINE_SPECIALS = /[`*_[|~#>]/g
+
+/** A `<` the engine's markdown could read as the start of a tag. */
+const TAG_OPEN = /<[A-Za-z/!?]/
+
+/** Inline Unicode with its markdown syntax escaped (INLINE_SPECIALS). */
+export function escapeInline(text: string): string {
+  return text.replace(INLINE_SPECIALS, '\\$&')
+}
+
+/**
+ * An inline formula as the reader sees it where it stays text (no image: a
+ * terminal without images, a block the replay doesn't follow, math read back
+ * after `--resume`): one line of Unicode with TeX's spacing (a relation keeps
+ * its spaces, so a `<` never touches a letter), at any width (prose wraps),
+ * escaped; null where Unicode has no one-line form.
+ */
+export function inlineText(tex: string): string | null {
+  const unicode = previewInline(tex, undefined, { tight: false })
+  return unicode === null ? null : escapeInline(unicode)
+}
 
 /**
  * Rows from the top of a prose piece's drawing (a `next()` result) to its first
@@ -181,7 +214,7 @@ export const MATH_INSTRUCTIONS =
  * hook is registered with this as its `props.text` matcher, so every other
  * block is drawn by the engine without a round trip through kittex.
  */
-export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800/
+export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800|\u034f/
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
@@ -237,9 +270,9 @@ export type StreamEnv = KittexEnv & {
  * An inline formula as it is written while it streams, when it will be drawn
  * as an image once landed: its one-line Unicode, words joined by INLINE_JOIN,
  * padded with INLINE_PAD to exactly the image's columns (the image is widened
- * instead when the Unicode is wider, and by one pad when the preview would
- * hold neither: a preview is found again by its content), markdown syntax
- * escaped.
+ * instead when the Unicode is wider; one that holds neither a join nor a pad
+ * ends with INLINE_MARK: a preview is found again by its content), markdown
+ * syntax escaped.
  */
 export interface InlinePreview {
   markdown: string
@@ -253,17 +286,20 @@ export interface InlinePreview {
  * no one-line Unicode, a character whose width isn't certain, or a backslash.
  */
 export function inlinePreview(tex: string, env: InlineEnv): InlinePreview | null {
-  const unicode = previewInline(tex, env.maxColumns)?.trim()
+  // Tight, so the text is no wider than the image; spaced where tight would put a `<` against a letter.
+  let unicode = previewInline(tex, env.maxColumns)?.trim()
+  if (unicode && TAG_OPEN.test(unicode)) unicode = previewInline(tex, env.maxColumns, { tight: false })?.trim()
+  if (unicode && TAG_OPEN.test(unicode)) return null
   if (!unicode || /[\\\s]/.test(unicode.replaceAll(' ', ''))) return null
   const width = textWidth(unicode)
   if (width < 1) return null
   const box = measureInline(tex, env)
   if (!box) return null
-  let columns = Math.max(box.columns, width)
-  if (columns === width && !unicode.includes(' ')) columns += 1
+  const columns = Math.max(box.columns, width)
   if (columns > Math.min(255, env.maxColumns)) return null
-  const body = unicode.replaceAll(' ', INLINE_JOIN).replace(INLINE_SPECIALS, '\\$&')
-  return { markdown: body + INLINE_PAD.repeat(columns - width), tex, columns }
+  const body = escapeInline(unicode.replaceAll(' ', INLINE_JOIN))
+  const mark = columns === width && !unicode.includes(' ') ? INLINE_MARK : ''
+  return { markdown: body + mark + INLINE_PAD.repeat(columns - width), tex, columns }
 }
 
 // ─── Markdown forms ──────────────────────────────────────────────────────────
@@ -449,7 +485,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
       } else {
-        writer.text(previewInline(segment.tex, maxColumns) ?? segment.raw)
+        writer.text(inlineText(segment.tex) ?? segment.raw)
       }
     } else {
       let rows: number | undefined
@@ -612,7 +648,7 @@ export function findPreviews(text: string, records: readonly PreviewRecord[]): S
  * recorded, so plain text can't be taken for one.
  */
 export function findInlinePreviews(text: string, records: readonly PreviewRecord[]): Span[] {
-  const marked = (preview: string) => preview.includes(INLINE_PAD) || preview.includes(INLINE_JOIN)
+  const marked = (preview: string) => preview.includes(INLINE_PAD) || preview.includes(INLINE_JOIN) || preview.includes(INLINE_MARK)
   if (!marked(text)) return []
   const latest = new Map<string, PreviewRecord>()
   for (const record of records) if (record.inline && marked(record.preview)) latest.set(record.preview, record)
@@ -683,7 +719,10 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
         writer.block([put({ kind: 'image', tex, image: options.draw(tex) })])
       } catch (error) {
         if (!(error instanceof TexError)) throw error
-        refused(tex, reasonOf(error))
+        // Characters the font can't draw: the Unicode preview stays, as it streamed.
+        const lines = error instanceof GlyphError ? displayPreviewLines(tex, maxColumns) : null
+        if (lines) writer.block(lines)
+        else refused(tex, reasonOf(error))
       }
       return
     }
@@ -721,7 +760,7 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
       if (segment.kind === 'text') {
         writer.text(segment.text)
       } else if (!segment.display) {
-        const plain = previewInline(segment.tex, maxColumns)
+        const plain = inlineText(segment.tex)
         const padded = options.inline ? inlinePreview(segment.tex, options.inline.env) : null
         if (padded) {
           mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: plain ?? segment.raw })

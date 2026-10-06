@@ -230,7 +230,7 @@ describe('planLanded', () => {
     await init()
     const result = planLanded('Take $a+b$ and $c$.', [], { maxColumns: 97 })
     expect(result.changed).toBe(true)
-    expect(result.pieces).toEqual([{ kind: 'prose', text: `Take ${previewInline('a+b', 97)} and ${previewInline('c', 97)}.`, gap: false }])
+    expect(result.pieces).toEqual([{ kind: 'prose', text: `Take ${previewInline('a+b', undefined, { tight: false })} and ${previewInline('c', undefined, { tight: false })}.`, gap: false }])
   })
 
   test('leaves a reply without math alone', () => {

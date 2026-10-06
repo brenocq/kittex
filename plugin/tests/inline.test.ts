@@ -5,12 +5,15 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth } from '../hooks/core.js'
+import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth, visibleProse } from '../hooks/core.js'
 import {
   INLINE_JOIN,
+  INLINE_MARK,
   INLINE_PAD,
   inlineEnvFor,
   inlinePreview,
+  inlineText,
+  joinProse,
   MessageStream,
   PIECE_TOP,
   planLanded,
@@ -318,3 +321,56 @@ describe('MessageDisplay', () => {
 })
 
 void mock
+
+describe('markdown in inline Unicode (stress report F1)', () => {
+  const plainEnv = (): StreamEnv => ({ ...kitty26(), images: false })
+
+  test('every inline Unicode form escapes what markdown would read: emphasis, table bars, links', async () => {
+    await init()
+    for (const [tex, unicode] of [
+      ['\\oint_{\\partial S}', '∮\\_(∂S)'],
+      ['(AB)^* = B^*A^*', '(AB)\\* = B\\*A\\*'],
+      ['|x|', '\\|x\\|'],
+      ['[a](b)', '\\[a](b)'],
+    ]) {
+      expect(inlineText(tex!)).toBe(unicode)
+      // Streamed with no images, in a heading (no image there), and landed after --resume: the same text.
+      expect(streamed([`See $${tex}$ here.\n`], plainEnv()).landed).toBe(`See ${unicode} here.\n`)
+      expect(streamed([`## See $${tex}$\n`]).landed).toBe(`## See ${unicode}\n`)
+      expect(joinProse(planLanded(`See $${tex}$ here.`, [], { maxColumns: 98 }).pieces)).toBe(`See ${unicode} here.`)
+    }
+  })
+
+  test('the engine draws the escaped text as the Unicode itself: the replay sees no backslash', async () => {
+    await init()
+    const text = `where ${inlineText('\\oint_{\\partial S}')} denotes a line and ${inlineText('\\oint_{\\partial V}')} a surface`
+    expect(visibleProse(text)?.text).toBe('where ∮_(∂S) denotes a line and ∮_(∂V) a surface')
+    const preview = inlinePreview('(AB)^* = B^*A^*', inlineEnvFor(kitty26()))!
+    expect(visibleProse(`so ${preview.markdown} holds`)?.text).toBe(`so ${previewInline('(AB)^* = B^*A^*')!}${'⠀'.repeat(preview.columns - textWidth(previewInline('(AB)^* = B^*A^*')!))} holds`)
+  })
+
+  test('a table keeps its cells with a bar in a formula', async () => {
+    await init()
+    const { landed } = streamed(['| norm | $|x|$ |\n', '|---|---|\n', '| cond | $P(A|B)$ |\n'])
+    expect(landed).toContain('\\|x\\|')
+    expect(landed).toContain('P(A\\|B)')
+    expect(landed.split('\n')[0]!.match(/(?<!\\)\|/g)).toHaveLength(3)
+  })
+
+  test('a tight preview never puts a < against a letter (an HTML tag to markdown)', async () => {
+    await init()
+    const preview = inlinePreview('a < b', inlineEnvFor(kitty26()))
+    if (preview) expect(preview.markdown).not.toMatch(/<[A-Za-z]/)
+  })
+
+  test('a preview as wide as its image takes no extra cell: a zero-width mark finds it again', async () => {
+    await init()
+    const env = inlineEnvFor(kitty26())
+    const fits = ['a_{ij}', 'x_k', 'p_{\\text{max}}', 'n!', 'ab'].map(tex => inlinePreview(tex, env)).find(p => p && !p.markdown.includes(INLINE_PAD))
+    expect(fits).toBeDefined()
+    expect(fits!.markdown.endsWith(INLINE_MARK)).toBe(true)
+    expect(textWidth(fits!.markdown.replace(/\\(.)/g, '$1'))).toBe(fits!.columns)
+    const { landed, records } = streamed([`Let $${fits!.tex}$ be.`])
+    expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual([fits!.tex])
+  })
+})

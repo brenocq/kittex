@@ -214,7 +214,7 @@ export const register: Register = (on, options) => {
       const images = e.surface === 'terminal' && env.images
       // The text may lack the block's last flush (or be empty) on the first
       // render: nothing here is final, and the render runs again when it lands.
-      const records = images && /&nbsp;|```|\u00a0|\u2800/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
+      const records = images && /&nbsp;|```|\u00a0|\u2800|\u034f/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
       const renderEnv = renderEnvFor(env, columns)
       const inlineEnv = inlineEnvFor(env, columns)
       const plan = planLanded(e.props.text, records, {
