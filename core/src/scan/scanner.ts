@@ -125,6 +125,16 @@ class Output {
   }
 }
 
+/** Whether a `\begin{…}` in these lines has no `\end{…}` yet. */
+function openEnvironment(lines: readonly Line[]): boolean {
+  let depth = 0
+  for (const line of lines) {
+    depth += line.text.split('\\begin{').length - 1
+    depth -= line.text.split('\\end{').length - 1
+  }
+  return depth > 0
+}
+
 export class Scanner {
   private state: State = NORMAL
   private flags: Flags = { prevBlank: true, prevCode: false, inList: false }
@@ -232,6 +242,11 @@ export class Scanner {
         return
       case 'display': {
         const rest = line.depth === st.depth ? restAt(line, st.depth) : null
+        // One blank line is held inside an environment still open in the block (a gap in an aligned derivation).
+        if (rest !== null && line.blank && !st.lines.at(-1)!.blank && openEnvironment(st.lines)) {
+          st.lines.push(line)
+          return
+        }
         if (rest === null || line.blank || looksLikeFence(rest.trimStart())) return this.giveUp(st, line.start, [line])
         const close = findClose(st.kind, rest, 0)
         if (!close) {

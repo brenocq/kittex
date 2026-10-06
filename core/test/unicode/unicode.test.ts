@@ -140,7 +140,13 @@ describe('delimiters', () => {
 
 describe('accents', () => {
   test('combining marks on a single letter', () => {
-    expect(line(String.raw`\hat{x} \bar{y} \vec{v} \dot{a} \ddot{b} \tilde{n}`)).toBe('x\u0302y\u0304v\u20d7a\u0307b\u0308n\u0303')
+    expect(line(String.raw`\hat{x} \bar{y} \vec{v} \dot{a} \ddot{x} \tilde{n}`)).toBe('x\u0302y\u0304v\u20d7a\u0307x\u0308n\u0303')
+  })
+
+  test('a dot with no precomposed letter (too small to see in a terminal) becomes a prime', () => {
+    expect(line(String.raw`\dot{\theta}_i`)).toBe('θ′ᵢ')
+    expect(line(String.raw`\ddot{\theta} + \ddot{b}`)).toBe('θ″ + b″')
+    expect(line(String.raw`\dot{x}`)?.normalize('NFC')).toBe('ẋ')
   })
 
   test('over a wider base: a row of its own in display, marks inline', () => {
@@ -204,5 +210,54 @@ describe('enclosures', () => {
   test('cancel strikes through, boxed draws a box in display', () => {
     expect(line(String.raw`\cancel{x}`)).toBe('x\u0338')
     expect(lines(String.raw`\boxed{x}`)).toEqual(['┌───┐', '│ x │', '└───┘'])
+  })
+})
+
+describe('line breaking (breakLines)', () => {
+  const broken = (tex: string, maxWidth: number, isDisplay = true) =>
+    toUnicode(mathml(tex, isDisplay), { display: isDisplay, maxWidth, breakLines: true })?.lines.map(l => l.trimEnd())
+
+  test('a formula wider than maxWidth breaks before a top-level relation or operator, each line fitting', () => {
+    const tex = String.raw`f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5`
+    const out = broken(tex, 20, false)!
+    expect(out.length).toBeGreaterThan(1)
+    for (const l of out) expect(textWidth(l)).toBeLessThanOrEqual(20)
+    expect(out.slice(1).every(l => /^[=+]/.test(l))).toBe(true)
+    expect(out.join(' ').replace(/\s+/g, '')).toBe(line(tex)!.replace(/\s+/g, ''))
+  })
+
+  test('a stacked formula breaks the same way, its fractions kept whole', () => {
+    const out = broken(String.raw`y = \frac{a}{b} + \frac{c}{d} + \frac{e}{f} + \frac{g}{h}`, 12)!
+    expect(out.length).toBeGreaterThan(3)
+    for (const l of out) expect(textWidth(l)).toBeLessThanOrEqual(12)
+  })
+
+  test('a wide space between formulas is a break too, and text breaks between its words', () => {
+    expect(broken(String.raw`a = 1, \quad b = 2`, 8, false)).toEqual(['a = 1,', 'b = 2'])
+    expect(broken(String.raw`\text{one two three four}`, 9)).toEqual(['one two', 'three', 'four'])
+  })
+
+  test('a formula that fits, or has a piece wider than maxWidth, is not broken', () => {
+    expect(broken('a + b', 20, false)).toEqual(['a + b'])
+    expect(broken(String.raw`\left(a + b + c + d + e + f\right)`, 8, false)).toBeUndefined()
+  })
+})
+
+describe('tight', () => {
+  const tight = (tex: string) => toUnicode(mathml(tex, false), { display: false, tight: true })?.lines[0]
+
+  test('no spaces between atoms or for thin spaces; a cell for wider explicit ones', () => {
+    expect(tight(String.raw`O(n \log n)`)).toBe('O(nlogn)')
+    expect(tight('E = mc^2')).toBe('E=mc²')
+    expect(tight(String.raw`\int_0^1 f(x)\,dx`)).toBe('∫₀¹f(x)dx')
+    expect(tight(String.raw`a \bmod b`)).toBe('a mod b')
+    expect(tight(String.raw`x = 1, \quad y = 2`)).toBe('x=1, y=2')
+    expect(tight(String.raw`\text{if } x`)).toBe('if x')
+  })
+})
+
+describe('cancelto', () => {
+  test('strikes its base, the value it goes to as a superscript', () => {
+    expect(line(String.raw`\cancelto{0}{c}`)).toBe('c̸⁰')
   })
 })

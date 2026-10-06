@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'vitest'
-import { initTypeset, TexError, texToMathML, typeset } from '../../src/typeset/index.js'
+import { GlyphError, initTypeset, TexError, texToMathML, typeset } from '../../src/typeset/index.js'
 import { inkBox } from './ink.js'
 
 beforeAll(() => initTypeset())
@@ -187,8 +187,76 @@ describe('packages', () => {
     String.raw`\text{if $x > 0$ then café}`,
     String.raw`\unicode{x263A}`,
     String.raw`\begin{aligned} a &= b \\ c &= d \end{aligned} \begin{cases} 1 & x \\ 0 & y \end{cases}`,
+    // What the stress corpus found refused: chemistry, commutative diagrams, QFT slashes, bold vectors…
+    String.raw`\ce{2H2 + O2 -> 2H2O} \ce{N2 + 3H2 <=> 2NH3} \ce{CaCO3(s) ->[\Delta] CaO(s) + CO2(g)} \ce{MnO4^- + 5Fe^2+}`,
+    String.raw`\begin{CD} A @>f>> B \\ @VgVV @VVhV \\ C @>>k> D \end{CD}`,
+    String.raw`\slashed{p} = \gamma^\mu p_\mu, \quad i\slashed{\partial}`,
+    String.raw`\mathbbm{1}_A \bm{x}^\top \bm{A} \textsc{Map}(x) \varointclockwise_C f \ointctrclockwise_C g`,
+    String.raw`\SI{9.81}{\meter\per\second\squared}, \si{\kilo\gram}, \SI{3e8}{m/s}, \num{1.5e-3}`,
+    String.raw`\begin{empheq}[box=\fbox]{align} a &= b \end{empheq}`,
+    String.raw`\DeclarePairedDelimiter\abs{\lvert}{\rvert} \abs*{\frac{a}{b}}`,
+    String.raw`\upalpha \degree \text{\textdegree} a \centernot\implies b`,
   ])('%s', tex => {
     expect(typeset(tex, display).ops.length).toBeGreaterThan(0)
+  })
+
+  test('inline chemistry', () => {
+    expect(typeset(String.raw`\ce{H2O}`, inline).ops.length).toBeGreaterThan(0)
+  })
+
+  test('tikz-cd stays refused', () => {
+    expect(() => typeset(String.raw`\begin{tikzcd} A \arrow[r] & B \end{tikzcd}`, display)).toThrow(TexError)
+  })
+})
+
+describe('standard LaTeX that physics would change', () => {
+  test('\\div is ÷, \\Re and \\Im are ℜ and ℑ; physics keeps \\divergence, \\real and its other macros', () => {
+    expect(texToMathML(String.raw`6 \div 2`, inline)).toContain('&#xF7;')
+    expect(texToMathML(String.raw`\Re(z) + \Im(z)`, inline)).toMatch(/&#x211C;.*&#x2111;/)
+    expect(texToMathML(String.raw`\divergence{\vb{F}}`, inline)).toContain('&#x2207;')
+    expect(texToMathML(String.raw`\dv{f}{x} \ket{\psi}`, inline)).toContain('&#x27E9;')
+  })
+
+  test('\\DeclarePairedDelimiter may define \\abs and \\norm, for that formula only', () => {
+    expect(texToMathML(String.raw`\DeclarePairedDelimiter\abs{\lfloor}{\rfloor} \abs{x}`, inline)).toContain('&#x230A;')
+    expect(texToMathML(String.raw`\abs{x}`, inline)).not.toContain('&#x230A;')
+  })
+})
+
+describe('references', () => {
+  test('a label nobody tagged is drawn by its own name', () => {
+    expect(texToMathML(String.raw`\text{From } \eqref{eq:einstein}`, inline)).toContain('(eq:einstein)')
+    expect(texToMathML(String.raw`\text{by (\ref{eq:1})}`, inline)).toContain('eq:1')
+    expect(texToMathML(String.raw`\eqref{x}`, inline)).not.toContain('???')
+  })
+
+  test('a label tagged in an earlier formula draws its tag', () => {
+    typeset(String.raw`E = mc^2 \tag{7} \label{eq:energy}`, display)
+    expect(texToMathML(String.raw`\text{by } \eqref{eq:energy}`, inline)).toContain('(7)')
+  })
+})
+
+describe('sizes', () => {
+  test('second-level scripts in display math are no smaller than first-level ones', () => {
+    const tex = String.raw`a^{\frac{1}{2}}`
+    expect(typeset(tex, display).width).toBeGreaterThan(typeset(tex, inline).width + 0.05)
+    const one = typeset(String.raw`x^{y}`, display)
+    const two = typeset(String.raw`x^{y^{y}}`, display)
+    expect(two.width - one.width).toBeGreaterThan((one.width - typeset('x', display).width) * 0.9)
+  })
+})
+
+describe('characters outside the font', () => {
+  test('text the font has no glyphs for is a GlyphError, a TexError', () => {
+    for (const tex of [String.raw`\text{Привет}`, String.raw`\text{速度}`, String.raw`\text{🚀}`]) {
+      expect(() => typeset(tex, display)).toThrow(GlyphError)
+      expect(() => typeset(tex, display)).toThrow(TexError)
+    }
+  })
+
+  test('Unicode superscripts the font lacks are drawn as TeX scripts', () => {
+    expect(() => typeset('10⁻³', display)).not.toThrow()
+    expect(typeset('x² + y² = r², \\qquad 10⁻³', display).ops.length).toBeGreaterThan(0)
   })
 })
 

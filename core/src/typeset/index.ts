@@ -12,6 +12,7 @@ import type { LiteElement } from '@mathjax/src/js/adaptors/lite/Element.js'
 import type { MathDocument } from '@mathjax/src/js/core/MathDocument.js'
 import { STATE } from '@mathjax/src/js/core/MathItem.js'
 import type { MmlNode } from '@mathjax/src/js/core/MmlTree/MmlNode.js'
+import { MmlMath } from '@mathjax/src/js/core/MmlTree/MmlNodes/math.js'
 import { SerializedMmlVisitor } from '@mathjax/src/js/core/MmlTree/SerializedMmlVisitor.js'
 import { RegisterHTMLHandler } from '@mathjax/src/js/handlers/html.js'
 import { TeX } from '@mathjax/src/js/input/tex.js'
@@ -19,6 +20,7 @@ import { MapHandler } from '@mathjax/src/js/input/tex/MapHandler.js'
 import type TexParseError from '@mathjax/src/js/input/tex/TexError.js'
 import { mathjax } from '@mathjax/src/js/mathjax.js'
 import { SVG } from '@mathjax/src/js/output/svg.js'
+import { LinebreakVisitor, NOBREAK } from '@mathjax/src/js/output/common/LinebreakVisitor.js'
 import { MathJaxNewcmFont } from '@mathjax/mathjax-newcm-font/js/svg.js'
 
 import '@mathjax/src/js/input/tex/base/BaseConfiguration.js'
@@ -32,15 +34,54 @@ import '@mathjax/src/js/input/tex/mathtools/MathtoolsConfiguration.js'
 import '@mathjax/src/js/input/tex/physics/PhysicsConfiguration.js'
 import '@mathjax/src/js/input/tex/textmacros/TextMacrosConfiguration.js'
 import '@mathjax/src/js/input/tex/unicode/UnicodeConfiguration.js'
+import '@mathjax/src/js/input/tex/mhchem/MhchemConfiguration.js'
+import '@mathjax/src/js/input/tex/amscd/AmsCdConfiguration.js'
+import '@mathjax/src/js/input/tex/empheq/EmpheqConfiguration.js'
+import '@mathjax/src/js/input/tex/centernot/CenternotConfiguration.js'
+import '@mathjax/src/js/input/tex/gensymb/GensymbConfiguration.js'
+import '@mathjax/src/js/input/tex/upgreek/UpgreekConfiguration.js'
+import '@mathjax/src/js/input/tex/textcomp/TextcompConfiguration.js'
+import { MathtoolsUtil } from '@mathjax/src/js/input/tex/mathtools/MathtoolsUtil.js'
+import { MathtoolsMethods } from '@mathjax/src/js/input/tex/mathtools/MathtoolsMethods.js'
+import { NewcommandUtil } from '@mathjax/src/js/input/tex/newcommand/NewcommandUtil.js'
+import { EmpheqUtil } from '@mathjax/src/js/input/tex/empheq/EmpheqUtil.js'
+import { ParseUtil } from '@mathjax/src/js/input/tex/ParseUtil.js'
 import './fonts.js'
+import { rememberLabels } from './macros.js'
 
 import type { DrawOp, TypesetOptions, TypesetResult } from '../types.js'
 import { flatten, parsePath } from './geometry.js'
-import { UndrawableError, walkSvg } from './walk.js'
+import { MissingGlyphError, UndrawableError, walkSvg } from './walk.js'
 
 /** A formula MathJax could not parse or lay out; `message` says why, for a "not rendered" note. */
 export class TexError extends Error {
   override name = 'TexError'
+}
+
+/**
+ * A formula MathJax reads, with characters the bundled font can't draw
+ * (Cyrillic or CJK text, emoji): its Unicode form can still show it.
+ */
+export class GlyphError extends TexError {
+  override name = 'GlyphError'
+}
+
+/** Unicode superscript and subscript characters, and what they are in TeX. */
+const SUPERSCRIPT_TEX: Record<string, string> = Object.fromEntries(
+  [...'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ'].map((c, i) => [c, '0123456789+-=()ni'[i]!]),
+)
+const SUBSCRIPT_TEX: Record<string, string> = Object.fromEntries(
+  [...'₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ'].map((c, i) => [c, '0123456789+-=()aeoxhklmnpst'[i]!]),
+)
+const SCRIPT_RUN = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+|[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ]+/g
+
+/** Unicode scripts written as TeX scripts: 10⁻³ as 10^{-3} (the font lacks some of those characters). */
+function texScripts(tex: string): string {
+  return tex.replace(SCRIPT_RUN, run => {
+    const sup = SUPERSCRIPT_TEX[run[0]!] !== undefined
+    const table = sup ? SUPERSCRIPT_TEX : SUBSCRIPT_TEX
+    return `${sup ? '^' : '_'}{${[...run].map(c => table[c]).join('')}}`
+  })
 }
 
 /** The longest TeX source accepted, in characters (MathJax's own buffer limit is maxBuffer). */
@@ -51,7 +92,66 @@ const MAX_BUFFER = 5 * 1024
 /** Pixels per em handed to MathJax; only used to express widths in its px-based metrics. */
 const EM_PX = 16
 
-const PACKAGES = ['base', 'ams', 'newcommand', 'boldsymbol', 'braket', 'cancel', 'color', 'mathtools', 'physics', 'textmacros', 'unicode']
+const PACKAGES = [
+  'base',
+  'ams',
+  'newcommand',
+  'boldsymbol',
+  'braket',
+  'cancel',
+  'color',
+  'mathtools',
+  'physics',
+  'textmacros',
+  'unicode',
+  'mhchem',
+  'amscd',
+  'empheq',
+  'centernot',
+  'gensymb',
+  'upgreek',
+  'textcomp',
+  'kittex',
+  'kittex-text',
+]
+
+/**
+ * physics macros that change standard LaTeX: `\div` is ÷ (physics makes it a
+ * divergence, kept as `\divergence`), `\Re` and `\Im` are ℜ and ℑ (physics
+ * writes Re and Im, kept as `\real` and `\imaginary`).
+ */
+const PHYSICS_OVERRIDES: [map: string, macros: string[]][] = [
+  ['Physics-vector-macros', ['div']],
+  ['Physics-expressions-macros', ['Re', 'Im']],
+]
+
+/**
+ * The smallest script size, in em. MathJax's .4em floor puts second-level
+ * scripts (an exponent's fraction, a nested fraction's parts) at half size,
+ * digits about 8 px tall in a 13×26 cell, too small to read; at .7 they are
+ * as large as first-level scripts (.71), about 11 px.
+ */
+const SCRIPT_MIN_SIZE = '.7em'
+const INLINE_SCRIPT_MIN_SIZE = '.4em'
+/** Labels remembered across formulas for \eqref and \ref (the most recent ones). */
+const MAX_LABELS = 256
+
+/**
+ * MathJax's line breaking, preferring a wide explicit space (\\quad between
+ * two formulas) over a relation or operator near it: `L = […], \\quad U = […]`
+ * then breaks before U, not between U and its `=`.
+ */
+class SpaceFirstLinebreaks extends LinebreakVisitor<any, any, any, any, any, any, any, any, any, any, any, any> {
+  constructor(factory: ConstructorParameters<typeof LinebreakVisitor>[0]) {
+    super(factory)
+    const factors = (this as unknown as { FACTORS: Record<string, (p: number, node: unknown) => number> }).FACTORS
+    const space = factors.space!
+    factors.space = (p: number, node: unknown) => {
+      const penalty = space(p, node)
+      return penalty < NOBREAK && (node as unknown as { getBBox(): { w: number } }).getBBox().w >= 0.9 ? penalty - 2000 : penalty
+    }
+  }
+}
 
 interface Engine {
   adaptor: LiteAdaptor
@@ -84,6 +184,15 @@ function createEngine(): Engine {
 
   const adaptor = liteAdaptor()
   RegisterHTMLHandler(adaptor)
+  for (const [name, macros] of PHYSICS_OVERRIDES) {
+    const map = MapHandler.getMap(name) as unknown as { map: Map<string, unknown> } | undefined
+    for (const macro of macros) map?.map.delete(macro)
+  }
+  // \DeclarePairedDelimiter may define a name another package already has
+  // (physics' \abs and \norm), as a \renewcommand would: definitions last for one formula.
+  MathtoolsUtil.addPairedDelims = (parser, cs, args) => NewcommandUtil.addMacro(parser, cs, MathtoolsMethods.PairedDelimiters!, args)
+  // empheq options MathJax doesn't implement (box=\fbox, innerbox…) are left out rather than refusing the formula.
+  EmpheqUtil.splitOptions = (text, allowed) => ParseUtil.keyvalOptions(text, allowed, false)
   const tex = new TeX({
     packages: PACKAGES,
     maxMacros: MAX_MACROS,
@@ -97,7 +206,7 @@ function createEngine(): Engine {
     fontData: MathJaxNewcmFont,
     fontCache: 'none',
     displayOverflow: 'overflow',
-    linebreaks: { inline: false },
+    linebreaks: { inline: false, LinebreakVisitor: SpaceFirstLinebreaks },
   })
   const doc = mathjax.document('', { InputJax: tex, OutputJax: svg })
   // Set up every bundled character range now, so typeset() never meets a dynamic one.
@@ -134,17 +243,37 @@ function ready(tex: string): Engine {
     map.clear()
     for (const [key, value] of initial) map.set(key, value)
   }
+  // Labels and their tags are remembered, so \eqref finds an equation tagged earlier in the reply.
+  rememberLabels((engine.tex.parseOptions.tags as unknown as { allLabels: Record<string, { tag: string }> }).allLabels, MAX_LABELS)
   engine.tex.reset()
   return engine
 }
 
-/** Typesets one formula; throws TexError when the TeX is invalid or exceeds the limits. */
+/**
+ * Typesets one formula; throws TexError when the TeX is invalid or exceeds the
+ * limits, GlyphError when it holds characters the font can't draw.
+ */
 export function typeset(tex: string, options: TypesetOptions): TypesetResult {
+  try {
+    return typesetOnce(tex, options)
+  } catch (error) {
+    // Unicode scripts the font lacks (10⁻³) are drawn as TeX scripts.
+    if (!(error instanceof GlyphError)) throw error
+    const scripted = texScripts(tex)
+    if (scripted === tex) throw error
+    return typesetOnce(scripted, options)
+  }
+}
+
+function typesetOnce(tex: string, options: TypesetOptions): TypesetResult {
   const { adaptor, doc, exEm } = ready(tex)
   const lineWidth = options.lineWidth !== undefined && options.lineWidth > 0 ? options.lineWidth : 0
   const breaking = options.display && lineWidth > 0
   // Without a line width, a container wide enough that nothing is laid out against it.
   const containerWidth = lineWidth || 1000
+  // Every node's attributes fall back to <math>'s defaults. An inline formula
+  // keeps MathJax's floor: it is fitted to one text row, where taller scripts cost size.
+  MmlMath.defaults.scriptminsize = options.display ? SCRIPT_MIN_SIZE : INLINE_SCRIPT_MIN_SIZE
   const output = doc.outputJax as SVG<any, any, any>
   output.options.displayOverflow = breaking ? 'linebreak' : 'overflow'
   let container: LiteElement
@@ -204,9 +333,11 @@ export function texToMathML(tex: string, options: Pick<TypesetOptions, 'display'
 }
 
 /**
- * MathML on one line, without MathJax's data-* attributes (each node's data-latex
+ * MathML on one line, without MathJax's data-latex attributes (each node's
  * repeats its source, which makes deep nesting quadratic) and without the root's
- * display attribute, which texToMathML sets itself.
+ * display attribute, which texToMathML sets itself. The data-mjx-* attributes
+ * stay: the Unicode renderer reads TeX classes (data-mjx-texclass) and upright
+ * names that are not operators (data-mjx-auto-op) from them.
  */
 class CompactMmlVisitor extends SerializedMmlVisitor {
   override visitTree(node: MmlNode): string {
@@ -226,7 +357,7 @@ class CompactMmlVisitor extends SerializedMmlVisitor {
     const attributes = this.getAttributeList(node)
     let out = ''
     for (const name of Object.keys(attributes)) {
-      if (name.startsWith('data-') || (name === 'display' && node.isKind('math'))) continue
+      if (name.startsWith('data-latex') || (name === 'display' && node.isKind('math'))) continue
       const value = attributes[name]
       if (value === undefined) continue
       out += ` ${name}="${this.quoteHTML(String(value))}"`
@@ -237,6 +368,7 @@ class CompactMmlVisitor extends SerializedMmlVisitor {
 
 function asTexError(error: unknown): TexError {
   if (error instanceof TexError) return error
+  if (error instanceof MissingGlyphError) return new GlyphError(error.message)
   if (error instanceof UndrawableError) return new TexError(error.message)
   if (error instanceof RangeError) return new TexError(`formula too complex (${error.message})`)
   const message = error instanceof Error ? error.message : String(error)

@@ -161,6 +161,19 @@ describe('MessageStream', () => {
     expect(pieces[1]).toMatchObject({ text: NOT_RENDERED + refused.error })
   })
 
+  test('a formula the font has no glyphs for streams its Unicode preview, which stays once landed', async () => {
+    await init()
+    const tex = '\\text{Привет}\\ x = 1'
+    const { landed, records } = streamed([`$$${tex}$$\n`, '\n', `$$${TEX}$$\n`, 'end'])
+    expect(records[0]).toMatchObject({ tex, rows: 1 })
+    expect(records[0]!.error).toBeUndefined()
+    expect(records[0]!.preview).toContain('Привет x = 1')
+    const pieces = plan(landed, records).pieces
+    expect(shape(pieces)[0]).toContain('Привет x = 1')
+    expect(pieces.filter(piece => piece.kind === 'image').length).toBe(1)
+    expect(pieces.some(piece => piece.kind === 'note')).toBe(false)
+  })
+
   test('without images a display formula is an unpadded preview and records nothing', async () => {
     await init()
     const env = { ...kittyEnv(), kind: 'wezterm' as const, images: false }
