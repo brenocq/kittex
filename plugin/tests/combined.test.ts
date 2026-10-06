@@ -176,11 +176,12 @@ describe('links in headings, quotes and tables', () => {
   test('with the link mode unknown, the parts holding links keep their text', async () => {
     await init()
     const { landed, records } = streamed(reply)
-    // Streaming can't know a link is coming: what precedes a part's first link streams padded, nothing after it.
-    expect(records.map(record => record.tex)).toEqual(['x_k', 'P_k = A P_{k-1} A^T + Q', 'K_k', 'z_k = H x_k', '\\alpha', '\\alpha', 'u_k'])
-    // Landed, only the parts with no link get images; the others stay as they were shown.
+    // Streaming sees the rest of the formula's line: a heading, a quote or a table row holding a link isn't
+    // padded; in a paragraph what precedes its first link is laid out exactly, so it streams padded.
+    expect(records.map(record => record.tex)).toEqual(['P_k = A P_{k-1} A^T + Q', '\\alpha', 'u_k'])
+    // Landed, every formula streamed padded gets its image: no pad stays behind.
     const { pieces } = plan(landed, records)
-    expect(pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(image => image.tex) : []))).toEqual(['\\alpha', 'u_k'])
+    expect(pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(image => image.tex) : []))).toEqual(['P_k = A P_{k-1} A^T + Q', '\\alpha', 'u_k'])
     expect(pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('').replace(/\s+/g, '')).toBe(landed.replace(/\s+/g, ''))
     expect(placeable('## See [docs](https://example.com) for ', WIDTH, COLUMNS)).toBe(false)
     expect(placeable('## See [docs](https://example.com) for ', WIDTH, COLUMNS, { hyperlinks: true })).toBe(true)

@@ -56,7 +56,7 @@ import {
   planLanded,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
-  quoteColumns,
+  displayColumns,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -785,7 +785,7 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
       const renderEnv = renderEnvFor(env)
       const image = record.inline
         ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
-        : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
+        : displayImage(record.tex, { ...renderEnv, maxColumns: displayColumns(record, env) }, record.rows)
       base64Of(image.png)
       signatureOf(image.png)
     } catch {

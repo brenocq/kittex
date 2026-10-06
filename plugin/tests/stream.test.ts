@@ -144,7 +144,12 @@ describe('MessageStream', () => {
     expect(lines[1]!.trim()).toBe('')
     expect(lines.slice(2, -2).every(line => line.startsWith('  ' + PREVIEW_PAD))).toBe(true)
     expect(lines.slice(-2)).toEqual(['', '- next'])
-    expect(plan(landed, records).pieces.filter(piece => piece.kind === 'image')).toHaveLength(1)
+    // Drawn in the item: the list is one piece, the image over the preview from its first row, at the item's text.
+    expect(records[0]).toMatchObject({ indent: 2 })
+    const { pieces } = plan(landed, records)
+    expect(pieces).toHaveLength(1)
+    const overlay = pieces[0]!.kind === 'prose' ? pieces[0]!.inline : undefined
+    expect(overlay?.map(one => [one.row, one.col, one.image.rows])).toEqual([[2, 2, records[0]!.rows]])
   })
 
   test('inline math becomes one line of Unicode while streaming', async () => {
