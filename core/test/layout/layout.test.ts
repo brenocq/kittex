@@ -204,6 +204,16 @@ describe('layoutList', () => {
     ])
   })
 
+  test('spans after characters outside the BMP keep their place (offsets are UTF-16 units)', () => {
+    const markdown = '- Control matrix: 𝐁ₖ⠀\n- Measurement matrix: 𝐇ₖ⠀'
+    const b = markdown.indexOf('𝐁')
+    const h = markdown.indexOf('𝐇')
+    expect(layoutList(markdown, 118, [{ start: b, end: b + 4, width: 3 }, { start: h, end: h + 4, width: 3 }])?.places).toEqual([
+      { row: 0, col: 18, columns: 3 },
+      { row: 1, col: 22, columns: 3 },
+    ])
+  })
+
   test('a paragraph right before the list draws above it, no blank row', () => {
     expect(layoutList('Where:\n- a\n- b', 40)?.lines).toEqual(['Where:', '- a', '- b'])
   })

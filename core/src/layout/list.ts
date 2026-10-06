@@ -141,7 +141,7 @@ export function drawList(markdown: string, width: number): Canvas | null {
   let after = ''
   for (const token of tokens) {
     if (!markdown.startsWith(token.raw, at)) return null
-    const mapped: Mapped = { text: token.raw, map: Array.from(token.raw, (_, k) => at + k) }
+    const mapped: Mapped = { text: token.raw, map: Array.from({ length: token.raw.length }, (_, k) => at + k) }
     if (token.type === 'paragraph' && !listed && at === 0) {
       // The paragraph's prose, then the list right under it (no blank line between them in the markdown).
       const paragraph = token as Tokens.Paragraph
