@@ -94,12 +94,15 @@ export const INK_PREFER: 'theme' | 'terminal' = 'terminal'
 export const NOT_RENDERED = 'not rendered: '
 
 /**
- * The terminal font's baseline in its cell, from the top, as a fraction of the
- * cell's height: measured in kitty (DejaVu Sans Mono at 13×26 px cells: the
- * baseline is 21 px down, glyphs reach 16 px above it and 4 below). Inline
- * images put the math baseline there.
+ * Where inline images put the math baseline in a cell, from the top, as a
+ * fraction of the cell's height. The terminal font's own baseline is 21 px down
+ * a 13×26 px cell in kitty (DejaVu Sans Mono: glyphs reach 16 px above it and 4
+ * below); one pixel higher leaves room under it for brackets, bars and \ne at
+ * 0.91 of the display size, so every inline formula draws as an image at one
+ * size instead of bracketed ones staying Unicode. The pixel is not visible at
+ * normal size.
  */
-export const TEXT_BASELINE = 21 / 26
+export const TEXT_BASELINE = 20 / 26
 
 /**
  * What joins the words of an inline preview: a no-break space, one cell that

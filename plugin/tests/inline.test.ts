@@ -84,8 +84,8 @@ describe('the inline preview', () => {
     expect(inlinePreview('\\sum_{i=1}^n a_i', inlineEnvFor(kitty26()))).toBeNull()
   })
 
-  test('puts the math baseline on the font baseline measured in kitty', () => {
-    expect(inlineEnvFor(kitty26()).baselinePx).toBe(21)
+  test('puts the math baseline one pixel above the font baseline measured in kitty', () => {
+    expect(inlineEnvFor(kitty26()).baselinePx).toBe(20)
     expect(inlineEnvFor(kittyEnv()).baselinePx).toBe(Math.round(CELL.cellHeight * TEXT_BASELINE))
   })
 })
