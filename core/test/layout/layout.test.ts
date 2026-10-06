@@ -136,4 +136,18 @@ describe('proseBlocks', () => {
   test('a paragraph and a list with no blank line between are one block', () => {
     expect(proseBlocks('intro:\n- a\n- b')?.map(block => block.paragraph)).toEqual([false])
   })
+
+  test('a paragraph after a heading, a code block or a rule is a block of its own', () => {
+    // marked takes the blank line after these into the token itself.
+    for (const lead of ['## Extended Kalman filter (nonlinear models)', '```\ncode\n```', '---']) {
+      const md = `${lead}\n\nFor $x$ and $y$:`
+      const blocks = proseBlocks(md)!
+      expect(blocks.map(block => [md.slice(block.start, block.end), block.paragraph])).toEqual([
+        [lead, false],
+        ['For $x$ and $y$:', true],
+      ])
+    }
+    // With no blank line between, a heading and the text under it stay one block.
+    expect(proseBlocks('## Head\nText')?.map(block => block.paragraph)).toEqual([false])
+  })
 })

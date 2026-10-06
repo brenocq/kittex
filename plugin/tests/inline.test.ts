@@ -114,6 +114,14 @@ describe('streaming', () => {
     expect(records.map(record => record.tex)).toEqual(['x'])
   })
 
+  test('a paragraph right after a heading streams padded and lands with its images', async () => {
+    await init()
+    const flushes = ['## Extended Kalman filter (nonlinear models)\n', '\n', 'For $x_k = f(x_{k-1}, u_k) + w_k$ and $z_k = h(x_k) + v_k$:\n']
+    const { landed, records } = streamed(flushes)
+    expect(records.map(record => record.tex)).toEqual(['x_k = f(x_{k-1}, u_k) + w_k', 'z_k = h(x_k) + v_k'])
+    expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual(['x_k = f(x_{k-1}, u_k) + w_k', 'z_k = h(x_k) + v_k'])
+  })
+
   test('a formula too tall for a row is plain Unicode with no record', async () => {
     await init()
     const { landed, records } = streamed(['so $\\frac{a}{b}$ is.\n'])

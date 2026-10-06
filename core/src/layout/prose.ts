@@ -195,9 +195,16 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
       block = undefined
     } else if (token.type !== 'space' || block) {
       if (!block) block = { start: at, end: at, paragraph: true, tokens: 0 }
-      block.end = at + token.raw.length
+      // Some tokens (a heading, a code block, a rule) take the blank line after
+      // them into their raw: it still ends the block, at the token's own text.
+      const body = token.raw.replace(/(?:\r?\n[ \t]*)+$/, '')
+      block.end = at + (token.type === 'space' ? token.raw.length : body.length)
       block.tokens += token.type === 'space' ? 0 : 1
       if (token.type !== 'paragraph' && token.type !== 'space') block.paragraph = false
+      if (token.type !== 'space' && /\n[ \t]*\n[ \t]*$/.test(token.raw)) {
+        blocks.push({ start: block.start, end: block.end, paragraph: block.paragraph && block.tokens === 1 })
+        block = undefined
+      }
     }
     at += token.raw.length
   }
