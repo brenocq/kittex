@@ -4,12 +4,12 @@ Typesets the LaTeX math in Claude Code's replies as real TeX (New Computer
 Modern), drawn as images in terminals with the kitty graphics protocol (kitty,
 Ghostty) and as Unicode everywhere else. Nothing else to install.
 
-Work in progress: see `docs/design.md`.
+Work in progress.
 
 ## Install
 
 ```
-/plugin install kittex --marketplace <owner>/kittex
+/plugin install kittex --marketplace brenocq/kittex
 ```
 
 Install kittex before any mod that redraws whole replies, such as prismantis:

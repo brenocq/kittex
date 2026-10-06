@@ -1,6 +1,9 @@
 # kittex: working notes for agents
 
-Read `docs/design.md` first, then `core/src/types.ts` (the contracts between modules).
+Read the design notes first: `docs/design.md` and `docs/engine-findings.md` in
+the main checkout's `docs/`, which is kept locally and never committed (from a
+worktree, read them from the main checkout). Then read `core/src/types.ts`, the
+contracts between modules. Never add or commit anything under `docs/`.
 
 ## Layout and ownership
 
