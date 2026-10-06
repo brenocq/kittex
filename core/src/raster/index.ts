@@ -1,113 +1,266 @@
-import type { CellBox, RasterOptions, Raster, RGB, TypesetResult } from '../types.js'
+import type { CellBox, DrawOp, Matrix, Raster, RasterOptions, RGB, TypesetResult } from '../types.js'
+import { Coverage } from './fill.js'
+import { type Contour, flattenPath } from './path.js'
+import { encodeAlphaPng, recolorPng } from './png.js'
 
-// STUB, replaced by feat/raster: rules only (paths are skipped), no anti-aliasing,
-// RGBA PNG with stored (uncompressed) deflate blocks.
+export { recolorPng }
+
+/*
+ * Draw ops (em) -> anti-aliased coverage over whole terminal cells.
+ *
+ * Every op is mapped to pixels (its transform, then emPx × scale, then the
+ * image origin), its curves flattened to polygons within 0.05 px, its outline
+ * dilated by the stroke weight, thin rules snapped to whole pixels, and the
+ * result filled with exact-area coverage under the nonzero rule (fill.ts).
+ *
+ * Layout (`measure`, shared by `rasterize`):
+ * - The ink box is the formula's box (width × (height + depth) em at emPx ×
+ *   scale) plus `pad` whole pixels on every side, pad = ceil(dilation), so the
+ *   dilated outline is never clipped.
+ * - scale < 1 only when that box is wider than maxColumns cells (or taller
+ *   than 255 rows): the formula then shrinks to fit exactly.
+ * - columns: maxColumns for `center`, else ceil(ink width / cellWidth).
+ *   rows: ceil(ink height / cellHeight), at least minRows, at most 255.
+ * - Cell sizes may be fractional (the probe divides the window's pixels by
+ *   its cells). The image is round(columns × cellWidth) by round(rows ×
+ *   cellHeight) pixels, the whole-pixel size nearest the area the terminal
+ *   stretches it over, so any rescaling is below half a pixel over the image.
+ * - The formula is centred in the image (horizontally only for `center`;
+ *   `left` puts the ink box at x = 0), with its origin on whole pixels, so the
+ *   baseline is a pixel boundary and glyphs land the same way in every image.
+ */
+
+/**
+ * The default stroke weight: outlines grow by 15/1000 em on each side.
+ * New Computer Modern's stems are about 0.07 em and its hairlines 0.02 em,
+ * against 0.09 to 0.1 em for the stems of regular monospace terminal fonts;
+ * at 20 to 30 px per em CM's hairlines also fall under a pixel and
+ * anti-alias to a faint grey. Growing each side by 0.015 em (0.375 px at
+ * 25 px/em) brings the stems to about 0.1 em and the hairlines past a pixel,
+ * while counters and letter shapes stay the font's. Chosen by eye against
+ * Roboto Mono and DejaVu Sans Mono at 13 × 26 px cells: 12 still reads light,
+ * 18 matches a Medium weight and starts to clog small superscripts. A coverage
+ * gamma was the alternative, but it only darkens edge pixels: a hairline stays
+ * a grey line, just a less faint one. The weight is in em, not pixels, so a
+ * formula looks the same at every resolution.
+ */
+export const DEFAULT_WEIGHT = 15
+
+interface Layout extends CellBox {
+  widthPx: number
+  heightPx: number
+  /** Pixels per em after scaling. */
+  k: number
+  /** Outline dilation in pixels. */
+  dilation: number
+  /** Pixel offset of the formula's origin (left end of the baseline). */
+  originX: number
+  baselinePx: number
+}
+
+function layout(result: TypesetResult, options: RasterOptions): Layout {
+  const { emPx, cellWidth, cellHeight } = options
+  if (!(emPx > 0 && cellWidth > 0 && cellHeight > 0)) throw new RangeError('raster: emPx and cell sizes must be positive')
+  const maxColumns = Math.max(1, Math.min(255, Math.floor(options.maxColumns) || 1))
+  const minRows = Math.max(1, Math.min(255, Math.ceil(options.minRows ?? 1)))
+  const weight = Math.max(0, options.weight ?? DEFAULT_WEIGHT)
+  const width = Math.max(0, result.width)
+  const boxHeight = Math.max(0, result.height + result.depth)
+
+  const dilation0 = (weight / 1000) * emPx
+  const pad = Math.ceil(dilation0 - 1e-9)
+  const availWidth = maxColumns * cellWidth - 2 * pad
+  const availHeight = 255 * cellHeight - 2 * pad
+  let scale = 1
+  if (width * emPx > availWidth) scale = Math.max(0, availWidth) / (width * emPx)
+  if (boxHeight * emPx * scale > availHeight) scale = Math.max(0, availHeight) / (boxHeight * emPx)
+  const k = emPx * scale
+  const inkWidth = width * k + 2 * pad
+  const inkHeight = boxHeight * k + 2 * pad
+
+  const columns =
+    options.align === 'center' ? maxColumns : Math.min(maxColumns, Math.max(1, Math.ceil(inkWidth / cellWidth - 1e-9)))
+  const rows = Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)))
+  const widthPx = Math.max(1, Math.round(columns * cellWidth))
+  const heightPx = Math.max(1, Math.round(rows * cellHeight))
+  const originX = options.align === 'center' ? Math.round((widthPx - width * k) / 2) : pad
+  const baselinePx = Math.round((heightPx - inkHeight) / 2 + pad + Math.max(0, result.height) * k)
+  return { columns, rows, scale, widthPx, heightPx, k, dilation: dilation0 * scale, originX, baselinePx }
+}
 
 /** The cells a formula will take under `options`, without drawing it. */
 export function measure(result: TypesetResult, options: RasterOptions): CellBox {
-  const { emPx, cellWidth, cellHeight, maxColumns } = options
-  const naturalWidth = result.width * emPx
-  const scale = naturalWidth > maxColumns * cellWidth ? (maxColumns * cellWidth) / naturalWidth : 1
-  const columns =
-    options.align === 'center' ? maxColumns : Math.min(maxColumns, Math.max(1, Math.ceil((naturalWidth * scale) / cellWidth)))
-  const rows = Math.min(255, Math.max(options.minRows ?? 1, Math.ceil(((result.height + result.depth) * emPx * scale) / cellHeight)))
+  const { columns, rows, scale } = layout(result, options)
   return { columns, rows, scale }
 }
 
 /** Draws a typeset formula as coverage over whole cells. */
 export function rasterize(result: TypesetResult, options: RasterOptions): Raster {
-  const box = measure(result, options)
-  const widthPx = box.columns * options.cellWidth
-  const heightPx = box.rows * options.cellHeight
-  const alpha = new Uint8Array(widthPx * heightPx)
-  const k = options.emPx * box.scale
-  const left = options.align === 'center' ? (widthPx - result.width * k) / 2 : 0
-  const baselinePx = Math.round((heightPx - (result.height + result.depth) * k) / 2 + result.height * k)
-  for (const op of result.ops) {
-    if (op.type !== 'rect') continue
-    const x0 = Math.max(0, Math.round(left + op.x * k))
-    const x1 = Math.min(widthPx, Math.round(left + (op.x + op.width) * k))
-    const y0 = Math.max(0, Math.round(baselinePx + op.y * k))
-    const y1 = Math.min(heightPx, Math.round(baselinePx + (op.y + op.height) * k))
-    for (let y = y0; y < y1; y++) alpha.fill(255, y * widthPx + x0, y * widthPx + x1)
+  const box = layout(result, options)
+  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box
+  const coverage = new Coverage(widthPx, heightPx)
+  const toPx: Matrix = [k, 0, 0, k, originX, baselinePx]
+  // Rules up to 0.15 em thick (4 px at least) are snapped: TeX's are 0.04 to 0.1 em.
+  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
+  for (const op of result.ops) drawOp(coverage, op, toPx, dilation, ruleMax)
+  return {
+    columns: box.columns,
+    rows: box.rows,
+    scale: box.scale,
+    alpha: coverage.toAlpha(),
+    widthPx,
+    heightPx,
+    baselinePx,
   }
-  return { ...box, alpha, widthPx, heightPx, baselinePx }
 }
 
 /** Encodes a raster as a PNG in one ink colour, transparent where there is no coverage. */
 export function encodePng(raster: Raster, ink: RGB): Uint8Array {
-  const { widthPx: w, heightPx: h, alpha } = raster
-  const raw = new Uint8Array(h * (1 + w * 4))
-  for (let y = 0; y < h; y++) {
-    const row = y * (1 + w * 4)
-    for (let x = 0; x < w; x++) {
-      const p = row + 1 + x * 4
-      raw[p] = ink.r
-      raw[p + 1] = ink.g
-      raw[p + 2] = ink.b
-      raw[p + 3] = alpha[y * w + x]!
+  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink)
+}
+
+function drawOp(coverage: Coverage, op: DrawOp, toPx: Matrix, dilation: number, ruleMax: number): void {
+  let contours: Contour[]
+  if (op.type === 'rect') {
+    const [k, , , , e, f] = toPx
+    const x0 = e + k * Math.min(op.x, op.x + op.width)
+    const x1 = e + k * Math.max(op.x, op.x + op.width)
+    const y0 = f + k * Math.min(op.y, op.y + op.height)
+    const y1 = f + k * Math.max(op.y, op.y + op.height)
+    if (!(x1 > x0 && y1 > y0)) return
+    contours = [[x0, y0, x1, y0, x1, y1, x0, y1]]
+  } else {
+    contours = flattenPath(op.d, compose(toPx, op.transform))
+  }
+  // The op's ink is the side its outlines wind on overall: outer contours
+  // dominate the signed area whichever way the font (or a mirroring
+  // transform) winds them. Filling with that sign makes every op's ink count
+  // positive, so overlapping ops union instead of cancelling.
+  let area = 0
+  for (const c of contours) area += signedArea(c)
+  if (!(Math.abs(area) > 1e-9)) return
+  const sign = area > 0 ? 1 : -1
+  for (let c of contours) {
+    if (dilation > 0) c = dilate(c, dilation, sign)
+    snapRule(c, ruleMax)
+    coverage.fill(c, sign)
+  }
+}
+
+function compose(p: Matrix, t: Matrix): Matrix {
+  return [
+    p[0] * t[0] + p[2] * t[1],
+    p[1] * t[0] + p[3] * t[1],
+    p[0] * t[2] + p[2] * t[3],
+    p[1] * t[2] + p[3] * t[3],
+    p[0] * t[4] + p[2] * t[5] + p[4],
+    p[1] * t[4] + p[3] * t[5] + p[5],
+  ]
+}
+
+/** Shoelace area; positive when the contour runs clockwise on screen (y down). */
+export function signedArea(c: Contour): number {
+  let sum = 0
+  const n = c.length
+  let x0 = c[n - 2]!
+  let y0 = c[n - 1]!
+  for (let i = 0; i < n; i += 2) {
+    const x1 = c[i]!
+    const y1 = c[i + 1]!
+    sum += x0 * y1 - x1 * y0
+    x0 = x1
+    y0 = y1
+  }
+  return sum / 2
+}
+
+/**
+ * Moves every edge of `c` by `d` pixels away from the ink (the side `sign`
+ * says the ink is on), joining neighbours with miters capped at 2d. Outer
+ * contours grow and holes shrink, so strokes thicken by 2d.
+ */
+export function dilate(c: Contour, d: number, sign: number): Contour {
+  // Drop repeated points, which have no edge direction.
+  const pts: number[] = []
+  for (let i = 0; i < c.length; i += 2) {
+    const x = c[i]!
+    const y = c[i + 1]!
+    const n = pts.length
+    if (n >= 2 && Math.abs(x - pts[n - 2]!) < 1e-6 && Math.abs(y - pts[n - 1]!) < 1e-6) continue
+    pts.push(x, y)
+  }
+  while (pts.length >= 4 && Math.abs(pts[0]! - pts[pts.length - 2]!) < 1e-6 && Math.abs(pts[1]! - pts[pts.length - 1]!) < 1e-6) {
+    pts.length -= 2
+  }
+  const n = pts.length / 2
+  if (n < 3) return c
+  // Outward unit normal of edge i (from point i to i + 1).
+  const nx = new Float64Array(n)
+  const ny = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    const dx = pts[2 * j]! - pts[2 * i]!
+    const dy = pts[2 * j + 1]! - pts[2 * i + 1]!
+    const len = Math.hypot(dx, dy)
+    nx[i] = (sign * dy) / len
+    ny[i] = (-sign * dx) / len
+  }
+  const out: Contour = new Array<number>(2 * n)
+  for (let i = 0; i < n; i++) {
+    const p = (i + n - 1) % n
+    const sx = nx[p]! + nx[i]!
+    const sy = ny[p]! + ny[i]!
+    const cos1 = 1 + nx[p]! * nx[i]! + ny[p]! * ny[i]!
+    // Miter vector (n1 + n2) / (1 + n1·n2); its length 1/cos(θ/2) is capped at 2.
+    let mx = 0
+    let my = 0
+    if (cos1 >= 0.5) {
+      mx = sx / cos1
+      my = sy / cos1
+    } else {
+      const len = Math.hypot(sx, sy)
+      if (len > 1e-9) {
+        mx = (2 * sx) / len
+        my = (2 * sy) / len
+      }
     }
-  }
-  const ihdr = new Uint8Array(13)
-  const view = new DataView(ihdr.buffer)
-  view.setUint32(0, w)
-  view.setUint32(4, h)
-  ihdr.set([8, 6, 0, 0, 0], 8)
-  return concat([
-    Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', zlibStored(raw)),
-    chunk('IEND', new Uint8Array(0)),
-  ])
-}
-
-function zlibStored(data: Uint8Array): Uint8Array {
-  const parts: Uint8Array[] = [Uint8Array.of(0x78, 0x01)]
-  for (let i = 0; i === 0 || i < data.length; i += 65535) {
-    const block = data.subarray(i, i + 65535)
-    const last = i + 65535 >= data.length ? 1 : 0
-    parts.push(Uint8Array.of(last, block.length & 0xff, block.length >> 8, ~block.length & 0xff, (~block.length >> 8) & 0xff), block)
-  }
-  let a = 1
-  let b = 0
-  for (const byte of data) {
-    a = (a + byte) % 65521
-    b = (b + a) % 65521
-  }
-  const adler = new Uint8Array(4)
-  new DataView(adler.buffer).setUint32(0, ((b << 16) | a) >>> 0)
-  parts.push(adler)
-  return concat(parts)
-}
-
-function chunk(type: string, data: Uint8Array): Uint8Array {
-  const out = new Uint8Array(12 + data.length)
-  const view = new DataView(out.buffer)
-  view.setUint32(0, data.length)
-  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i)
-  out.set(data, 8)
-  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)))
-  return out
-}
-
-let crcTable: Uint32Array | undefined
-function crc32(bytes: Uint8Array): number {
-  crcTable ??= Uint32Array.from({ length: 256 }, (_, n) => {
-    let c = n
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    return c >>> 0
-  })
-  let crc = 0xffffffff
-  for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff]! ^ (crc >>> 8)
-  return (crc ^ 0xffffffff) >>> 0
-}
-
-function concat(parts: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
-  let at = 0
-  for (const p of parts) {
-    out.set(p, at)
-    at += p.length
+    out[2 * i] = pts[2 * i]! + d * mx
+    out[2 * i + 1] = pts[2 * i + 1]! + d * my
   }
   return out
+}
+
+/** Contours up to this thick (px; more at large sizes, see rasterize) and at least twice as long count as rules. */
+const RULE_MIN_SNAP = 4
+/** …and must fill this much of their bounding box (a disc fills 79 %). */
+const RULE_MIN_FILL = 0.9
+
+/**
+ * Snaps a rule-like contour (a fraction bar, vinculum, overline, minus or
+ * equals bar, a vertical bar) to whole pixels across its thickness: its
+ * thickness is rounded to whole pixels (at least one) and it is placed on the
+ * rows (or columns) nearest its centre, so it draws as solid pixels instead of
+ * two half-covered rows. Other contours are left alone.
+ */
+export function snapRule(c: Contour, maxThickness = RULE_MIN_SNAP): void {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (let i = 0; i < c.length; i += 2) {
+    const x = c[i]!
+    const y = c[i + 1]!
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+  const w = x1 - x0
+  const h = y1 - y0
+  if (!(w > 0 && h > 0) || Math.abs(signedArea(c)) < RULE_MIN_FILL * w * h) return
+  const axis = h <= maxThickness && w >= 2 * h ? 1 : w <= maxThickness && h >= 2 * w ? 0 : -1
+  if (axis < 0) return
+  const lo = axis === 1 ? y0 : x0
+  const size = axis === 1 ? h : w
+  const t = Math.max(1, Math.round(size))
+  const to = Math.round(lo + size / 2 - t / 2)
+  const f = t / size
+  for (let i = axis; i < c.length; i += 2) c[i] = to + (c[i]! - lo) * f
 }

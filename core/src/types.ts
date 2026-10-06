@@ -95,7 +95,7 @@ export interface RasterOptions {
   align: 'center' | 'left'
   /** Reserve at least this many rows (to match a streaming preview); the formula is centred vertically. */
   minRows?: number
-  /** Stroke darkening, 0 for none; the default matches terminal text weight. */
+  /** Stroke darkening: outlines grow by this many thousandths of an em on each side. 0 for none; the default (15) matches terminal text weight. */
   weight?: number
 }
 
@@ -111,9 +111,9 @@ export interface CellBox {
 export interface Raster extends CellBox {
   /** widthPx × heightPx coverage bytes (0 transparent, 255 full ink), row-major. */
   alpha: Uint8Array
-  /** columns × cellWidth. */
+  /** columns × cellWidth, rounded to whole pixels when cells are fractional. */
   widthPx: number
-  /** rows × cellHeight. */
+  /** rows × cellHeight, rounded to whole pixels when cells are fractional. */
   heightPx: number
   /** Pixel row of the math baseline, from the top of the image. */
   baselinePx: number
