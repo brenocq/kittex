@@ -2,7 +2,7 @@
 // streams, the landed plan that places each image over its preview, the
 // fallbacks to Unicode, and the `inline` option.
 
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth, visibleProse } from '../hooks/core.js'
@@ -23,7 +23,7 @@ import {
   TEXT_BASELINE,
 } from '../hooks/math.ts'
 import type { KittexEnv, PlanOptions, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { CELL, COLUMNS, kittyEnv, startSession } from './support.ts'
+import { CELL, COLUMNS, kittyEnv, startSession, test } from './support.ts'
 
 /** kitty's 13×26 px cells (the session tests' 13×20 cells leave little room above the baseline). */
 const kitty26 = (): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, emPx: kittyEnv().emPx })

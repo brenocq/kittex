@@ -2,11 +2,11 @@
 // reply streamed are drawn between flushes, kept by formula and geometry, so
 // the render at landing only composes, and a re-render reuses every source.
 
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { init } from '../hooks/core.js'
-import { COLUMNS, startSession } from './support.ts'
+import { COLUMNS, startSession, test } from './support.ts'
 
 /** A formula whose image takes long to draw (many rows). */
 const HEAVY = `\\begin{aligned}${Array.from({ length: 30 }, (_, k) => `f_{${k}}(x) &= \\sum_{i=0}^{${k}} \\frac{x^i}{i!} + \\int_0^x t^{${k}} \\, dt`).join(' \\\\ ')}\\end{aligned}`

@@ -3,13 +3,13 @@
 // each link form (core/src/layout/links.ts), measured live on Claude Code
 // 2.1.291 with hyperlinks on (kitty) and off (FORCE_HYPERLINK=0).
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { init, layoutList, layoutProse, measureDisplay, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, linkEnv, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { COLUMNS, KITTY, kittyEnv, startSession } from './support.ts'
+import { COLUMNS, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 const kitty26 = (hyperlinks?: boolean): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, ...(hyperlinks === undefined ? {} : { hyperlinks }) })
 

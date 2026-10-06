@@ -5,12 +5,12 @@
 // kittex, 100 and 60 columns, with and without hyperlinks): every image lay
 // over its preview, the rest matched the replays cell for cell.
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { init, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, measureDisplay, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv } from './support.ts'
+import { kittyEnv, test } from './support.ts'
 
 const kitty26 = (hyperlinks?: boolean): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, ...(hyperlinks === undefined ? {} : { hyperlinks }) })
 const inlineOn = (hyperlinks?: boolean): StreamEnv => ({ ...kitty26(hyperlinks), inline: true })
