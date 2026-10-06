@@ -12,6 +12,8 @@ import {
   escapeMarkdown,
   HELD_DISPLAY,
   LANDED_PATTERN,
+  SOURCE_PATTERN,
+  STREAMED_PATTERN,
   MessageStream,
   NOT_RENDERED,
   planLanded,
@@ -240,6 +242,15 @@ describe('planLanded', () => {
     expect(LANDED_PATTERN.test('Nothing to see, costs 5 dollars.')).toBe(false)
     expect(LANDED_PATTERN.test('costs $5')).toBe(true)
     expect(LANDED_PATTERN.test('&nbsp;x')).toBe(true)
+  })
+
+  test('a streamed text and LaTeX as written are told apart, escaped brackets included', () => {
+    const streamedText = '&nbsp;&nbsp;= −𝔼\\[log σ\\] and y\u2800'
+    expect([STREAMED_PATTERN.test(streamedText), SOURCE_PATTERN.test(streamedText)]).toEqual([true, false])
+    for (const source of ['\\[ x \\]', 'a $x$', '\\(x\\)', '\\begin{aligned}', 'x\u2800 $y$', '\\(x\\) &nbsp;']) {
+      expect({ source, streamed: STREAMED_PATTERN.test(source), latex: SOURCE_PATTERN.test(source) }).toEqual({ source, streamed: false, latex: true })
+    }
+    expect([STREAMED_PATTERN.test('plain [x]'), SOURCE_PATTERN.test('plain [x]')]).toEqual([false, false])
   })
 
   test('keeps a formula MathJax refuses as its source, with a note under it', () => {

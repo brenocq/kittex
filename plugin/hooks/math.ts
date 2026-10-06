@@ -223,17 +223,23 @@ export const MATH_INSTRUCTIONS =
  */
 export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800|\u034f/
 
-/** LaTeX as written: a reply that never streamed through MessageDisplay, or one read back after `--resume`. */
-export const SOURCE_PATTERN = /\$|\\[([]|\\begin\{/
+/**
+ * LaTeX as written: a reply that never streamed through MessageDisplay, or one
+ * read back after `--resume`. A `\[` counts only in a text holding none of
+ * kittex's previews, which escape every `[` they show as `\[` (`𝔼\[x\]`).
+ */
+export const SOURCE_PATTERN = /\$|\\\(|\\begin\{|^(?![\s\S]*(?:&nbsp;|```latex|\u00a0|\u2800|\u034f))[\s\S]*\\\[/
 
 /**
  * A block as kittex streamed it: its previews (a display preview's pad, an
  * inline preview's join, pad or mark, a refused formula's source block) and
- * no LaTeX as written. The engine's own drawing of such a text is the
- * streaming preview row for row, so it may stand in while kittex's drawing is
- * on its way (the AssistantMessage hook, in the fullscreen layout).
+ * no LaTeX as written (a `\[` is a bracket its previews escaped). The
+ * engine's own drawing of such a text is the streaming preview row for row,
+ * so it may stand in while kittex's drawing is on its way (the
+ * AssistantMessage hook, in the fullscreen layout). Never matches a text
+ * SOURCE_PATTERN matches.
  */
-export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\[([]|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
+export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\\(|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
