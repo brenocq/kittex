@@ -1,0 +1,9 @@
+- 🚀 First item with $x^2$ and an emoji ✅ at the end ✅
+- $\alpha$🎉 right after a formula, and 😀$\beta$ right before one, with enough words to wrap the item text over several rows at every width we try 🧠
+  - nested 🔥 item $f(x) = \sum_i a_i x^i$ ⭐ with a few more words to wrap it 🌍 as well
+  - 🐍 starts with an emoji, $\mathbb{R}^n$ ends with a formula $y$
+- ⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚ $z$ long emoji word
+
+1. ordered 📈 $O(n \log n)$ step 💡
+2. second $\sqrt{2}$ 🤖 with words, words, words and $e^{i\pi} + 1 = 0$ 🎉 then more words to wrap 🎉
+   1. letter item 😀 $\|v\|$

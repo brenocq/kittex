@@ -207,6 +207,28 @@ describe('the landed plan', () => {
     expect(live.pieces[0]).toMatchObject({ kind: 'prose', text: landed })
   })
 
+  test('emoji take two cells: a paragraph and a list item holding them get their images', async () => {
+    await init()
+    const { landed, records } = streamed(['🚀 Let 😀$x$ and $E = mc^2$✅ hold.\n', '\n', '- ⭐ item $y$ 🎉\n'])
+    const { pieces } = plan(landed, records)
+    const x = landed.indexOf(records[0]!.preview)
+    const e = landed.indexOf(records[1]!.preview)
+    expect(places(pieces)).toEqual([
+      ['x', 0, textWidth(landed.slice(0, x)), records[0]!.columns],
+      ['E = mc^2', 0, textWidth(landed.slice(0, e)), records[1]!.columns],
+      ['y', 0, 10, records[2]!.columns],
+    ])
+    expect(textWidth(landed.slice(0, x))).toBe(9)
+    expect(plan('🚀 Let 😀$x$ and $E = mc^2$✅ hold.\n\n- ⭐ item $y$ 🎉').pieces).toEqual(pieces)
+  })
+
+  test('a paragraph holding an emoji sequence (a selector, a modifier, a joiner, a flag) keeps Unicode', async () => {
+    await init()
+    for (const emoji of ['❤️', '\u{1f44d}\u{1f3fd}', '\u{1f468}‍\u{1f469}‍\u{1f467}', '\u{1f1e7}\u{1f1f7}']) {
+      expect(places(plan(`Love ${emoji} and $x^2$.`).pieces)).toEqual([])
+    }
+  })
+
   test('headings keep Unicode', async () => {
     await init()
     expect(places(plan('# Title with $x$').pieces)).toEqual([])

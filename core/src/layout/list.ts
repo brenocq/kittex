@@ -83,13 +83,18 @@ export class Canvas {
         this.end.push(false)
         if (wrapped.hidden[i]) continue
         const cells = this.cells[row]!
-        // A combining mark or the low half of a pair joins the cell before it.
+        // A pair is one character (put at its high half); a combining mark joins the cell before it.
         const code = line.charCodeAt(i)
-        if ((code >= 0xdc00 && code <= 0xdfff) || codeWidth(line.codePointAt(i)!) === 0) {
+        if (code >= 0xdc00 && code <= 0xdfff) continue
+        const char = String.fromCodePoint(line.codePointAt(i)!)
+        const width = codeWidth(char.codePointAt(0)!)
+        if (width === 0) {
           const last = Math.max(0, cells.length - 1)
-          cells[last] = (cells[last] ?? '') + line[i]!
+          cells[last] = (cells[last] ?? '') + char
         } else {
-          cells[col] = line[i]!
+          cells[col] = char
+          // A wide character (an emoji) covers the cell after it too.
+          if (width === 2) cells[col + 1] = ''
         }
       }
       // The line break itself, as layoutProse counts it.

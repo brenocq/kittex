@@ -1,4 +1,4 @@
-import { codeWidth } from './width.js'
+import { codeWidth, textWidth } from './width.js'
 
 /**
  * Where every character of one line lands once word-wrapped, replaying
@@ -101,15 +101,7 @@ export function wrapLine(line: string, columns: number): WrappedLine | null {
 }
 
 function widthOf(line: string, from: number, to: number): number {
-  let cells = 0
-  for (let i = from; i < to; ) {
-    const code = line.codePointAt(i)!
-    const width = codeWidth(code)
-    if (width < 0) return -1
-    cells += width
-    i += code > 0xffff ? 2 : 1
-  }
-  return cells
+  return textWidth(line.slice(from, to))
 }
 
 /** The rows a line wraps into, as text (for checks against a terminal screen). */
