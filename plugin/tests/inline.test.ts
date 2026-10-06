@@ -105,12 +105,17 @@ describe('streaming', () => {
     for (const record of records) expect(landed).toContain(record.preview)
   })
 
-  test('outside a paragraph or a list item inline math streams unpadded, with no record, so no gap stays at landing', async () => {
+  test('outside a block the replay follows inline math streams unpadded, with no record, so no gap stays at landing', async () => {
     await init()
-    for (const line of ['## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
-      const { landed, records } = streamed([line])
-      expect({ line, records }).toEqual({ line, records: [] })
-      expect(landed).toBe(line.replace('$x_k$', previewInline('x_k')!))
+    for (const lines of [
+      ['| $x_k$ | state |\n'],
+      ['## Title\n', 'The $x_k$ state\n'],
+      ['> see [docs](https://example.com) for the $x_k$ state\n'],
+      ['> ```\n', '> code\n', '> ```\n', '> the $x_k$ state\n'],
+    ]) {
+      const { landed, records } = streamed(lines)
+      expect({ lines, records }).toEqual({ lines, records: [] })
+      expect(landed).toBe(lines.join('').replace('$x_k$', previewInline('x_k')!))
     }
     // A paragraph after a list, a blank line between, is a paragraph again.
     const { records } = streamed(['- a list item\n', '\n', 'Then $x$ is real.\n'])
@@ -207,9 +212,11 @@ describe('the landed plan', () => {
     expect(live.pieces[0]).toMatchObject({ kind: 'prose', text: landed })
   })
 
-  test('headings keep Unicode', async () => {
+  test('a heading places its images as prose, with no marker', async () => {
     await init()
-    expect(places(plan('# Title with $x$').pieces)).toEqual([])
+    expect(places(plan('# Title with $x$').pieces)).toEqual([['x', 0, 'Title with '.length, 2]])
+    // With text right under it (no blank line), a heading is not followed.
+    expect(places(plan('# Title with $x$\nand text').pieces)).toEqual([])
   })
 
   test('emphasis around a formula still closes after its pad', async () => {
@@ -336,7 +343,7 @@ describe('markdown in inline Unicode (stress report F1)', () => {
       expect(inlineText(tex!)).toBe(unicode)
       // Streamed with no images, in a heading (no image there), and landed after --resume: the same text.
       expect(streamed([`See $${tex}$ here.\n`], plainEnv()).landed).toBe(`See ${unicode} here.\n`)
-      expect(streamed([`## See $${tex}$\n`]).landed).toBe(`## See ${unicode}\n`)
+      expect(streamed([`## See $${tex}$\n`], plainEnv()).landed).toBe(`## See ${unicode}\n`)
       expect(joinProse(planLanded(`See $${tex}$ here.`, [], { maxColumns: 98 }).pieces)).toBe(`See ${unicode} here.`)
     }
   })
@@ -432,7 +439,9 @@ describe('display math in a blockquote (stress report F11)', () => {
     })
     expect(pieces.some(piece => piece.kind === 'image')).toBe(false)
     const quoted = pieces.find(piece => piece.kind === 'prose' && piece.text.startsWith('>'))!
+    // The inline formula under it gets its image too, after the bar and `for every `.
     expect(quoted.kind === 'prose' && quoted.inline?.map(image => [image.tex, image.row, image.col, image.image.rows])).toEqual([
+      ['k \\ne j', 5, 2 + 'for every '.length, 1],
       [records.find(one => !one.inline)!.tex, 2, 2, records.find(one => !one.inline)!.rows],
     ])
   })

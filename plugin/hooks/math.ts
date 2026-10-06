@@ -7,8 +7,10 @@
 
 import {
   createLineScanner,
+  layoutHeading,
   layoutList,
   layoutProse,
+  layoutQuote,
   measureDisplay,
   measureInline,
   previewDisplay,
@@ -19,7 +21,7 @@ import {
   TexError,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, RenderedImage, RenderEnv, Segment, SourceSpan } from './core.js'
+import type { CellSize, InlineEnv, LineScanner, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -546,7 +548,10 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env)) : null
+      const written = writer.recent()
+      const width = proseWidthFor(env)
+      // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
+      const inline = env.inline && env.images && placeable(written, width) ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -584,10 +589,11 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 /**
  * Whether inline math written next, after `written`, lands in a block whose
  * inline previews get images at landing (proseBlocks, the rule the landed
- * drawing uses): a plain paragraph, or the text of a list item in a list the
+ * drawing uses): a plain paragraph, a heading, or a list or a blockquote the
  * replay follows so far (`width`: the width prose wraps at). Anywhere else (a
- * heading, a quote, a table) the formula is drawn as plain Unicode, so
- * streaming writes it unpadded: padding there would stay behind as gaps.
+ * table, a heading with text right under it) the formula is drawn as plain
+ * Unicode, so streaming writes it unpadded: padding there would stay behind
+ * as gaps.
  */
 export function placeable(written: string, width: number): boolean {
   // A table's first row reads as a paragraph until its delimiter row arrives.
@@ -597,7 +603,16 @@ export function placeable(written: string, width: number): boolean {
   const last = proseBlocks(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
   if (last.paragraph) return true
-  return last.list === true && layoutList(text.slice(last.start, last.end), width) !== null
+  const block = text.slice(last.start, last.end)
+  if (last.heading) return layoutHeading(block, width) !== null
+  if (last.quote) return layoutQuote(block, width) !== null
+  return last.list === true && layoutList(block, width) !== null
+}
+
+/** How many quotes the line being written opens with (its leading `>` markers; 0 outside a quote). */
+export function quotesOpening(written: string): number {
+  const line = written.slice(written.lastIndexOf('\n') + 1)
+  return (/^[ \t]{0,3}(?:>[ \t]?)+/.exec(line)?.[0].match(/>/g) ?? []).length
 }
 
 /** Why MathJax refuses a formula, or undefined when it doesn't. */
@@ -911,10 +926,11 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
 }
 
 /**
- * Gives the inline previews marked in prose pieces their images. A paragraph
- * or a list holding previews, set apart by blank lines, is drawn as a piece of
- * its own (so its first row is the piece's), laid out as the engine lays it
- * out, and each preview drawn whole on one row gets its image there. Everything else
+ * Gives the inline previews marked in prose pieces their images. A paragraph,
+ * a list, a heading or a blockquote holding previews, set apart by blank
+ * lines, is drawn as a piece of its own (so its first row is the piece's),
+ * laid out as the engine lays it out, and each preview drawn whole on one row
+ * gets its image there. Everything else
  * keeps its text: previews streamed padded stay as they were shown, math read
  * back as LaTeX goes back to its plain Unicode.
  */
@@ -947,10 +963,11 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
       const inline = inside.filter(span => span.mark.rows === undefined)
       const quoted = inside.filter(span => span.mark.rows !== undefined)
       let images: [SourceSpan, InlineImage][] = []
-      if ((block.paragraph || block.list) && inline.length > 0 && options.inline) {
-        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, block.list === true)
-      } else if (block.quote && quoted.length > 0) {
-        images = placeQuoted(text.slice(block.start, block.end), quoted, block.start, options)
+      if ((block.paragraph || block.list || block.heading) && inline.length > 0 && options.inline) {
+        const layout = block.list ? layoutList : block.heading ? layoutHeading : layoutProse
+        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, layout)
+      } else if (block.quote && (quoted.length > 0 || (inline.length > 0 && options.inline))) {
+        images = placeQuote(text.slice(block.start, block.end), inside, block.start, options)
       }
       for (const [span] of images) placed.add(span)
       if (images.length > 0) parts.push({ start: block.start, end: block.end, images: images.map(([, image]) => image) })
@@ -992,27 +1009,76 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
   return out
 }
 
-/** Lays out one paragraph (or list) and draws the images of the previews found whole on a row. */
+/** Lays out one block (a paragraph, a list, a heading) and draws the images of the previews found whole on a row. */
 function placeImages(
   block: string,
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   offset: number,
   inline: NonNullable<PlanOptions['inline']>,
-  list: boolean,
+  layoutOf: (markdown: string, width: number, spans: readonly SourceSpan[]) => ProseLayout | null,
 ): [SourceSpan, InlineImage][] {
-  const layout = (list ? layoutList : layoutProse)(
+  const layout = layoutOf(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
   )
-  if (!layout) return []
+  return layout ? inlineImages(spans, layout.places, inline) : []
+}
+
+/** The images of inline previews laid out at `places` (one per span): those drawn whole on a row, as wide as their image. */
+function inlineImages(
+  spans: readonly (SourceSpan & { mark: InlineMark })[],
+  places: readonly (SpanPlace | null)[],
+  inline: NonNullable<PlanOptions['inline']>,
+): [SourceSpan, InlineImage][] {
   const images: [SourceSpan, InlineImage][] = []
-  for (const [k, place] of layout.places.entries()) {
+  for (const [k, place] of places.entries()) {
     const span = spans[k]!
     const { mark } = span
     if (!place || mark.columns < 1 || place.columns !== mark.columns) continue
     try {
       images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col }])
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+    }
+  }
+  return images
+}
+
+/**
+ * Draws the images of a blockquote's previews, laid out as the engine lays
+ * the quote out (layoutQuote: the bar, the text two cells in, nested quotes
+ * and lists as text): each inline preview drawn whole on a row gets its image
+ * there, each display preview (one quote deep) an image over its rows from
+ * the row its first line is on. Where the replay doesn't follow the quote,
+ * its display previews are placed by placeQuoted and its inline ones keep
+ * their text.
+ */
+function placeQuote(
+  quote: string,
+  spans: readonly (SourceSpan & { mark: InlineMark })[],
+  offset: number,
+  options: PlanOptions,
+): [SourceSpan, InlineImage][] {
+  const inline = options.inline ? spans.filter(span => span.mark.rows === undefined) : []
+  const quoted = options.draw ? spans.filter(span => span.mark.rows !== undefined) : []
+  // A display preview is found by its first line, which is drawn on one row.
+  const firstLine = (span: SourceSpan) => {
+    const end = quote.indexOf('\n', span.start - offset)
+    return { start: span.start - offset, end: end < 0 || end > span.end - offset ? span.end - offset : end }
+  }
+  const layout = layoutQuote(quote, options.inline?.width ?? options.width ?? options.maxColumns, [
+    ...inline.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
+    ...quoted.map(firstLine),
+  ])
+  if (!layout) return placeQuoted(quote, quoted, offset, options)
+  const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline) : []
+  for (const [k, span] of quoted.entries()) {
+    const place = layout.places[inline.length + k]
+    if (!place) continue
+    try {
+      const image = options.draw!(span.mark.tex, span.mark.rows, span.mark.columns)
+      images.push([span, { tex: span.mark.tex, image, row: place.row, col: QUOTE_INDENT }])
     } catch (error) {
       if (!(error instanceof TexError)) throw error
     }
