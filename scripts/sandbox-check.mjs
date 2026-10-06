@@ -75,13 +75,16 @@ try {
   if (out) mkdirSync(out, { recursive: true })
   for (const [i, tex] of SAMPLES.entries()) {
     try {
+      // As the mod does: reserve the rows, draw the image and the preview in them.
       t = performance.now()
-      const first = kittex.renderDisplay(tex, env)
+      const { rows } = kittex.measureDisplay(tex, env)
+      const first = kittex.renderDisplay(tex, env, rows)
       const firstMs = performance.now() - t
       t = performance.now()
-      kittex.renderDisplay(tex, { ...env, ink: { r: 20, g: 20, b: 20 } })
+      kittex.renderDisplay(tex, { ...env, ink: { r: 20, g: 20, b: 20 } }, rows)
       const recolourMs = performance.now() - t
-      const preview = kittex.previewDisplay(tex, env, first.rows)
+      const preview = kittex.previewDisplay(tex, env, rows)
+      if (!preview) fail(`sample #${i}: no preview in ${rows} rows`)
       console.log(
         `#${i} ${first.columns}x${first.rows} cells, ${first.png.length} B png, first ${firstMs.toFixed(1)} ms, ` +
           `recolour ${recolourMs.toFixed(1)} ms, preview ${preview ? `${preview.length} lines` : 'none'}`,

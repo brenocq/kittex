@@ -1,7 +1,7 @@
 import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
-import type { CellBox, RasterOptions, RGB, TypesetResult } from './types.js'
+import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
@@ -57,9 +57,19 @@ const typesetCache = new Map<string, TypesetResult>()
 const imageCache = new Map<string, RenderedImage>()
 const CACHE_LIMIT = 256
 
-/** The cells a display formula's image will take. Throws TexError. */
+/**
+ * The cells to reserve for a display formula, shared by its streaming preview and
+ * its image (draw it with `renderDisplay(tex, env, rows)`). That is the image's
+ * own size, unless no Unicode preview fits in it (a stacked form too tall and no
+ * one-line form, as for aligned equations): then the stacked preview's height
+ * is reserved and the image is padded to it. Throws TexError.
+ */
 export function measureDisplay(tex: string, env: RenderEnv): CellBox {
-  return measure(typesetDisplay(tex, env), rasterOptions(env))
+  const result = typesetDisplay(tex, env)
+  const box = measure(result, rasterOptions(env))
+  const stacked = unicodeFor(tex, true, env.maxColumns)
+  if (!stacked || stacked.lines.length <= box.rows || unicodeFor(tex, false, env.maxColumns)) return box
+  return measure(result, rasterOptions(env, Math.min(255, stacked.lines.length)))
 }
 
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
@@ -79,15 +89,17 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
 }
 
 /**
- * A display formula as Unicode lines, padded with blank lines to `rows` (the rows
- * its image takes) so a streaming preview reserves exactly the image's room.
- * Null when Unicode can't express it, or it is wider than maxColumns or taller than `rows`.
+ * A display formula as Unicode lines, padded with blank lines to `rows` (from
+ * measureDisplay) so a streaming preview reserves exactly the image's room: the
+ * stacked form when it fits, else the one-line form. Null when Unicode can't
+ * express it in that room or it is wider than maxColumns.
  */
 export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, rows?: number): string[] | null {
-  const result = unicodeFor(tex, true, env.maxColumns)
-  if (!result) return null
+  const fits = (r: UnicodeResult | null): r is UnicodeResult => r !== null && (rows === undefined || r.lines.length <= rows)
+  const stacked = unicodeFor(tex, true, env.maxColumns)
+  const result = fits(stacked) ? stacked : unicodeFor(tex, false, env.maxColumns)
+  if (!fits(result)) return null
   if (rows === undefined || result.lines.length === rows) return result.lines
-  if (result.lines.length > rows) return null
   const blank = ' '.repeat(result.width)
   const above = Math.floor((rows - result.lines.length) / 2)
   return [...Array<string>(above).fill(blank), ...result.lines, ...Array<string>(rows - result.lines.length - above).fill(blank)]
@@ -119,13 +131,19 @@ function typesetDisplay(tex: string, env: RenderEnv): TypesetResult {
   return remember(typesetCache, key) ?? store(typesetCache, key, typeset(tex, { display: true, lineWidth }))
 }
 
-function unicodeFor(tex: string, display: boolean, maxWidth?: number) {
+const unicodeCache = new Map<string, UnicodeResult | null>()
+
+function unicodeFor(tex: string, display: boolean, maxWidth?: number): UnicodeResult | null {
   if (tex.length > MAX_TEX_LENGTH) return null
+  const key = `${display ? 'd' : 'i'}${maxWidth ?? ''}\n${tex}`
+  if (unicodeCache.has(key)) return remember(unicodeCache, key) ?? null
+  let result: UnicodeResult | null
   try {
-    return toUnicode(texToMathML(tex, { display }), { display, maxWidth })
+    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth })
   } catch {
-    return null
+    result = null
   }
+  return store(unicodeCache, key, result)
 }
 
 function rasterOptions(env: RenderEnv, minRows?: number): RasterOptions {
