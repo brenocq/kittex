@@ -230,7 +230,7 @@ export const register: Register = (on, options) => {
         draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
         width: proseWidthFor(env, columns),
         measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-        inline: images && inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), draw: (tex, cells) => inlineImage(tex, inlineEnv, cells) } : undefined,
+        inline: images && inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells) } : undefined,
       })
       if (!plan.changed) return next(e)
       if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {

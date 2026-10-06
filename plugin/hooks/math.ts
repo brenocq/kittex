@@ -9,6 +9,7 @@ import {
   createLineScanner,
   layoutList,
   layoutProse,
+  layoutTable,
   measureDisplay,
   measureInline,
   previewDisplay,
@@ -546,7 +547,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env)) ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env)) : null
+      const inline = env.inline && env.images && placeable(writer.recent(), proseWidthFor(env), env.columns) ? inlinePreview(segment.tex, inlineEnvFor(env), proseWidthFor(env)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -584,19 +585,21 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 /**
  * Whether inline math written next, after `written`, lands in a block whose
  * inline previews get images at landing (proseBlocks, the rule the landed
- * drawing uses): a plain paragraph, or the text of a list item in a list the
- * replay follows so far (`width`: the width prose wraps at). Anywhere else (a
- * heading, a quote, a table) the formula is drawn as plain Unicode, so
- * streaming writes it unpadded: padding there would stay behind as gaps.
+ * drawing uses): a plain paragraph, the text of a list item in a list the
+ * replay follows so far (`width`: the width prose wraps at), or a cell of a
+ * table it follows so far (`columns`: the terminal's width, which tables are
+ * laid out in). A table's first row reads as a paragraph until its delimiter
+ * row arrives, and is padded as one. Anywhere else (a heading, a quote) the
+ * formula is drawn as plain Unicode, so streaming writes it unpadded: padding
+ * there would stay behind as gaps.
  */
-export function placeable(written: string, width: number): boolean {
-  // A table's first row reads as a paragraph until its delimiter row arrives.
-  if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
+export function placeable(written: string, width: number, columns = width + REPLY_INDENT): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = proseBlocks(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
   if (last.paragraph) return true
+  if (last.table) return layoutTable(text.slice(last.start, last.end), columns, [], width) !== null
   return last.list === true && layoutList(text.slice(last.start, last.end), width) !== null
 }
 
@@ -686,9 +689,11 @@ export interface PlanOptions {
   scan?: (markdown: string) => Segment[]
   /**
    * Inline math drawn as images: where (one text row), the width prose wraps
-   * at, and the drawing (throws TexError). Absent: inline math stays Unicode.
+   * at, the terminal's width (tables are laid out in it; the reply column and
+   * two cells when absent), and the drawing (throws TexError). Absent: inline
+   * math stays Unicode.
    */
-  inline?: { env: InlineEnv; width: number; draw: (tex: string, columns: number) => RenderedImage }
+  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage }
 }
 
 interface Span {
@@ -911,8 +916,8 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
 }
 
 /**
- * Gives the inline previews marked in prose pieces their images. A paragraph
- * or a list holding previews, set apart by blank lines, is drawn as a piece of
+ * Gives the inline previews marked in prose pieces their images. A paragraph,
+ * a list or a table holding previews, set apart by blank lines, is drawn as a piece of
  * its own (so its first row is the piece's), laid out as the engine lays it
  * out, and each preview drawn whole on one row gets its image there. Everything else
  * keeps its text: previews streamed padded stay as they were shown, math read
@@ -947,8 +952,9 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
       const inline = inside.filter(span => span.mark.rows === undefined)
       const quoted = inside.filter(span => span.mark.rows !== undefined)
       let images: [SourceSpan, InlineImage][] = []
-      if ((block.paragraph || block.list) && inline.length > 0 && options.inline) {
-        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, block.list === true)
+      if ((block.paragraph || block.list || block.table) && inline.length > 0 && options.inline) {
+        const kind = block.table ? 'table' : block.list ? 'list' : 'prose'
+        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, kind, maxColumnsOf(options))
       } else if (block.quote && quoted.length > 0) {
         images = placeQuoted(text.slice(block.start, block.end), quoted, block.start, options)
       }
@@ -992,19 +998,23 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
   return out
 }
 
-/** Lays out one paragraph (or list) and draws the images of the previews found whole on a row. */
+/** The terminal's width a plan is drawn in: given, or the reply column and the bullet's two cells. */
+function maxColumnsOf(options: PlanOptions): number {
+  return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
+}
+
+/** Lays out one paragraph, list or table and draws the images of the previews found whole on a row. */
 function placeImages(
   block: string,
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   offset: number,
   inline: NonNullable<PlanOptions['inline']>,
-  list: boolean,
+  kind: 'prose' | 'list' | 'table',
+  columns: number,
 ): [SourceSpan, InlineImage][] {
-  const layout = (list ? layoutList : layoutProse)(
-    block,
-    inline.width,
-    spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
-  )
+  const asked = spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width }))
+  const layout =
+    kind === 'table' ? layoutTable(block, columns, asked, inline.width) : (kind === 'list' ? layoutList : layoutProse)(block, inline.width, asked)
   if (!layout) return []
   const images: [SourceSpan, InlineImage][] = []
   for (const [k, place] of layout.places.entries()) {

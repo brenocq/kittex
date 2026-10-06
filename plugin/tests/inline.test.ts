@@ -105,9 +105,9 @@ describe('streaming', () => {
     for (const record of records) expect(landed).toContain(record.preview)
   })
 
-  test('outside a paragraph or a list item inline math streams unpadded, with no record, so no gap stays at landing', async () => {
+  test('outside a paragraph, a list item or a table inline math streams unpadded, with no record, so no gap stays at landing', async () => {
     await init()
-    for (const line of ['## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
+    for (const line of ['## The $x_k$ state\n', '> the $x_k$ state\n']) {
       const { landed, records } = streamed([line])
       expect({ line, records }).toEqual({ line, records: [] })
       expect(landed).toBe(line.replace('$x_k$', previewInline('x_k')!))
