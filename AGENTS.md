@@ -1,6 +1,6 @@
 # kittex: working notes for agents
 
-Read the design notes first: `docs/design.md` in the main checkout (`/home/breno/Github/kittex/docs/design.md`, kept local and untracked), then `core/src/types.ts` (the contracts between modules).
+Read `docs/design.md` first, then `core/src/types.ts` (the contracts between modules).
 
 ## Layout and ownership
 
