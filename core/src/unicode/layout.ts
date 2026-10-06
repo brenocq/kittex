@@ -79,7 +79,7 @@ interface Item {
 interface Row {
   box: Box
   items: Item[]
-  /** Some space was put between atoms (so the row isn't one tight unit). */
+  /** Some space was put between atoms outside parentheses (so the row isn't one tight unit). */
   spaced: boolean
 }
 
@@ -216,12 +216,13 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
   const boxes: Box[] = []
   let prev: Item | undefined
   let spaced = false
+  let depth = 0
   // Explicit spaces (\, \quad) and TeX's own don't add up: the wider one wins.
   let pending = 0
   const flush = (space: number) => {
     if (space > 0) {
       boxes.push(blank(space))
-      spaced = true
+      if (depth === 0) spaced = true
     }
     pending = 0
   }
@@ -236,7 +237,9 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
       pending += item.rspace ?? 0
       continue
     }
+    if (item.cls === 'CLOSE') depth = Math.max(0, depth - 1)
     flush(Math.max(prev ? gap(prev, item, script) : 0, pending))
+    if (item.cls === 'OPEN') depth++
     boxes.push(item.box)
     prev = item
   }
@@ -296,7 +299,8 @@ function makeItem(el: Element, ctx: Ctx, form: Form): Item {
     return { el, box: frac.box, cls: frac.plain ? 'ORD' : 'INNER', kind: frac.plain ? undefined : 'frac', wrapped: frac.wrapped }
   }
   if (el.name === 'mrow') {
-    const binom = ctx.twoD ? undefined : binomial(el, ctx)
+    // A binomial written on one line, as it is inline and in scripts.
+    const binom = ctx.twoD && ctx.level === 0 ? undefined : binomial(el, ctx)
     if (binom) return { el, box: binom, cls: 'ORD' }
     const row = layoutRow(elements(el), ctx)
     const cls = parseClass(el.attrs['data-mjx-texclass']) ?? 'ORD'
@@ -618,12 +622,15 @@ function needsParens(row: Row, side: 'num' | 'den'): boolean {
   }
   if (spaced) return true
   if (side === 'num') return false
-  // A denominator is one unit only if it is a differential (dx, ∂x²), a call g(x), or n!.
+  // A denominator is one unit only if it is a differential (dx, ∂x²), a call
+  // with plain arguments (g(x), P(B), f(x, y), but not n(n + 1)), or n!.
   const [head, second] = items as [Item, Item]
   const lastItem = items.at(-1)!
   const single = (item: Item) => ['mi', 'mn', 'msub', 'msup', 'msubsup'].includes(item.el.name)
   if (items.length === 2 && DIFFERENTIALS.has(plainText(head)) && single(second)) return false
-  if (single(head) && second.cls === 'OPEN' && lastItem.cls === 'CLOSE') return false
+  const args = items.slice(2, -1)
+  const plainArgs = args.every(item => single(item) || item.cls === 'PUNCT')
+  if (single(head) && second.cls === 'OPEN' && lastItem.cls === 'CLOSE' && plainArgs) return false
   if (items.length === 2 && single(head) && plainText(second) === '!') return false
   return true
 }
@@ -872,7 +879,7 @@ function baseScriptBox(el: Element, ctx: Ctx): Box {
 
 // ─── under and over ──────────────────────────────────────────────────────────
 
-const INTEGRALS = /^[∫-∳⨋-⨜]$/
+const INTEGRALS = /^[\u222b-\u2233\u2a0b-\u2a1c]$/
 
 /** Whether limits move to script positions outside display style (\sum, \lim, \operatorname*). */
 function movable(base: Element): boolean {
@@ -909,7 +916,8 @@ function underOver(el: Element, ctx: Ctx): Box {
         return isOver ? vstack([row, base], 'center', base.base + 1) : vstack([base, row], 'center', base.base)
       }
       const accent = (isOver ? OVER_ACCENTS : UNDER_ACCENTS).get(mark)
-      if (accent && el.attrs[isOver ? 'accent' : 'accentunder'] !== 'false' && !(isOver ? overEl : underEl)!.attrs.accent?.startsWith('f')) {
+      const markEl = (isOver ? overEl : underEl)!
+      if (accent && el.attrs[isOver ? 'accent' : 'accentunder'] !== 'false' && markEl.attrs.accent !== 'false') {
         return applyAccent(layoutNode(baseEl, strip(ctx)), accent, isOver, ctx)
       }
     }
@@ -1018,7 +1026,7 @@ function sides(box: Box, notations: ReadonlySet<string>, ctx: Ctx): Box {
   }
   const rule = (ch: string): Box => ({ rows: box.rows.map(() => [ch]), width: 1, base: box.base })
   let out = hcat([...(left ? [rule('│'), blank(1, height(box), box.base)] : []), box, ...(right ? [blank(1, height(box), box.base), rule('│')] : [])])
-  const line = (l: string, r: string) => textBox((left ? l : '─') + '─'.repeat(out.width - (left ? 1 : 0) - (right ? 1 : 0)) + (right ? r : '─'))
+  const line = (l: string, r: string) => textBox((left ? l : '') + '─'.repeat(out.width - (left ? 1 : 0) - (right ? 1 : 0)) + (right ? r : ''))
   if (top) out = vstack([line('┌', '┐'), out], 'left', out.base + 1)
   if (bottom) out = vstack([out, line('└', '┘')], 'left', out.base)
   return out

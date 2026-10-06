@@ -99,6 +99,7 @@ describe('fractions', () => {
     expect(line(String.raw`2\frac{a}{b}`)).toBe('2(a/b)')
     expect(line(String.raw`\frac{a}{b} + c`)).toBe('a/b + c')
     expect(line(String.raw`\frac{1}{2}x`)).toBe('½x')
+    expect(line(String.raw`\frac{n(n+1)}{2} + \frac{1}{n(n+1)} + \frac{P(A \cap B)}{P(B)}`)).toBe('n(n + 1)/2 + 1/(n(n + 1)) + P(A ∩ B)/P(B)')
   })
 
   test('binomials', () => {
@@ -192,6 +193,14 @@ describe('tables', () => {
 })
 
 describe('enclosures', () => {
+  test('rules on some sides', () => {
+    const table = '<mtable><mtr><mtd><mi>a</mi></mtd></mtr><mtr><mtd><mi>b</mi></mtd></mtr></mtable>'
+    const enclose = (notation: string) => toUnicode(`<math><menclose notation="${notation}">${table}</menclose></math>`, { display: true })?.lines
+    expect(enclose('top')).toEqual(['─', 'a', 'b'])
+    expect(enclose('left bottom')).toEqual(['│ a', '│ b', '└──'])
+    expect(toUnicode('<math><menclose notation="left right"><mi>x</mi></menclose></math>', { display: false })?.lines).toEqual(['|x|'])
+  })
+
   test('cancel strikes through, boxed draws a box in display', () => {
     expect(line(String.raw`\cancel{x}`)).toBe('x\u0338')
     expect(lines(String.raw`\boxed{x}`)).toEqual(['┌───┐', '│ x │', '└───┘'])
