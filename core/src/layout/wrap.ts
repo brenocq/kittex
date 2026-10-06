@@ -1,4 +1,5 @@
-import { codeWidth, textWidth } from './width.js'
+import { charsOf } from './width.js'
+import type { Char } from './width.js'
 
 /**
  * Where every character of one line lands once word-wrapped, replaying
@@ -18,34 +19,43 @@ import { codeWidth, textWidth } from './width.js'
 export interface WrappedLine {
   /** Rows the line takes (at least 1). */
   rows: number
-  /** Row of each UTF-16 unit of the line (both units of a surrogate pair alike). */
+  /** Row of each UTF-16 unit of the line (every unit of a character alike). */
   row: Int32Array
   /** Column of each UTF-16 unit. */
   col: Int32Array
   /** 1 for a space the engine counts but doesn't draw (the first cell of a row after a full one). */
   hidden: Uint8Array
+  /** Cells the character starting at each UTF-16 unit takes; -1 for a unit inside a character (see charAt). */
+  cells: Int8Array
 }
 
 /**
  * Wraps one line (no newline in it) to `columns`; null when a character's
  * width is unknown. `hard: false` replays `{ hard: false }` (the engine's
  * table cells): a word wider than the row is not cut, it takes a row of its
- * own and overflows it.
+ * own and overflows it. `sequences`: emoji sequences are characters (charAt).
  */
-export function wrapLine(line: string, columns: number, hard = true): WrappedLine | null {
+export function wrapLine(line: string, columns: number, hard = true, sequences = false): WrappedLine | null {
   if (!(columns >= 1)) return null
   const row = new Int32Array(line.length)
   const col = new Int32Array(line.length)
   const hidden = new Uint8Array(line.length)
-  // Words: [start, end) in UTF-16 units, and their widths.
-  const words: { start: number; end: number; width: number }[] = []
-  let start = 0
-  for (let i = 0; i <= line.length; i++) {
-    if (i === line.length || line.charCodeAt(i) === 0x20) {
-      const width = widthOf(line, start, i)
-      if (width < 0) return null
-      words.push({ start, end: i, width })
-      start = i + 1
+  const cells = new Int8Array(line.length).fill(-1)
+  const chars = charsOf(line, sequences)
+  // Words: chars [first, last), split at plain spaces, and their widths.
+  const words: { first: number; last: number; width: number }[] = []
+  let first = 0
+  let width = 0
+  for (let k = 0; k <= chars.length; k++) {
+    const char = chars[k]
+    if (char === undefined || (char.end - char.start === 1 && line.charCodeAt(char.start) === 0x20)) {
+      words.push({ first, last: k, width })
+      first = k + 1
+      width = 0
+    } else if (char.width < 0) {
+      return null
+    } else {
+      width += char.width
     }
   }
   let r = 0
@@ -57,28 +67,26 @@ export function wrapLine(line: string, columns: number, hard = true): WrappedLin
     length = 0
     shift = 0
   }
-  const place = (from: number, to: number) => {
-    for (let i = from; i < to; ) {
-      const code = line.codePointAt(i)!
-      const units = code > 0xffff ? 2 : 1
-      for (let u = 0; u < units; u++) {
-        row[i + u] = r
-        col[i + u] = length - shift
-      }
-      length += codeWidth(code)
-      i += units
+  const place = (char: Char) => {
+    for (let i = char.start; i < char.end; i++) {
+      row[i] = r
+      col[i] = length - shift
     }
+    cells[char.start] = char.width
+    length += char.width
   }
   for (const [index, word] of words.entries()) {
     if (index > 0) {
-      row[word.start - 1] = r
-      col[word.start - 1] = length
+      const space = chars[word.first - 1]!.start
+      row[space] = r
+      col[space] = length
+      cells[space] = 1
       if (length >= columns) {
         newRow()
         shift = 1
-        row[word.start - 1] = r
-        col[word.start - 1] = 0
-        hidden[word.start - 1] = 1
+        row[space] = r
+        col[space] = 0
+        hidden[space] = 1
       }
       length += 1
     }
@@ -88,30 +96,23 @@ export function wrapLine(line: string, columns: number, hard = true): WrappedLin
       const breaksNext = Math.floor((word.width - 1) / columns)
       if (breaksNext < breaksHere) newRow()
       // wrapWord: a character that doesn't fit starts a row; a full row ends one unless the word ends there.
-      for (let i = word.start; i < word.end; ) {
-        const code = line.codePointAt(i)!
-        const units = code > 0xffff ? 2 : 1
-        const width = codeWidth(code)
-        if (width > 0 && length > 0 && length + width > columns) newRow()
-        place(i, i + units)
-        i += units
-        if (length === columns && i < word.end) newRow()
+      for (let k = word.first; k < word.last; k++) {
+        const char = chars[k]!
+        if (char.width > 0 && length > 0 && length + char.width > columns) newRow()
+        place(char)
+        if (length === columns && k + 1 < word.last) newRow()
       }
       continue
     }
     if (length + word.width > columns && length > 0 && word.width > 0) newRow()
-    place(word.start, word.end)
+    for (let k = word.first; k < word.last; k++) place(chars[k]!)
   }
-  return { rows: r + 1, row, col, hidden }
-}
-
-function widthOf(line: string, from: number, to: number): number {
-  return textWidth(line.slice(from, to))
+  return { rows: r + 1, row, col, hidden, cells }
 }
 
 /** The rows a line wraps into, as text (for checks against a terminal screen). */
-export function wrapRows(line: string, columns: number): string[] | null {
-  const wrapped = wrapLine(line, columns)
+export function wrapRows(line: string, columns: number, sequences = false): string[] | null {
+  const wrapped = wrapLine(line, columns, true, sequences)
   if (!wrapped) return null
   const rows = Array.from({ length: wrapped.rows }, () => '')
   for (let i = 0; i < line.length; i++) {

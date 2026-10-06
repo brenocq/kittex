@@ -37,7 +37,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
     },
     width: proseWidthFor(env),
     measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns) => renderInline(tex, inlineEnv, columns) },
+    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place) },
   })
 }
 

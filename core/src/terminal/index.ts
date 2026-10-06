@@ -52,6 +52,21 @@ export function colorProbes(terminal: TerminalInfo, options: ColorProbeOptions =
   }
 }
 
+/**
+ * Whether the terminal draws emoji sequences (an emoji with U+FE0F or a skin
+ * tone, zero-width joiner chains, flags, keycaps with U+FE0F) two cells wide,
+ * as Claude Code counts them: kitty (wcswidth, measured on 0.49), and Ghostty
+ * unless its `grapheme-width-method` is `legacy` (there they take one to six
+ * cells; `unicode`, its default, gives two). Not over ssh or in a
+ * multiplexer, where the drawing terminal and its settings aren't known (and
+ * a multiplexer measures widths itself), nor in any other terminal.
+ */
+export function drawsEmojiSequences(terminal: TerminalInfo, colors?: TerminalColors): boolean {
+  if (terminal.ssh || terminal.multiplexed) return false
+  if (terminal.kind === 'kitty') return true
+  return terminal.kind === 'ghostty' && colors?.graphemeWidth !== 'legacy'
+}
+
 /** The terminal's configured colours from its config files, for when its probes can't run. */
 export async function readTerminalColors(terminal: TerminalInfo, read: FileReader, options: ConfigReadOptions): Promise<TerminalColors | undefined> {
   if (terminal.ssh) return undefined

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   ghosttyEntries,
   imageInkBackground,
   parseGhosttyConfig,
@@ -189,5 +190,35 @@ describe('alpha-blending and the cell adjustments', () => {
     expect(imageInkBackground('ghostty', { background })).toBeUndefined()
     expect(imageInkBackground('ghostty', undefined)).toBeUndefined()
     expect(imageInkBackground('kitty', { background, alphaBlending: 'linear-corrected' })).toBeUndefined()
+  })
+})
+
+describe('emoji sequences (grapheme-width-method)', () => {
+  const env = { HOME: '/h' }
+
+  test('read with the colours: +show-config prints it, a config file may set it; the last one counts', async () => {
+    const out = 'foreground = #000000\nbackground = #ffffff\ngrapheme-width-method = unicode\n'
+    expect(parseGhosttyConfig(out)?.graphemeWidth).toBe('unicode')
+    expect(parseGhosttyConfig(out + 'grapheme-width-method = legacy\n')?.graphemeWidth).toBe('legacy')
+    expect(parseGhosttyConfig(fixture('ghostty-show-config.txt'))?.graphemeWidth).toBeUndefined()
+    const files = { '/h/.config/ghostty/config': 'grapheme-width-method = legacy\nconfig-file = more\n', '/h/.config/ghostty/more': 'grapheme-width-method = unicode\n' }
+    expect((await readGhosttyColors(memFs(files), { env })).graphemeWidth).toBe('unicode')
+    expect((await readGhosttyColors(memFs({ '/h/.config/ghostty/config': 'grapheme-width-method = legacy\n' }), { env })).graphemeWidth).toBe('legacy')
+    expect((await readGhosttyColors(memFs({}), { env })).graphemeWidth).toBeUndefined()
+  })
+
+  test('drawn as the engine counts them in kitty and in Ghostty unless legacy; nowhere else, nor over ssh or in a multiplexer', () => {
+    const ghostty = detectTerminal({ TERM: 'xterm-ghostty' })
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty' }))).toBe(true)
+    expect(drawsEmojiSequences(ghostty)).toBe(true)
+    expect(drawsEmojiSequences(ghostty, { graphemeWidth: 'unicode' })).toBe(true)
+    expect(drawsEmojiSequences(ghostty, { graphemeWidth: 'legacy' })).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty', SSH_TTY: '/dev/pts/1' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-ghostty', SSH_CONNECTION: 'a b c d' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'tmux-256color', TMUX: '/tmp/t,1,0', KITTY_WINDOW_ID: '1' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty', ZELLIJ: '0' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM_PROGRAM: 'WezTerm' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM_PROGRAM: 'iTerm.app' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({}))).toBe(false)
   })
 })

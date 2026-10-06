@@ -31,6 +31,8 @@ export type KittexEnv = {
   maxProseWidth?: number
   /** Whether the engine draws links as OSC 8 hyperlinks (their text alone) or as text with the url beside it; absent when unknown (links aren't followed). */
   hyperlinks?: boolean
+  /** Whether the terminal draws emoji sequences (an emoji with U+FE0F or a skin tone, joiner chains, flags, keycaps) two cells wide, as the engine counts them; absent: they keep their paragraph's math Unicode. */
+  emojiSequences?: boolean
 }
 
 /** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */
@@ -46,6 +48,12 @@ export type KittexPreview = {
   inline?: true
   /** Inline: the cells the preview and its image take. */
   columns?: number
+  /**
+   * Inline: where its ink goes in those cells, as the characters around it in
+   * the source suggest (an image drawn ahead of landing; the landed layout's
+   * rows decide).
+   */
+  place?: 'center' | 'start' | 'end'
   /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
   quote?: number
 }

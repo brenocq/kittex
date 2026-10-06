@@ -24,7 +24,7 @@ import {
   textBaseline,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
+import type { CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -224,17 +224,23 @@ export const MATH_INSTRUCTIONS =
  */
 export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800|\u034f/
 
-/** LaTeX as written: a reply that never streamed through MessageDisplay, or one read back after `--resume`. */
-export const SOURCE_PATTERN = /\$|\\[([]|\\begin\{/
+/**
+ * LaTeX as written: a reply that never streamed through MessageDisplay, or one
+ * read back after `--resume`. A `\[` counts only in a text holding none of
+ * kittex's previews, which escape every `[` they show as `\[` (`𝔼\[x\]`).
+ */
+export const SOURCE_PATTERN = /\$|\\\(|\\begin\{|^(?![\s\S]*(?:&nbsp;|```latex|\u00a0|\u2800|\u034f))[\s\S]*\\\[/
 
 /**
  * A block as kittex streamed it: its previews (a display preview's pad, an
  * inline preview's join, pad or mark, a refused formula's source block) and
- * no LaTeX as written. The engine's own drawing of such a text is the
- * streaming preview row for row, so it may stand in while kittex's drawing is
- * on its way (the AssistantMessage hook, in the fullscreen layout).
+ * no LaTeX as written (a `\[` is a bracket its previews escaped). The
+ * engine's own drawing of such a text is the streaming preview row for row,
+ * so it may stand in while kittex's drawing is on its way (the
+ * AssistantMessage hook, in the fullscreen layout). Never matches a text
+ * SOURCE_PATTERN matches.
  */
-export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\[([]|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
+export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\\(|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
@@ -362,6 +368,45 @@ const GROUPED_SCRIPT = /([_^])\(([\p{L}\p{N}]+)\)(?![\p{L}\p{N}\p{M}_^])/gu
  */
 export function ungroupScripts(unicode: string, tex: string): string {
   return /\(|\\lparen/.test(tex) ? unicode : unicode.replace(GROUPED_SCRIPT, '$1$2')
+}
+
+/** What may open a phrase right before a formula: an opening bracket or quote. */
+const OPENS = /^[\p{Ps}\p{Pi}"'`]$/u
+/** What may close one right after it: a closing bracket or quote, or punctuation (`,`, `:`, `.`). */
+const CLOSES = /^[\p{Pe}\p{Pf}\p{Po}]$/u
+
+/**
+ * Where an inline formula's ink goes in a slot wider than it, from the
+ * characters drawn in the cells right before and after the slot (undefined at
+ * the row's start or end): against the slot's right edge when a space (or the
+ * row's start) is before it and punctuation or a closing bracket after it
+ * (`y_l,`: the blank joins the space before), against its left edge in the
+ * mirror case (`(x_k `), centred otherwise (`(y_w)`, `a x b`).
+ */
+export function inkPlaceBeside(before: string | undefined, after: string | undefined): InkPlace {
+  const blankBefore = before === undefined || /^\s$/u.test(before)
+  const blankAfter = after === undefined || /^\s$/u.test(after)
+  if (blankBefore && !blankAfter && CLOSES.test(after!)) return 'end'
+  if (blankAfter && !blankBefore && OPENS.test(before!)) return 'start'
+  return 'center'
+}
+
+/**
+ * The characters drawn in the cell before column `col` of a row and in the
+ * cell after the `columns` from it (zero-width marks skipped; undefined past
+ * the row's ends).
+ */
+export function cellsBeside(line: string, col: number, columns: number): [string | undefined, string | undefined] {
+  let at = 0
+  let before: string | undefined
+  for (const char of line) {
+    const cells = cellsOf(char)
+    if (cells === 0) continue
+    if (at + cells <= col) before = char
+    else if (at >= col + columns) return [col === 0 ? undefined : before, char]
+    at += cells
+  }
+  return [col === 0 ? undefined : before, undefined]
 }
 
 // ─── Markdown forms ──────────────────────────────────────────────────────────
@@ -591,7 +636,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
   const renderEnv = renderEnvFor(env)
   const { maxColumns } = renderEnv
   const records: PreviewRecord[] = []
-  for (const segment of segments) {
+  for (const [k, segment] of segments.entries()) {
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
@@ -599,12 +644,16 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
       const width = proseWidthFor(env)
       // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
       const inline =
-        env.inline && env.images && placeable(written, width, env.columns, { hyperlinks: env.hyperlinks })
+        env.inline && env.images && placeable(written, width, env.columns, { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences })
           ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written))
           : null
       if (inline) {
         writer.text(inline.markdown)
-        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
+        // Where its ink will go, as the source around it says (the landed rows decide; this draws it ahead).
+        const next = segments[k + 1]
+        const after = next === undefined ? undefined : next.kind === 'text' ? [...next.text][0] : next.raw[0]
+        const place = inkPlaceBeside([...written].at(-1)?.replace('\n', ' '), after)
+        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns, ...(place === 'center' ? {} : { place }) })
       } else {
         writer.text(inlineText(segment.tex) ?? segment.raw)
       }
@@ -639,27 +688,29 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 /**
  * Whether inline math written next, after `written`, lands in a part whose
  * inline previews get images at landing (blockParts, the rule the landed
- * drawing uses): a paragraph, a heading, or a list, a blockquote or a table
- * the replay follows so far (`width`: the width prose wraps at; `columns`:
- * the terminal's width, which tables are laid out in; `mode`: how the engine
- * draws links), whether or not a blank line sets it apart from the part
- * before it. A part's drawing never depends on what comes after it, so the
- * decision holds whatever the next lines are. A table's first row reads as a
- * paragraph until its delimiter row arrives, and is padded as one. Anywhere
- * else (a code block, a part the replay doesn't follow) the formula is drawn
- * as plain Unicode, so streaming writes it unpadded: padding there would stay
- * behind as gaps.
+ * drawing uses): a paragraph, a heading, a list, a blockquote or a table the
+ * replay follows so far (`width`: the width prose wraps at; `columns`: the
+ * terminal's width, which tables are laid out in; `mode`: how the engine
+ * draws links and the terminal emoji sequences), whether or not a blank line
+ * sets it apart from the part before it. A part's drawing never depends on
+ * what comes after it, so once the part written so far can't be laid out (a
+ * character of unknown width, an image) it never will be. A table's first row
+ * reads as a paragraph until its delimiter row arrives, and is padded as one.
+ * Anywhere else (a code block, a part the replay doesn't follow) the formula
+ * is drawn as plain Unicode, so streaming writes it unpadded: padding there
+ * would stay behind as gaps. What comes later in the part may still refuse
+ * it, leaving the formulas padded before it as gaps: the stream can't tell.
  */
 export function placeable(written: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = blockParts(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
-  if (last.paragraph) return true
+  const block = text.slice(last.start, last.end)
+  if (last.paragraph) return layoutProse(block, width, [], mode) !== null
   // A line opening with a bar may be a table's first row until its delimiter
   // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
   if (!last.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
-  const block = text.slice(last.start, last.end)
   if (last.heading) return layoutHeading(block, width, [], mode) !== null
   if (last.quote) return layoutQuote(block, width, [], mode) !== null
   if (last.table) return layoutTable(block, columns, [], width, mode) !== null
@@ -760,10 +811,18 @@ export interface PlanOptions {
    * Inline math drawn as images: where (one text row), the width prose wraps
    * at, the terminal's width (tables are laid out in it; the reply column and
    * two cells when absent), the drawing (throws TexError), and how the engine
-   * draws links (`hyperlinks`, KittexEnv's). Absent: inline math stays
-   * Unicode.
+   * draws links and the terminal emoji sequences (`hyperlinks`,
+   * `emojiSequences`, KittexEnv's). Absent: inline math stays Unicode.
    */
-  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined }
+  inline?: {
+    env: InlineEnv
+    width: number
+    columns?: number
+    /** Draws a formula `columns` wide, its ink where `place` says in that slot (inkPlaceBeside). */
+    draw: (tex: string, columns: number, place?: InkPlace) => RenderedImage
+    hyperlinks?: boolean | undefined
+    emojiSequences?: boolean | undefined
+  }
 }
 
 interface Span {
@@ -1075,6 +1134,11 @@ function maxColumnsOf(options: PlanOptions): number {
   return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
 }
 
+/** How the engine draws links and the terminal emoji sequences, for the replays. */
+function modeOf(inline: PlanOptions['inline']): LinkMode {
+  return { hyperlinks: inline?.hyperlinks, emojiSequences: inline?.emojiSequences }
+}
+
 /** A replay of the engine's drawing of a part (layoutProse and the others). */
 type Layout = (markdown: string, width: number, spans: readonly SourceSpan[], mode: LinkMode) => ProseLayout | null
 
@@ -1096,24 +1160,31 @@ function placeImages(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
-    { hyperlinks: inline.hyperlinks },
+    modeOf(inline),
   )
-  return layout ? inlineImages(spans, layout.places, inline) : []
+  return layout ? inlineImages(spans, layout.places, inline, layout.lines) : []
 }
 
-/** The images of inline previews laid out at `places` (one per span): those drawn whole on a row, as wide as their image. */
+/**
+ * The images of inline previews laid out at `places` (one per span): those
+ * drawn whole on a row, as wide as their image, each with its ink placed by
+ * the cells beside its slot on that row of `lines` (the layout's rows).
+ */
 function inlineImages(
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   places: readonly (SpanPlace | null)[],
   inline: NonNullable<PlanOptions['inline']>,
+  lines: readonly string[] = [],
 ): [SourceSpan, InlineImage][] {
   const images: [SourceSpan, InlineImage][] = []
   for (const [k, place] of places.entries()) {
     const span = spans[k]!
     const { mark } = span
     if (!place || mark.columns < 1 || place.columns !== mark.columns) continue
+    const line = lines[place.row]
+    const ink = line === undefined ? 'center' : inkPlaceBeside(...cellsBeside(line, place.col, mark.columns))
     try {
-      images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col }])
+      images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns, ink), row: place.row, col: place.col }])
     } catch (error) {
       if (!(error instanceof TexError)) throw error
     }
@@ -1146,9 +1217,9 @@ function placeQuote(
   const layout = layoutQuote(quote, options.inline?.width ?? options.width ?? options.maxColumns, [
     ...inline.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
     ...quoted.map(firstLine),
-  ], { hyperlinks: options.inline?.hyperlinks })
+  ], modeOf(options.inline))
   if (!layout) return placeQuoted(quote, quoted, offset, options)
-  const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline) : []
+  const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline, layout.lines) : []
   for (const [k, span] of quoted.entries()) {
     const place = layout.places[inline.length + k]
     if (!place) continue
@@ -1189,7 +1260,7 @@ function placeQuoted(
   for (const span of spans) {
     const before = inner(at, span.start - offset)
     if (before !== '') {
-      const layout = layoutProse(before, span.mark.columns)
+      const layout = layoutProse(before, span.mark.columns, [], modeOf(options.inline))
       if (!layout) break
       row += layout.rows + 1
     }

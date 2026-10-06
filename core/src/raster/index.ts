@@ -79,12 +79,17 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
 
   const dilation0 = (weight / 1000) * emPx
   const pad = Math.ceil(dilation0 - 1e-9)
-  const availWidth = maxColumns * cellWidth - 2 * pad
+  // centerInk: the image is fitted to the drawn ink (which scales whole,
+  // dilation included), not to the advance width and a pad.
+  const span = options.align === 'left' && options.centerInk ? inkSpan(result, emPx, dilation0, pad) : undefined
+  const fullWidth = span ?? width * emPx
+  const availWidth = maxColumns * cellWidth - (span === undefined ? 2 * pad : 0)
   const availHeight = 255 * cellHeight - 2 * pad
   const inline = options.baselinePx !== undefined
   let scale = 1
   let inlineBaseline = 0
-  if (width * emPx > availWidth) scale = Math.max(0, availWidth) / (width * emPx)
+  // Scaled, the ink's pixel phase changes: a pixel is kept for it.
+  if (fullWidth > availWidth) scale = Math.max(0, availWidth - (span === undefined ? 0 : INK_MARGIN)) / fullWidth
   if (inline) {
     // The dilation scales with the formula, so the ink at scale s spans (height × emPx + dilation) × s above the baseline.
     const heightPx = Math.max(1, Math.round(minRows * cellHeight))
@@ -116,7 +121,7 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
           if (at >= 0 && at <= heightPx && fitWith(at) > fitWith(rescue) + 1e-9) rescue = at
         }
       }
-      if (fitWith(rescue) >= floor - 1e-9 && (width * emPx * floor <= availWidth || availWidth <= 0)) {
+      if (fitWith(rescue) >= floor - 1e-9 && (fullWidth * floor <= availWidth || availWidth <= 0)) {
         inlineBaseline = rescue
         scale = floor
       }
@@ -125,7 +130,7 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     scale = Math.max(0, availHeight) / (boxHeight * emPx)
   }
   const k = emPx * scale
-  const inkWidth = width * k + 2 * pad
+  const inkWidth = span === undefined ? width * k + 2 * pad : scale === 1 ? span : span * scale + INK_MARGIN
   const inkHeight = boxHeight * k + 2 * pad
 
   const minColumns = Math.max(1, Math.floor(options.minColumns ?? 1))
@@ -157,7 +162,7 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
   const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
   const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, ruleMax) ?? [])
   // Centred by its ink, moved by whole pixels so glyphs land as they would at the left.
-  const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx) : 0
+  const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx, options.inkPlace ?? 'center') : 0
   for (const { contours, sign } of shapes) {
     for (const c of contours) {
       if (dx !== 0) for (let i = 0; i < c.length; i += 2) c[i] = c[i]! + dx
@@ -190,12 +195,23 @@ interface Shape {
   sign: number
 }
 
+/** Pixels an image fitted to its ink (centerInk) keeps for it when the formula is scaled: its edges may then fall on another pixel. */
+const INK_MARGIN = 1
+
 /**
- * The whole pixels to move every outline by so the ink's horizontal extent is
- * centred in an image `widthPx` wide; 0 for no ink. Never moves ink that fits
- * past either edge.
+ * The pixel columns a formula's ink covers at `emPx`, its origin `originX`
+ * pixels in (outlines dilated by `dilation` pixels, rules snapped, as
+ * rasterize draws them; a whole-pixel shift keeps the count), or undefined
+ * when it draws nothing.
  */
-function inkShift(shapes: readonly Shape[], widthPx: number): number {
+function inkSpan(result: TypesetResult, emPx: number, dilation: number, originX: number): number | undefined {
+  const toPx: Matrix = [emPx, 0, 0, emPx, originX, 0]
+  const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, Math.max(RULE_MIN_SNAP, 0.15 * emPx)) ?? [])
+  const { x0, x1 } = extent(shapes)
+  return x1 > x0 ? Math.ceil(x1 - 1e-9) - Math.floor(x0 + 1e-9) : undefined
+}
+
+function extent(shapes: readonly Shape[]): { x0: number; x1: number } {
   let x0 = Infinity
   let x1 = -Infinity
   for (const { contours } of shapes) {
@@ -206,9 +222,20 @@ function inkShift(shapes: readonly Shape[], widthPx: number): number {
       }
     }
   }
-  if (!(x1 > x0)) return 0
-  const dx = Math.round((widthPx - (x1 - x0)) / 2 - x0)
-  if (x1 - x0 > widthPx) return 0
+  return { x0, x1 }
+}
+
+/**
+ * The whole pixels to move every outline by so the ink's horizontal extent
+ * sits where `place` says in an image `widthPx` wide: centred, or against its
+ * left (`start`) or right (`end`) edge; 0 for no ink. Never moves ink that
+ * fits past either edge.
+ */
+function inkShift(shapes: readonly Shape[], widthPx: number, place: 'center' | 'start' | 'end'): number {
+  const { x0, x1 } = extent(shapes)
+  if (!(x1 > x0) || x1 - x0 > widthPx) return 0
+  const slack = widthPx - (x1 - x0)
+  const dx = Math.round((place === 'start' ? 0 : place === 'end' ? slack : slack / 2) - x0)
   return Math.min(Math.max(dx, Math.ceil(-x0 - 1e-9)), Math.floor(widthPx - x1 + 1e-9))
 }
 
