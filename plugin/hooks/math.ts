@@ -636,27 +636,29 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 /**
  * Whether inline math written next, after `written`, lands in a part whose
  * inline previews get images at landing (blockParts, the rule the landed
- * drawing uses): a paragraph, a heading, or a list, a blockquote or a table
- * the replay follows so far (`width`: the width prose wraps at; `columns`:
- * the terminal's width, which tables are laid out in; `mode`: how the engine
+ * drawing uses): a paragraph, a heading, a list, a blockquote or a table the
+ * replay follows so far (`width`: the width prose wraps at; `columns`: the
+ * terminal's width, which tables are laid out in; `mode`: how the engine
  * draws links), whether or not a blank line sets it apart from the part
- * before it. A part's drawing never depends on what comes after it, so the
- * decision holds whatever the next lines are. A table's first row reads as a
- * paragraph until its delimiter row arrives, and is padded as one. Anywhere
- * else (a code block, a part the replay doesn't follow) the formula is drawn
- * as plain Unicode, so streaming writes it unpadded: padding there would stay
- * behind as gaps.
+ * before it. A part's drawing never depends on what comes after it, so once
+ * the part written so far can't be laid out (a character of unknown width,
+ * an image) it never will be. A table's first row reads as a paragraph until
+ * its delimiter row arrives, and is padded as one. Anywhere else (a code
+ * block, a part the replay doesn't follow) the formula is drawn as plain
+ * Unicode, so streaming writes it unpadded: padding there would stay behind
+ * as gaps. What comes later in the part may still refuse it, leaving the
+ * formulas padded before it as gaps: the stream can't tell.
  */
 export function placeable(written: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = blockParts(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
-  if (last.paragraph) return true
+  const block = text.slice(last.start, last.end)
+  if (last.paragraph) return layoutProse(block, width, [], mode) !== null
   // A line opening with a bar may be a table's first row until its delimiter
   // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
   if (!last.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
-  const block = text.slice(last.start, last.end)
   if (last.heading) return layoutHeading(block, width, [], mode) !== null
   if (last.quote) return layoutQuote(block, width, [], mode) !== null
   if (last.table) return layoutTable(block, columns, [], width, mode) !== null
