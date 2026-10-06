@@ -75,6 +75,11 @@ describe('the visible text of prose', () => {
       expect(visibleProse(md)).toBeNull()
   })
 
+  test('a < that cannot open a tag is plain text', () => {
+    expect(visibleProse('all λᵢ < 0 and x > y')?.text).toBe('all λᵢ < 0 and x > y')
+    expect(visibleProse('a <b>c')).toBeNull()
+  })
+
   test('two spaces in a row, or a line opening with one, are not followed', () => {
     expect(visibleProse('a  b')).toBeNull()
     expect(visibleProse('a\n b')).toBeNull()

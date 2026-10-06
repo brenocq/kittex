@@ -6,7 +6,9 @@ import type { Token, Tokens } from 'marked'
  * its own marked (15.0.6, GFM) with the engine's tokenizer overrides, and its
  * terminal renderer's rules for the inline tokens kittex can follow. Anything
  * else (links, autolinks, HTML, images, tables, lists, headings, code blocks)
- * makes the text unpredictable here, and its math stays Unicode.
+ * makes the text unpredictable here, and its math stays Unicode. A `<` is
+ * refused only where it could open a tag (the engine strips some tags, and
+ * marked reads HTML and autolinks there): `a < b` is plain text.
  */
 
 const marked = new Marked({
@@ -53,7 +55,7 @@ export interface VisibleText {
  * sure of.
  */
 export function visibleProse(markdown: string): VisibleText | null {
-  if (/[\t\r<\u0000-\u0008\u000b-\u001f\u007f]/.test(markdown) || ISSUE_REF.test(markdown)) return null
+  if (/[\t\r\u0000-\u0008\u000b-\u001f\u007f]|<[A-Za-z/!?]/.test(markdown) || ISSUE_REF.test(markdown)) return null
   const out: VisibleText = { text: '', source: [] }
   if (!MARKDOWN_LIKE.test(markdown) && !markdown.includes('&nbsp;')) {
     emit(out, markdown, 0)
