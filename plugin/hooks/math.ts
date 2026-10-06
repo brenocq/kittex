@@ -393,6 +393,11 @@ export class MarkdownWriter {
     return block
   }
 
+  /** The end of everything written so far, earlier takes included: enough to see the block being written. */
+  recent(): string {
+    return this.tail + this.out
+  }
+
   /** Takes the text written so far (one flush, or one prose piece). */
   take(): string {
     const out = this.out
@@ -425,7 +430,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
-      const inline = env.inline && env.images ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
+      const inline = env.inline && env.images && inParagraph(writer.recent()) ? inlinePreview(segment.tex, inlineEnvFor(env)) : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -454,6 +459,22 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
     }
   }
   return { text: writer.take(), records }
+}
+
+/**
+ * Whether inline math written next, after `written`, lands in a plain paragraph:
+ * the only block whose inline previews get images at landing (proseBlocks, the
+ * rule the landed drawing uses). Anywhere else (a list item, a heading, a
+ * quote, a table) the formula is drawn as plain Unicode, so streaming writes
+ * it unpadded: padding there would stay behind as gaps.
+ */
+export function inParagraph(written: string): boolean {
+  // A table's first row reads as a paragraph until its delimiter row arrives.
+  if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
+  // A stand-in for the formula, so the line it starts is part of the block read.
+  const text = written + 'x'
+  const last = proseBlocks(text)?.at(-1)
+  return last !== undefined && last.paragraph && last.end === text.length
 }
 
 /** Why MathJax refuses a formula, or undefined when it doesn't. */

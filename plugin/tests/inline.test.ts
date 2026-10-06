@@ -102,6 +102,18 @@ describe('streaming', () => {
     for (const record of records) expect(landed).toContain(record.preview)
   })
 
+  test('outside a plain paragraph inline math streams unpadded, with no record, so no gap stays at landing', async () => {
+    await init()
+    for (const line of ['- $x_k$: state\n', '1. $x_k$: state\n', '## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
+      const { landed, records } = streamed([line])
+      expect({ line, records }).toEqual({ line, records: [] })
+      expect(landed).toBe(line.replace('$x_k$', previewInline('x_k')!))
+    }
+    // A paragraph after a list, a blank line between, is a paragraph again.
+    const { records } = streamed(['- a list item\n', '\n', 'Then $x$ is real.\n'])
+    expect(records.map(record => record.tex)).toEqual(['x'])
+  })
+
   test('a formula too tall for a row is plain Unicode with no record', async () => {
     await init()
     const { landed, records } = streamed(['so $\\frac{a}{b}$ is.\n'])
