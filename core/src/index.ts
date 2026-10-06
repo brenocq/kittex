@@ -1,4 +1,4 @@
-import { encodePng, measure, rasterize } from './raster/index.js'
+import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult } from './types.js'
@@ -19,7 +19,7 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, initTypeset, measure, rasterize, scan, TexError, texToMathML, toUnicode, typeset }
+export { createLineScanner, encodePng, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
 
 /** Where a display formula is drawn. */
 export interface RenderEnv {
@@ -43,6 +43,9 @@ export interface RenderedImage extends CellBox {
 /** Formulas longer than this are refused before MathJax sees them. */
 export const MAX_TEX_LENGTH = 4096
 
+/** Images with more pixels than this are refused before they are drawn (255 × 255 large cells would be ~200 M). */
+export const MAX_PIXELS = 16_000_000
+
 let ready: Promise<void> | undefined
 
 /** Prepares the typesetter. Await it once before measuring, rendering or previewing. */
@@ -61,12 +64,18 @@ export function measureDisplay(tex: string, env: RenderEnv): CellBox {
 
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
 export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): RenderedImage {
-  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b, minRows ?? 0, tex].join('\n')
-  const cached = remember(imageCache, key)
-  if (cached) return cached
-  const raster = rasterize(typesetDisplay(tex, env), rasterOptions(env, minRows))
-  const image: RenderedImage = { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) }
-  return store(imageCache, key, image)
+  // Cached without its colour: a palette PNG changes colour by rewriting its palette alone.
+  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, minRows ?? 0, tex].join('\n')
+  let image = remember(imageCache, key)
+  if (!image) {
+    const result = typesetDisplay(tex, env)
+    const options = rasterOptions(env, minRows)
+    const box = measure(result, options)
+    if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
+    const raster = rasterize(result, options)
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+  }
+  return { ...image, png: recolorPng(image.png, env.ink) }
 }
 
 /**

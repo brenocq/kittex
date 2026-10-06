@@ -13,6 +13,16 @@ test('a display formula renders to a PNG that fills whole cells', async () => {
   expect(measureDisplay(String.raw`e^{i\pi} + 1 = 0`, env)).toEqual({ columns: image.columns, rows: image.rows, scale: image.scale })
 })
 
+test('a new ink colour re-colours the cached image without changing its size', async () => {
+  await init()
+  const tex = String.raw`\frac{a}{b}`
+  const light = renderDisplay(tex, env)
+  const dark = renderDisplay(tex, { ...env, ink: { r: 20, g: 20, b: 20 } })
+  expect({ columns: dark.columns, rows: dark.rows, length: dark.png.length }).toEqual({ columns: light.columns, rows: light.rows, length: light.png.length })
+  expect(dark.png).not.toEqual(light.png)
+  expect(renderDisplay(tex, env).png).toEqual(light.png)
+})
+
 test('a preview reserves exactly the rows asked for', async () => {
   await init()
   expect(previewDisplay('x', env, 3)).toHaveLength(3)
