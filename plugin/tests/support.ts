@@ -1,78 +1,13 @@
-// Shared pieces of kittex's tests: a line scanner that keeps the LineScanner
-// contract (core's own may still be a stub that finds no math), and the world
-// beneath the plugin for a session in kitty.
+// Shared pieces of kittex's tests: the world beneath the plugin for a session
+// in kitty.
 
 import { mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { cellProbe, chooseInk, emPxForCell } from '../hooks/core.js'
-import type { LineScanner, Segment } from '../hooks/core.js'
 import { INK_PREFER } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
-
-/**
- * A LineScanner for `$…$` inline math and `$$` blocks whose delimiters stand on
- * lines of their own: prose comes back as it arrives, an open block is held
- * until its closing line (or `final`) and then comes back whole.
- */
-export function contractScanner(): LineScanner {
-  let offset = 0
-  let held: { start: number; text: string } | undefined
-  return {
-    push(delta, final) {
-      const out: Segment[] = []
-      let pos = 0
-      while (pos < delta.length) {
-        const newline = delta.indexOf('\n', pos)
-        const end = newline === -1 ? delta.length : newline + 1
-        const line = delta.slice(pos, end)
-        const start = offset + pos
-        if (held) {
-          held.text += line
-          if (line.trim() === '$$') {
-            const raw = held.text.replace(/\s+$/, '')
-            const tex = raw.slice(2, -2).trim()
-            out.push({ kind: 'math', display: true, tex, raw, delimiter: '$$', start: held.start, end: held.start + raw.length })
-            if (raw.length < held.text.length) out.push({ kind: 'text', text: held.text.slice(raw.length), start: held.start + raw.length, end: held.start + held.text.length })
-            held = undefined
-          }
-        } else if (line.trim() === '$$') {
-          const indent = line.length - line.trimStart().length
-          if (indent > 0) out.push({ kind: 'text', text: line.slice(0, indent), start, end: start + indent })
-          held = { start: start + indent, text: line.slice(indent) }
-        } else {
-          out.push(...inline(line, start))
-        }
-        pos = end
-      }
-      offset += delta.length
-      if (final && held) {
-        out.push({ kind: 'text', text: held.text, start: held.start, end: held.start + held.text.length })
-        held = undefined
-      }
-      return out
-    },
-  }
-}
-
-/** The whole text at once, through contractScanner. */
-export function contractScan(markdown: string): Segment[] {
-  return contractScanner().push(markdown, true)
-}
-
-function inline(line: string, start: number): Segment[] {
-  const out: Segment[] = []
-  let last = 0
-  for (const match of line.matchAll(/\$([^$\n]+)\$/g)) {
-    if (match.index > last) out.push({ kind: 'text', text: line.slice(last, match.index), start: start + last, end: start + match.index })
-    const end = match.index + match[0].length
-    out.push({ kind: 'math', display: false, tex: match[1]!.trim(), raw: match[0], delimiter: '$', start: start + match.index, end: start + end })
-    last = end
-  }
-  if (last < line.length) out.push({ kind: 'text', text: line.slice(last), start: start + last, end: start + line.length })
-  return out
-}
 
 /** A kitty window of 100×50 cells of 13×20 px. */
 export const KITTY = { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' }
