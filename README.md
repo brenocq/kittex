@@ -1,8 +1,9 @@
 # kittex
 
-Typesets the LaTeX math in Claude Code's replies as real TeX (New Computer
-Modern), drawn as images in terminals with the kitty graphics protocol (kitty,
-Ghostty) and as Unicode everywhere else. Nothing else to install.
+Shows the LaTeX math in Claude Code's replies as real equations, in the font
+LaTeX uses (New Computer Modern): drawn as images in terminals with the kitty
+graphics protocol (kitty, Ghostty) and as Unicode text everywhere else. Nothing
+else to install.
 
 Work in progress.
 

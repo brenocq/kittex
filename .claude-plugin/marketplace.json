@@ -8,7 +8,7 @@
     {
       "name": "kittex",
       "source": "./plugin",
-      "description": "Typesets the LaTeX math in Claude's replies as real TeX in kitty and Ghostty, and as Unicode elsewhere"
+      "description": "Shows the LaTeX math in Claude's replies as real equations: images in kitty and Ghostty, text elsewhere"
     }
   ]
 }

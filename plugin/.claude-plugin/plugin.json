@@ -1,7 +1,7 @@
 {
   "name": "kittex",
   "version": "0.1.0",
-  "description": "Typesets the LaTeX math in Claude's replies as real TeX in kitty and Ghostty, and as Unicode elsewhere",
+  "description": "Shows the LaTeX math in Claude's replies as real equations: images in kitty and Ghostty, text elsewhere",
   "author": {
     "name": "Breno Cunha Queiroz"
   },
@@ -9,8 +9,8 @@
   "userConfig": {
     "enabled": {
       "type": "boolean",
-      "title": "Typeset math",
-      "description": "Draw the LaTeX math in replies as TeX images (kitty, Ghostty) or Unicode. Off: kittex changes nothing.",
+      "title": "Render LaTeX math",
+      "description": "Show the LaTeX in Claude's replies as equations: images in kitty and Ghostty, text elsewhere. Off: replies show the raw LaTeX.",
       "default": true
     }
   }
