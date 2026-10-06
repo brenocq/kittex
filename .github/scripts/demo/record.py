@@ -44,7 +44,9 @@ import tempfile
 import termios
 import time
 
-PROMPT = 'How are LLMs like you trained? Show the key equation for pretraining, RLHF and DPO, one short sentence each.'
+PROMPT = 'Show the key equations behind training an LLM: pretraining, RLHF and DPO, one short sentence each.'
+# Claude Code's fullscreen layout (alternate screen), where kittex lands its images without a blank frame.
+SETTINGS = '{"tui": "fullscreen"}'
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 DEFAULT_CLAUDE = os.path.expanduser('~/.local/share/claude/versions/2.1.291')
 
@@ -206,13 +208,13 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, '.github', 'assets', 'demo.rec.gz'))
     ap.add_argument('--claude', default=DEFAULT_CLAUDE)
     ap.add_argument('--cols', type=int, default=92)
-    ap.add_argument('--rows', type=int, default=32)
+    ap.add_argument('--rows', type=int, default=38)
     ap.add_argument('--cell', default='18x40', help='cell size in device pixels, WxH')
     ap.add_argument('--fg', default='#ebdbb2')
     ap.add_argument('--bg', default='#282828')
     ap.add_argument('--seed', type=int, default=7, help='seed of the typing rhythm')
     ap.add_argument('--timeout', type=float, default=300)
-    ap.add_argument('--settings', default='', help='extra --settings JSON for Claude Code')
+    ap.add_argument('--settings', default=SETTINGS, help='--settings JSON for Claude Code')
     ap.add_argument('--debug-file', default='', help="Claude Code's --debug-file")
     ap.add_argument('--no-submit', action='store_true', help='type the prompt but never send it (no model turn)')
     ap.add_argument('--env', action='append', default=[], help='extra KEY=VALUE for Claude Code')
