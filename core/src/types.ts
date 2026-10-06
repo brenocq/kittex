@@ -97,6 +97,14 @@ export interface RasterOptions {
   minRows?: number
   /** Stroke darkening: outlines grow by this many thousandths of an em on each side. 0 for none; the default (15) matches terminal text weight. */
   weight?: number
+  /**
+   * Inline placement: the math baseline goes this many pixels below the
+   * image's top (the terminal font's baseline in its cell), the image is
+   * exactly `minRows` rows tall (1 by default), and the formula is scaled down,
+   * never up, until its ink, stroke weight included, fits above and below the
+   * baseline. Without it the formula is centred vertically.
+   */
+  baselinePx?: number
 }
 
 /** The cells a formula takes, known before rasterizing. */

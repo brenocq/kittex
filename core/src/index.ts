@@ -37,6 +37,19 @@ export interface RenderEnv {
   ink: RGB
 }
 
+/** Where an inline formula is drawn: one text row. */
+export interface InlineEnv extends RenderEnv {
+  /** The terminal font's baseline: pixels from the top of a cell (the math baseline goes there). */
+  baselinePx: number
+}
+
+/**
+ * The least an inline formula is scaled (against the display size) to fit one
+ * text row; one that would need more (a stacked fraction, a sum with limits, a
+ * deep parenthesis in a short cell) is left to its Unicode form.
+ */
+export const MIN_INLINE_SCALE = 0.85
+
 /** A display formula ready for an Image element. */
 export interface RenderedImage extends CellBox {
   /** A PNG of exactly columns × cellWidth by rows × cellHeight pixels. */
@@ -105,6 +118,41 @@ export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, 
   return [...Array<string>(above).fill(blank), ...result.lines, ...Array<string>(rows - result.lines.length - above).fill(blank)]
 }
 
+/**
+ * The cells an inline formula's image takes: one row, the formula on the
+ * terminal font's baseline, scaled down to fit the row when it must (`scale`).
+ * Null when it would need less than MIN_INLINE_SCALE, or MathJax refuses it:
+ * the formula then stays Unicode.
+ */
+export function measureInline(tex: string, env: InlineEnv): CellBox | null {
+  let result: TypesetResult
+  try {
+    result = typesetInline(tex)
+  } catch (error) {
+    if (error instanceof TexError) return null
+    throw error
+  }
+  const box = measure(result, inlineOptions(env, 255, 'left'))
+  return box.scale >= MIN_INLINE_SCALE ? box : null
+}
+
+/**
+ * Draws an inline formula `columns` wide (at least what measureInline gave)
+ * and one row tall, centred across, its baseline on the font's. Throws
+ * TexError.
+ */
+export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
+  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
+  let image = remember(imageCache, key)
+  if (!image) {
+    const result = typesetInline(tex)
+    const options = inlineOptions(env, columns, 'center')
+    const raster = rasterize(result, options)
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+  }
+  return { ...image, png: recolorPng(image.png, env.ink) }
+}
+
 /** An inline formula as one line of Unicode, or null when it can't be written on one line. */
 export function previewInline(tex: string, maxWidth?: number): string | null {
   const result = unicodeFor(tex, 'inline', maxWidth)
@@ -150,6 +198,24 @@ function unicodeFor(tex: string, form: 'stacked' | 'compact' | 'inline', maxWidt
     result = null
   }
   return store(unicodeCache, key, result)
+}
+
+function typesetInline(tex: string): TypesetResult {
+  if (tex.length > MAX_TEX_LENGTH) throw new TexError(`formula longer than ${MAX_TEX_LENGTH} characters`)
+  const key = `inline\n${tex}`
+  return remember(typesetCache, key) ?? store(typesetCache, key, typeset(tex, { display: false }))
+}
+
+function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'): RasterOptions {
+  return {
+    emPx: env.emPx,
+    cellWidth: env.cellWidth,
+    cellHeight: env.cellHeight,
+    maxColumns: Math.max(1, Math.min(255, columns)),
+    align,
+    minRows: 1,
+    baselinePx: env.baselinePx,
+  }
 }
 
 function rasterOptions(env: RenderEnv, minRows?: number): RasterOptions {

@@ -96,6 +96,14 @@ try {
   }
   const segments = kittex.scan('Euler: $$e^{i\\pi} + 1 = 0$$ done.')
   if (!segments.some(s => s.kind === 'math')) fail('scan found no math in a $$ sample')
+  // Inline images and the prose layout replay (marked runs in here too).
+  const inlineEnv = { ...env, baselinePx: 21 }
+  const box = kittex.measureInline('E = mc^2', inlineEnv)
+  if (!box || box.rows !== 1) fail('measureInline gave no one-row box for E = mc^2')
+  else if (kittex.renderInline('E = mc^2', inlineEnv, box.columns).rows !== 1) fail('renderInline drew more than one row')
+  const layout = kittex.layoutProse('A **bold** move: x + y, then `code` and more words to wrap.', 20, [{ start: 17, end: 22 }])
+  if (!layout || layout.places[0] === null) fail('layoutProse could not place a span')
+  else console.log(`inline: E = mc^2 in ${box?.columns} cells; prose laid out in ${layout.rows} rows, span at ${JSON.stringify(layout.places[0])}`)
 } catch (error) {
   fail(error?.stack ?? String(error))
 }
