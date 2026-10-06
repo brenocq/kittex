@@ -1,4 +1,5 @@
 import { drawHeading } from './heading.js'
+import type { LinkMode } from './links.js'
 import { drawList } from './list.js'
 import type { Canvas } from './list.js'
 import { visibleProse } from './prose.js'
@@ -10,6 +11,8 @@ import { wrapLine } from './wrap.js'
 export { blockParts, gapBetween } from './blocks.js'
 export type { BlockPart } from './blocks.js'
 export { visibleHeading } from './heading.js'
+export { engineHyperlinks } from './links.js'
+export type { LinkMode } from './links.js'
 export { markerOf } from './list.js'
 export { QUOTE_BAR, QUOTE_TEXT } from './quote.js'
 export { proseBlocks, visibleProse } from './prose.js'
@@ -50,10 +53,11 @@ export interface ProseLayout {
  * Lays out a run of markdown prose as the engine draws it `width` cells wide,
  * and finds where each span lands (spans should hold plain text: inside a
  * code span or rewritten by an escape they are not found). Null when the
- * prose can't be laid out exactly (see visibleProse and wrapLine).
+ * prose can't be laid out exactly (see visibleProse and wrapLine). `mode`:
+ * how the engine draws links (links are not followed when it isn't known).
  */
-export function layoutProse(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  const visible = visibleProse(markdown)
+export function layoutProse(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  const visible = visibleProse(markdown, mode)
   if (!visible) return null
   const { text, source } = visible
   // Where each markdown offset was drawn: its visible index.
@@ -86,20 +90,20 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
  * Lays out a block that is a list (after one paragraph or none: a block
  * proseBlocks marks `list`) as the engine draws it `width` cells wide, and
  * finds where each span lands, as layoutProse does. Null when the list holds
- * anything its replay doesn't follow (see drawList).
+ * anything its replay doesn't follow (see drawList). `mode`: as layoutProse.
  */
-export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  return layoutCanvas(markdown, drawList(markdown, width), width, spans)
+export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  return layoutCanvas(markdown, drawList(markdown, width, mode), width, spans)
 }
 
 /**
  * Lays out a block that is one heading (proseBlocks marks it `heading`) as the
  * engine draws it `width` cells wide: its text with no marker, wrapped as
  * prose. Spans are found as layoutProse finds them. Null when the heading
- * holds anything prose can't (see visibleHeading).
+ * holds anything prose can't (see visibleHeading). `mode`: as layoutProse.
  */
-export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  return layoutCanvas(markdown, drawHeading(markdown, width), width, spans)
+export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  return layoutCanvas(markdown, drawHeading(markdown, width, mode), width, spans)
 }
 
 /**
@@ -107,10 +111,11 @@ export function layoutHeading(markdown: string, width: number, spans: readonly S
  * the engine draws it `width` cells wide (bar included): the bar in column 0
  * of every row, the text from column QUOTE_TEXT. Spans are found as
  * layoutProse finds them, columns counted from the bar's. Null when the quote
- * holds anything its replay doesn't follow (see drawQuote).
+ * holds anything its replay doesn't follow (see drawQuote). `mode`: as
+ * layoutProse.
  */
-export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  return layoutCanvas(markdown, drawQuote(markdown, width), width, spans)
+export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  return layoutCanvas(markdown, drawQuote(markdown, width, mode), width, spans)
 }
 
 /**
@@ -119,10 +124,16 @@ export function layoutQuote(markdown: string, width: number, spans: readonly Sou
  * wide (tables are not held to maxProseWidth; the paragraph wraps at
  * `proseWidth`), and finds where each span lands, as layoutProse does, within
  * the reply column. Null when the table holds anything its replay doesn't
- * follow (see drawTable).
+ * follow (see drawTable). `mode`: as layoutProse.
  */
-export function layoutTable(markdown: string, columns: number, spans: readonly SourceSpan[] = [], proseWidth = columns - 2): ProseLayout | null {
-  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth), columns - 2, spans, () => false)
+export function layoutTable(
+  markdown: string,
+  columns: number,
+  spans: readonly SourceSpan[] = [],
+  proseWidth = columns - 2,
+  mode: LinkMode = {},
+): ProseLayout | null {
+  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, () => false)
 }
 
 /**

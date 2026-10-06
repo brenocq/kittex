@@ -8,6 +8,7 @@
 import {
   createLineScanner,
   blockParts,
+  engineHyperlinks,
   layoutHeading,
   layoutList,
   layoutProse,
@@ -22,7 +23,7 @@ import {
   TexError,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
+import type { CellSize, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -266,6 +267,16 @@ export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
  */
 export function quoteColumns(env: KittexEnv, depth: number, columns = env.columns): number {
   return Math.max(1, proseWidthFor(env, columns) - 2 * depth)
+}
+
+/**
+ * How the engine draws links in a terminal with these variables (as OSC 8
+ * hyperlinks, or as text with the url beside it), for KittexEnv; nothing when
+ * that isn't known, and links then keep their paragraph's math Unicode.
+ */
+export function linkEnv(variables: Readonly<Record<string, string | undefined>>): Pick<KittexEnv, 'hyperlinks'> {
+  const hyperlinks = engineHyperlinks(variables)
+  return hyperlinks === undefined ? {} : { hyperlinks }
 }
 
 /** The width reply prose wraps at: the reply column, or `maxProseWidth` when that is narrower. */
@@ -553,7 +564,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
       const width = proseWidthFor(env)
       // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
       const inline =
-        env.inline && env.images && placeable(written, width, env.columns)
+        env.inline && env.images && placeable(written, width, env.columns, { hyperlinks: env.hyperlinks })
           ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written))
           : null
       if (inline) {
@@ -595,15 +606,16 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
  * inline previews get images at landing (blockParts, the rule the landed
  * drawing uses): a paragraph, a heading, or a list, a blockquote or a table
  * the replay follows so far (`width`: the width prose wraps at; `columns`:
- * the terminal's width, which tables are laid out in), whether or not a blank
- * line sets it apart from the part before it. A part's drawing never depends
- * on what comes after it, so the decision holds whatever the next lines are.
- * A table's first row reads as a paragraph until its delimiter row arrives,
- * and is padded as one. Anywhere else (a code block, a part the replay
- * doesn't follow) the formula is drawn as plain Unicode, so streaming writes
- * it unpadded: padding there would stay behind as gaps.
+ * the terminal's width, which tables are laid out in; `mode`: how the engine
+ * draws links), whether or not a blank line sets it apart from the part
+ * before it. A part's drawing never depends on what comes after it, so the
+ * decision holds whatever the next lines are. A table's first row reads as a
+ * paragraph until its delimiter row arrives, and is padded as one. Anywhere
+ * else (a code block, a part the replay doesn't follow) the formula is drawn
+ * as plain Unicode, so streaming writes it unpadded: padding there would stay
+ * behind as gaps.
  */
-export function placeable(written: string, width: number, columns = width + REPLY_INDENT): boolean {
+export function placeable(written: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = blockParts(text)?.at(-1)
@@ -613,10 +625,10 @@ export function placeable(written: string, width: number, columns = width + REPL
   // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
   if (!last.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
   const block = text.slice(last.start, last.end)
-  if (last.heading) return layoutHeading(block, width) !== null
-  if (last.quote) return layoutQuote(block, width) !== null
-  if (last.table) return layoutTable(block, columns, [], width) !== null
-  return last.list === true && layoutList(block, width) !== null
+  if (last.heading) return layoutHeading(block, width, [], mode) !== null
+  if (last.quote) return layoutQuote(block, width, [], mode) !== null
+  if (last.table) return layoutTable(block, columns, [], width, mode) !== null
+  return last.list === true && layoutList(block, width, [], mode) !== null
 }
 
 /** How many quotes the line being written opens with (its leading `>` markers; 0 outside a quote). */
@@ -712,10 +724,11 @@ export interface PlanOptions {
   /**
    * Inline math drawn as images: where (one text row), the width prose wraps
    * at, the terminal's width (tables are laid out in it; the reply column and
-   * two cells when absent), and the drawing (throws TexError). Absent: inline
-   * math stays Unicode.
+   * two cells when absent), the drawing (throws TexError), and how the engine
+   * draws links (`hyperlinks`, KittexEnv's). Absent: inline math stays
+   * Unicode.
    */
-  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage }
+  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined }
 }
 
 interface Span {
@@ -1027,9 +1040,12 @@ function maxColumnsOf(options: PlanOptions): number {
   return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
 }
 
+/** A replay of the engine's drawing of a part (layoutProse and the others). */
+type Layout = (markdown: string, width: number, spans: readonly SourceSpan[], mode: LinkMode) => ProseLayout | null
+
 /** The replay that lays out a part: a table in the terminal's width, everything else in the prose width given. */
-function layoutOf(part: ProseBlock, options: PlanOptions): (markdown: string, width: number, spans: readonly SourceSpan[]) => ProseLayout | null {
-  if (part.table) return (markdown, width, spans) => layoutTable(markdown, maxColumnsOf(options), spans, width)
+function layoutOf(part: ProseBlock, options: PlanOptions): Layout {
+  if (part.table) return (markdown, width, spans, mode) => layoutTable(markdown, maxColumnsOf(options), spans, width, mode)
   return part.list ? layoutList : part.heading ? layoutHeading : layoutProse
 }
 
@@ -1039,12 +1055,13 @@ function placeImages(
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   offset: number,
   inline: NonNullable<PlanOptions['inline']>,
-  layoutOf: (markdown: string, width: number, spans: readonly SourceSpan[]) => ProseLayout | null,
+  layoutOf: Layout,
 ): [SourceSpan, InlineImage][] {
   const layout = layoutOf(
     block,
     inline.width,
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
+    { hyperlinks: inline.hyperlinks },
   )
   return layout ? inlineImages(spans, layout.places, inline) : []
 }
@@ -1094,7 +1111,7 @@ function placeQuote(
   const layout = layoutQuote(quote, options.inline?.width ?? options.width ?? options.maxColumns, [
     ...inline.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
     ...quoted.map(firstLine),
-  ])
+  ], { hyperlinks: options.inline?.hyperlinks })
   if (!layout) return placeQuoted(quote, quoted, offset, options)
   const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline) : []
   for (const [k, span] of quoted.entries()) {

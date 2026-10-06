@@ -2,7 +2,8 @@ import type { Token, Tokens } from 'marked'
 
 import { Canvas, itemText, markerOf, textWidthOf } from './list.js'
 import type { Mapped } from './list.js'
-import { inline, marked, unfollowable } from './prose.js'
+import type { InlineLinks, LinkMode } from './links.js'
+import { inline, linksHold, marked, unfollowable } from './prose.js'
 import type { VisibleText } from './prose.js'
 import { textWidth } from './width.js'
 
@@ -29,11 +30,13 @@ import { textWidth } from './width.js'
  *   line wraps back to the quote's text column (no hanging indent). Item text
  *   gets the engine's glueProse (a no-break space before `3.`-like numbers).
  *   A blank line inside an item is a blank row; one between items is not.
+ * - Links are drawn as in a paragraph (links.ts), given the engine's link
+ *   mode; with none known they are not followed.
  *
  * Anything else in a quote (code blocks and tables, which the engine draws
- * full width, rules, HTML, links, task items, an item opening with something
- * other than text, a setext heading) makes it unpredictable here, and its
- * math stays Unicode.
+ * full width, rules, HTML, task items, an item opening with something other
+ * than text, a setext heading) makes it unpredictable here, and its math
+ * stays Unicode.
  */
 
 /** The quote box's left border, as the engine draws it (`▎`, U+258E). */
@@ -63,7 +66,7 @@ const INNER_SPACES = /\S {2}/
  * `width` cells wide: the bar at column 0 of every row, the text from column
  * QUOTE_TEXT. Null when anything in it isn't followed (see above).
  */
-export function drawQuote(markdown: string, width: number): Canvas | null {
+export function drawQuote(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
   if (unfollowable(markdown) || !(width > QUOTE_TEXT)) return null
   let tokens: Token[]
   try {
@@ -75,8 +78,9 @@ export function drawQuote(markdown: string, width: number): Canvas | null {
   if (quote?.type !== 'blockquote' || tokens.slice(1).some(token => token.type !== 'space')) return null
   if (!markdown.startsWith(quote.raw)) return null
   const raw: Mapped = { text: markdown, map: Array.from({ length: markdown.length }, (_, k) => k) }
-  const inner = quoteText(quote as Tokens.Blockquote, raw, 0, 0)
-  if (!inner) return null
+  const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
+  const inner = quoteText(quote as Tokens.Blockquote, raw, 0, 0, links)
+  if (!inner || !linksHold(markdown, links)) return null
   // The box's text: leading newlines and trailing whitespace trimmed.
   const lead = /^\n*/.exec(inner.text)![0].length
   const kept = inner.text.slice(lead).trimEnd().length
@@ -124,7 +128,7 @@ class Text implements VisibleText {
  * The text of a quote's tokens joined (the engine's quote box, before its
  * trims). `raw` holds the quote's raw at `at`; `depth`: quotes around it.
  */
-function quoteText(quote: Tokens.Blockquote, raw: Mapped, at: number, depth: number): Text | null {
+function quoteText(quote: Tokens.Blockquote, raw: Mapped, at: number, depth: number, links: InlineLinks): Text | null {
   if (depth >= MAX_NESTING) return null
   const inner = stripQuote(raw, at, quote)
   if (!inner) return null
@@ -133,7 +137,7 @@ function quoteText(quote: Tokens.Blockquote, raw: Mapped, at: number, depth: num
   for (const token of quote.tokens) {
     const start = inner.text.indexOf(token.raw, from)
     if (start < 0 || /\S/.test(inner.text.slice(from, start))) return null
-    const drawn = blockText(token, inner, start, depth)
+    const drawn = blockText(token, inner, start, depth, links)
     if (!drawn) return null
     out.append(drawn)
     from = start + token.raw.length
@@ -165,7 +169,7 @@ function stripQuote(raw: Mapped, at: number, quote: Tokens.Blockquote): Mapped |
 }
 
 /** One token of a quote as the engine draws it there (its renderer's text form). */
-function blockText(token: Token, owner: Mapped, at: number, depth: number): Text | null {
+function blockText(token: Token, owner: Mapped, at: number, depth: number, links: InlineLinks): Text | null {
   switch (token.type) {
     case 'space':
       return new Text().add('\n')
@@ -174,12 +178,12 @@ function blockText(token: Token, owner: Mapped, at: number, depth: number): Text
       const block = token as Tokens.Paragraph | Tokens.Heading
       const start = token.type === 'heading' ? at + /^ {0,3}(?:#{1,6}[ \t]+)?/.exec(block.raw)![0].length : at
       if (!owner.text.startsWith(block.text, start) || block.text === '') return null
-      const drawn = inlineText(block.tokens, block.text, start, owner, false)
+      const drawn = inlineText(block.tokens, block.text, start, owner, false, links)
       return drawn ? drawn.add(token.type === 'heading' ? '\n\n' : '\n') : null
     }
     case 'blockquote': {
       // A quote in a quote: `▎ ` before each line that isn't blank.
-      const inner = quoteText(token as Tokens.Blockquote, owner, at, depth + 1)
+      const inner = quoteText(token as Tokens.Blockquote, owner, at, depth + 1, links)
       if (!inner) return null
       const out = new Text()
       for (const [k, line] of inner.lines().entries()) {
@@ -190,16 +194,16 @@ function blockText(token: Token, owner: Mapped, at: number, depth: number): Text
       return out
     }
     case 'list':
-      return listText(token as Tokens.List, { text: token.raw, map: owner.map.slice(at, at + token.raw.length) }, 0, '')
+      return listText(token as Tokens.List, { text: token.raw, map: owner.map.slice(at, at + token.raw.length) }, 0, '', links)
     default:
       return null
   }
 }
 
 /** Inline tokens drawn as text (`src` at `at` in `owner`), offsets mapped to the markdown. */
-function inlineText(tokens: readonly Token[], src: string, at: number, owner: Mapped, glue: boolean): Text | null {
+function inlineText(tokens: readonly Token[], src: string, at: number, owner: Mapped, glue: boolean, links: InlineLinks): Text | null {
   const drawn: VisibleText = { text: '', source: [] }
-  if (!inline(drawn, tokens, src, at, glue)) return null
+  if (!inline(drawn, tokens, src, at, glue, links)) return null
   const out = new Text()
   out.text = drawn.text
   out.source = drawn.source.map(offset => (offset < 0 ? -1 : (owner.map[offset] ?? -1)))
@@ -207,7 +211,7 @@ function inlineText(tokens: readonly Token[], src: string, at: number, owner: Ma
 }
 
 /** A list in a quote as text (the engine's `list` case): its items one after another, `depth` lists deep, `indent` before each marker. */
-function listText(list: Tokens.List, raw: Mapped, depth: number, indent: string): Text | null {
+function listText(list: Tokens.List, raw: Mapped, depth: number, indent: string, links: InlineLinks): Text | null {
   if (depth >= MAX_NESTING || list.items.length === 0 || list.items.length > MAX_ITEMS) return null
   const first = list.start === '' || list.start === undefined ? 1 : Number(list.start)
   const last = first + list.items.length - 1
@@ -216,7 +220,7 @@ function listText(list: Tokens.List, raw: Mapped, depth: number, indent: string)
   for (const [u, item] of list.items.entries()) {
     if (!raw.text.startsWith(item.raw, at)) return null
     const marker = list.ordered ? markerOf(depth, first + u, first, last) : '-'
-    const drawn = itemOf(item, { text: item.raw, map: raw.map.slice(at, at + item.raw.length) }, marker, depth, indent)
+    const drawn = itemOf(item, { text: item.raw, map: raw.map.slice(at, at + item.raw.length) }, marker, depth, indent, links)
     if (!drawn) return null
     out.append(drawn)
     at += item.raw.length
@@ -229,7 +233,7 @@ function listText(list: Tokens.List, raw: Mapped, depth: number, indent: string)
  * `indent marker `, its other lines after as many spaces, nested lists
  * indented to its text, blank lines kept.
  */
-function itemOf(item: Tokens.ListItem, raw: Mapped, marker: string, depth: number, indent: string): Text | null {
+function itemOf(item: Tokens.ListItem, raw: Mapped, marker: string, depth: number, indent: string, links: InlineLinks): Text | null {
   if (item.task) return null
   const text = itemText(item, raw)
   if (!text) return null
@@ -249,7 +253,7 @@ function itemOf(item: Tokens.ListItem, raw: Mapped, marker: string, depth: numbe
       if (list.ordered && list.items.every(one => one.tokens.length === 0)) return null // the engine draws it as text
       const start = text.text.indexOf(list.raw, at)
       if (start < 0) return null
-      const drawn = listText(list, { text: list.raw, map: text.map.slice(start, start + list.raw.length) }, depth + 1, nested)
+      const drawn = listText(list, { text: list.raw, map: text.map.slice(start, start + list.raw.length) }, depth + 1, nested, links)
       if (!drawn) return null
       out.append(drawn)
       at = start + list.raw.length
@@ -257,7 +261,7 @@ function itemOf(item: Tokens.ListItem, raw: Mapped, marker: string, depth: numbe
       const run = token as Tokens.Text
       const start = text.text.indexOf(run.text, at)
       if (start < 0 || !run.tokens) return null
-      const drawn = inlineText(run.tokens, run.text, start, text, true)
+      const drawn = inlineText(run.tokens, run.text, start, text, true, links)
       if (!drawn) return null
       // The first line after the marker, every other line that isn't empty after the hanging indent.
       for (const [k, line] of drawn.add('\n').lines().entries()) {

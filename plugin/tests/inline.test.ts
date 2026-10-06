@@ -196,7 +196,7 @@ describe('the landed plan', () => {
     expect(resumed.pieces).toEqual(live.pieces)
   })
 
-  test('a paragraph whose layout is unsure keeps Unicode: a link in it', async () => {
+  test('a paragraph whose layout is unsure keeps Unicode: a link in it, with the link mode unknown', async () => {
     await init()
     const text = 'See [docs](https://example.com) for $x^2$.'
     const resumed = plan(text)

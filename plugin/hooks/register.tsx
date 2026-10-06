@@ -44,6 +44,7 @@ import {
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
   LANDED_PATTERN,
+  linkEnv,
   MessageStream,
   MATH_INSTRUCTIONS,
   planLanded,
@@ -230,7 +231,10 @@ export const register: Register = (on, options) => {
         draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
         width: proseWidthFor(env, columns),
         measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-        inline: images && inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells) } : undefined,
+        inline:
+          images && inlineImages
+            ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks }
+            : undefined,
       })
       if (!plan.changed) return next(e)
       if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
@@ -356,6 +360,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     ink: inkNow(),
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
+    ...linkEnv(processEnv),
   }
   await $.state.set(ENV, env)
 
@@ -409,6 +414,13 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
     $.env.get('HOME'),
     $.env.get('XDG_CONFIG_HOME'),
     $.env.get('XDG_CONFIG_DIRS'),
+    $.env.get('FORCE_HYPERLINK'),
+    $.env.get('TERMINAL_EMULATOR'),
+    $.env.get('WT_SESSION'),
+    $.env.get('VTE_VERSION'),
+    $.env.get('CI'),
+    $.env.get('TEAMCITY_VERSION'),
+    $.env.get('NETLIFY'),
   ])
   const names = [
     'TERM',
@@ -437,6 +449,13 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
     'HOME',
     'XDG_CONFIG_HOME',
     'XDG_CONFIG_DIRS',
+    'FORCE_HYPERLINK',
+    'TERMINAL_EMULATOR',
+    'WT_SESSION',
+    'VTE_VERSION',
+    'CI',
+    'TEAMCITY_VERSION',
+    'NETLIFY',
   ]
   return Object.fromEntries(names.map((name, i) => [name, values[i]]))
 }

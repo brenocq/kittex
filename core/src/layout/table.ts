@@ -1,7 +1,8 @@
 import type { Tokens } from 'marked'
 
+import type { InlineLinks, LinkMode } from './links.js'
 import { Canvas } from './list.js'
-import { inline, LEADING_SPACE, marked, unfollowable, visibleProse } from './prose.js'
+import { inline, LEADING_SPACE, linksHold, marked, unfollowable, visibleProse } from './prose.js'
 import type { VisibleText } from './prose.js'
 import { codeWidth, textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
@@ -36,8 +37,10 @@ import { wrapLine } from './wrap.js'
  * A paragraph right before the table (no blank line between) is drawn above
  * it, a blank row apart. Anything else, a table the engine reads otherwise
  * than marked does (a `|` inside a code span, a row with more cells than the
- * header), links, HTML, characters of unknown width, more than 200 rows, makes
- * the table unpredictable here, and its math stays Unicode.
+ * header), HTML, characters of unknown width, more than 200 rows, links with
+ * no link mode known, makes the table unpredictable here, and its math stays
+ * Unicode. A link in a cell is drawn as in a paragraph (links.ts), and its
+ * column is as wide as the drawn text: the OSC 8 escapes take no cells.
  */
 
 /** Cells the engine keeps free beside a table (its `Se`). */
@@ -120,7 +123,7 @@ function rowRun(row: Row): Run {
  * `proseWidth` (maxProseWidth applies to prose, not to tables). Null when
  * anything in it isn't followed (see above).
  */
-export function drawTable(markdown: string, columns: number, proseWidth = columns - REPLY_INDENT): Canvas | null {
+export function drawTable(markdown: string, columns: number, proseWidth = columns - REPLY_INDENT, mode: LinkMode = {}): Canvas | null {
   if (unfollowable(markdown) || !(columns >= 1) || !(proseWidth >= 1)) return null
   let tokens
   try {
@@ -128,6 +131,7 @@ export function drawTable(markdown: string, columns: number, proseWidth = column
   } catch {
     return null
   }
+  const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   const canvas = new Canvas(columns)
   let at = 0
   let table: Tokens.Table | undefined
@@ -135,20 +139,20 @@ export function drawTable(markdown: string, columns: number, proseWidth = column
   for (const token of tokens) {
     if (!markdown.startsWith(token.raw, at)) return null
     if (token.type === 'paragraph' && at === 0) {
-      const visible = visibleProse(token.raw)
+      const visible = visibleProse(token.raw, mode)
       if (!visible) return null
       const rows = drawProse(canvas, visible, proseWidth)
       if (rows === null) return null
       top = rows + 1
     } else if (token.type === 'table' && !table) {
       table = token as Tokens.Table
-      if (!drawTableToken(canvas, table, markdown.slice(at, at + token.raw.length), at, top, columns)) return null
+      if (!drawTableToken(canvas, table, markdown.slice(at, at + token.raw.length), at, top, columns, links)) return null
     } else if (token.type !== 'space' || !table) {
       return null
     }
     at += token.raw.length
   }
-  return table && at === markdown.length ? canvas : null
+  return table && at === markdown.length && linksHold(markdown, links) ? canvas : null
 }
 
 /** Draws prose from row `top`, wrapped `width` wide as the engine wraps a text; the rows it took, or null. */
@@ -257,7 +261,15 @@ function engineCells(line: string): string[] {
 }
 
 /** Draws a table token from `top`; false when it isn't followed. */
-function drawTableToken(canvas: Canvas, table: Tokens.Table, raw: string, offset: number, top: number, columns: number): boolean {
+function drawTableToken(
+  canvas: Canvas,
+  table: Tokens.Table,
+  raw: string,
+  offset: number,
+  top: number,
+  columns: number,
+  links: InlineLinks,
+): boolean {
   const lines = raw.split('\n')
   if (!lines.every(codePipesAlike)) return false
   // The engine refuses a table whose row has more cells than the header (it reads a paragraph).
@@ -279,7 +291,7 @@ function drawTableToken(canvas: Canvas, table: Tokens.Table, raw: string, offset
   const cellRun = (cell: Tokens.TableCell, split: SplitCell | undefined): Run | null => {
     if (!split || split.text !== cell.text) return null
     const out: VisibleText = { text: '', source: [] }
-    if (!inline(out, cell.tokens, cell.text, 0)) return null
+    if (!inline(out, cell.tokens, cell.text, 0, false, links)) return null
     if (textWidth(out.text) < 0 || /^\s|\s$/.test(out.text)) return null
     return { text: out.text, source: out.source.map(k => (k < 0 ? -1 : (split.map[k] ?? -1))) }
   }

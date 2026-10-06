@@ -1,7 +1,8 @@
 import type { Token, Tokens } from 'marked'
 
 import { Canvas } from './list.js'
-import { inline, LEADING_SPACE, marked, unfollowable } from './prose.js'
+import type { InlineLinks, LinkMode } from './links.js'
+import { inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
 import type { VisibleText } from './prose.js'
 
 /*
@@ -12,11 +13,12 @@ import type { VisibleText } from './prose.js'
  * a paragraph does, and the blank line under it is there whether or not the
  * markdown has one (a trailing one is trimmed off the end of the text).
  * Levels 1 to 6 and setext headings (`===`, `---` underlines) are drawn alike.
+ * Links in it are drawn as in a paragraph (links.ts), given the link mode.
  */
 
 /** A heading's visible text, laid out from the block's top-left cell. */
-export function drawHeading(markdown: string, width: number): Canvas | null {
-  const visible = visibleHeading(markdown)
+export function drawHeading(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
+  const visible = visibleHeading(markdown, mode)
   if (!visible || !(width >= 1)) return null
   const canvas = new Canvas(width)
   return canvas.draw(visible, 0, 0, width) ? canvas : null
@@ -27,8 +29,9 @@ export function drawHeading(markdown: string, width: number): Canvas | null {
  * with the markdown offset of each character. Null when the block is anything
  * else, or holds anything paragraphs can't hold (see visibleProse).
  */
-export function visibleHeading(markdown: string): VisibleText | null {
+export function visibleHeading(markdown: string, mode: LinkMode = {}): VisibleText | null {
   if (unfollowable(markdown)) return null
+  const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
     tokens = marked.lexer(markdown)
@@ -43,7 +46,7 @@ export function visibleHeading(markdown: string): VisibleText | null {
   const at = /^ {0,3}(?:#{1,6}[ \t]+)?/.exec(raw)![0].length
   if (!raw.startsWith(text, at)) return null
   const out: VisibleText = { text: '', source: [] }
-  if (!inline(out, (heading as Tokens.Heading).tokens, text, at)) return null
+  if (!inline(out, (heading as Tokens.Heading).tokens, text, at, false, links) || !linksHold(markdown, links)) return null
   // The blank line the engine adds under a heading is trimmed off the end of the text.
   const kept = out.text.trimEnd().length
   const visible = { text: out.text.slice(0, kept), source: out.source.slice(0, kept) }
