@@ -14,7 +14,7 @@ export type Node = Element | string
 
 const MAX_DEPTH = 200
 
-const ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: ' ' }
+const ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: '\u00a0' }
 
 const NAME = /[A-Za-z_][-A-Za-z0-9_.:]*/y
 const SPACE = /\s*/y

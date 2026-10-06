@@ -9,7 +9,7 @@ test('reads elements, attributes, text and references', () => {
   const [mi, mo, mtext, mspace] = root.children as Exclude<(typeof root.children)[number], string>[]
   expect(mi!.attrs['data-x']).toBe('a & b')
   expect(tokenText(mo!)).toBe('−')
-  expect(tokenText(mtext!)).toBe('< >')
+  expect(tokenText(mtext!)).toBe('<\u00a0>')
   expect(mspace!.children).toEqual([])
 })
 
@@ -30,6 +30,6 @@ test('cell widths: combining marks take none, wide characters two, the rest one'
   expect(charWidth(0x65e5)).toBe(2)
   expect(charWidth(0x2211)).toBe(1)
   expect(charWidth(0x1d400)).toBe(1)
-  expect(textWidth('x̂ + 日本')).toBe(8)
-  expect(toCells('x̂日')).toEqual(['x̂', '日', ''])
+  expect(textWidth('x\u0302 + 日本')).toBe(8)
+  expect(toCells('x\u0302日')).toEqual(['x\u0302', '日', ''])
 })

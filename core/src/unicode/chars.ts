@@ -72,13 +72,6 @@ const ALPHABETS: Record<string, Alphabet> = {
   monospace: { latin: 0x1d670, digits: 0x1d7f6 },
 }
 
-const KNOWN_VARIANTS = new Set(['normal', 'italic', ...Object.keys(ALPHABETS)])
-
-/** Whether mathvariant names a style this renderer knows (styled or deliberately plain). */
-export function knownVariant(variant: string): boolean {
-  return KNOWN_VARIANTS.has(variant) || variant.startsWith('-tex-')
-}
-
 // Position of each Greek letter in a bold Greek alphabet (capitals 0–24, ∇ 25, small 26–50, variants 51–57).
 const GREEK_INDEX = new Map<number, number>()
 for (let cp = 0x391; cp <= 0x3a9; cp++) if (cp !== 0x3a2) GREEK_INDEX.set(cp, cp - 0x391)
@@ -124,44 +117,44 @@ export interface Accent {
 }
 
 export const OVER_ACCENTS: ReadonlyMap<string, Accent> = new Map<string, Accent>([
-  ['^', { mark: '̂', glyph: '^' }],
-  ['ˆ', { mark: '̂', glyph: '^' }],
-  ['ˇ', { mark: '̌', glyph: 'ˇ' }],
-  ['~', { mark: '̃', glyph: '~' }],
-  ['˜', { mark: '̃', glyph: '~' }],
-  ['¯', { mark: '̄', glyph: '_', wide: true }],
-  ['ˉ', { mark: '̄', glyph: '_', wide: true }],
-  ['‾', { mark: '̅', glyph: '_', wide: true }],
-  ['―', { mark: '̅', glyph: '_', wide: true }],
-  ['─', { mark: '̅', glyph: '_', wide: true }],
-  ['_', { mark: '̅', glyph: '_', wide: true }],
-  ['˙', { mark: '̇', glyph: '˙' }],
-  ['¨', { mark: '̈', glyph: '¨' }],
-  ['⃛', { mark: '⃛', glyph: '⋯' }],
-  ['⃜', { mark: '⃜', glyph: '⋯' }],
-  ['´', { mark: '́', glyph: '´' }],
-  ['ˊ', { mark: '́', glyph: '´' }],
-  ['`', { mark: '̀', glyph: '`' }],
-  ['ˋ', { mark: '̀', glyph: '`' }],
-  ['˘', { mark: '̆', glyph: '˘' }],
-  ['˚', { mark: '̊', glyph: '°' }],
-  ['→', { mark: '⃗', glyph: '→', arrow: 'right' }],
-  ['⃗', { mark: '⃗', glyph: '→', arrow: 'right' }],
-  ['←', { mark: '⃖', glyph: '←', arrow: 'left' }],
-  ['↔', { mark: '⃡', glyph: '↔', arrow: 'both' }],
+  ['^', { mark: '\u0302', glyph: '^' }],
+  ['ˆ', { mark: '\u0302', glyph: '^' }],
+  ['ˇ', { mark: '\u030c', glyph: 'ˇ' }],
+  ['~', { mark: '\u0303', glyph: '~' }],
+  ['˜', { mark: '\u0303', glyph: '~' }],
+  ['¯', { mark: '\u0304', glyph: '_', wide: true }],
+  ['ˉ', { mark: '\u0304', glyph: '_', wide: true }],
+  ['‾', { mark: '\u0305', glyph: '_', wide: true }],
+  ['―', { mark: '\u0305', glyph: '_', wide: true }],
+  ['─', { mark: '\u0305', glyph: '_', wide: true }],
+  ['_', { mark: '\u0305', glyph: '_', wide: true }],
+  ['˙', { mark: '\u0307', glyph: '˙' }],
+  ['¨', { mark: '\u0308', glyph: '¨' }],
+  ['\u20db', { mark: '\u20db', glyph: '⋯' }],
+  ['\u20dc', { mark: '\u20dc', glyph: '⋯' }],
+  ['´', { mark: '\u0301', glyph: '´' }],
+  ['ˊ', { mark: '\u0301', glyph: '´' }],
+  ['`', { mark: '\u0300', glyph: '`' }],
+  ['ˋ', { mark: '\u0300', glyph: '`' }],
+  ['˘', { mark: '\u0306', glyph: '˘' }],
+  ['˚', { mark: '\u030a', glyph: '°' }],
+  ['→', { mark: '\u20d7', glyph: '→', arrow: 'right' }],
+  ['\u20d7', { mark: '\u20d7', glyph: '→', arrow: 'right' }],
+  ['←', { mark: '\u20d6', glyph: '←', arrow: 'left' }],
+  ['↔', { mark: '\u20e1', glyph: '↔', arrow: 'both' }],
 ])
 
 export const UNDER_ACCENTS: ReadonlyMap<string, Accent> = new Map<string, Accent>([
-  ['―', { mark: '̲', glyph: '‾', wide: true }],
-  ['_', { mark: '̲', glyph: '‾', wide: true }],
-  ['‾', { mark: '̲', glyph: '‾', wide: true }],
-  ['¯', { mark: '̲', glyph: '‾', wide: true }],
-  ['─', { mark: '̲', glyph: '‾', wide: true }],
-  ['~', { mark: '̰', glyph: '~' }],
-  ['˜', { mark: '̰', glyph: '~' }],
-  ['→', { mark: '⃯', glyph: '→', arrow: 'right' }],
-  ['←', { mark: '⃮', glyph: '←', arrow: 'left' }],
-  ['↔', { mark: '͍', glyph: '↔', arrow: 'both' }],
+  ['―', { mark: '\u0332', glyph: '‾', wide: true }],
+  ['_', { mark: '\u0332', glyph: '‾', wide: true }],
+  ['‾', { mark: '\u0332', glyph: '‾', wide: true }],
+  ['¯', { mark: '\u0332', glyph: '‾', wide: true }],
+  ['─', { mark: '\u0332', glyph: '‾', wide: true }],
+  ['~', { mark: '\u0330', glyph: '~' }],
+  ['˜', { mark: '\u0330', glyph: '~' }],
+  ['→', { mark: '\u20ef', glyph: '→', arrow: 'right' }],
+  ['←', { mark: '\u20ee', glyph: '←', arrow: 'left' }],
+  ['↔', { mark: '\u034d', glyph: '↔', arrow: 'both' }],
 ])
 
 /** A horizontal arrow (or bar) `width` cells long. */

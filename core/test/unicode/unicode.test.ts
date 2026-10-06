@@ -32,7 +32,8 @@ describe('results', () => {
   })
 
   test('unsupported constructs make the whole result null', () => {
-    expect(toUnicode('<math><mmultiscripts><mi>x</mi><mi>a</mi><none/></mmultiscripts></math>', { display: true })).toBeNull()
+    expect(toUnicode('<math><mstack><msrow><mn>1</mn></msrow></mstack></math>', { display: true })).toBeNull()
+    expect(toUnicode('<math><mi>x<mglyph src="x.png"/></mi></math>', { display: true })).toBeNull()
     expect(toUnicode('<math><merror><mtext>bad</mtext></merror></math>', { display: true })).toBeNull()
     expect(toUnicode('<math><mi>x</mi>', { display: true })).toBeNull()
     expect(toUnicode('<mrow><mi>x</mi></mrow>', { display: true })).toBeNull()
@@ -73,6 +74,11 @@ describe('scripts', () => {
     expect(lines(String.raw`\sum_{i=1}^{n} i`)).toEqual([' n   ', ' ∑  i', 'i=1  '])
     expect(line(String.raw`\sum_{i=1}^{n} i`)).toBe('∑ᵢ₌₁ⁿ i')
     expect(line(String.raw`\lim_{x \to 0} f(x)`)).toBe('lim_(x→0) f(x)')
+  })
+
+  test('pre- and postscripts', () => {
+    expect(line(String.raw`\prescript{14}{6}{C} + \sideset{_a}{^b}\sum x`)).toBe('₆¹⁴C + ₐ∑ᵇ x')
+    expect(lines(String.raw`\prescript{A}{Z}{X}`)).toEqual(['ᴬX', 'Z '])
   })
 })
 
@@ -126,6 +132,8 @@ describe('delimiters', () => {
   test('an integral grows with its integrand and carries its limits beside it', () => {
     expect(lines(String.raw`\int_0^1 \frac{1}{x} dx = 1`)).toEqual(['⌠¹ 1       ', '⎮  ─ dx = 1', '⌡₀ x       '])
     expect(lines(String.raw`\int_0^1 x\,dx`)).toEqual(['∫₀¹ x dx'])
+    expect(lines(String.raw`\iint_D f\,dA`)).toEqual(['∬  f dA', ' D     '])
+    expect(lines(String.raw`\iint_{D}^{E} f`)).toEqual(['⌠⌠ᴱ  ', '⎮⎮  f', '⌡⌡D  '])
   })
 })
 
@@ -136,7 +144,7 @@ describe('accents', () => {
 
   test('over a wider base: a row of its own in display, marks inline', () => {
     expect(lines(String.raw`\vec{AB}`)).toEqual(['─→', 'AB'])
-    expect(line(String.raw`\overline{AB}`)).toBe('A̅B̅')
+    expect(line(String.raw`\overline{AB}`)).toBe('A\u0305B\u0305')
   })
 
   test('braces with their labels', () => {
@@ -162,6 +170,21 @@ describe('tables', () => {
     ])
   })
 
+  test('frames and rules', () => {
+    expect(lines(String.raw`\begin{array}{|c|c|} \hline a & b \\ \hline c & d \\ \hline \end{array}`)).toEqual([
+      '┌───┬───┐',
+      '│ a │ b │',
+      '├───┼───┤',
+      '│ c │ d │',
+      '└───┴───┘',
+    ])
+    expect(lines(String.raw`\begin{array}{|l|r|} a & bb \\ c & d \end{array}`)).toEqual(['│ a │ bb │', '│ c │  d │'])
+  })
+
+  test('multline puts its lines left and right', () => {
+    expect(lines(String.raw`\begin{multline} a + b \\ = c \end{multline}`)).toEqual(['a + b', '  = c'])
+  })
+
   test('column lines and tags', () => {
     expect(lines(String.raw`\begin{array}{c|c} a & b \end{array}`)).toEqual(['a │ b'])
     expect(lines(String.raw`x = 1 \tag{2}`)).toEqual(['x = 1  (2)'])
@@ -170,7 +193,7 @@ describe('tables', () => {
 
 describe('enclosures', () => {
   test('cancel strikes through, boxed draws a box in display', () => {
-    expect(line(String.raw`\cancel{x}`)).toBe('x̸')
+    expect(line(String.raw`\cancel{x}`)).toBe('x\u0338')
     expect(lines(String.raw`\boxed{x}`)).toEqual(['┌───┐', '│ x │', '└───┘'])
   })
 })

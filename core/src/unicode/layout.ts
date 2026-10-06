@@ -140,11 +140,7 @@ function layoutRow(children: readonly Element[], ctx: Ctx): Row {
     else parts.at(-1)!.push(f)
   }
   const rows = parts.map(part => buildRow(part, ctx))
-  const box = vstack(
-    rows.map(r => r.box),
-    'center',
-    rows[0]!.box.base,
-  )
+  const box = vstack(rows.map(r => r.box), 'center', rows[0]!.box.base)
   return { box, items: rows.flatMap(r => r.items), spaced: true }
 }
 
@@ -364,8 +360,15 @@ function coreMo(el: Element): Element | undefined {
   return undefined
 }
 
+/** Integral signs that grow: the single, double and triple integrals. */
+const INTEGRAL_SIGNS = new Map([
+  ['∫', 1],
+  ['∬', 2],
+  ['∭', 3],
+])
+
 function isIntegral(text: string): boolean {
-  return text === '∫'
+  return INTEGRAL_SIGNS.has(text)
 }
 
 /** Whether the atom stretches to the height of its row: a fence, or an integral sign in display style. */
@@ -388,9 +391,9 @@ function layoutNode(el: Element, ctx: Ctx): Box {
     case 'mi':
     case 'mn':
     case 'mtext':
-      return token(el, ctx)
+      return token(el)
     case 'ms': {
-      const text = token(el, ctx)
+      const text = token(el)
       return hcat([textBox(el.attrs.lquote ?? '"'), text, textBox(el.attrs.rquote ?? '"')])
     }
     case 'mo':
@@ -426,6 +429,8 @@ function layoutNode(el: Element, ctx: Ctx): Box {
     case 'msup':
     case 'msubsup':
       return scripts(el, ctx)
+    case 'mmultiscripts':
+      return multiscripts(el, ctx)
     case 'munder':
     case 'mover':
     case 'munderover':
@@ -450,10 +455,10 @@ function scriptCtx(ctx: Ctx): Ctx {
 // ─── tokens ──────────────────────────────────────────────────────────────────
 
 function normalize(text: string): string {
-  return text.replace(/[  -   ]/g, ' ')
+  return text.replace(/[\u00a0\u2000-\u200a\u202f\u205f]/g, ' ')
 }
 
-function token(el: Element, _ctx: Ctx): Box {
+function token(el: Element): Box {
   const text = normalize(tokenText(el))
   // MathJax's noundefined package marks an unknown macro as red text.
   if (el.name === 'mtext' && el.attrs.mathcolor === 'red' && text.startsWith('\\')) fail('undefined macro')
@@ -466,9 +471,10 @@ function operator(el: Element, ctx: Ctx): Box {
   const stretch = ctx.stretch
   if (stretch && (stretch.up > 0 || stretch.down > 0)) {
     const rows = stretch.up + stretch.down + 1
-    const column = isIntegral(text) ? tallIntegral(rows) : tallDelimiter(text, rows, stretch.up)
-    const width = text === '' ? 0 : 1
-    return { rows: column.map(c => (width ? toCells(c) : [])), width, base: stretch.up }
+    const count = INTEGRAL_SIGNS.get(text)
+    const column = count ? tallIntegral(rows).map(c => c.repeat(count)) : tallDelimiter(text, rows, stretch.up)
+    const cellRows = column.map(c => toCells(c))
+    return { rows: cellRows, width: cellRows[0]!.length, base: stretch.up }
   }
   return textBox(styleText(text, el.attrs.mathvariant))
 }
@@ -630,6 +636,7 @@ function plainText(item: Item): string {
 
 function isAtom(row: Row): boolean {
   const { items } = atoms(row)
+  if (items.length === 0) return true
   if (items.length !== 1) return false
   const only = items[0]!
   if (only.kind === 'fence') return true
@@ -655,7 +662,7 @@ function root(radicand: Row, indexEl: Element | undefined, ctx: Ctx): Box {
   }
   if (height(r) === 1) {
     // √ with a bar over the radicand on the row above.
-    const bar = textBox(' '.repeat(prefix.length + 1) + '_'.repeat(r.width))
+    const bar = textBox(' '.repeat(toCells(prefix).length + 1) + '_'.repeat(r.width))
     const box = vstack([bar, hcat([textBox(prefix + sign), r])], 'left', 1)
     return index && mapped === undefined ? hangIndex(box, index, 1) : box
   }
@@ -696,12 +703,13 @@ interface Placed {
 function compose(parts: readonly Placed[]): Box {
   const top = Math.min(...parts.map(p => p.row))
   const bottom = Math.max(...parts.map(p => p.row + height(p.box) - 1))
-  const width = Math.max(0, ...parts.map(p => p.col + p.box.width))
+  const left = Math.min(0, ...parts.map(p => p.col))
+  const width = Math.max(0, ...parts.map(p => p.col + p.box.width)) - left
   const out = blank(width, bottom - top + 1, -top)
   for (const p of parts) {
     p.box.rows.forEach((row, r) => {
       row.forEach((cell, c) => {
-        out.rows[p.row - top + r]![p.col + c] = cell
+        out.rows[p.row - top + r]![p.col - left + c] = cell
       })
     })
   }
@@ -738,19 +746,19 @@ function scripts(el: Element, ctx: Ctx): Box {
 
 function attach(baseEl: Element, subEl: Element | undefined, supEl: Element | undefined, ctx: Ctx): Box {
   const sctx = scriptCtx(ctx)
-  const sub = subEl && layoutRow([subEl], sctx).box
-  const sup = supEl && layoutRow([supEl], sctx).box
-  const subMapped = sub && height(sub) === 1 ? mapScript(sub.rows[0]!, SUBSCRIPTS) : undefined
-  const supMapped = sup && height(sup) === 1 ? mapScript(sup.rows[0]!, SUPERSCRIPTS) : undefined
+  const scripts = makeScripts(subEl && layoutRow([subEl], sctx).box, supEl && layoutRow([supEl], sctx).box)
   const core = coreMo(baseEl)
   const integral = core !== undefined && isIntegral(tokenText(core)) && ctx.twoD && ctx.display
 
   // An integral is made tall enough to carry its limits beside it.
   let baseCtx = ctx
   if (integral) {
+    const { sub, sup, subMapped, supMapped } = scripts
     const target = ctx.stretch ?? { up: 0, down: 0 }
-    const mappedOnly = (!sub || subMapped !== undefined) && (!sup || supMapped !== undefined)
-    if (!mappedOnly || target.up + target.down > 0) {
+    // A lone subscript with no script form (∫_C) can sit under a one-row sign; limits on both ends go beside a tall one.
+    const unmappedSup = sup !== undefined && supMapped === undefined
+    const unmappedSub = sub !== undefined && subMapped === undefined
+    if (unmappedSup || (unmappedSub && sup !== undefined) || target.up + target.down > 0) {
       baseCtx = {
         ...ctx,
         stretch: {
@@ -761,33 +769,96 @@ function attach(baseEl: Element, subEl: Element | undefined, supEl: Element | un
     }
   }
   const base = baseScriptBox(baseEl, baseCtx)
+  if (!ctx.twoD) return hcat([base, textBox(scriptText(scripts))])
+  return compose([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, scripts, 'right', integral)])
+}
 
-  if (!ctx.twoD) {
-    let tail = ''
-    if (sub) tail += subMapped ?? '_' + group(sub)
-    if (sup) tail += supMapped ?? '^' + group(sup)
-    return hcat([base, textBox(tail)])
+interface Scripts {
+  sub?: Box
+  sup?: Box
+  /** The scripts as Unicode sub/superscript characters, when they all have one. */
+  subMapped?: string
+  supMapped?: string
+}
+
+function makeScripts(sub: Box | undefined, sup: Box | undefined): Scripts {
+  return {
+    sub,
+    sup,
+    subMapped: sub && height(sub) === 1 ? mapScript(sub.rows[0]!, SUBSCRIPTS) : undefined,
+    supMapped: sup && height(sup) === 1 ? mapScript(sup.rows[0]!, SUPERSCRIPTS) : undefined,
   }
+}
 
+/** Scripts on one row: Unicode script characters, or _(…) and ^(…). */
+function scriptText({ sub, sup, subMapped, supMapped }: Scripts): string {
+  let text = ''
+  if (sub) text += subMapped ?? '_' + group(sub)
+  if (sup) text += supMapped ?? '^' + group(sup)
+  return text
+}
+
+/**
+ * Where scripts go around a base drawn at column 0 with its baseline on row 0:
+ * script characters on the base's top or bottom row, other scripts above or
+ * below a one-row base and beside the top or bottom of a tall one.
+ */
+function placeScripts(base: Box, { sub, sup, subMapped, supMapped }: Scripts, side: 'left' | 'right', integral = false): Placed[] {
   const tall = height(base) > 1
   const top = -above(base)
   const bottom = below(base)
-  const parts: Placed[] = [{ box: base, row: top, col: 0 }]
   const subBox = subMapped !== undefined ? textBox(subMapped) : sub
   const supBox = supMapped !== undefined ? textBox(supMapped) : sup
+  const at = (box: Box, row: number, width: number): Placed => ({
+    box: side === 'right' ? box : widen(box, width, 'right'),
+    row,
+    col: side === 'right' ? base.width : -width,
+  })
   if (!tall && subMapped !== undefined && supMapped !== undefined) {
-    parts.push({ box: textBox(subMapped + supMapped), row: 0, col: base.width })
-    return compose(parts)
+    const both = textBox(subMapped + supMapped)
+    return [at(both, 0, both.width)]
   }
+  const width = Math.max(subBox?.width ?? 0, supBox?.width ?? 0)
+  const parts: Placed[] = []
   if (supBox) {
     const row = integral && tall ? top : supMapped !== undefined ? top : tall ? top - height(supBox) + 1 : top - height(supBox)
-    parts.push({ box: supBox, row, col: base.width })
+    parts.push(at(supBox, row, width))
   }
   if (subBox) {
     const row = integral && tall ? bottom - height(subBox) + 1 : subMapped !== undefined ? bottom : tall ? bottom : bottom + 1
-    parts.push({ box: subBox, row, col: base.width })
+    parts.push(at(subBox, row, width))
   }
-  return compose(parts)
+  return parts
+}
+
+/** Pre- and postscripts (\sideset, \prescript): each side's scripts side by side. */
+function multiscripts(el: Element, ctx: Ctx): Box {
+  const kids = elements(el)
+  if (kids.length === 0) fail('mmultiscripts')
+  const sctx = scriptCtx(ctx)
+  const sides: { sub: Box[]; sup: Box[] }[] = [
+    { sub: [], sup: [] },
+    { sub: [], sup: [] },
+  ]
+  let side = 0
+  for (let i = 1; i < kids.length; ) {
+    if (kids[i]!.name === 'mprescripts') {
+      side = 1
+      i++
+      continue
+    }
+    const pair = [kids[i], kids[i + 1]]
+    if (!pair[1]) fail('mmultiscripts pair')
+    const [subEl, supEl] = pair as [Element, Element]
+    if (subEl.name !== 'none') sides[side]!.sub.push(layoutRow([subEl], sctx).box)
+    if (supEl.name !== 'none') sides[side]!.sup.push(layoutRow([supEl], sctx).box)
+    i += 2
+  }
+  const join = (boxes: Box[]) => (boxes.length ? hcat(boxes) : undefined)
+  const [post, pre] = sides.map(s => makeScripts(join(s.sub), join(s.sup))) as [Scripts, Scripts]
+  const base = layoutNode(kids[0]!, strip(ctx))
+  if (!ctx.twoD) return hcat([textBox(scriptText(pre)), base, textBox(scriptText(post))])
+  return compose([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, post, 'right'), ...placeScripts(base, pre, 'left')])
 }
 
 /** A script's base; a one-row fraction there goes in parentheses. */
@@ -906,7 +977,7 @@ function enclose(el: Element, ctx: Ctx): Box {
       case 'updiagonalstrike':
       case 'downdiagonalstrike':
       case 'horizontalstrike': {
-        const mark = notation === 'horizontalstrike' ? '̶' : '̸'
+        const mark = notation === 'horizontalstrike' ? '\u0336' : '\u0338'
         if (box.rows.some(row => row.some(c => c.includes(mark)))) break
         box = { ...box, rows: box.rows.map(row => row.map(c => (c === ' ' || c === '' ? c : c + mark))) }
         break
@@ -921,11 +992,36 @@ function enclose(el: Element, ctx: Ctx): Box {
         box = vstack([textBox(tl + '─'.repeat(w) + tr), middle, textBox(bl + '─'.repeat(w) + br)], 'left', box.base + 1)
         break
       }
+      case 'left':
+      case 'right':
+      case 'top':
+      case 'bottom':
+        break
       default:
         fail(`menclose ${notation}`)
     }
   }
-  return box
+  return sides(box, new Set(notations), ctx)
+}
+
+/** Rules on some sides of an enclosure (an array's outer | columns, \overline-like notations). */
+function sides(box: Box, notations: ReadonlySet<string>, ctx: Ctx): Box {
+  const [left, right, top, bottom] = ['left', 'right', 'top', 'bottom'].map(n => notations.has(n))
+  if (!left && !right && !top && !bottom) return box
+  if (height(box) === 1) {
+    let row = box.rows[0]!
+    if (top) row = row.map(c => marked(c, '\u0305'))
+    if (bottom) row = row.map(c => marked(c, '\u0332'))
+    const bar = ctx.twoD ? '│' : '|'
+    const cellsRow = [...(left ? [bar] : []), ...row, ...(right ? [bar] : [])]
+    return { rows: [cellsRow], width: cellsRow.length, base: 0 }
+  }
+  const rule = (ch: string): Box => ({ rows: box.rows.map(() => [ch]), width: 1, base: box.base })
+  let out = hcat([...(left ? [rule('│'), blank(1, height(box), box.base)] : []), box, ...(right ? [blank(1, height(box), box.base), rule('│')] : [])])
+  const line = (l: string, r: string) => textBox((left ? l : '─') + '─'.repeat(out.width - (left ? 1 : 0) - (right ? 1 : 0)) + (right ? r : '─'))
+  if (top) out = vstack([line('┌', '┐'), out], 'left', out.base + 1)
+  if (bottom) out = vstack([out, line('└', '┘')], 'left', out.base)
+  return out
 }
 
 // ─── tables ──────────────────────────────────────────────────────────────────
@@ -949,9 +1045,9 @@ function table(el: Element, ctx: Ctx): Box {
   const cellCtx: Ctx = { twoD: ctx.twoD, display: el.attrs.displaystyle === 'true', level: ctx.level }
   const rowEls = elements(el)
   if (!ctx.twoD && rowEls.length > 1) fail('table in inline math')
-  if (el.attrs.frame !== undefined && el.attrs.frame !== 'none') fail('table frame')
   const tableAligns = list(el.attrs.columnalign, 'center')
-  const spacing = list(el.attrs.columnspacing, '0.8em').map(v => cells(length(v)))
+  // A percentage (multline's) has no meaning in cells: no extra space.
+  const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))
   const columnLines = list(el.attrs.columnlines, 'none')
   const rowLines = list(el.attrs.rowlines, 'none')
 
@@ -1011,33 +1107,54 @@ function table(el: Element, ctx: Ctx): Box {
     return extend(hcat(parts), up, down)
   })
   const width = Math.max(...rowBoxes.map(b => b.width))
+  const lineCols: number[] = []
+  let col = 0
+  for (let c = 0; c < columns - 1; c++) {
+    col += widths[c]!
+    const g = gaps[c]!
+    if (g.line) lineCols.push(col + (g.space - 1) / 2)
+    col += g.space
+  }
 
   const separator = (r: number): Box | undefined => {
     const line = pick(rowLines, r)
     if (line !== 'none') {
       const cellsRow = Array<string>(width).fill(line === 'dashed' ? '┄' : '─')
-      let col = 0
-      for (let c = 0; c < columns - 1; c++) {
-        col += widths[c]!
-        const g = gaps[c]!
-        if (g.line) cellsRow[col + (g.space - 1) / 2] = '┼'
-        col += g.space
-      }
+      for (const x of lineCols) cellsRow[x] = '┼'
       return { rows: [cellsRow], width, base: 0 }
     }
     return tall ? blank(width) : undefined
   }
 
   const stacked: Box[] = []
+  const ruled = new Set<number>()
+  let at = 0
   rowBoxes.forEach((box, r) => {
     if (r > 0) {
       const sep = separator(r - 1)
-      if (sep) stacked.push(sep)
+      if (sep) {
+        if (pick(rowLines, r - 1) !== 'none') ruled.add(at)
+        stacked.push(sep)
+        at += height(sep)
+      }
     }
     stacked.push(widen(box, width, 'left'))
+    at += height(box)
   })
-  const totalRows = stacked.reduce((n, b) => n + height(b), 0)
-  let body = vstack(stacked, 'left', Math.floor((totalRows - 1) / 2))
+  let body = vstack(stacked, 'left', Math.floor((at - 1) / 2))
+
+  const frame = el.attrs.frame
+  if (frame !== undefined && frame !== 'none') {
+    // A border one cell clear of the content; column and row rules meet it.
+    const [h, v] = frame === 'dashed' ? ['┄', '┆'] : ['─', '│']
+    const edge = (l: string, r: string, tee: string) => {
+      const row = [l, ...Array<string>(body.width + 2).fill(h), r]
+      for (const x of lineCols) row[x + 2] = tee
+      return row
+    }
+    const middle = body.rows.map((row, y) => (ruled.has(y) ? ['├', h, ...row, h, '┤'] : [v, ' ', ...row, ' ', v]))
+    body = { rows: [edge('┌', '┐', '┬'), ...middle, edge('└', '┘', '┴')], width: body.width + 4, base: body.base + 1 }
+  }
 
   if (labels.some(l => l !== undefined)) {
     // Equation tags: a column of their own, two cells to the right.
@@ -1051,6 +1168,10 @@ function table(el: Element, ctx: Ctx): Box {
       const label = labels[r]
       column.push(label ? widen(extend(label, box.base, below(box)), labelWidth, 'right') : blank(labelWidth, height(box)))
     })
+    if (frame !== undefined && frame !== 'none') {
+      column.unshift(blank(labelWidth))
+      column.push(blank(labelWidth))
+    }
     const labelBox = vstack(column, 'left', body.base)
     body = hcat([body, blank(2, height(body), body.base), labelBox])
   }

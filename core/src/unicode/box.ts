@@ -181,8 +181,3 @@ export function isBlank(box: Box): boolean {
 export function lines(box: Box): string[] {
   return box.rows.map(row => row.join(''))
 }
-
-/** The text of a one-row box. */
-export function text(box: Box): string {
-  return box.rows.length === 1 ? box.rows[0]!.join('') : fail('not one row')
-}
