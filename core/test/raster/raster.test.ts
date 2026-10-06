@@ -262,18 +262,31 @@ describe('inline placement (baselinePx)', () => {
     expect(inkBox(r)).toMatchObject({ y0: 11, y1: 21 })
   })
 
-  test('a formula too tall above the baseline is scaled until it fits, never the rows grown', () => {
+  test('a formula too tall above the baseline moves it down a pixel, then is scaled until it fits, never the rows grown', () => {
     const r = rasterize(box(1, 1.2, 0), inline)
     expect(r.rows).toBe(1)
-    expect(r.scale).toBeCloseTo(21 / 30, 6)
-    expect(inkBox(r)).toMatchObject({ y0: 0, y1: 21 })
+    expect(r.baselinePx).toBe(22)
+    expect(r.scale).toBeCloseTo(22 / 30, 6)
+    expect(inkBox(r)).toMatchObject({ y0: 0, y1: 22 })
   })
 
-  test('the depth below the baseline is fitted to the rows under it, dilation included', () => {
-    expect(measure(box(1, 0.4, 0.2), inline).scale).toBeCloseTo(5 / 5, 6)
-    expect(measure(box(1, 0.4, 0.25), inline).scale).toBeCloseTo(5 / 6.25, 6)
-    const weighted = measure(box(1, 0.4, 0.2), { ...inline, weight: DEFAULT_WEIGHT })
-    expect(weighted.scale).toBeCloseTo(5 / (0.2 * 25 + (DEFAULT_WEIGHT / 1000) * 25), 6)
+  test('the depth below the baseline is fitted to the rows under it, the baseline a pixel higher at most', () => {
+    // 0.2 em deep is 5 px: it fits under the font's baseline as it is.
+    expect(rasterize(box(1, 0.4, 0.2), inline)).toMatchObject({ scale: 1, baselinePx: 21 })
+    // 6.25 px: the baseline goes up a pixel (6 px of room), the formula shrinks to fit the rest.
+    expect(rasterize(box(1, 0.4, 0.25), inline)).toMatchObject({ baselinePx: 20 })
+    expect(measure(box(1, 0.4, 0.25), inline).scale).toBeCloseTo(6 / 6.25, 6)
+    expect(measure(box(1, 0.4, 0.3), inline).scale).toBeCloseTo(6 / 7.5, 6)
+    // Dilation included: 5.375 px fits in the 6 px under a baseline moved up.
+    const weighted = rasterize(box(1, 0.4, 0.2), { ...inline, weight: DEFAULT_WEIGHT })
+    expect([weighted.scale, weighted.baselinePx]).toEqual([1, 20])
+  })
+
+  test('at the left of the columns asked for (minColumns)', () => {
+    const r = rasterize(box(1, 0.4, 0), { ...inline, maxColumns: 4, minColumns: 4 })
+    expect([r.columns, r.widthPx]).toEqual([4, 52])
+    expect(inkBox(r).x0).toBeLessThanOrEqual(1)
+    expect(measure(box(1, 0.4, 0), inline).columns).toBe(2)
   })
 
   test('centred across the columns asked for', () => {
