@@ -17,15 +17,19 @@ export type KittexEnv = {
   ink: { r: number; g: number; b: number }
   /** Whether the cell size was measured (false: the fallback cell). */
   measured: boolean
+  /** The glyph the engine opens a reply with (`⏺` on macOS, `●` elsewhere); `●` when absent. */
+  bullet?: string
 }
 
 /** One display preview written while a reply streamed, and the TeX it stands for (kittex.records). */
 export type KittexPreview = {
-  /** The markdown exactly as written into the reply. */
+  /** The markdown exactly as written into the reply (lines after the first carry its indentation). */
   preview: string
   tex: string
-  /** Rows reserved on screen; the image is drawn at least this tall. */
+  /** Rows reserved on screen; the image is drawn at least this tall (0 for a refused formula). */
   rows: number
+  /** MathJax refused the formula: why. The preview is its source and a `not rendered` line. */
+  error?: string
 }
 
 declare module 'claude-code' {

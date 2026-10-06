@@ -4,12 +4,12 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
+import { chooseInk, init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
 import {
+  BULLET,
   HELD_DISPLAY,
   MATH_INSTRUCTIONS,
-  PREVIEW_FENCE_INFO,
-  PREVIEW_OVERHEAD_ROWS,
+  PREVIEW_PAD,
   renderEnvFor,
   REPLY_INDENT,
   replyColumns,
@@ -21,12 +21,12 @@ import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession } from './suppor
 const TEX = 'e^{i\\pi} + 1 = 0'
 const REPLY = `Euler's identity:\n\n$$${TEX}$$\n\nis beautiful.`
 
-function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = 'terminal') {
+function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = 'terminal', isFirstOfReply = true) {
   return $.ui.mount({
     plugin: 'kittex',
     surface,
     component: 'AssistantMessage',
-    props: { text, isFirstOfReply: true },
+    props: { text, isFirstOfReply },
     viewport: { columns: COLUMNS, rows: 50 },
   })
 }
@@ -42,7 +42,7 @@ describe('off switch', () => {
 })
 
 describe('AssistantMessage', () => {
-  test('a $$ formula becomes an Image between engine drawings of the prose', async ($, on) => {
+  test('a $$ formula becomes an Image between engine drawings of the prose, laid out as the preview was', async ($, on) => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, REPLY)
@@ -54,19 +54,69 @@ describe('AssistantMessage', () => {
         { type: 'Text', children: ["Euler's identity:"] },
         {
           type: 'Box',
-          props: { marginLeft: REPLY_INDENT },
+          props: { marginLeft: REPLY_INDENT, marginTop: 1 },
           children: [{ type: 'Image', props: { columns: replyColumns(COLUMNS), rows, alt: TEX, source: { png: expect.any(String) } } }],
         },
-        { type: 'Text', children: ['is beautiful.'] },
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
       ],
     })
   })
 
-  test('a formula MathJax refuses stays as its source in a latex block', async ($, on) => {
+  test('with no blank lines around the formula, nothing is added between the rows', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const ui = await mountReply($, `Euler's identity:\n$$\n${TEX}\n$$\nis beautiful.`)
+    expect(await ui.drawn()).toMatchObject({
+      children: [
+        { type: 'Text', children: ["Euler's identity:"] },
+        { type: 'Box', props: { marginLeft: REPLY_INDENT, marginTop: 1 } },
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 } },
+      ],
+    })
+  })
+
+  test('a block that opens with a formula keeps its bullet beside the image', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const ui = await mountReply($, `$$${TEX}$$\n\nis beautiful.`)
+    expect(await ui.drawn()).toMatchObject({
+      children: [
+        {
+          type: 'Box',
+          props: { flexDirection: 'row', marginTop: 1 },
+          children: [
+            { type: 'Box', props: { minWidth: REPLY_INDENT }, children: [{ type: 'Text', props: { color: 'text' }, children: [BULLET.other] }] },
+            { type: 'Image', props: { alt: TEX } },
+          ],
+        },
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
+      ],
+    })
+  })
+
+  test('a block drawn without the bullet keeps everything at column 0', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const ui = await mountReply($, `$$${TEX}$$\n\nis beautiful.`, 'terminal', false)
+    expect(await ui.drawn()).toMatchObject({
+      children: [
+        { type: 'Box', props: { flexDirection: 'row', marginTop: 1 }, children: [{ type: 'Image' }] },
+        { type: 'Box', props: { paddingLeft: 0, marginTop: 0 } },
+      ],
+    })
+  })
+
+  test('a formula MathJax refuses stays as its source, with a dim note under it', async ($, on) => {
     await startSession($, on)
     const bad = 'Bad:\n\n$$\\frac{1}{$$\n\nafter.'
     const drawn = await (await mountReply($, bad)).drawn()
-    expect(drawn).toEqual({ type: 'Text', children: ['Bad:\n\n```latex\n\\frac{1}{\n```\n\nafter.'] })
+    expect(drawn).toMatchObject({
+      children: [
+        { type: 'Text', children: ['Bad:\n\n```latex\n\\frac{1}{\n```'] },
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 1 }, children: [{ type: 'Text', props: { dimColor: true }, children: [expect.stringMatching(/^not rendered: /)] }] },
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['after.'] }] },
+      ],
+    })
   })
 
   test('a reply without math is drawn by the engine untouched', async ($, on) => {
@@ -82,7 +132,7 @@ describe('AssistantMessage', () => {
     expect(drawn).toMatchObject({ type: 'Text' })
     const text = JSON.stringify(drawn)
     expect(text).not.toContain('$$')
-    expect(text).toContain('```text')
+    expect(text).toContain(PREVIEW_PAD)
   })
 
   test('a terminal without images gets the Unicode preview in the text', async ($, on) => {
@@ -91,7 +141,7 @@ describe('AssistantMessage', () => {
     const drawn = await ui.drawn()
     expect(drawn).toMatchObject({ type: 'Text' })
     expect(await ui.find({ type: 'Image' })).toBeUndefined()
-    expect(JSON.stringify(drawn)).toContain('```text')
+    expect(JSON.stringify(drawn)).toContain(PREVIEW_PAD)
   })
 
   test('a summary is left alone', async ($, on) => {
@@ -120,7 +170,7 @@ describe('terminal changes', () => {
     expect(JSON.stringify(after)).not.toBe(JSON.stringify(before))
   })
 
-  test('the text colour of a custom theme is read from its file', async ($, on) => {
+  test("a custom theme's text colour does not reach the formulas (it paints only the bullet)", async ($, on) => {
     const read: string[] = []
     on('fs.read', ($, e) => {
       read.push(e.path)
@@ -132,8 +182,12 @@ describe('terminal changes', () => {
     const image = await (await mountReply($, REPLY)).find({ type: 'Image' })
     expect(read).toContain('/home/me/.claude/themes/sepia.json')
     await init()
-    const sepia = renderDisplay(TEX, { ...renderEnvFor(kittyEnv(), COLUMNS), ink: { r: 0x70, g: 0x42, b: 0x14 } })
-    expect(image?.props).toMatchObject({ source: { png: toBase64(sepia.png) } })
+    // The terminal's foreground is unknown here, so the base theme's text colour stands in.
+    const ink = chooseInk({ theme: 'light', prefer: 'terminal' })
+    expect(ink).not.toEqual({ r: 0x70, g: 0x42, b: 0x14 })
+    const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
+    const light = renderDisplay(TEX, { ...renderEnvFor(kittyEnv(), COLUMNS), ink }, rows)
+    expect(image?.props).toMatchObject({ source: { png: toBase64(light.png) } })
   })
 
   test('a new width probes the cell size again once it settles', async ($, on) => {
@@ -174,10 +228,24 @@ describe('MessageDisplay', () => {
     const shown = await stream($, 'm1', ["Euler's identity:\n", '$$\n', `${TEX}\n`, '$$\n', 'is beautiful.'])
     expect(shown.slice(0, 3)).toEqual(["Euler's identity:\n", HELD_DISPLAY, HELD_DISPLAY])
     const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
-    const fence = shown[3]!.split('\n')
-    expect(fence[0]).toBe('```' + PREVIEW_FENCE_INFO)
-    expect(fence.indexOf('```', 1) - 1).toBe(rows - PREVIEW_OVERHEAD_ROWS)
+    // A paragraph of its own: a blank line, the preview rows, then the `$$`
+    // line's newline after the block's own (a blank line before the text).
+    const lines = shown[3]!.split('\n')
+    expect(lines[0]).toBe('')
+    expect(lines.slice(1, -2)).toHaveLength(rows)
+    expect(lines.slice(1, -2).every(line => line.startsWith(PREVIEW_PAD))).toBe(true)
+    expect(lines.slice(-2)).toEqual(['', ''])
     expect(shown[4]).toBe('is beautiful.')
+  })
+
+  test('flushes of two messages streaming at once keep their own state', async ($, on) => {
+    await startSession($, on)
+    await init()
+    expect((await $.classic.MessageDisplay({ turn_id: 't', message_id: 'a', index: 0, final: false, delta: '$$\n' })).displayContent).toBe(HELD_DISPLAY)
+    const b = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'b', index: 0, final: true, delta: 'Plain $x$ text.\n' })
+    expect(b.displayContent).not.toContain(PREVIEW_PAD)
+    const a = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'a', index: 1, final: true, delta: `${TEX}\n$$\n` })
+    expect(a.displayContent).toContain(PREVIEW_PAD)
   })
 
   test('a streamed reply lands as an Image of the rows its preview reserved', async ($, on) => {
@@ -190,8 +258,8 @@ describe('MessageDisplay', () => {
     expect(await ui.drawn()).toMatchObject({
       children: [
         { type: 'Text', children: ["Euler's identity:"] },
-        { children: [{ type: 'Image', props: { rows, alt: TEX } }] },
-        { type: 'Text', children: ['is beautiful.'] },
+        { props: { marginLeft: REPLY_INDENT, marginTop: 1 }, children: [{ type: 'Image', props: { rows, alt: TEX } }] },
+        { props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
       ],
     })
   })
@@ -249,6 +317,9 @@ describe('instructions to the model', () => {
     await startSession($, on)
     const composed = await $.prompt.compose(COMPOSE)
     expect(composed.sections).toEqual([INTRO, { id: SECTION_ID, text: MATH_INSTRUCTIONS, scope: 'session' }])
+    for (const phrase of ['no space just inside the dollars', 'with a blank line before and after', 'Put dollar amounts and shell variables in code spans', '(/btw)']) {
+      expect(MATH_INSTRUCTIONS).toContain(phrase)
+    }
     const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
     expect(headless.sections).toEqual([INTRO])
   })

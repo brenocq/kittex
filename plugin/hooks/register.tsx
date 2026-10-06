@@ -23,22 +23,23 @@ import {
   detectTerminal,
   emPxForCell,
   init,
+  measureDisplay,
   readTerminalColors,
   renderDisplay,
   toBase64,
 } from './core.js'
 import type { CellSize, TerminalColors, TerminalInfo } from './core.js'
 import {
+  BULLET,
+  bulletFor,
   cellOrFallback,
   FALLBACK_COLUMNS,
-  IMAGE_MARGIN_BOTTOM,
-  IMAGE_MARGIN_TOP,
   INK_PREFER,
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
+  LANDED_PATTERN,
   MessageStream,
   MATH_INSTRUCTIONS,
-  mayHoldMath,
   planLanded,
   PROBE_TIMEOUT_MS,
   RECORD_LIMIT,
@@ -47,9 +48,9 @@ import {
   RESIZE_SETTLE_MS,
   SECTION_ID,
   STREAM_LIMIT,
-  trimPieces,
+  withoutTextOverride,
 } from './math.ts'
-import type { KittexEnv, PreviewRecord } from './math.ts'
+import type { KittexEnv, Piece, PreviewRecord } from './math.ts'
 
 type $ = EngineInterface
 
@@ -173,36 +174,78 @@ export const register: Register = (on, options) => {
 
   // ─── Landed replies ────────────────────────────────────────────────────────
 
-  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    if (e.props.isSummary || !mayHoldMath(e.props.text)) return next(e)
+  // Registered with a matcher on the text, so a block that holds no math and
+  // no kittex preview is drawn by the engine alone (no round trip here).
+  on('ui.render', { component: 'AssistantMessage', props: { text: LANDED_PATTERN } }, async ($, e, next) => {
+    if (e.props.isSummary) return next(e)
     try {
       const env = await readEnv($)
       if (!env) return next(e)
       const columns = e.viewport?.columns ?? env.columns
       if (e.surface === 'terminal') watchWidth($, env, e.viewport?.columns)
       const images = e.surface === 'terminal' && env.images
-      const records = e.props.text.includes('```') ? ((await $.state.get(RECORDS)).value ?? []) : []
+      // The text may lack the block's last flush (or be empty) on the first
+      // render: nothing here is final, and the render runs again when it lands.
+      const records = images && /&nbsp;|```/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
       const renderEnv = renderEnvFor(env, columns)
       const plan = planLanded(e.props.text, records, {
         maxColumns: renderEnv.maxColumns,
-        draw: images ? (tex, minRows) => renderDisplay(tex, renderEnv, minRows) : undefined,
+        draw: images ? (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows) : undefined,
       })
       if (!plan.changed) return next(e)
-      const pieces = trimPieces(plan.pieces)
-      if (e.surface !== 'terminal' || !pieces.some(piece => piece.kind === 'image')) {
+      if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose')) {
         return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
       }
-
-      const { Box, Image } = $.ui.resolve(e)
+      // Drawn as the engine drew the preview, row for row (measured live): the
+      // first prose piece is the engine's own drawing with the block's bullet;
+      // later pieces are drawn without a bullet (each brings a one-row top
+      // margin) and indented to the reply column; images and notes sit in that
+      // column, a blank row above them where a blank line was. A block that
+      // opens with a formula gets the bullet beside the image's first row,
+      // where the preview's first line had it.
+      const { pieces } = plan
+      const { Box, Image, Text } = $.ui.resolve(e)
+      const first = e.props.isFirstOfReply
+      const indent = first ? REPLY_INDENT : 0
+      const own = (piece: Exclude<Piece, { kind: 'prose' }>) =>
+        piece.kind === 'image' ? (
+          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+        ) : (
+          <Text dimColor>{piece.text}</Text>
+        )
       const drawn = []
       for (const [i, piece] of pieces.entries()) {
-        if (piece.kind === 'prose') {
-          const isFirstOfReply = i === 0 && e.props.isFirstOfReply
-          drawn.push(await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } }))
+        if (i === 0) {
+          if (piece.kind === 'prose') {
+            drawn.push(await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply: first } }))
+          } else {
+            drawn.push(
+              <Box flexDirection="row" marginTop={1}>
+                {first ? (
+                  <Box minWidth={REPLY_INDENT}>
+                    <Text color="text">{env.bullet ?? BULLET.other}</Text>
+                  </Box>
+                ) : null}
+                {own(piece)}
+              </Box>,
+            )
+          }
+        } else if (piece.kind === 'prose') {
+          drawn.push(
+            <Box paddingLeft={indent} marginTop={piece.gap ? 0 : -1}>
+              {await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply: false } })}
+            </Box>,
+          )
+        } else if (piece.kind === 'image') {
+          drawn.push(
+            <Box marginLeft={indent} marginTop={piece.gap ? 1 : 0}>
+              {own(piece)}
+            </Box>,
+          )
         } else {
           drawn.push(
-            <Box marginLeft={REPLY_INDENT} marginTop={IMAGE_MARGIN_TOP} marginBottom={IMAGE_MARGIN_BOTTOM}>
-              <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+            <Box paddingLeft={indent} marginTop={piece.gap ? 1 : 0}>
+              {own(piece)}
             </Box>,
           )
         }
@@ -229,7 +272,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
   await init()
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
-  const [cell] = await Promise.all([probeCell($), resolveTheme($)])
+  const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
   const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
   const env: KittexEnv = {
     kind: terminal.kind,
@@ -240,6 +283,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     emPx: emPxForCell({ cellWidth, cellHeight }),
     ink: inkNow(),
     measured,
+    bullet: bulletFor(uname, processEnv.HOME),
   }
   await $.state.set(ENV, env)
 
@@ -325,6 +369,16 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
   return Object.fromEntries(names.map((name, i) => [name, values[i]]))
 }
 
+/** `uname -s` (the engine's bullet differs on macOS), or undefined when it can't run. */
+async function probeSystem($: $): Promise<string | undefined> {
+  try {
+    const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: PROBE_TIMEOUT_MS })
+    return exitCode === 0 ? stdout : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** The cell size from the first cell probe that answers (perl, then python3). */
 async function probeCell($: $): Promise<CellSize | undefined> {
   for (const probe of cellProbes) {
@@ -393,8 +447,9 @@ async function resolveTheme($: $, setting?: string): Promise<void> {
   }
 }
 
+/** The formulas' ink: the terminal's foreground first; a custom theme's `text` colour (the bullet's) never. */
 function inkNow() {
-  return chooseInk({ theme, customTheme, terminal: terminalColors, prefer: INK_PREFER })
+  return chooseInk({ theme, customTheme: withoutTextOverride(customTheme), terminal: terminalColors, prefer: INK_PREFER })
 }
 
 /** The theme changed: the formulas' ink may follow it. */

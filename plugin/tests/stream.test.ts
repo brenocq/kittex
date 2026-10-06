@@ -4,149 +4,257 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { init, measureDisplay, previewDisplay, previewInline, renderDisplay, TexError } from '../hooks/core.js'
 import {
+  BLANK_CELL,
+  BULLET,
+  bulletFor,
+  cellsOf,
+  escapeMarkdown,
   HELD_DISPLAY,
+  LANDED_PATTERN,
   MessageStream,
-  PREVIEW_FENCE_INFO,
-  PREVIEW_OVERHEAD_ROWS,
+  NOT_RENDERED,
   planLanded,
+  PREVIEW_PAD,
+  previewMarkdownLines,
   renderEnvFor,
-  trimPieces,
+  replyColumns,
+  withoutTextOverride,
 } from '../hooks/math.ts'
-import type { PreviewRecord } from '../hooks/math.ts'
-import { kittyEnv } from './support.ts'
+import type { KittexEnv, Piece, PlanOptions, PreviewRecord } from '../hooks/math.ts'
+import { COLUMNS, kittyEnv } from './support.ts'
 
 const TEX = 'E = mc^2'
+const INTEGRAL = '\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}'
 
-/** The lines inside the one preview fence of `text`. */
-function previewLines(text: string): string[] {
-  const open = '```' + PREVIEW_FENCE_INFO + '\n'
-  const start = text.indexOf(open)
-  const end = text.indexOf('\n```', start)
-  expect(start).toBeGreaterThan(-1)
-  return text.slice(start + open.length, end).split('\n')
+/** Streams `flushes` (the last one final) as one message: what was shown, and the previews recorded. */
+function streamed(flushes: readonly string[], env: KittexEnv = kittyEnv()): { shown: string[]; landed: string; records: PreviewRecord[] } {
+  const stream = new MessageStream()
+  const shown: string[] = []
+  const records: PreviewRecord[] = []
+  for (const [i, delta] of flushes.entries()) {
+    const flush = stream.push(delta, i === flushes.length - 1, env)
+    shown.push(flush.text)
+    records.push(...flush.records)
+  }
+  return { shown, landed: shown.join(''), records }
 }
 
+/** The landed text's plan with images, as the AssistantMessage hook makes it. */
+function plan(text: string, records: readonly PreviewRecord[], extra: Partial<PlanOptions> = {}) {
+  const renderEnv = renderEnvFor(kittyEnv())
+  return planLanded(text, records, {
+    maxColumns: renderEnv.maxColumns,
+    draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
+    ...extra,
+  })
+}
+
+/** The cells a preview line takes on screen: a pad is one cell, an escape none. */
+function drawnCells(line: string): number {
+  return cellsOf(line.replaceAll(PREVIEW_PAD, ' ').replace(/\\([\\`*_[\]<>|~&!#])/g, '$1'))
+}
+
+function shape(pieces: readonly Piece[]): string[] {
+  return pieces.map(piece => (piece.kind === 'prose' ? `prose${piece.gap ? '+gap' : ''}:${piece.text}` : `${piece.kind}${piece.gap ? '+gap' : ''}`))
+}
+
+describe('preview lines', () => {
+  test('leading spaces become pads, blank lines keep theirs, markdown syntax is escaped', () => {
+    const lines = previewMarkdownLines(['  a*b_c', '       ', '# x|y <z> `w` \\ [k] ~ & !'], 40)
+    for (const line of lines) {
+      expect(line.startsWith(PREVIEW_PAD)).toBe(true)
+      expect(line).not.toMatch(/\s$/)
+    }
+    expect(lines[0]).toMatch(/^(&nbsp;)+a\\\*b\\_c$/)
+    expect(lines[1]).toMatch(/^(&nbsp;)+\u2800$/)
+    expect(lines[2]).toMatch(/^(&nbsp;)+\\# x\\\|y \\<z\\> \\`w\\` \\\\ \\\[k\\\] \\~ \\& \\!$/)
+    expect(escapeMarkdown('1. -+>')).toBe('1. -+\\>')
+  })
+
+  test('lines are centred and narrower than the reply column', () => {
+    const lines = previewMarkdownLines(['abc', 'abcdef'], 20)
+    expect(lines.map(drawnCells)).toEqual([10, 13])
+    const wide = previewMarkdownLines(['x'.repeat(18)], 20)
+    expect(drawnCells(wide[0]!)).toBe(19)
+  })
+})
+
 describe('MessageStream', () => {
-  test('holds an open display block, then shows exactly the rows its image takes', async () => {
+  test('holds an open display block, then shows exactly the rows its image takes, as a paragraph of its own', async () => {
     await init()
     const env = kittyEnv()
-    const stream = new MessageStream()
-
-    const first = stream.push('Energy is\n$$\n', false, env)
-    expect(first.text).toBe('Energy is\n')
-    const held = stream.push(`${TEX}\n`, false, env)
-    expect(held.text).toBe(HELD_DISPLAY)
-    expect(held.records).toEqual([])
-
-    const closed = stream.push('$$\nas Einstein said.\n', true, env)
+    const { shown, records } = streamed(['Energy is\n$$\n', `${TEX}\n`, '$$\nas Einstein said.\n', 'The end.'], env)
+    expect(shown[0]).toBe('Energy is\n')
+    expect(shown[1]).toBe(HELD_DISPLAY)
     const rows = measureDisplay(TEX, renderEnvFor(env)).rows
-    expect(previewLines(closed.text)).toHaveLength(rows - PREVIEW_OVERHEAD_ROWS)
-    expect(closed.text.endsWith('\nas Einstein said.\n')).toBe(true)
-    expect(closed.records).toEqual([{ preview: expect.any(String), tex: TEX, rows }])
+    // A blank line before and after the preview even though the source had none.
+    const lines = shown[2]!.split('\n')
+    expect(lines[0]).toBe('')
+    expect(lines.slice(1, rows + 1).every(line => line.startsWith(PREVIEW_PAD))).toBe(true)
+    expect(lines.slice(rows + 1)).toEqual(['', 'as Einstein said.', ''])
+    expect(shown[2]!.endsWith('\n')).toBe(true)
+    expect(records).toEqual([{ preview: lines.slice(1, rows + 1).join('\n'), tex: TEX, rows }])
+    for (const line of lines.slice(1, rows + 1)) expect(drawnCells(line)).toBeLessThan(replyColumns(COLUMNS))
   })
 
-  test('the landed text maps back to the TeX and the reserved rows', async () => {
+  test('padding rows end in a blank cell, so no row is a line of pads alone', async () => {
     await init()
-    const env = kittyEnv()
-    const stream = new MessageStream()
-    const records: PreviewRecord[] = []
-    let landed = ''
-    for (const [delta, final] of [['Energy is\n$$\n', false], [`${TEX}\n`, false], ['$$\nas Einstein said.', true]] as const) {
-      const flush = stream.push(delta, final, env)
-      landed += flush.text
-      records.push(...flush.records)
-    }
-    expect(landed).not.toContain('$$')
-
-    const renderEnv = renderEnvFor(env)
-    const plan = planLanded(landed, records, {
-      maxColumns: renderEnv.maxColumns,
-      draw: (tex, minRows) => renderDisplay(tex, renderEnv, minRows),
-    })
-    const pieces = trimPieces(plan.pieces)
-    expect(plan.changed).toBe(true)
-    expect(pieces.map(piece => piece.kind)).toEqual(['prose', 'image', 'prose'])
-    const image = pieces[1]!
-    if (image.kind !== 'image') throw new Error('not an image')
-    expect(image.tex).toBe(TEX)
-    expect(image.image.rows).toBe(records[0]!.rows)
-    expect(image.image.columns).toBe(renderEnv.maxColumns)
-    expect(pieces[0]).toEqual({ kind: 'prose', text: 'Energy is' })
-    expect(pieces[2]).toEqual({ kind: 'prose', text: 'as Einstein said.' })
+    const { records } = streamed([`$$\na^2 + b^2 = c^2\n$$\n`, `$$\n${INTEGRAL}\n$$\n`, 'end'])
+    const lines = records.flatMap(record => record.preview.split('\n'))
+    expect(lines.some(line => line.endsWith(BLANK_CELL))).toBe(true)
+    for (const line of lines) expect(line).not.toMatch(/^(&nbsp;)*$/)
   })
 
-  test('trailing spaces the engine trims still map back', async () => {
+  test('a preview is a pure function of the formula and the terminal', async () => {
     await init()
-    const env = kittyEnv()
-    const stream = new MessageStream()
-    const flush = stream.push(`$$\n${TEX}\n$$\n`, true, env)
-    const trimmed = flush.text.replace(/[ \t]+$/gm, '')
-    const renderEnv = renderEnvFor(env)
-    const plan = planLanded(trimmed, flush.records, { maxColumns: renderEnv.maxColumns, draw: tex => renderDisplay(tex, renderEnv) })
-    expect(trimPieces(plan.pieces).map(piece => piece.kind)).toEqual(['image'])
+    const a = streamed([`$$\n${INTEGRAL}\n$$\n`, 'x'])
+    const b = streamed(['Before.\n\n', `$$\n${INTEGRAL}\n$$\n`, 'y'])
+    expect(a.records[0]!.preview).toBe(b.records[0]!.preview)
   })
 
-  test('a formula in a list item keeps its indentation and still maps back', async () => {
+  test('one flush may carry several lines, a whole formula among them', async () => {
     await init()
-    const env = kittyEnv()
-    const stream = new MessageStream()
-    let landed = ''
-    const records: PreviewRecord[] = []
-    for (const [delta, final] of [['- Basel:\n', false], ['  $$\n', false], [`  ${TEX}\n`, false], ['  $$\n', false], ['- next', true]] as const) {
-      const flush = stream.push(delta, final, env)
-      landed += flush.text
-      records.push(...flush.records)
-    }
+    const { shown, records } = streamed([`Line 10\n$$\n${TEX}\n$$\nLine 11\n`, 'end'])
+    expect(records).toHaveLength(1)
+    expect(shown[0]!.startsWith('Line 10\n\n' + records[0]!.preview + '\n\nLine 11\n')).toBe(true)
+  })
+
+  test('a reply that opens with a formula opens with its preview', async () => {
+    await init()
+    const { landed, records } = streamed(['$$\n', `${TEX}\n`, '$$\n', 'is famous.'])
+    expect(landed.startsWith(records[0]!.preview + '\n\nis famous.')).toBe(true)
+  })
+
+  test('two formulas with no blank line between them stay two previews', async () => {
+    await init()
+    const { landed, records } = streamed([`$$${TEX}$$\n$$${INTEGRAL}$$\n`, 'done'])
+    expect(records.map(record => record.tex)).toEqual([TEX, INTEGRAL])
+    expect(landed).toBe(`${records[0]!.preview}\n\n${records[1]!.preview}\n\ndone`)
+  })
+
+  test('a formula in a list item keeps its indentation', async () => {
+    await init()
+    const { landed, records } = streamed(['- Basel:\n', '  $$\n', `  ${TEX}\n`, '  $$\n', '- next'])
     const lines = landed.split('\n')
-    expect(lines[1]).toBe('  ```' + PREVIEW_FENCE_INFO)
-    expect(lines.slice(1, -1).every(line => line.startsWith('  '))).toBe(true)
-    expect(lines[lines.length - 1]).toBe('- next')
-    const renderEnv = renderEnvFor(env)
-    const plan = planLanded(landed, records, { maxColumns: renderEnv.maxColumns, draw: (tex, minRows) => renderDisplay(tex, renderEnv, minRows) })
-    expect(plan.pieces.filter(piece => piece.kind === 'image').map(piece => piece.kind === 'image' && piece.tex)).toEqual([TEX])
+    expect(lines[0]).toBe('- Basel:')
+    expect(lines[1]!.trim()).toBe('')
+    expect(lines.slice(2, -2).every(line => line.startsWith('  ' + PREVIEW_PAD))).toBe(true)
+    expect(lines.slice(-2)).toEqual(['', '- next'])
+    expect(plan(landed, records).pieces.filter(piece => piece.kind === 'image')).toHaveLength(1)
   })
 
   test('inline math becomes one line of Unicode while streaming', async () => {
     await init()
-    const env = kittyEnv()
-    const stream = new MessageStream()
-    const flush = stream.push('Let $x^2$ be positive.\n', false, env)
-    expect(flush.text).toBe(`Let ${previewInline('x^2', renderEnvFor(env).maxColumns)} be positive.\n`)
+    const { shown } = streamed(['Let $x^2$ be positive.\n', ''])
+    expect(shown[0]).toBe(`Let ${previewInline('x^2', renderEnvFor(kittyEnv()).maxColumns)} be positive.\n`)
+  })
+
+  test('a refused formula shows its source and a not-rendered line, and the others still render', async () => {
+    await init()
+    const { landed, records } = streamed(['$$\\foo{x}$$\n', '\n', `$$${TEX}$$\n`, '\n', `$$${INTEGRAL}$$\n`, 'end'])
+    const refused = records[0]!
+    expect(refused).toMatchObject({ tex: '\\foo{x}', rows: 0, error: expect.stringContaining('foo') })
+    expect(refused.preview).toBe(`\`\`\`latex\n\\foo{x}\n\`\`\`\n\n*not rendered: ${escapeMarkdown(refused.error!)}*`)
+    expect(records.slice(1).map(record => record.tex)).toEqual([TEX, INTEGRAL])
+    const pieces = plan(landed, records).pieces
+    expect(shape(pieces)).toEqual(['prose:```latex\n\\foo{x}\n```', 'note+gap', 'image+gap', 'image+gap', 'prose+gap:end'])
+    expect(pieces[1]).toMatchObject({ text: NOT_RENDERED + refused.error })
   })
 
   test('without images a display formula is an unpadded preview and records nothing', async () => {
     await init()
     const env = { ...kittyEnv(), kind: 'wezterm' as const, images: false }
-    const stream = new MessageStream()
-    const flush = stream.push(`$$\n${TEX}\n$$\n`, true, env)
-    expect(flush.records).toEqual([])
-    const lines = previewDisplay(TEX, renderEnvFor(env))!
-    expect(previewLines(flush.text).map(line => line.trim())).toEqual(lines.map(line => line.trim()))
+    const { landed, records } = streamed([`$$\n${TEX}\n$$\n`, ''], env)
+    expect(records).toEqual([])
+    const lines = previewDisplay(TEX, { maxColumns: renderEnvFor(env).maxColumns - 2 })!
+    expect(landed.trimEnd().split('\n')).toEqual(previewMarkdownLines(lines, renderEnvFor(env).maxColumns))
   })
 })
 
 describe('planLanded', () => {
+  test('the landed text maps back to the TeX and the reserved rows', async () => {
+    await init()
+    const { landed, records } = streamed(["Euler's identity:\n\n$$\n", `${TEX}\n`, '$$\n\nis beautiful.'])
+    const { pieces, changed } = plan(landed, records)
+    expect(changed).toBe(true)
+    expect(shape(pieces)).toEqual(["prose:Euler's identity:", 'image+gap', 'prose+gap:is beautiful.'])
+    const image = pieces[1]!
+    if (image.kind !== 'image') throw new Error('not an image')
+    expect(image.tex).toBe(TEX)
+    expect(image.image.rows).toBe(records[0]!.rows)
+    expect(image.image.columns).toBe(replyColumns(COLUMNS))
+  })
+
+  test('a reply that opens with a formula plans the image first', async () => {
+    await init()
+    const { landed, records } = streamed([`$$\n${TEX}\n$$\n`, 'is famous.'])
+    expect(shape(plan(landed, records).pieces)).toEqual(['image', 'prose+gap:is famous.'])
+  })
+
+  test('trailing spaces the engine trims still map back', async () => {
+    await init()
+    const { landed, records } = streamed([`$$\n${TEX}\n$$\n`, ''])
+    expect(shape(plan(landed.replace(/[ \t]+$/gm, ''), records).pieces)).toEqual(['image'])
+  })
+
+  test('a render before the last flush: a preview cut off stays text', async () => {
+    await init()
+    const { landed, records } = streamed(['Intro.\n\n', `$$\n${INTEGRAL}\n$$\n`, 'tail'])
+    const cut = landed.slice(0, landed.indexOf(records[0]!.preview) + records[0]!.preview.lastIndexOf('\n'))
+    const partial = plan(cut, records)
+    expect(partial.pieces.every(piece => piece.kind === 'prose')).toBe(true)
+    expect(plan('', records).changed).toBe(false)
+    expect(shape(plan(landed, records).pieces)).toEqual(['prose:Intro.', 'image+gap', 'prose+gap:tail'])
+  })
+
+  test('after --resume the original LaTeX is typeset directly', async () => {
+    await init()
+    const pieces = plan(`Energy is\n\n$$\n${TEX}\n$$\n\nas Einstein said.`, []).pieces
+    expect(shape(pieces)).toEqual(['prose:Energy is', 'image+gap', 'prose+gap:as Einstein said.'])
+  })
+
   test('rewrites inline math in a reply that never streamed', async () => {
     await init()
-    const plan = planLanded('Take $a+b$ and $c$.', [], { maxColumns: 97 })
-    expect(plan.changed).toBe(true)
-    expect(plan.pieces).toEqual([{ kind: 'prose', text: `Take ${previewInline('a+b', 97)} and ${previewInline('c', 97)}.` }])
+    const result = planLanded('Take $a+b$ and $c$.', [], { maxColumns: 97 })
+    expect(result.changed).toBe(true)
+    expect(result.pieces).toEqual([{ kind: 'prose', text: `Take ${previewInline('a+b', 97)} and ${previewInline('c', 97)}.`, gap: false }])
   })
 
   test('leaves a reply without math alone', () => {
-    const plan = planLanded('Nothing to see.', [], { maxColumns: 97 })
-    expect(plan.changed).toBe(false)
+    expect(planLanded('Nothing to see.', [], { maxColumns: 97 }).changed).toBe(false)
+    expect(LANDED_PATTERN.test('Nothing to see, costs 5 dollars.')).toBe(false)
+    expect(LANDED_PATTERN.test('costs $5')).toBe(true)
+    expect(LANDED_PATTERN.test('&nbsp;x')).toBe(true)
   })
 
-  test('keeps a formula MathJax refuses as a latex block', () => {
+  test('keeps a formula MathJax refuses as its source, with a note under it', () => {
     const raw = '$$\\frac{$$'
-    const plan = planLanded(raw, [], {
+    const result = planLanded(raw, [], {
       maxColumns: 97,
       draw: () => {
         throw new TexError('missing argument')
       },
       scan: () => [{ kind: 'math', display: true, tex: '\\frac{', raw, delimiter: '$$', start: 0, end: raw.length }],
     })
-    expect(plan.pieces).toEqual([{ kind: 'prose', text: '```latex\n\\frac{\n```' }])
+    expect(result.pieces).toEqual([
+      { kind: 'prose', text: '```latex\n\\frac{\n```', gap: false },
+      { kind: 'note', text: 'not rendered: missing argument', gap: true },
+    ])
+  })
+})
+
+describe('ink and bullet', () => {
+  test("a custom theme's text colour is dropped, its base kept", () => {
+    const sepia = JSON.stringify({ base: 'light', overrides: { text: '#704214', claude: '#ff0000' } })
+    expect(JSON.parse(withoutTextOverride(sepia)!)).toEqual({ base: 'light', overrides: { claude: '#ff0000' } })
+    expect(withoutTextOverride(undefined)).toBeUndefined()
+    expect(withoutTextOverride('not json')).toBe('not json')
+  })
+
+  test('the bullet follows the host system', () => {
+    expect(bulletFor('Darwin\n', undefined)).toBe(BULLET.macos)
+    expect(bulletFor('Linux\n', '/Users/x')).toBe(BULLET.other)
+    expect(bulletFor(undefined, '/Users/me')).toBe(BULLET.macos)
+    expect(bulletFor(undefined, '/home/me')).toBe(BULLET.other)
   })
 })
