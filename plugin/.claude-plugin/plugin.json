@@ -5,6 +5,7 @@
   "author": {
     "name": "Breno Cunha Queiroz"
   },
+  "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
     "enabled": {

@@ -73,3 +73,9 @@ when it sits outside such a mod (it then hands each piece of prose to it). If
 prismantis is already installed, reinstall it after kittex.
 
 </details>
+
+## License
+
+[MIT](LICENSE). kittex bundles MathJax and its New Computer Modern font
+(Apache 2.0), marked and fflate (MIT); their licenses are in
+[plugin/THIRD-PARTY-NOTICES](plugin/THIRD-PARTY-NOTICES).

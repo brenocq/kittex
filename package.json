@@ -1,6 +1,7 @@
 {
   "name": "kittex",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Typesets the LaTeX math in terminal replies as real TeX images (kitty graphics protocol), with a Claude Code mod",
