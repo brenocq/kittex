@@ -18,7 +18,7 @@ import { loadMono, loadTypesetter } from './glyphs.mjs'
 
 const OUT_DIR = '.github/assets'
 const W = 880
-const H = 220
+const H = 272
 /** One loop of the whole animation, in seconds; every keyframe sits on it. */
 const LOOP = 16
 
@@ -31,6 +31,13 @@ const THEMES = {
   dark: { ink: '#e6edf3', muted: '#8b949e', caret: '#fe8019', ...CAT_THEMES.dark },
 }
 const vars = theme => `svg{${Object.entries(theme).map(([k, v]) => `--${k}:${v}`).join(';')}}`
+
+/**
+ * The subtitle, typed once when the banner appears and then typeset for good:
+ * its source, and the words that follow the LaTeX logo.
+ */
+const SUBTITLE_SOURCE = '\\LaTeX\\ for Claude Code'
+const SUBTITLE_TEXT = 'for Claude Code'
 
 /**
  * The formulas, as their source streams in: `|` separates the chunks that
@@ -46,10 +53,12 @@ const FORMULAS = [
 // ─── layout (px) ───────────────────────────────────────────────────────────
 
 const GAP = 122 // from the middle of the cat's body to the wordmark
-const CAT_GROUND = 207
+const CAT_GROUND = 240
 const WORD_EM = 112
-const WORD_BASELINE = 110
-const FORMULA_MID = 178 // vertical middle of the formula line
+const WORD_BASELINE = 106
+const SUB_EM = 30
+const SUB_BASELINE = 164
+const FORMULA_MID = 224 // vertical middle of the formula line
 const MONO_SIZE = 13.5
 const TEX_EM = 25
 
@@ -60,6 +69,10 @@ const LEAD = 0.2 // from a formula's slot start to its first chunk
 const HOLD = 0.4 // typed source, caret blinking, before it turns into math
 const MORPH = 0.6 // source out, math in
 const FADE = 0.4 // math fades away at the end of its slot
+const SUB_START = 0.35 // the subtitle's first keystroke after the banner appears
+const KEY = 0.05 // mean time between the subtitle's keystrokes
+/** The subtitle's one-shot animation, in seconds (it then holds its last frame). */
+const SUB_DURATION = 3
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -169,6 +182,30 @@ async function main() {
     width: wordWidth,
   }
 
+  // The subtitle: the LaTeX logo as LaTeX builds it (L, a script-size A raised
+  // to T's height and kerned in by .36 em, then .15 em before the TeX logo),
+  // a word space, and the text, all at SUB_EM.
+  const L = piece('L')
+  const A = piece('A')
+  const aScale = 0.7
+  const sub = { xA: L.width - 0.36, raiseA: T.height - A.height * aScale }
+  sub.xT = sub.xA + A.width * aScale - 0.15
+  sub.xE = sub.xT + T.width - 1 / 6
+  sub.xX = sub.xE + E.width - 1 / 8
+  sub.xText = sub.xX + X.width + 0.333
+  const words = typeset(`\\text{${SUBTITLE_TEXT}}`, { display: false })
+  const subWidth = (sub.xText + words.width) * SUB_EM
+  if (subWidth > wordWidth) throw new Error(`the subtitle (${r(subWidth)} px) is wider than the wordmark`)
+  const at = (x, dy = 0) => [TEXT_X + x * SUB_EM, SUB_BASELINE + dy * SUB_EM]
+  const subtitleMath = [
+    drawOps(defs, L.ops, ...at(0), SUB_EM),
+    drawOps(defs, A.ops, ...at(sub.xA, -sub.raiseA), SUB_EM * aScale),
+    drawOps(defs, T.ops, ...at(sub.xT), SUB_EM),
+    drawOps(defs, E.ops, ...at(sub.xE, 0.5 * exEm), SUB_EM),
+    drawOps(defs, X.ops, ...at(sub.xX), SUB_EM),
+    drawOps(defs, words.ops, ...at(sub.xText), SUB_EM),
+  ].join('')
+
   // The formulas: their streamed source in Roboto Mono, then the typeset math.
   const ms = MONO_SIZE / mono.upm
   const advance = mono.advance * ms
@@ -197,6 +234,63 @@ async function main() {
 
   const css = []
   const keyframes = (name, frames) => css.push(`@keyframes ${name}{${frames.map(([t, body]) => `${pct(t)}{${body}}`).join('')}}`)
+  const once = (name, frames) => css.push(`@keyframes ${name}{${frames.map(([t, body]) => `${r((t / SUB_DURATION) * 100, 3)}%{${body}}`).join('')}}`)
+
+  // The subtitle, once: keystroke by keystroke with the caret, a beat, then it
+  // turns into the typeset line and stays.
+  const subMid = SUB_BASELINE - 0.34 * SUB_EM
+  const subMonoBaseline = subMid + (mono.xHeight * ms) / 2
+  const keys = []
+  let keyTime = SUB_START
+  for (let i = 0; i < SUBTITLE_SOURCE.length; i++) {
+    keys.push(keyTime)
+    keyTime += KEY * (1 + 0.5 * jitter(100 + i))
+  }
+  const subTyped = keys.at(-1) + KEY
+  const subM0 = subTyped + HOLD
+  const subM1 = subM0 + MORPH
+  if (subM1 > SUB_DURATION) throw new Error('the subtitle takes longer than its animation')
+  const subChars = [...SUBTITLE_SOURCE]
+    .map((ch, i) => {
+      if (ch === ' ') return ''
+      const id = defs.id(mono.glyph(ch), 'm', ` transform="scale(${r(ms, 6)} ${r(-ms, 6)})"`)
+      return `<use class="sch" href="#${id}" x="${r(TEXT_X + i * advance)}" y="${r(subMonoBaseline)}" style="animation-delay:${r(keys[i], 3)}s"/>`
+    })
+    .join('')
+  once('sraw', [
+    [0, 'opacity:1;transform:none;filter:blur(0)'],
+    [subM0, 'opacity:1;transform:none;filter:blur(0);animation-timing-function:cubic-bezier(.5,0,.75,0)'],
+    [subM0 + MORPH * 0.55, 'opacity:0;transform:scale(.84,.92);filter:blur(3px)'],
+    [SUB_DURATION, 'opacity:0'],
+  ])
+  const subCaretFrames = [[0, 'opacity:0'], [SUB_START - 0.2, 'opacity:1;transform:translateX(0)']]
+  keys.forEach((k, i) => subCaretFrames.push([k, `opacity:1;transform:translateX(${r((i + 1) * advance)}px)`]))
+  const end = `transform:translateX(${r(SUBTITLE_SOURCE.length * advance)}px)`
+  subCaretFrames.push([subTyped + HOLD / 3, `opacity:0;${end}`], [subTyped + (2 * HOLD) / 3, `opacity:1;${end}`], [subM0 + 0.08, 'opacity:0'], [SUB_DURATION, 'opacity:0'])
+  once('scaret', subCaretFrames)
+  once('stex', [
+    [0, 'opacity:0'],
+    [subM0 + MORPH * 0.3, 'opacity:0;transform:scale(1.08);filter:blur(4px);animation-timing-function:cubic-bezier(.2,.7,.3,1)'],
+    [subM1, 'opacity:1;transform:none;filter:blur(0)'],
+    [SUB_DURATION, 'opacity:1;transform:none;filter:blur(0)'],
+  ])
+  const subCaretH = mono.capHeight * ms * 1.45
+  const subtitle = [
+    `<g class="sraw muted">${subChars}</g>`,
+    `<rect class="scaret" x="${r(TEXT_X + 1)}" y="${r(subMonoBaseline - subCaretH * 0.84)}" width="1.8" height="${r(subCaretH)}" rx=".9"/>`,
+    `<g class="stex ink">${subtitleMath}</g>`,
+  ].join('')
+  css.push(
+    `.sch{animation:son .01s linear both}@keyframes son{from{opacity:0}to{opacity:1}}`,
+    `.sraw,.scaret,.stex{animation-duration:${SUB_DURATION}s;animation-timing-function:linear;animation-fill-mode:both}`,
+    `.sraw{opacity:0;animation-name:sraw;transform-origin:${r(TEXT_X)}px ${r(subMid)}px}`,
+    `.scaret{opacity:0;fill:var(--caret);animation-name:scaret;animation-timing-function:steps(1,end)}`,
+    `.stex{animation-name:stex;transform-origin:${r(TEXT_X + subWidth / 2)}px ${r(subMid)}px}`,
+  )
+  // The formula loop (and the cat's reactions to it) starts once the subtitle
+  // is written; it still repeats every LOOP seconds.
+  const OFFSET = r(subM1 - LEAD + 0.25, 2)
+
   const sources = []
   const maths = []
   const glances = []
@@ -224,7 +318,7 @@ async function main() {
           return `<use href="#${id}" x="${r(x)}" y="${r(monoBaseline)}"/>`
         })
         .join('')
-      return `<g class="ch" style="animation-delay:${r(times[i] - LOOP, 3)}s">${uses}</g>`
+      return `<g class="ch" style="animation-delay:${r(times[i] - LOOP + Number(OFFSET), 3)}s">${uses}</g>`
     })
     const rawWidth = col * advance
     const originRaw = `transform-origin:${r(TEXT_X)}px ${FORMULA_MID}px`
@@ -275,10 +369,9 @@ async function main() {
     start = f1
   })
 
-  // The cat's small life, on the same loop.
-  // The tail sways twice a loop; eyes blink now and then (a double blink once);
-  // the left ear twitches when a formula appears; the eyes glance at the math.
-  // The tail swishes four times a loop, eased; each joint up the tail bends the
+  // The cat's small life, on the same loop: eyes blink now and then (a double
+  // blink once); the left ear twitches when a formula appears; the eyes glance
+  // at the math. The tail swishes four times a loop, eased; each joint up the tail bends the
   // same way a little later than the one below (follow-through, so the tail
   // curls and uncurls), and flicks as each formula lands.
   const swish = LOOP / 4
@@ -330,25 +423,27 @@ async function main() {
     `.flick{animation-name:flick;animation-timing-function:ease-out}`,
     ...joints.map((j, k) => {
       const origin = `transform-origin:${r(j.x)}px ${r(j.y)}px`
-      return `.j${k + 1}>.tip{${origin};animation-delay:${r(swish / 6 + k * 0.18 - LOOP, 3)}s}.j${k + 1}>.tip>.flick{${origin};animation-delay:${r(k * 0.06 - LOOP, 3)}s}`
+      return `.j${k + 1}>.tip{${origin};animation-delay:${r(swish / 6 + k * 0.18 - LOOP, 3)}s}.j${k + 1}>.tip>.flick{${origin};animation-delay:${r(k * 0.06 + Number(OFFSET), 3)}s}`
     }),
     `.eye{animation-name:blink;transform-origin:0 -118px}`,
     `.lids{animation-name:lids}`,
     `.ear-l{animation-name:ear;transform-origin:-38px -142px}`,
     `.pupils{animation-name:glance;animation-timing-function:ease-in-out}`,
+    `.raw,.caret,.tex,.ear-l,.pupils{animation-delay:${OFFSET}s}`,
     ...css,
     `@media (prefers-reduced-motion:reduce){*{animation:none!important}}`,
   ].join('')
 
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
-    `<title>kittex: LaTeX in Claude Code, typeset as real equations</title>`,
+    `<title>kittex: LaTeX for Claude Code, typeset as real equations</title>`,
     `<style>${vars(THEMES.light)}@media (prefers-color-scheme:dark){${vars(THEMES.dark)}}`,
     `.ink{fill:var(--ink)}.muted{fill:var(--muted)}.caret{fill:var(--caret)}${CAT_CSS}`,
     `${animCss}</style>`,
     `<defs>${defs.out.join('')}</defs>`,
     `<g transform="translate(${CAT_X} ${CAT_GROUND})">${cat({ integral })}</g>`,
     `<g class="ink">${word.kit}${word.tex}</g>`,
+    subtitle,
     `<g class="muted">${sources.join('')}</g>`,
     `<g class="ink">${maths.join('')}</g>`,
     `</svg>`,
@@ -358,7 +453,8 @@ async function main() {
   writeFileSync(file, `${svg}\n`)
   console.log(`${file}: ${(Buffer.byteLength(svg) / 1024).toFixed(1)} KiB`)
   console.log(`wordmark ${r(word.width)} px wide; each formula shows for ${show.toFixed(2)} s`)
-  for (const line of timeline) console.log(`  ${line}`)
+  console.log(`  subtitle: ${r(subWidth)} px wide, typed ${r(SUB_START)}-${r(subTyped)} s, typeset ${r(subM0)}-${r(subM1)} s; the loop starts ${OFFSET} s in`)
+  for (const line of timeline) console.log(`  ${line} (into the loop)`)
   console.log(`  tail: at least ${r(reach.whiskers)} px from a whisker, ${r(reach.head)} px from the head, ${r(TEXT_X - CAT_X - reach.right)} px from the wordmark`)
   console.log(`  blinks at ${blinks.join(', ')} s; ear twitches at ${twitches.map(t => r(t)).join(', ')} s`)
 }
