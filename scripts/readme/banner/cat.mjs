@@ -23,8 +23,8 @@ const C = {
   white: '#f8f6f1',
   pink: '#f2a5ad',
   nose: '#ec7f8a',
-  iris: '#a6d15a',
-  irisRim: '#6f9a2c',
+  iris: '#f2a516',
+  irisRim: '#d27c0a',
   pupil: '#141414',
   mouth: '#3a2a2a',
   lid: '#c3c8cf',
@@ -68,10 +68,15 @@ export function cat({ integral, theme, whisker }) {
   // same at every angle) closes the seam. Rims first, then the fur over them.
   const t = tailGeometry(integral)
   const glyph = (stroke, width) => `<path d="${integral.d}" transform="matrix(${r(t.s, 5)} 0 0 ${r(-t.s, 5)} ${r(t.x)} ${r(t.y)})" fill="${f.fur}" stroke="${stroke}" stroke-width="${r(width / t.s, 0)}" stroke-linejoin="round"/>`
+  // A white tip on the ∫'s upper terminal, rimmed in fur like the socks; it
+  // rides on the last segment.
+  const [tipX, tipY, tipR] = t.tip
+  const whiteTip = `<circle cx="${r(tipX)}" cy="${r(tipY)}" r="${r(tipR + 1.4)}" fill="${C.white}" stroke="${f.fur}" stroke-width="2.4"/>`
   const layer = (stroke, width, rim) => {
     let markup = ''
     for (let k = t.joints.length; k >= 0; k--) {
-      const segment = `<g clip-path="url(#tail-${k})">${glyph(stroke, width)}</g>`
+      let segment = `<g clip-path="url(#tail-${k})">${glyph(stroke, width)}</g>`
+      if (k === t.joints.length && rim === 0) segment += whiteTip
       const above = k < t.joints.length ? `<g class="j${k + 1}"><g class="tip"><g class="flick">${markup}</g></g></g>` : ''
       const disc = k < t.joints.length ? `<circle cx="${r(t.joints[k].x)}" cy="${r(t.joints[k].y)}" r="${r(t.joints[k].halfWidth + rim)}" fill="${stroke}"/>` : ''
       markup = segment + above + disc
@@ -118,7 +123,7 @@ export function cat({ integral, theme, whisker }) {
     `<path d="M0 -105 C8 -113 28 -113 30 -98 C31 -88 24 -81 14 -80 C10 -74 -10 -74 -14 -80 C-24 -81 -31 -88 -30 -98 C-28 -113 -8 -113 0 -105 Z" fill="${C.white}"/>`,
     // Blush.
     `<ellipse cx="-47" cy="-97" rx="8.5" ry="5" fill="${C.pink}" opacity=".6"/><ellipse cx="47" cy="-97" rx="8.5" ry="5" fill="${C.pink}" opacity=".6"/>`,
-    // Eyes: green irises, round kitten pupils, highlights.
+    // Eyes: amber irises, round kitten pupils, highlights.
     `<g class="eye"><g class="pupils">${eye(-29)}${eye(29)}</g></g>`,
     // Closed lids, shown only mid-blink.
     `<path class="lids" d="M-40 -119 Q-29 -110 -18 -119 M18 -119 Q29 -110 40 -119" fill="none" stroke="${C.lid}" stroke-width="2.8" stroke-linecap="round" opacity="0"/>`,
@@ -162,7 +167,15 @@ export function tailGeometry(integral) {
     const [left, right] = crossings.sort((a, b) => a - b)
     return { x: (left + right) / 2, y: jy, halfWidth: (right - left) / 2 + TAIL_THICKEN / 2 }
   })
-  return { s, x, y, outline, joints }
+  // The upper terminal is a ball at the glyph's right end: from its rightmost
+  // point, across to its left side at the same height.
+  const glyphPoints = flattenOutline(integral.d)
+  const [xr, yr] = glyphPoints.reduce((a, b) => (b[0] > a[0] ? b : a))
+  const xl = Math.min(...glyphPoints.filter(([px, py]) => Math.abs(py - yr) < 8 && px > xr - 150).map(([px]) => px))
+  const ball = (xr - xl) / 2
+  if (!(ball > 25 && ball < 80)) throw new Error(`the ∫'s upper terminal is not where it should be (radius ${ball})`)
+  const tip = [x + (xr - ball) * s, y - yr * s, ball * s + TAIL_THICKEN / 2]
+  return { s, x, y, outline, joints, tip }
 }
 
 /** The glyph's outline (absolute M, L, C and Z only, as MathJax's fonts write them) as points in font units. */
