@@ -10,10 +10,10 @@
     "build": "node scripts/build.mjs",
     "check:sandbox": "node scripts/sandbox-check.mjs",
     "stress": "KITTEX_STRESS=1 vitest run core/test/stress",
-    "readme:banner": "node scripts/readme/banner/build.mjs",
-    "readme:banner:preview": "node scripts/readme/banner/build.mjs && node scripts/readme/banner/preview.mjs",
-    "readme:demo": "node scripts/readme/demo/render.mjs",
-    "readme:demo:record": "python3 scripts/readme/demo/record.py"
+    "readme:banner": "node .github/scripts/banner/build.mjs",
+    "readme:banner:preview": "node .github/scripts/banner/build.mjs && node .github/scripts/banner/preview.mjs",
+    "readme:demo": "node .github/scripts/demo/render.mjs",
+    "readme:demo:record": "python3 .github/scripts/demo/record.py"
   },
   "devDependencies": {
     "@mathjax/mathjax-newcm-font": "^4.1.3",

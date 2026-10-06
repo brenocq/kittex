@@ -2,5 +2,5 @@ node_modules/
 *.log
 # Laid by Claude Code each time it loads the mod from a folder (types for the mod API)
 plugin/.claude-plugin/types/
-# README media: published to the `assets` branch by scripts/readme/publish-assets.sh, never committed here
+# README media: published to the `assets` branch by .github/scripts/publish-assets.sh, never committed here
 .github/assets/

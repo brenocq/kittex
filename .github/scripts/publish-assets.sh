@@ -2,7 +2,7 @@
 # Points the `assets` branch at one new parentless commit holding the README's
 # media, as generated into .github/assets/:
 #
-#   scripts/readme/publish-assets.sh
+#   .github/scripts/publish-assets.sh
 #   git push --force-with-lease origin assets
 #
 # The branch never has more than that one commit, so a full clone fetches only
@@ -26,6 +26,6 @@ for file in $files; do
 done
 
 source=$(git rev-parse --short HEAD)
-commit=$(git commit-tree "$(git write-tree)" -m "chore(assets): README media" -m "Generated from $source by scripts/readme. This branch always holds this one commit: each update replaces it.")
+commit=$(git commit-tree "$(git write-tree)" -m "chore(assets): README media" -m "Generated from $source by .github/scripts. This branch always holds this one commit: each update replaces it.")
 git update-ref -m "publish README media" refs/heads/assets "$commit"
 echo "assets -> $(git rev-parse --short "$commit"): $files"

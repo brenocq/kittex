@@ -2,7 +2,7 @@
 // mode (on #ffffff) and once in dark mode (on #0d1117), side by side in one PNG.
 // Headless Chrome, driven over the DevTools protocol; no window opens:
 //
-//   node scripts/readme/banner/preview.mjs [--out file.png] [--scale 1] [t1 t2 ...]
+//   node .github/scripts/banner/preview.mjs [--out file.png] [--scale 1] [t1 t2 ...]
 //
 // Without times it renders the contact sheet: six moments of the loop, written
 // to .github/assets/banner-contact-sheet.png. Each frame inlines banner.svg and

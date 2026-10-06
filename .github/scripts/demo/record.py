@@ -6,7 +6,7 @@ Usage (from the repository root, after `npm ci && npm run build`):
     npm run readme:demo:record   # one Opus turn -> .github/assets/demo.rec.gz
     npm run readme:demo          # renders it (render.mjs)
 
-    python3 scripts/readme/demo/record.py [--model M] [--prompt P] [--out F]
+    python3 .github/scripts/demo/record.py [--model M] [--prompt P] [--out F]
         [--no-submit --debug-file F]   # type but never send: no model turn
 
 Claude Code runs in a pty that poses as kitty: TERM=xterm-kitty, answers to

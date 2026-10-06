@@ -4,7 +4,7 @@
 // macOS-style window by headless Chrome, retimed, and encoded.
 //
 //   npm run readme:demo                       # .github/assets/demo.rec.gz -> demo.webp, demo.png, demo.mp4
-//   node scripts/readme/demo/render.mjs [--recording <file>] [--out <dir>] [--speed 1.5]
+//   node .github/scripts/demo/render.mjs [--recording <file>] [--out <dir>] [--speed 1.5]
 //       [--webp lossless|<quality>] [--stills <dir> --at <s,s,...>]   # stills: PNGs at output times
 //
 // Needs Chrome (headless; CHROME=/path overrides), ffmpeg with libwebp_anim and
