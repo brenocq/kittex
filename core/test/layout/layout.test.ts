@@ -19,7 +19,40 @@ describe('cell widths', () => {
   })
 
   test('characters whose width kittex is not sure of are unknown', () => {
-    for (const char of ['😀', '中', '­', '​', '', '\t', '⌚']) expect(textWidth(char)).toBe(-1)
+    for (const char of ['中', '­', '​', '', '\t']) expect(textWidth(char)).toBe(-1)
+  })
+  test('single emoji (Emoji_Presentation, Unicode 15.1 or older) take two cells', () => {
+    // Two cells in Claude Code 2.1.291 (Bun.stringWidth, its wrap, its cell writer), kitty 0.49 and Ghostty 1.3.
+    expect(textWidth('😀🚀✅⌚⭐🀄🆎🈁🟰🫨🪿🛜🤌🧠')).toBe(28)
+    expect(codeWidth(0x1f600)).toBe(2)
+    expect(textWidth('a 😀 b')).toBe(6)
+  })
+
+  test('emoji the engine and the terminals may draw differently are unknown', () => {
+    for (const text of [
+      '\u2764', // text presentation by default (one cell)
+      '\u2600',
+      '\u{1f170}', // ambiguous width
+      '\u2764\ufe0f', // a presentation selector after it
+      '\u{1f600}\ufe0f',
+      '\u2600\ufe0e',
+      '\u{1f44d}\u{1f3fd}', // a skin-tone modifier
+      '\u{1f3fd}',
+      '\u{1f468}\u200d\u{1f469}\u200d\u{1f467}', // a zero-width joiner sequence
+      '\u{1f1e7}\u{1f1f7}', // a flag
+      '\u{1f1e6}', // a lone regional indicator: one cell to the engine, two to kitty and Ghostty
+      '1\ufe0f\u20e3', // a keycap
+      '#\u20e3', // a bare keycap: two cells to the engine, one to kitty
+      '\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}', // tags
+      '\u{1f600}\u0301', // a combining mark on an emoji
+      '\u{1fae9}', // Unicode 16: one cell in terminals older than their Unicode 16 update
+      '\u{1f6d8}', // Unicode 17
+    ])
+      expect(textWidth(text)).toBe(-1)
+  })
+
+  test('combining Cyrillic marks take no cell', () => {
+    expect(textWidth('\u0430\u0483')).toBe(1)
   })
 })
 
@@ -46,7 +79,16 @@ describe('word wrap (Bun.wrapAnsi, hard, no trim)', () => {
   })
 
   test('a line holding a character of unknown width is not laid out', () => {
-    expect(wrapRows('a 😀 b', 10)).toBeNull()
+    expect(wrapRows('a \u2764\ufe0f b', 10)).toBeNull()
+    expect(wrapRows('a \u{1f44d}\u{1f3fd} b', 10)).toBeNull()
+  })
+
+  test('an emoji takes two cells: one that does not fit starts the next row', () => {
+    expect(wrapRows('aaaa 😀 bb', 6)).toEqual(['aaaa ', '😀 bb'])
+    expect(wrapRows('aaa 😀', 6)).toEqual(['aaa 😀'])
+    // Cut per character, an emoji that would straddle the row's end goes to the next row.
+    expect(wrapRows('xxxxx😀😀😀', 6)).toEqual(['xxxxx', '😀😀😀'])
+    expect(wrapRows('😀😀😀😀', 6)).toEqual(['😀😀😀', '😀'])
   })
 })
 
@@ -174,6 +216,26 @@ describe('layoutList', () => {
     const markdown = fixture('list-edge.md').replace(/\n$/, '')
     const screens = JSON.parse(fixture('list-edge-screens.json')) as Record<string, string[]>
     for (const [width, screen] of Object.entries(screens)) expect(replyRows(markdown, Number(width))).toEqual(screen)
+  })
+
+  test('draws paragraphs and lists holding emoji as the engine did live (research/lab runs EMO-raw-emoji1, EMO-raw-emoji3 at c120, c61, c33)', () => {
+    for (const name of ['emoji-prose', 'emoji-list']) {
+      const markdown = fixture(`${name}.md`).replace(/\n$/, '')
+      const screens = JSON.parse(fixture(`${name}-screens.json`)) as Record<string, string[]>
+      for (const [width, screen] of Object.entries(screens)) expect(replyRows(markdown, Number(width))?.map(row => row.trimEnd())).toEqual(screen)
+    }
+  })
+
+  test('finds spans after emoji, two cells each', () => {
+    const markdown = '- 🚀 at X and 😀😀Y'
+    const x = markdown.indexOf('X')
+    const y = markdown.indexOf('Y')
+    expect(layoutList(markdown, 40, [{ start: x, end: x + 1 }, { start: y, end: y + 1 }])?.places).toEqual([
+      { row: 0, col: 8, columns: 1 },
+      { row: 0, col: 18, columns: 1 },
+    ])
+    expect(layoutList('- 😀 a', 40)?.lines).toEqual(['- 😀 a'])
+    expect(layoutProse('😀 X', 40, [{ start: 3, end: 4 }])?.places).toEqual([{ row: 0, col: 3, columns: 1 }])
   })
 
   test('markers: dashes for every bullet, numbers, then letters, then roman numerals', () => {

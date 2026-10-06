@@ -110,16 +110,22 @@ export class Canvas {
     if (!drawn) return
     const cells = this.cells[row]!
     const code = unit.charCodeAt(0)
+    let width: number
     if (code >= 0xdc00 && code <= 0xdfff) {
-      // The low half of a pair joins its high half, in the same cell.
+      // The low half of a pair joins its high half, in the same cell: the pair is one character.
       cells[col] = (cells[col] ?? '') + unit
+      width = codeWidth(cells[col]!.codePointAt(0)!)
     } else if (code < 0xd800 && codeWidth(code) === 0) {
       // A combining mark joins the cell before it.
       const at = Math.max(0, col - 1)
       cells[at] = (cells[at] ?? '') + unit
+      return
     } else {
       cells[col] = unit
+      width = codeWidth(code)
     }
+    // A wide character (an emoji) covers the cell after it too.
+    if (width === 2) cells[col + 1] = ''
   }
 
   lines(): string[] {

@@ -1,0 +1,13 @@
+🚀 Launch: the rocket's speed $v = \sqrt{2gh}$ grows ✅ and the energy $E = mc^2$ 🔥 is conserved, so the orbit closes 🌍.
+
+The ratio $\frac{a}{b}$😀 sits right before an emoji, and 🎉$x^2 + y^2$ right after one; 🧠🧠🧠 three in a row, then $\alpha \le \beta$ ⭐ and more words so that it wraps across rows at narrower widths ⌚.
+
+Long words: abcdefghij😀klmnopqrstuvwxyz🚀abcdefghij😀klmnopqrstuvwxyz🚀abcdefghij😀klmnopqrstuvwxyz with $f(x)$ after it, and $\sum_i a_i$ 🌍 at the end.
+
+aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj kkkk llll mmmm nnnn oooo pppp qqqq rrrr ssss tttt 😀 $x_k$ 🚀 uuuu vvvv 😀😀 $y$ wwww xxxx yyyy zzzz 🎉 $\mathbb{R}^n$ 🎉 end ✅
+
+✅ $a$ ✅ $b$ ✅ $c$ ✅ $d$ ✅ $e$ ✅ $f$ ✅ $g$ ✅ $h$ ✅ $i$ ✅ $j$ ✅ $k$ ✅ $l$ ✅ $m$ ✅ $n$ ✅ $o$ ✅ $p$ ✅ $q$ ✅ $r$ ✅ $s$ ✅ $t$ ✅ $u$ ✅ $v$ ✅
+
+A soft break follows,
+😀 then this line starts with an emoji and $O(n \log n)$ ends it 🐍
+$\lambda$ starts the next line 🫠 with **bold 🔥 $x$ text** and *italic ⭐* words.

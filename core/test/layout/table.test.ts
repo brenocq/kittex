@@ -137,7 +137,7 @@ describe('layoutTable: what it does not follow', () => {
     expect(layoutTable('| a | b |\n|---|---|\n| 1 | 2 | 3 |', 60)).toBeNull()
     expect(layoutTable('| a | b |\n|---|---|\n| [x](y) | 2 |', 60)).toBeNull()
     expect(layoutTable('| a | b |\n|---|---|\n| <b>x</b> | 2 |', 60)).toBeNull()
-    expect(layoutTable('| a | b |\n|---|---|\n| 😀 | 2 |', 60)).toBeNull()
+    expect(layoutTable('| a | b |\n|---|---|\n| ❤️ | 2 |', 60)).toBeNull()
     expect(layoutTable('| a | b |\n|---|---|\n| `x ` | 2 |', 60)).toBeNull()
   })
 
