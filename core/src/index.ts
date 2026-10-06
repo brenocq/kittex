@@ -217,12 +217,19 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
   return true
 }
 
+/**
+ * Draws an inline formula `columns` wide (its slot: measureInline's columns,
+ * or its preview's when that is wider), on the terminal font's baseline, its
+ * ink centred across the slot: the part of a cell its whole cells leave over
+ * is split between both sides instead of all falling after it, where it would
+ * read as a space before the next character (`(y_w)`).
+ */
 export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetInline(tex)
-    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns }
+    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, centerInk: true }
     const raster = rasterize(result, options)
     image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
   }

@@ -26,8 +26,9 @@ export { recolorPng }
  *   cellHeight) pixels, the whole-pixel size nearest the area the terminal
  *   stretches it over, so any rescaling is below half a pixel over the image.
  * - The formula is centred in the image (horizontally only for `center`;
- *   `left` puts the ink box at x = 0), with its origin on whole pixels, so the
- *   baseline is a pixel boundary and glyphs land the same way in every image.
+ *   `left` puts the ink box at x = 0, or with `centerInk` centres the drawn
+ *   ink itself), with its origin on whole pixels, so the baseline is a pixel
+ *   boundary and glyphs land the same way in every image.
  * - Inline placement (`baselinePx`): the image is exactly `minRows` rows (one
  *   by default) and the baseline sits at the given pixel row, the terminal
  *   font's own; scale < 1 also when the formula's height above the baseline or
@@ -154,7 +155,15 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
   const toPx: Matrix = [k, 0, 0, k, originX, baselinePx]
   // Rules up to 0.15 em thick (4 px at least) are snapped: TeX's are 0.04 to 0.1 em.
   const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
-  for (const op of result.ops) drawOp(coverage, op, toPx, dilation, ruleMax)
+  const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, ruleMax) ?? [])
+  // Centred by its ink, moved by whole pixels so glyphs land as they would at the left.
+  const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx) : 0
+  for (const { contours, sign } of shapes) {
+    for (const c of contours) {
+      if (dx !== 0) for (let i = 0; i < c.length; i += 2) c[i] = c[i]! + dx
+      coverage.fill(c, sign)
+    }
+  }
   return {
     columns: box.columns,
     rows: box.rows,
@@ -171,7 +180,35 @@ export function encodePng(raster: Raster, ink: RGB): Uint8Array {
   return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink)
 }
 
-function drawOp(coverage: Coverage, op: DrawOp, toPx: Matrix, dilation: number, ruleMax: number): void {
+/** An op's outlines in pixels, dilated and snapped, and the winding its ink fills with. */
+interface Shape {
+  contours: Contour[]
+  sign: number
+}
+
+/**
+ * The whole pixels to move every outline by so the ink's horizontal extent is
+ * centred in an image `widthPx` wide; 0 for no ink. Never moves ink that fits
+ * past either edge.
+ */
+function inkShift(shapes: readonly Shape[], widthPx: number): number {
+  let x0 = Infinity
+  let x1 = -Infinity
+  for (const { contours } of shapes) {
+    for (const c of contours) {
+      for (let i = 0; i < c.length; i += 2) {
+        if (c[i]! < x0) x0 = c[i]!
+        if (c[i]! > x1) x1 = c[i]!
+      }
+    }
+  }
+  if (!(x1 > x0)) return 0
+  const dx = Math.round((widthPx - (x1 - x0)) / 2 - x0)
+  if (x1 - x0 > widthPx) return 0
+  return Math.min(Math.max(dx, Math.ceil(-x0 - 1e-9)), Math.floor(widthPx - x1 + 1e-9))
+}
+
+function outline(op: DrawOp, toPx: Matrix, dilation: number, ruleMax: number): Shape | undefined {
   let contours: Contour[]
   if (op.type === 'rect') {
     const [k, , , , e, f] = toPx
@@ -179,7 +216,7 @@ function drawOp(coverage: Coverage, op: DrawOp, toPx: Matrix, dilation: number, 
     const x1 = e + k * Math.max(op.x, op.x + op.width)
     const y0 = f + k * Math.min(op.y, op.y + op.height)
     const y1 = f + k * Math.max(op.y, op.y + op.height)
-    if (!(x1 > x0 && y1 > y0)) return
+    if (!(x1 > x0 && y1 > y0)) return undefined
     contours = [[x0, y0, x1, y0, x1, y1, x0, y1]]
   } else {
     contours = flattenPath(op.d, compose(toPx, op.transform))
@@ -190,13 +227,15 @@ function drawOp(coverage: Coverage, op: DrawOp, toPx: Matrix, dilation: number, 
   // positive, so overlapping ops union instead of cancelling.
   let area = 0
   for (const c of contours) area += signedArea(c)
-  if (!(Math.abs(area) > 1e-9)) return
+  if (!(Math.abs(area) > 1e-9)) return undefined
   const sign = area > 0 ? 1 : -1
+  const out: Contour[] = []
   for (let c of contours) {
     if (dilation > 0) c = dilate(c, dilation, sign)
     snapRule(c, ruleMax)
-    coverage.fill(c, sign)
+    out.push(c)
   }
+  return { contours: out, sign }
 }
 
 function compose(p: Matrix, t: Matrix): Matrix {

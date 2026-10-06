@@ -289,6 +289,23 @@ describe('inline placement (baselinePx)', () => {
     expect(measure(box(1, 0.4, 0), inline).columns).toBe(2)
   })
 
+  test('centerInk: the ink centred across the columns asked for, by whole pixels', () => {
+    for (const width of [0.3, 0.5, 1, 1.7]) {
+      const r = rasterize(box(width, 0.4, 0), { ...inline, maxColumns: 4, minColumns: 4, centerInk: true })
+      const { x0, x1 } = inkBox(r)
+      expect(Math.abs(x0 - (r.widthPx - x1))).toBeLessThanOrEqual(1)
+      // Moved by whole pixels: the same coverage as at the left, shifted.
+      const left = rasterize(box(width, 0.4, 0), { ...inline, maxColumns: 4, minColumns: 4 })
+      expect(ink(r)).toBeCloseTo(ink(left), 6)
+    }
+    // Its own width: the part of a cell left over goes half to each side.
+    const own = rasterize(box(0.6, 0.4, 0), { ...inline, centerInk: true })
+    expect(own.columns).toBe(2)
+    expect(inkBox(own)).toMatchObject({ x0: 6, x1: 21 })
+    // Ink in an image that has none is left alone.
+    expect(rasterize(box(0, 0, 0, []), { ...inline, centerInk: true }).alpha.every(a => a === 0)).toBe(true)
+  })
+
   test('centred across the columns asked for', () => {
     const r = rasterize(box(1, 0.4, 0), { ...inline, align: 'center', maxColumns: 4 })
     expect([r.columns, r.widthPx]).toEqual([4, 52])

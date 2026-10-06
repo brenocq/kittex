@@ -1,5 +1,6 @@
 // Inline formulas as one-row images: drawn on the terminal font's baseline,
 // scaled down only a little to fit the row, refused (left to Unicode) beyond.
+import { unzlibSync } from 'fflate'
 import { describe, expect, test } from 'vitest'
 import { emPxForCell, init, measureInline, MIN_INLINE_SCALE, rasterize, renderInline, typeset } from '../src/index.js'
 
@@ -47,15 +48,64 @@ describe('measureInline', () => {
   })
 })
 
+/** The blank pixel columns left and right of an inline image's ink (a kittex palette PNG: index = alpha, filter None). */
+function margins(png: Uint8Array): { width: number; left: number; right: number } {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength)
+  const width = view.getUint32(16)
+  const height = view.getUint32(20)
+  let at = 8
+  while (String.fromCharCode(...png.subarray(at + 4, at + 8)) !== 'IDAT') at += 12 + view.getUint32(at)
+  const raw = unzlibSync(png.subarray(at + 8, at + 8 + view.getUint32(at)))
+  let x0 = width
+  let x1 = -1
+  for (let y = 0; y < height; y++) {
+    expect(raw[y * (width + 1)]).toBe(0)
+    for (let x = 0; x < width; x++) {
+      if (raw[y * (width + 1) + 1 + x]! > 0) {
+        x0 = Math.min(x0, x)
+        x1 = Math.max(x1, x)
+      }
+    }
+  }
+  return { width, left: x0, right: width - 1 - x1 }
+}
+
 describe('renderInline', () => {
-  test('at the left of a slot wider than the formula', async () => {
+  test('centred in a slot wider than the formula', async () => {
     await init()
     const image = renderInline('x', env, 4)
     expect([image.columns, image.rows]).toEqual([4, 1])
-    const r = rasterize(typeset('x', { display: false }), { emPx: env.emPx, cellWidth: 13, cellHeight: 26, maxColumns: 4, minColumns: 4, align: 'left', baselinePx: 21 })
-    let right = -1
-    for (let y = 0; y < r.heightPx; y++) for (let x = 0; x < r.widthPx; x++) if (r.alpha[y * r.widthPx + x]! > 0) right = Math.max(right, x)
-    expect(right).toBeLessThan(26)
+    const { width, left, right } = margins(image.png)
+    expect(width).toBe(52)
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
+    expect(left).toBeGreaterThan(13)
+  })
+
+  // The whole cells an image takes leave part of one blank: drawn at the
+  // slot's left end all of it fell before the next character, `(𝑦𝑤 )` (12 of
+  // y_w's 39 px at 13×26, against 1 px on the left).
+  test('the blank a narrow formula leaves in its cells is split evenly between both sides', async () => {
+    await init()
+    for (const geometry of [{ cellWidth: 13, cellHeight: 26 }, { cellWidth: 10, cellHeight: 20 }, { cellWidth: 9, cellHeight: 18 }]) {
+      const at = { ...env, ...geometry, emPx: emPxForCell(geometry), baselinePx: Math.round((geometry.cellHeight * 20) / 26) }
+      for (const tex of ['y_w', 'y_l', 'x_k', 'E = mc^2', 'a^2 + b^2 = c^2']) {
+        const box = measureInline(tex, at)!
+        const { width, left, right } = margins(renderInline(tex, at, box.columns).png)
+        expect({ tex, geometry, width }).toEqual({ tex, geometry, width: box.columns * geometry.cellWidth })
+        expect({ tex, geometry, unevenBy: Math.abs(left - right) <= 1 }).toEqual({ tex, geometry, unevenBy: true })
+      }
+    }
+  })
+
+  test('a slot set by a wider preview has the formula in its middle', async () => {
+    await init()
+    // π_θ(y_w|x) streams as 10 cells of Unicode; its image needs 7.
+    const tex = '\\pi_\\theta(y_w|x)'
+    expect(measureInline(tex, env)!.columns).toBe(7)
+    const { width, left, right } = margins(renderInline(tex, env, 10).png)
+    expect(width).toBe(130)
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
+    expect(left).toBeGreaterThanOrEqual(13)
   })
 
   test('one row, the asked columns, the formula resting on the baseline', async () => {

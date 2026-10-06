@@ -93,8 +93,16 @@ export interface RasterOptions {
   maxColumns: number
   /** `center`: the image spans maxColumns with the formula centred (display math). `left`: as wide as the formula. */
   align: 'center' | 'left'
-  /** `left` only: the image is at least this many columns wide, the formula at its left end (an inline slot). */
+  /** `left` only: the image is at least this many columns wide, the formula at its left end (an inline slot) unless `centerInk`. */
   minColumns?: number
+  /**
+   * `left` only: the formula's ink is centred across the image, the blank
+   * split evenly (to a pixel) on both sides, instead of starting at its left
+   * edge. For an inline slot, whose whole cells (and a preview wider than the
+   * image) leave up to a cell or more of blank that would otherwise all fall
+   * after the formula and detach it from the text that follows.
+   */
+  centerInk?: boolean
   /** Reserve at least this many rows (to match a streaming preview); the formula is centred vertically. */
   minRows?: number
   /** Stroke darkening: outlines grow by this many thousandths of an em on each side. 0 for none; the default (15) matches terminal text weight. */
