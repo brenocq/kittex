@@ -14,6 +14,7 @@ import {
   hcat,
   height,
   isBlank,
+  lines,
   pad,
   phantom,
   textBox,
@@ -1184,12 +1185,44 @@ function alignOf(value: string): Align {
   return fail(`columnalign ${value}`)
 }
 
+/**
+ * A table written on one line, where math may take only one (inline math, a
+ * display preview's one-line form): its rows parted by `; `, the cells of a
+ * row by `, `, or by nothing where the table puts no space between two
+ * columns (an alignment point, as in `aligned`): `(a, b; c, d)` for a
+ * pmatrix, `{x, x > 0; 0, otherwise` for cases, `a = b; c = d` for aligned.
+ */
+function oneLineTable(el: Element, rowEls: readonly Element[], ctx: Ctx): Box {
+  const cellCtx: Ctx = { twoD: false, display: false, level: ctx.level }
+  const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))
+  const rows: string[] = []
+  for (const rowEl of rowEls) {
+    if (rowEl.name !== 'mtr' && rowEl.name !== 'mlabeledtr') fail(`<${rowEl.name}> in mtable`)
+    const cellEls = elements(rowEl)
+    if (rowEl.name === 'mlabeledtr') cellEls.shift()
+    let row = ''
+    for (const [c, cellEl] of cellEls.entries()) {
+      if (cellEl.name !== 'mtd') fail(`<${cellEl.name}> in mtr`)
+      const box = layoutRow(elements(cellEl), cellCtx).box
+      if (height(box) !== 1) fail('tall cell in a one-line table')
+      const text = lines(box)[0]!.trim()
+      if (c > 0 && text !== '' && row !== '') {
+        // A cell the formula ends with a comma of its own needs no other.
+        row += pick(spacing, c - 1) > 0 ? (/[,;:]$/.test(row) ? ' ' : ', ') : /^[\p{L}\p{N}]/u.test(text) ? '' : ' '
+      }
+      row += text
+    }
+    if (row !== '') rows.push(row)
+  }
+  return textBox(rows.map((row, r) => (r < rows.length - 1 ? row.replace(/[,;]$/, '') : row)).join('; '))
+}
+
 function table(el: Element, ctx: Ctx): Box {
   const cellCtx: Ctx = ctx.compact
     ? { twoD: false, display: false, level: ctx.level, compact: true }
     : { twoD: ctx.twoD, display: el.attrs.displaystyle === 'true', level: ctx.level }
   const rowEls = elements(el)
-  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) fail('table in inline math')
+  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) return oneLineTable(el, rowEls, ctx)
   const tableAligns = list(el.attrs.columnalign, 'center')
   // A percentage (multline's) has no meaning in cells: no extra space.
   const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))
