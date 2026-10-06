@@ -83,13 +83,79 @@ interface Row {
   items: Item[]
   /** Some space was put between atoms outside parentheses (so the row isn't one tight unit). */
   spaced: boolean
+  /** The boxes `box` joins, gaps included, and where a line may break: before parts[i] for each i in breaks. */
+  parts?: Box[]
+  breaks?: number[]
 }
 
+export interface LayoutOptions {
+  /** Tables keep their rows, everything else is written on one line. */
+  compact?: boolean
+  /** Break a top level wider than this into lines (see UnicodeOptions.breakLines). */
+  breakWidth?: number
+  /** No spaces between atoms, none for thin explicit spaces (see UnicodeOptions.tight). */
+  tight?: boolean
+}
+
+/** Whether the layout under way drops optional spaces (set by layoutMath, which runs synchronously). */
+let tight = false
+
 /** Lays out a <math> element; `compact` keeps tables' rows but writes everything else on one line. */
-export function layoutMath(root: Element, display: boolean, compact = false): Box {
+export function layoutMath(root: Element, display: boolean, compact: boolean | LayoutOptions = false): Box {
   if (root.name !== 'math') fail(`root <${root.name}>`)
-  const ctx: Ctx = compact ? { twoD: false, display: false, level: 0, compact: true } : { twoD: display, display, level: 0 }
-  return layoutRow(elements(root), ctx).box
+  const options: LayoutOptions = typeof compact === 'boolean' ? { compact } : compact
+  const ctx: Ctx = options.compact ? { twoD: false, display: false, level: 0, compact: true } : { twoD: display, display, level: 0 }
+  tight = options.tight === true
+  try {
+    const row = layoutRow(elements(root), ctx)
+    const width = options.breakWidth
+    if (width === undefined || row.box.width <= width) return row.box
+    // A formula wrapped whole in a group ({…}, \ce{…}) breaks inside it.
+    let inner = row
+    for (let solid = inner.items.filter(item => item.box.width > 0); solid.length === 1 && solid[0]!.row && solid[0]!.kind !== 'fence'; ) {
+      inner = solid[0]!.row!
+      solid = inner.items.filter(item => item.box.width > 0)
+    }
+    return breakRow(inner, width) ?? row.box
+  } finally {
+    tight = false
+  }
+}
+
+/**
+ * A row broken into lines no wider than `width`, stacked flush left: each
+ * line takes as many parts as fit, breaking before a relation or operator (the
+ * continuation line starts with it, as MathJax breaks display math) or after a
+ * wide space. Undefined when some piece is wider than `width` on its own.
+ */
+function breakRow(row: Row, width: number): Box | undefined {
+  const { parts, breaks } = row
+  if (!parts || !breaks || breaks.length === 0) return undefined
+  const lines: Box[] = []
+  const stops = [...breaks.filter(b => b > 0 && b < parts.length), parts.length]
+  let start = 0
+  while (start < parts.length) {
+    let end = -1
+    for (const stop of stops) {
+      if (stop <= start) continue
+      if (trimmed(parts.slice(start, stop)).width <= width) end = stop
+      else break
+    }
+    if (end < 0) return undefined
+    lines.push(trimmed(parts.slice(start, end)))
+    start = end
+  }
+  if (lines.length < 2) return undefined
+  return vstack(lines, 'left', lines[0]!.base)
+}
+
+/** Parts joined, without the blank columns at either end (the gaps around a break). */
+function trimmed(parts: readonly Box[]): Box {
+  let from = 0
+  let to = parts.length
+  while (from < to && isBlank(parts[from]!)) from++
+  while (to > from && isBlank(parts[to - 1]!)) to--
+  return from < to ? hcat(parts.slice(from, to)) : blank(0)
 }
 
 // ─── rows ────────────────────────────────────────────────────────────────────
@@ -196,6 +262,7 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
   })
   const list = items as Item[]
 
+  overlays(list)
   adjustClasses(list)
   middleBars(list)
 
@@ -217,6 +284,8 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
 
   const script = rowCtx.level > 0
   const boxes: Box[] = []
+  /** Where a line may break: before boxes[i]. */
+  const breaks: number[] = []
   let prev: Item | undefined
   let spaced = false
   let depth = 0
@@ -241,13 +310,57 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
       continue
     }
     if (item.cls === 'CLOSE') depth = Math.max(0, depth - 1)
+    // Lines break before a relation or operator, or at a wide space (a \quad between formulas).
+    if (prev && depth === 0 && (item.cls === 'REL' || (item.cls === 'BIN' && !item.unary) || pending >= 2)) breaks.push(boxes.length)
     flush(Math.max(prev ? gap(prev, item, script) : 0, pending))
     if (item.cls === 'OPEN') depth++
-    boxes.push(item.box)
+    if (depth === 0 && item.el.name === 'mtext' && height(item.box) === 1 && item.box.rows[0]!.includes(' ')) {
+      // Text may break between its words.
+      for (const [k, word] of words(item.box.rows[0]!).entries()) {
+        if (k > 0 && word[0] !== ' ') breaks.push(boxes.length)
+        boxes.push({ rows: [word], width: word.length, base: 0 })
+      }
+    } else {
+      boxes.push(item.box)
+    }
     prev = item
   }
   flush(pending)
-  return { box: boxes.length ? hcat(boxes) : blank(0), items: list, spaced }
+  return { box: boxes.length ? hcat(boxes) : blank(0), items: list, spaced, parts: boxes, breaks }
+}
+
+/**
+ * centernot's \centerOver (\slashed, \centernot): a zero-width mpadded after
+ * its base that holds the mark and a phantom of the base. A slash becomes a
+ * combining overlay on the base's characters (p̸, ∂̸); the overlay itself takes
+ * no room.
+ */
+function overlays(items: Item[]): void {
+  items.forEach((item, i) => {
+    const el = item.el
+    if (el.name !== 'mpadded' || el.attrs.width !== '0' || !el.attrs.lspace?.startsWith('-')) return
+    const [over, ghost] = elements(el)
+    if (!over || ghost?.name !== 'mphantom' || over.name !== 'mpadded') return
+    const mark = elements(over)
+    const text = mark.length === 1 ? tokenText(mark[0]!) : ''
+    const prev = items.slice(0, i).reverse().find(other => other.box.width > 0)
+    if (!prev || !['/', '\u29f8', '\u2215'].includes(text)) return
+    prev.box = { ...prev.box, rows: prev.box.rows.map(row => row.map(c => (c === ' ' || c === '' ? c : c + '\u0338'))) }
+    item.box = blank(0)
+    item.cls = 'NONE'
+  })
+}
+
+/** A row of text cells split into runs of words and of spaces. */
+function words(cells: readonly string[]): string[][] {
+  const runs: string[][] = []
+  for (const cell of cells) {
+    const space = cell === ' '
+    const last = runs.at(-1)
+    if (last && (last[0] === ' ') === space) last.push(cell)
+    else runs.push([cell])
+  }
+  return runs
 }
 
 /** TeX's rules for binary operators with nothing to combine (The TeXbook, Appendix G, rules 5 and 6). */
@@ -282,6 +395,7 @@ function middleBars(items: Item[]): void {
 
 /** Terminal cells between two atoms: TeX's medium and thick spaces are one cell, thin ones only where they help. */
 function gap(left: Item, right: Item, script: boolean): number {
+  if (tight) return 0
   const space = texSpace(left.cls, right.cls, script)
   if (space === 0) return 0
   if (space >= 2) return 1
@@ -314,8 +428,8 @@ function makeItem(el: Element, ctx: Ctx, form: Form): Item {
   if (el.name === 'mi' && item.cls === 'OP' && el.attrs['data-mjx-texclass'] === undefined) item.autoOP = true
   if (el.name === 'mo' && el.attrs['data-mjx-texclass'] === undefined && (el.attrs.lspace !== undefined || el.attrs.rspace !== undefined)) {
     item.cls = 'NONE'
-    item.lspace = cells(length(el.attrs.lspace ?? '0'))
-    item.rspace = cells(length(el.attrs.rspace ?? '0'))
+    item.lspace = spaceCells(length(el.attrs.lspace ?? '0'))
+    item.rspace = spaceCells(length(el.attrs.rspace ?? '0'))
   }
   return item
 }
@@ -407,7 +521,7 @@ function layoutNode(el: Element, ctx: Ctx): Box {
     case 'mo':
       return operator(el, ctx)
     case 'mspace':
-      return blank(cells(length(el.attrs.width ?? '0')))
+      return blank(spaceCells(length(el.attrs.width ?? '0')))
     case 'mrow':
     case 'mstyle':
       return layoutRow([el], ctx).box
@@ -513,6 +627,12 @@ function length(value: string): number {
 /** Cells for a horizontal space in em: any positive space is at least one cell, a quad two. */
 function cells(em: number): number {
   return em <= 0.05 ? 0 : Math.max(1, Math.round(em * 2))
+}
+
+/** Cells for a space between atoms: as `cells`, but in a tight layout thin spaces go and wider ones take one cell. */
+function spaceCells(em: number): number {
+  if (!tight) return cells(em)
+  return em < 0.25 ? 0 : 1
 }
 
 function padded(el: Element, ctx: Ctx): Box {
@@ -957,11 +1077,20 @@ function marked(cell: string, mark: string): string {
   return cell === '' ? cell : cell + mark
 }
 
+/** Dots that may stand alone as primes (Newton's dot for a time derivative, Lagrange's prime for any). */
+const DOT_PRIMES: Record<string, string> = { '\u0307': '′', '\u0308': '″' }
+
 function applyAccent(base: Box, accent: Accent, over: boolean, ctx: Ctx): Box {
   if (height(base) === 1) {
     const row = base.rows[0]!
     const filled = row.filter(c => c !== '')
-    if (filled.length === 1 && row.length === 1) return { ...base, rows: [[marked(row[0]!, accent.mark)]] }
+    if (filled.length === 1 && row.length === 1) {
+      // A dot over a letter with no precomposed form (θ̇) is too small for terminal fonts to draw visibly.
+      const prime = DOT_PRIMES[accent.mark]
+      const cell = row[0]!
+      if (over && prime && [...(cell + accent.mark).normalize('NFC')].length > 1) return textBox(cell + prime)
+      return { ...base, rows: [[marked(cell, accent.mark)]] }
+    }
     if (accent.wide) return { ...base, rows: [row.map(c => marked(c, accent.mark))] }
     if (!ctx.twoD) {
       if (accent.arrow) {
@@ -988,6 +1117,8 @@ function enclose(el: Element, ctx: Ctx): Box {
     switch (notation) {
       case 'updiagonalstrike':
       case 'downdiagonalstrike':
+      case 'updiagonalarrow': // \cancelto: the value it goes to is a superscript
+      case 'northeastarrow':
       case 'horizontalstrike': {
         const mark = notation === 'horizontalstrike' ? '\u0336' : '\u0338'
         if (box.rows.some(row => row.some(c => c.includes(mark)))) break

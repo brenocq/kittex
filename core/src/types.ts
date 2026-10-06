@@ -93,6 +93,8 @@ export interface RasterOptions {
   maxColumns: number
   /** `center`: the image spans maxColumns with the formula centred (display math). `left`: as wide as the formula. */
   align: 'center' | 'left'
+  /** `left` only: the image is at least this many columns wide, the formula at its left end (an inline slot). */
+  minColumns?: number
   /** Reserve at least this many rows (to match a streaming preview); the formula is centred vertically. */
   minRows?: number
   /** Stroke darkening: outlines grow by this many thousandths of an em on each side. 0 for none; the default (15) matches terminal text weight. */
@@ -140,6 +142,19 @@ export interface UnicodeOptions {
    * result is about as tall as its tables have rows.
    */
   compact?: boolean
+  /**
+   * Break a result wider than `maxWidth` into lines at its top-level
+   * relations, operators and wide spaces, as MathJax breaks a display image,
+   * each line at most `maxWidth` wide (inline math then may take several lines
+   * too: for a display preview's one-line form).
+   */
+  breakLines?: boolean
+  /**
+   * Drop the spaces TeX puts between atoms and thin explicit ones (`\,`),
+   * keeping a cell for wider ones (`\quad`, `\bmod`): `O(nlogn)`, `E=mc²`.
+   * For a preview standing in for an image, as narrow as the image.
+   */
+  tight?: boolean
 }
 
 export interface UnicodeResult {
