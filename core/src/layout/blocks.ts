@@ -64,7 +64,7 @@ export function blockParts(markdown: string): BlockPart[] | null {
     if (split) {
       parts.push(...split.map((part, k) => (k === 0 ? { ...part, gap } : part)))
     } else {
-      const type = block.paragraph ? 'paragraph' : block.list ? 'list' : block.quote ? 'blockquote' : 'block'
+      const type = block.paragraph ? 'paragraph' : block.list ? 'list' : block.quote ? 'blockquote' : block.heading ? 'heading' : 'block'
       parts.push({ ...block, type, gap })
     }
   }
@@ -98,6 +98,7 @@ function splitBlock(markdown: string, start: number, end: number): BlockPart[] |
         paragraph: token.type === 'paragraph',
         ...(token.type === 'list' ? { list: true } : {}),
         ...(token.type === 'blockquote' ? { quote: true } : {}),
+        ...(token.type === 'heading' ? { heading: true } : {}),
         type: token.type,
         gap: last !== undefined && gapBetween(last.type, token.type),
       })

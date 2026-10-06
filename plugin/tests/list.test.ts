@@ -83,8 +83,8 @@ describe('list items: streaming', () => {
     expect(placeable('Where:\n1. the state ', 98)).toBe(true)
     expect(placeable('- [ ] a task ', 98)).toBe(false)
     expect(placeable('- item\n\n  ```\n  code\n  ```\n- then ', 98)).toBe(false)
-    expect(placeable('## Title ', 98)).toBe(false)
-    expect(placeable('> quote ', 98)).toBe(false)
+    expect(placeable('Text:\n```\ncode ', 98)).toBe(false)
+    expect(placeable('> ```\n> code\n> ```\n> quote ', 98)).toBe(false)
     // Too narrow for the item's text box: the engine's boxes shrink instead.
     expect(placeable('- ', 10)).toBe(false)
   })

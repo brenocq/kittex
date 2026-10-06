@@ -195,6 +195,8 @@ export interface ProseBlock {
   list?: boolean
   /** A single blockquote, which the engine draws as one text box two cells in (a bar and a space). */
   quote?: boolean
+  /** A single heading, which the engine draws as prose with no marker. */
+  heading?: boolean
 }
 
 /**
@@ -225,6 +227,7 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
       paragraph: types === 'paragraph',
       ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}),
       ...(types === 'blockquote' ? { quote: true } : {}),
+      ...(types === 'heading' ? { heading: true } : {}),
     })
     block = undefined
   }

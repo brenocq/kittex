@@ -79,20 +79,21 @@ describe('adjacent blocks: streaming', () => {
     }
   })
 
-  test('math in the heading itself, a quote or a table stays plain', async () => {
+  test('math in a heading or a quote right under a paragraph streams padded too', async () => {
     await init()
-    for (const flushes of [['Intro.\n', '## The $x_k$ case\n'], ['Intro:\n', '> quoted $x_k$\n'], ['Intro:\n', '| $x_k$ | b |\n']]) {
-      expect(streamed(flushes).records).toEqual([])
+    for (const flushes of [['Intro.\n', '## The $x_k$ case\n'], ['Intro:\n', '> quoted $x_k$\n']]) {
+      expect(streamed(flushes).records.map(record => record.tex)).toEqual(['x_k'])
     }
   })
 
   test('the check looks at the part the formula lands in', () => {
     expect(placeable('## Title\nText ', WIDTH)).toBe(true)
-    expect(placeable('Text\n## Title ', WIDTH)).toBe(false)
+    expect(placeable('Text\n## Title ', WIDTH)).toBe(true)
     expect(placeable('```\ncode\n```\nafter ', WIDTH)).toBe(true)
     expect(placeable('Text:\n```\ncode ', WIDTH)).toBe(false)
     expect(placeable('### Steps\n- item ', WIDTH)).toBe(true)
-    expect(placeable('Text\n> quote ', WIDTH)).toBe(false)
+    expect(placeable('Text\n> quote ', WIDTH)).toBe(true)
+    expect(placeable('Text\n> ```\n> code ', WIDTH)).toBe(false)
   })
 })
 

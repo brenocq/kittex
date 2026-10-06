@@ -37,7 +37,7 @@ const MIN_TEXT = 10
 const MAX_ITEMS = 200
 
 /** A string, and the markdown offset each of its UTF-16 units came from. */
-interface Mapped {
+export interface Mapped {
   text: string
   map: readonly number[]
 }
@@ -290,7 +290,7 @@ function textOf(
  * and the markdown offset of each of its characters: line for line, each line
  * of the text ends its line of the raw item.
  */
-function itemText(item: Tokens.ListItem, raw: Mapped): Mapped | null {
+export function itemText(item: Tokens.ListItem, raw: Mapped): Mapped | null {
   const lines = item.text.split('\n')
   const rawLines = raw.text.split('\n')
   if (lines.length > rawLines.length) return null
@@ -357,7 +357,7 @@ function roman(n: number): string {
   return out
 }
 
-function textWidthOf(text: string): number {
+export function textWidthOf(text: string): number {
   let cells = 0
   for (const char of text) cells += Math.max(0, codeWidth(char.codePointAt(0)!))
   return cells

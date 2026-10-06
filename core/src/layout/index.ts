@@ -1,11 +1,16 @@
+import { drawHeading } from './heading.js'
 import { drawList } from './list.js'
+import type { Canvas } from './list.js'
 import { visibleProse } from './prose.js'
+import { drawQuote } from './quote.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
 export { blockParts, gapBetween } from './blocks.js'
 export type { BlockPart } from './blocks.js'
+export { visibleHeading } from './heading.js'
 export { markerOf } from './list.js'
+export { QUOTE_BAR, QUOTE_TEXT } from './quote.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
 export { codeWidth, textWidth } from './width.js'
@@ -83,7 +88,31 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
  * anything its replay doesn't follow (see drawList).
  */
 export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  const canvas = drawList(markdown, width)
+  return layoutCanvas(markdown, drawList(markdown, width), width, spans)
+}
+
+/**
+ * Lays out a block that is one heading (proseBlocks marks it `heading`) as the
+ * engine draws it `width` cells wide: its text with no marker, wrapped as
+ * prose. Spans are found as layoutProse finds them. Null when the heading
+ * holds anything prose can't (see visibleHeading).
+ */
+export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
+  return layoutCanvas(markdown, drawHeading(markdown, width), width, spans)
+}
+
+/**
+ * Lays out a block that is one blockquote (proseBlocks marks it `quote`) as
+ * the engine draws it `width` cells wide (bar included): the bar in column 0
+ * of every row, the text from column QUOTE_TEXT. Spans are found as
+ * layoutProse finds them, columns counted from the bar's. Null when the quote
+ * holds anything its replay doesn't follow (see drawQuote).
+ */
+export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
+  return layoutCanvas(markdown, drawQuote(markdown, width), width, spans)
+}
+
+function layoutCanvas(markdown: string, canvas: Canvas | null, width: number, spans: readonly SourceSpan[]): ProseLayout | null {
   if (!canvas) return null
   const text = canvas.text.join('')
   const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, i => canvas.end[i] === true))
