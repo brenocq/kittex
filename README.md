@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://raw.githubusercontent.com/brenocq/kittex/assets/banner.svg" width="880">
+  <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://github.com/brenocq/kittex/raw/assets/banner.svg" width="880">
 
   <h3>LaTeX in Claude Code, typeset for real.</h3>
 
@@ -13,7 +13,7 @@
 <br>
 
 <p align="center">
-  <img alt="Claude Code with kittex in kitty: Claude explains how language models are trained, and every equation appears typeset as it lands" src="https://raw.githubusercontent.com/brenocq/kittex/assets/demo.webp" width="992">
+  <img alt="Claude Code with kittex in kitty: Claude explains how language models are trained, and every equation appears typeset as it lands" src="https://github.com/brenocq/kittex/raw/assets/demo.webp" width="992">
 </p>
 
 ## Install
