@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest'
 
 import { readFileSync } from 'node:fs'
 
-import { blockParts, gapBetween, layoutList, layoutProse, wrapRows } from '../../src/layout/index.js'
+import { blockParts, gapBetween, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable } from '../../src/layout/index.js'
 import type { BlockPart } from '../../src/layout/index.js'
 
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
@@ -16,14 +16,14 @@ const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, impor
 const shape = (markdown: string) => blockParts(markdown)?.map(part => [markdown.slice(part.start, part.end), part.type, part.gap])
 
 /**
- * A reply drawn part by part, as kittex composes it: paragraphs and lists by
- * their replays, the other parts as the engine draws these short ones (a
- * heading's text, a rule's `---`, a code block's lines, a quote behind its
- * bar; a table's rows are left out, `null`), a blank row above each part with
- * a gap.
+ * A reply drawn part by part, as kittex composes it: paragraphs, lists,
+ * headings, quotes and tables by their replays (a table in the terminal's
+ * width, the reply column and two cells), rules and code blocks as the engine
+ * draws these short ones (`---`, the lines inside the fences), a blank row
+ * above each part with a gap.
  */
-function partRows(markdown: string, width: number): (string | null)[] | null {
-  const rows: (string | null)[] = []
+function partRows(markdown: string, width: number): string[] | null {
+  const rows: string[] = []
   for (const part of blockParts(markdown) ?? []) {
     const text = markdown.slice(part.start, part.end)
     const lines = drawPart(part, text, width)
@@ -34,23 +34,22 @@ function partRows(markdown: string, width: number): (string | null)[] | null {
   return rows
 }
 
-function drawPart(part: BlockPart, text: string, width: number): (string | null)[] | null | undefined {
+function drawPart(part: BlockPart, text: string, width: number): string[] | null | undefined {
   switch (part.type) {
     case 'paragraph':
       return layoutProse(text, width)?.lines
     case 'list':
       return layoutList(text, width)?.lines
     case 'heading':
-      return wrapRows(text.replace(/^#+ /, ''), width)
+      return layoutHeading(text, width)?.lines
     case 'hr':
       return ['---']
     case 'code':
       return text.split('\n').slice(1, -1)
     case 'blockquote':
-      return wrapRows(text.replace(/^> /, ''), width - 2)?.map(line => `▎ ${line}`)
+      return layoutQuote(text, width)?.lines
     case 'table':
-      // Borders around each row, a rule under the header.
-      return Array<null>(text.split('\n').length + 2).fill(null)
+      return layoutTable(text, width + 2, [], width)?.lines
     default:
       return null
   }
@@ -124,7 +123,7 @@ describe('blockParts', () => {
       const rows = partRows(markdown, Number(width))!
       expect(rows).not.toBeNull()
       expect(rows.length).toBe(screen.length)
-      for (const [k, row] of rows.entries()) if (row !== null) expect([k, row.trimEnd()]).toEqual([k, screen[k]])
+      for (const [k, row] of rows.entries()) expect([k, row.trimEnd()]).toEqual([k, screen[k]])
     }
   })
 })
