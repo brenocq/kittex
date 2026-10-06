@@ -60,16 +60,15 @@ const CACHE_LIMIT = 256
 /**
  * The cells to reserve for a display formula, shared by its streaming preview and
  * its image (draw it with `renderDisplay(tex, env, rows)`). That is the image's
- * own size, unless no Unicode preview fits in it (a stacked form too tall and no
- * one-line form, as for aligned equations): then the stacked preview's height
- * is reserved and the image is padded to it. Throws TexError.
+ * own size, unless no Unicode preview fits in it: then the shortest preview's
+ * height is reserved and the image is padded to it. Throws TexError.
  */
 export function measureDisplay(tex: string, env: RenderEnv): CellBox {
   const result = typesetDisplay(tex, env)
   const box = measure(result, rasterOptions(env))
-  const stacked = unicodeFor(tex, true, env.maxColumns)
-  if (!stacked || stacked.lines.length <= box.rows || unicodeFor(tex, false, env.maxColumns)) return box
-  return measure(result, rasterOptions(env, Math.min(255, stacked.lines.length)))
+  const forms = previewForms(tex, env.maxColumns)
+  if (forms.length === 0 || forms.some(form => form.lines.length <= box.rows)) return box
+  return measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
 }
 
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
@@ -91,14 +90,12 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
 /**
  * A display formula as Unicode lines, padded with blank lines to `rows` (from
  * measureDisplay) so a streaming preview reserves exactly the image's room: the
- * stacked form when it fits, else the one-line form. Null when Unicode can't
- * express it in that room or it is wider than maxColumns.
+ * first of the stacked, compact (a line per table row) and one-line forms that
+ * fits. Null when Unicode can't express it in that room or within maxColumns.
  */
 export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, rows?: number): string[] | null {
-  const fits = (r: UnicodeResult | null): r is UnicodeResult => r !== null && (rows === undefined || r.lines.length <= rows)
-  const stacked = unicodeFor(tex, true, env.maxColumns)
-  const result = fits(stacked) ? stacked : unicodeFor(tex, false, env.maxColumns)
-  if (!fits(result)) return null
+  const result = previewForms(tex, env.maxColumns).find(form => rows === undefined || form.lines.length <= rows)
+  if (!result) return null
   if (rows === undefined || result.lines.length === rows) return result.lines
   const blank = ' '.repeat(result.width)
   const above = Math.floor((rows - result.lines.length) / 2)
@@ -107,7 +104,7 @@ export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, 
 
 /** An inline formula as one line of Unicode, or null when it can't be written on one line. */
 export function previewInline(tex: string, maxWidth?: number): string | null {
-  const result = unicodeFor(tex, false, maxWidth)
+  const result = unicodeFor(tex, 'inline', maxWidth)
   return result && result.lines.length === 1 ? result.lines[0]! : null
 }
 
@@ -131,15 +128,21 @@ function typesetDisplay(tex: string, env: RenderEnv): TypesetResult {
   return remember(typesetCache, key) ?? store(typesetCache, key, typeset(tex, { display: true, lineWidth }))
 }
 
+/** A display formula's Unicode forms that exist, most faithful first: stacked, compact, one line. */
+function previewForms(tex: string, maxWidth: number): UnicodeResult[] {
+  return (['stacked', 'compact', 'inline'] as const).flatMap(form => unicodeFor(tex, form, maxWidth) ?? [])
+}
+
 const unicodeCache = new Map<string, UnicodeResult | null>()
 
-function unicodeFor(tex: string, display: boolean, maxWidth?: number): UnicodeResult | null {
+function unicodeFor(tex: string, form: 'stacked' | 'compact' | 'inline', maxWidth?: number): UnicodeResult | null {
   if (tex.length > MAX_TEX_LENGTH) return null
-  const key = `${display ? 'd' : 'i'}${maxWidth ?? ''}\n${tex}`
+  const key = `${form}${maxWidth ?? ''}\n${tex}`
   if (unicodeCache.has(key)) return remember(unicodeCache, key) ?? null
+  const display = form !== 'inline'
   let result: UnicodeResult | null
   try {
-    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth })
+    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact' })
   } catch {
     result = null
   }

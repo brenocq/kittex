@@ -26,20 +26,23 @@ test('every corpus formula has a preview and an image that take the same rows', 
   expect(failures).toEqual([])
 })
 
-test('the image keeps its own height unless no preview fits it', async () => {
+test('aligned equations reserve exactly the rows of their image', async () => {
   await init()
-  // A fraction is a 2-row image; its stacked preview needs 3, so the one-line form is used.
-  const fraction = String.raw`F = G \frac{m_1 m_2}{r^2}`
-  expect(measureDisplay(fraction, env).rows).toBe(renderDisplay(fraction, env).rows)
-  expect(previewDisplay(fraction, env, measureDisplay(fraction, env).rows)?.filter(line => line.trim() !== '')).toHaveLength(1)
-  // Aligned equations have no one-line form: the stacked preview's height is reserved.
-  const aligned = String.raw`\begin{aligned} f(x) &= \frac{x^2 - 1}{x - 1} \\ &= x + 1 \end{aligned}`
-  expect(measureDisplay(aligned, env).rows).toBeGreaterThanOrEqual(renderDisplay(aligned, env).rows)
+  // A reply's Kalman filter equations: subscripts like k|k−1 have no Unicode form,
+  // so their stacked preview is about twice the image's height; the compact form fits.
+  const kalman = [
+    String.raw`\begin{aligned} x_k &= F_k x_{k-1} + B_k u_k + w_k, & w_k &\sim \mathcal{N}(0, Q_k) \\ z_k &= H_k x_k + v_k, & v_k &\sim \mathcal{N}(0, R_k) \end{aligned}`,
+    String.raw`\begin{aligned} \hat{x}_{k|k-1} &= F_k \hat{x}_{k-1|k-1} + B_k u_k \\ P_{k|k-1} &= F_k P_{k-1|k-1} F_k^\top + Q_k \end{aligned}`,
+    String.raw`\begin{aligned} y_k &= z_k - H_k \hat{x}_{k|k-1} && \text{(innovation)} \\ S_k &= H_k P_{k|k-1} H_k^\top + R_k && \text{(innovation covariance)} \\ K_k &= P_{k|k-1} H_k^\top S_k^{-1} && \text{(Kalman gain)} \\ \hat{x}_{k|k} &= \hat{x}_{k|k-1} + K_k y_k \\ P_{k|k} &= (I - K_k H_k)\, P_{k|k-1} \end{aligned}`,
+    String.raw`\begin{aligned} \nabla\cdot\mathbf{E} &= \frac{\rho}{\varepsilon_0} \\ \nabla\times\mathbf{B} &= \mu_0\mathbf{J} + \mu_0\varepsilon_0\frac{\partial\mathbf{E}}{\partial t} \end{aligned}`,
+  ]
+  for (const tex of kalman) expect({ tex, rows: measureDisplay(tex, env).rows }).toEqual({ tex, rows: renderDisplay(tex, env).rows })
 })
 
-test('inline previews exist for the formulas that fit one line', async () => {
+test('only formulas with no compact or one-line form pad their image, by a row at most', async () => {
   await init()
-  const missing = CORPUS.filter(tex => previewInline(tex) === null)
-  // Multi-row constructs (matrices, cases, aligned) have no one-line form.
-  expect(missing.length).toBeLessThanOrEqual(CORPUS.length / 4)
+  const padded = CORPUS.map(tex => ({ tex, extra: measureDisplay(tex, env).rows - renderDisplay(tex, env).rows })).filter(p => p.extra > 0)
+  // Today the two brace examples (\underbrace, \overbrace): braces have no one-line form.
+  expect(padded.length).toBeLessThanOrEqual(2)
+  for (const p of padded) expect(p.extra).toBeLessThanOrEqual(1)
 })

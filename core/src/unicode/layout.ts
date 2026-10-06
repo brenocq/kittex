@@ -52,6 +52,8 @@ interface Ctx {
   display: boolean
   /** Script level: 0 for the main formula, 1 and up inside scripts. */
   level: number
+  /** Compact display: one line everywhere, but tables keep a line per row. */
+  compact?: boolean
   /** For a stretchy operator: the rows above and below the baseline to cover. */
   stretch?: Extent
 }
@@ -83,10 +85,11 @@ interface Row {
   spaced: boolean
 }
 
-/** Lays out a <math> element. */
-export function layoutMath(root: Element, display: boolean): Box {
+/** Lays out a <math> element; `compact` keeps tables' rows but writes everything else on one line. */
+export function layoutMath(root: Element, display: boolean, compact = false): Box {
   if (root.name !== 'math') fail(`root <${root.name}>`)
-  return layoutRow(elements(root), { twoD: display, display, level: 0 }).box
+  const ctx: Ctx = compact ? { twoD: false, display: false, level: 0, compact: true } : { twoD: display, display, level: 0 }
+  return layoutRow(elements(root), ctx).box
 }
 
 // ─── rows ────────────────────────────────────────────────────────────────────
@@ -112,7 +115,7 @@ function flatten(children: readonly Element[], ctx: Ctx, out: Flat[] = []): Flat
 }
 
 function styleCtx(el: Element, ctx: Ctx): Ctx {
-  const next: Ctx = { twoD: ctx.twoD, display: ctx.display, level: ctx.level }
+  const next: Ctx = { twoD: ctx.twoD, display: ctx.display, level: ctx.level, compact: ctx.compact }
   const display = el.attrs.displaystyle
   if (display === 'true') next.display = true
   if (display === 'false') next.display = false
@@ -133,7 +136,7 @@ function layoutRow(children: readonly Element[], ctx: Ctx): Row {
   const flat = flatten(children, ctx)
   if (!flat.some(f => isNewline(f.el))) return buildRow(flat, ctx)
   // \\ outside an environment: the lines, stacked and centred.
-  if (!ctx.twoD) fail('line break in inline math')
+  if (!ctx.twoD && !ctx.compact) fail('line break in inline math')
   const parts: Flat[][] = [[]]
   for (const f of flat) {
     if (isNewline(f.el)) parts.push([])
@@ -377,7 +380,8 @@ function isIntegral(text: string): boolean {
 
 /** Whether the atom stretches to the height of its row: a fence, or an integral sign in display style. */
 function stretches(el: Element, ctx: Ctx): boolean {
-  if (!ctx.twoD) return false
+  // Compact layouts keep fences tall around a table's rows.
+  if (!ctx.twoD && !ctx.compact) return false
   const mo = coreMo(el)
   if (!mo) return false
   const text = tokenText(mo)
@@ -449,11 +453,11 @@ function layoutNode(el: Element, ctx: Ctx): Box {
 
 /** The context without a stretch target, for anything but an embellished operator's base. */
 function strip(ctx: Ctx): Ctx {
-  return ctx.stretch ? { twoD: ctx.twoD, display: ctx.display, level: ctx.level } : ctx
+  return ctx.stretch ? { twoD: ctx.twoD, display: ctx.display, level: ctx.level, compact: ctx.compact } : ctx
 }
 
 function scriptCtx(ctx: Ctx): Ctx {
-  return { twoD: ctx.twoD, display: false, level: ctx.level + 1 }
+  return { twoD: ctx.twoD, display: false, level: ctx.level + 1, compact: ctx.compact }
 }
 
 // ─── tokens ──────────────────────────────────────────────────────────────────
@@ -654,7 +658,7 @@ function root(radicand: Row, indexEl: Element | undefined, ctx: Ctx): Box {
   let index: Box | undefined
   let mapped: string | undefined
   if (indexEl) {
-    index = layoutRow([indexEl], { twoD: ctx.twoD, display: false, level: ctx.level + 2 }).box
+    index = layoutRow([indexEl], { twoD: ctx.twoD, display: false, level: ctx.level + 2, compact: ctx.compact }).box
     mapped = height(index) === 1 ? mapScript(index.rows[0]!, SUPERSCRIPTS) : undefined
   }
   const sign = mapped === '³' ? '∛' : mapped === '⁴' ? '∜' : '√'
@@ -1050,9 +1054,11 @@ function alignOf(value: string): Align {
 }
 
 function table(el: Element, ctx: Ctx): Box {
-  const cellCtx: Ctx = { twoD: ctx.twoD, display: el.attrs.displaystyle === 'true', level: ctx.level }
+  const cellCtx: Ctx = ctx.compact
+    ? { twoD: false, display: false, level: ctx.level, compact: true }
+    : { twoD: ctx.twoD, display: el.attrs.displaystyle === 'true', level: ctx.level }
   const rowEls = elements(el)
-  if (!ctx.twoD && rowEls.length > 1) fail('table in inline math')
+  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) fail('table in inline math')
   const tableAligns = list(el.attrs.columnalign, 'center')
   // A percentage (multline's) has no meaning in cells: no extra space.
   const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))

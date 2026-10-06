@@ -126,6 +126,12 @@ export interface UnicodeOptions {
   display: boolean
   /** Terminal columns available; output wider than this is refused (null). */
   maxWidth?: number
+  /**
+   * Display math only: tables (aligned, cases, matrices) keep one line per row,
+   * their columns aligned, and everything else is written on one line, so the
+   * result is about as tall as its tables have rows.
+   */
+  compact?: boolean
 }
 
 export interface UnicodeResult {

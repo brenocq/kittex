@@ -12,7 +12,7 @@ import { parseXml } from './xml.js'
  */
 export function toUnicode(mathml: string, options: UnicodeOptions): UnicodeResult | null {
   try {
-    const box = layoutMath(parseXml(mathml), options.display)
+    const box = layoutMath(parseXml(mathml), options.display, options.display && options.compact === true)
     if (!options.display && box.rows.length !== 1) return null
     if (options.maxWidth !== undefined && box.width > options.maxWidth) return null
     return { lines: lines(box), baseline: box.base, width: box.width }
