@@ -1,0 +1,54 @@
+The state has two parts, where 𝑥ₖ⠀ is the position and 𝑣ₖ⠀ the velocity:
+- position 𝑥⠀ in metres
+- velocity 𝑣⠀ in metres per second, with a long enough tail to wrap around the row at narrow widths
+
+* first item 𝑎⠀ of a list
+* second item 𝑏⠀
+followed by a lazy line with 𝑐⠀ in it
+
+Steps to take, for 𝑛⠀ rounds:
+1. predict 𝑥⠀ forward
+2. update with the gain 𝐾ₖ⠀
+   - innovation 𝑦ₖ⠀
+   - covariance 𝑃ₖ⠀
+     1. nested numbered 𝑖⠀
+
+## Heading with 𝛼⠀ inside
+Text under the heading, with 𝛽⠀ and a few more words so that it wraps at narrow widths.
+
+Text above a heading, with 𝛾⠀ in it.
+### Next heading
+
+### Heading over a list
+- item with 𝛿⠀
+- item two
+
++ list item 𝜀⠀ right before a heading
+## Heading after list
+
+Text before code, with 𝜁⠀:
+```python
+x = 1
+```
+Text after code, with 𝜂⠀.
+
+Text before a quote, with 𝜃⠀:
+> quoted line with 𝜄⠀
+
+Text before a rule, with 𝜅⠀
+***
+Text after the rule, with 𝜆⠀.
+
+Text before a table, with 𝜇⠀:
+| a | b |
+|---|---|
+| 1 | 2 |
+
+```python
+y = 2
+```
+- list right after code 𝜈⠀
+```python
+z = 3
+```
+Closing paragraph with 𝜉⠀.
