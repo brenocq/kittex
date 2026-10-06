@@ -72,8 +72,8 @@ describe('the visible text of prose', () => {
     expect(visibleProse('a\nb\n\n\nc')?.text).toBe('a\nb\n\nc')
   })
 
-  test('links, autolinks, HTML, lists, headings, tables and code blocks are not followed', () => {
-    for (const md of ['see [x](http://a)', 'see https://a.b', 'a <b>c</b>', '- item', '# head', '| a |\n|---|\n| b |', '```\nx\n```', 'acme/repo#12'])
+  test('links (with no link mode known), HTML, lists, headings, tables and code blocks are not followed', () => {
+    for (const md of ['see [x](http://a)', 'see https://a.b', 'a <b>c</b>', '- item', '# head', '| a |\n|---|\n| b |', '```\nx\n```'])
       expect(visibleProse(md)).toBeNull()
   })
 
@@ -218,7 +218,7 @@ describe('layoutList', () => {
     expect(layoutList('Where:\n- a\n- b', 40)?.lines).toEqual(['Where:', '- a', '- b'])
   })
 
-  test('code blocks, quotes, tables, task items, links and too-narrow rows are not followed', () => {
+  test('code blocks, quotes, tables, task items, links (link mode unknown) and too-narrow rows are not followed', () => {
     expect(layoutList('- a\n\n  ```\n  x\n  ```', 40)).toBeNull()
     expect(layoutList('- a\n  > quote', 40)).toBeNull()
     expect(layoutList('- [ ] task', 40)).toBeNull()

@@ -1,8 +1,11 @@
+import type { LinkMode } from './links.js'
 import { drawList } from './list.js'
 import { visibleProse } from './prose.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
+export { engineHyperlinks } from './links.js'
+export type { LinkMode } from './links.js'
 export { markerOf } from './list.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
@@ -42,10 +45,11 @@ export interface ProseLayout {
  * Lays out a run of markdown prose as the engine draws it `width` cells wide,
  * and finds where each span lands (spans should hold plain text: inside a
  * code span or rewritten by an escape they are not found). Null when the
- * prose can't be laid out exactly (see visibleProse and wrapLine).
+ * prose can't be laid out exactly (see visibleProse and wrapLine). `mode`:
+ * how the engine draws links (links are not followed when it isn't known).
  */
-export function layoutProse(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  const visible = visibleProse(markdown)
+export function layoutProse(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  const visible = visibleProse(markdown, mode)
   if (!visible) return null
   const { text, source } = visible
   // Where each markdown offset was drawn: its visible index.
@@ -78,10 +82,10 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
  * Lays out a block that is a list (after one paragraph or none: a block
  * proseBlocks marks `list`) as the engine draws it `width` cells wide, and
  * finds where each span lands, as layoutProse does. Null when the list holds
- * anything its replay doesn't follow (see drawList).
+ * anything its replay doesn't follow (see drawList). `mode`: as layoutProse.
  */
-export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
-  const canvas = drawList(markdown, width)
+export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
+  const canvas = drawList(markdown, width, mode)
   if (!canvas) return null
   const text = canvas.text.join('')
   const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, i => canvas.end[i] === true))

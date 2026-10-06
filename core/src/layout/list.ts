@@ -1,6 +1,7 @@
 import type { Token, Tokens } from 'marked'
 
-import { inline, LEADING_SPACE, marked, unfollowable } from './prose.js'
+import type { InlineLinks, LinkMode } from './links.js'
+import { inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
 import type { VisibleText } from './prose.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
@@ -18,8 +19,9 @@ import { wrapLine } from './wrap.js'
  * as paragraphs are, except that a space before a number ending in `.` or `)`
  * becomes a no-break space (the engine's glueProse).
  *
- * Anything else in a list (code blocks, quotes, tables, rules, headings, HTML,
- * task items, links, an item opening with a nested list) makes it
+ * Links in item text are drawn as in paragraphs (links.ts), without glue
+ * inside them. Anything else in a list (code blocks, quotes, tables, rules,
+ * headings, HTML, task items, an item opening with a nested list) makes it
  * unpredictable here, and its math stays Unicode.
  */
 
@@ -125,10 +127,11 @@ export class Canvas {
 /**
  * Lays out a block that is a list (or lists, after one paragraph or none) as the engine
  * draws it in a column `width` cells wide. Null when anything in it isn't
- * followed (see above).
+ * followed (see above). `mode`: how the engine draws links.
  */
-export function drawList(markdown: string, width: number): Canvas | null {
+export function drawList(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
   if (unfollowable(markdown) || !(width >= 1)) return null
+  const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
     tokens = marked.lexer(markdown)
@@ -145,23 +148,23 @@ export function drawList(markdown: string, width: number): Canvas | null {
     if (token.type === 'paragraph' && !listed && at === 0) {
       // The paragraph's prose, then the list right under it (no blank line between them in the markdown).
       const paragraph = token as Tokens.Paragraph
-      const visible = textOf([{ tokens: paragraph.tokens ?? [], text: paragraph.text, at: 0 }], mapped, false)
+      const visible = textOf([{ tokens: paragraph.tokens ?? [], text: paragraph.text, at: 0 }], mapped, false, links)
       if (!visible || !canvas.draw(visible, 0, 0, width)) return null
     } else if (token.type === 'list' && (!listed || after === 'list')) {
       // Lists one after another (a new bullet character starts a new list) are stacked with no row between.
       listed = true
-      if (!drawItems(canvas, token as Tokens.List, mapped, 0, 0)) return null
+      if (!drawItems(canvas, token as Tokens.List, mapped, 0, 0, links)) return null
     } else if (token.type !== 'space' || !listed) {
       return null
     }
     at += token.raw.length
     after = token.type
   }
-  return listed && at === markdown.length ? canvas : null
+  return listed && at === markdown.length && linksHold(markdown, links) ? canvas : null
 }
 
 /** Draws a list's items from the canvas's last row: `indent` cells in, `depth` lists deep. */
-function drawItems(canvas: Canvas, list: Tokens.List, raw: Mapped, indent: number, depth: number): boolean {
+function drawItems(canvas: Canvas, list: Tokens.List, raw: Mapped, indent: number, depth: number, links: InlineLinks): boolean {
   if (list.items.length === 0 || list.items.length > MAX_ITEMS) return false
   const first = list.start === '' || list.start === undefined ? 1 : Number(list.start)
   const last = first + list.items.length - 1
@@ -171,7 +174,7 @@ function drawItems(canvas: Canvas, list: Tokens.List, raw: Mapped, indent: numbe
     const marker = list.ordered ? markerOf(depth, first + u, first, last) : '-'
     const blank = u > 0 && endsInBlank(list.items[u - 1]!)
     const itemRaw: Mapped = { text: item.raw, map: raw.map.slice(at, at + item.raw.length) }
-    if (!drawItem(canvas, item, itemRaw, marker, indent, depth, blank)) return false
+    if (!drawItem(canvas, item, itemRaw, marker, indent, depth, blank, links)) return false
     at += item.raw.length
   }
   // A nested list's raw may keep the newline its last item's lost.
@@ -182,7 +185,16 @@ function drawItems(canvas: Canvas, list: Tokens.List, raw: Mapped, indent: numbe
  * Draws one item (the engine's `on`): its text beside the marker, wrapped in
  * the rest of the row, a nested list under it. `blank`: a blank row above it.
  */
-function drawItem(canvas: Canvas, item: Tokens.ListItem, raw: Mapped, marker: string, indent: number, depth: number, blank: boolean): boolean {
+function drawItem(
+  canvas: Canvas,
+  item: Tokens.ListItem,
+  raw: Mapped,
+  marker: string,
+  indent: number,
+  depth: number,
+  blank: boolean,
+  links: InlineLinks,
+): boolean {
   if (item.task) return false
   const text = itemText(item, raw)
   if (!text) return false
@@ -224,11 +236,11 @@ function drawItem(canvas: Canvas, item: Tokens.ListItem, raw: Mapped, marker: st
     if (part.kind === 'list') {
       const top = canvas.rows + (gap ? 1 : 0)
       canvas.rows = top
-      if (!drawItems(canvas, part.list, part.raw, nested, depth + 1)) return false
+      if (!drawItems(canvas, part.list, part.raw, nested, depth + 1, links)) return false
       gap = false
       continue
     }
-    const drawn = textOf(part.runs, text, true)
+    const drawn = textOf(part.runs, text, true, links)
     if (!drawn) return false
     const opens = drawn.lead
     if (drawn.text === '' && m > 0) {
@@ -257,6 +269,7 @@ function textOf(
   runs: readonly Run[],
   owner: Mapped,
   glue: boolean,
+  links: InlineLinks,
 ): (VisibleText & { lead: boolean; blankAfter: boolean; newline: boolean }) | null {
   const out: VisibleText = { text: '', source: [] }
   for (const run of runs) {
@@ -266,7 +279,7 @@ function textOf(
       continue
     }
     const drawn: VisibleText = { text: '', source: [] }
-    if (!inline(drawn, run.tokens, run.text, run.at, glue)) return null
+    if (!inline(drawn, run.tokens, run.text, run.at, glue, links)) return null
     out.text += drawn.text + '\n'
     for (const offset of drawn.source) out.source.push(offset < 0 ? -1 : (owner.map[offset] ?? -1))
     out.source.push(-1)

@@ -1,14 +1,17 @@
 import { Marked } from 'marked'
 import type { Token, Tokens } from 'marked'
 
+import { ARTIFACT_MARK, drawLink, hasIssueRef, refGlueAgrees } from './links.js'
+import type { InlineLinks, LinkMode } from './links.js'
+
 /*
  * What Claude Code draws for a run of markdown prose, character for character:
  * its own marked (15.0.6, GFM) with the engine's tokenizer overrides, and its
- * terminal renderer's rules for the inline tokens kittex can follow. Anything
- * else (links, autolinks, HTML, images, tables, lists, headings, code blocks)
- * makes the text unpredictable here, and its math stays Unicode. A `<` is
- * refused only where it could open a tag (the engine strips some tags, and
- * marked reads HTML and autolinks there): `a < b` is plain text.
+ * terminal renderer's rules for the inline tokens kittex can follow, links
+ * included (links.ts). Anything else (HTML, images, tables, lists, headings,
+ * code blocks) makes the text unpredictable here, and its math stays Unicode.
+ * A `<` is refused only where it could open a tag (the engine strips some
+ * tags, and marked reads HTML there): `a < b` and an autolink are followed.
  */
 
 /** The engine's marked: its GFM lexer with the tokenizer overrides that change what is drawn. */
@@ -39,8 +42,9 @@ export const MARKDOWN_LIKE =
 /** The no-break space entities the engine draws as a plain space. */
 const NBSP_ENTITY = /&(?:nbsp|#0{0,4}160|#[xX]0{0,4}[aA]0);/g
 
-/** `owner/repo#123`: the engine may draw it as a link to the issue. */
-const ISSUE_REF = /(^|[^\w./-])([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)\b/
+/** marked's autolinks, `<scheme:…>` and `<address@host>`: a `<` that opens one isn't a tag. */
+const AUTOLINK =
+  /^<(?:[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s\x00-\x1f<>]*|[a-zA-Z0-9.!#$%&'*+/=?_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_]))>/
 
 /**
  * What the engine does to the text of a list item (its `glueProse`): a space
@@ -49,9 +53,20 @@ const ISSUE_REF = /(^|[^\w./-])([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)\b/
  */
 const GLUE = / (\d{1,9}[.)])(?!\w)/g
 
-/** Whether markdown holds something whose drawing kittex can't follow at all (controls, tags, issue links). */
+/** Whether markdown holds something whose drawing kittex can't follow at all (controls, tags). */
 export function unfollowable(markdown: string): boolean {
-  return /[\t\r\u0000-\u0008\u000b-\u001f\u007f]|<[A-Za-z/!?]/.test(markdown) || ISSUE_REF.test(markdown)
+  if (/[\t\r\u0000-\u0008\u000b-\u001f\u007f]/.test(markdown)) return true
+  for (const tag of markdown.matchAll(/<[A-Za-z/!?]/g)) if (!AUTOLINK.test(markdown.slice(tag.index))) return true
+  return false
+}
+
+/**
+ * Whether a drawing that put OSC 8 links in a block still holds: the engine
+ * moves link urls around a ⧉ in such a block (its `rIt`).
+ */
+export function linksHold(markdown: string, links: InlineLinks): boolean {
+  if (!markdown.includes(ARTIFACT_MARK)) return true
+  return !links.linked?.value && !(links.hyperlinks !== false && hasIssueRef(markdown))
 }
 
 /** Where a drawn text could put a space at the start of a row: the engine's drawing isn't followed there. */
@@ -68,10 +83,11 @@ export interface VisibleText {
  * between them allowed), before wrapping: emphasis markers and escapes
  * removed, code spans as their content, soft line breaks kept. Null when the
  * markdown holds anything else, or anything whose drawing kittex can't be
- * sure of.
+ * sure of. `mode`: how the engine draws links (none are followed unknown).
  */
-export function visibleProse(markdown: string): VisibleText | null {
+export function visibleProse(markdown: string, mode: LinkMode = {}): VisibleText | null {
   if (unfollowable(markdown)) return null
+  const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   const out: VisibleText = { text: '', source: [] }
   if (!MARKDOWN_LIKE.test(markdown) && !markdown.includes('&nbsp;')) {
     emit(out, markdown, 0)
@@ -92,7 +108,7 @@ export function visibleProse(markdown: string): VisibleText | null {
       } else if (token.type === 'paragraph') {
         const paragraph = token as Tokens.Paragraph
         if (!markdown.startsWith(paragraph.text, at)) return null
-        if (!inline(out, paragraph.tokens, paragraph.text, at)) return null
+        if (!inline(out, paragraph.tokens, paragraph.text, at, false, links)) return null
         out.text += '\n'
         out.source.push(-1)
       } else {
@@ -102,6 +118,7 @@ export function visibleProse(markdown: string): VisibleText | null {
     }
     if (at !== markdown.length) return null
   }
+  if (!linksHold(markdown, links)) return null
   // The engine drops leading newlines and trailing whitespace of a prose run.
   const lead = /^\n*/.exec(out.text)![0].length
   const kept = out.text.slice(lead).trimEnd().length
@@ -119,8 +136,10 @@ function emit(out: VisibleText, text: string, offset: number): void {
 /**
  * Appends the drawing of inline tokens whose raws, concatenated, are `src` (at
  * `offset` in the markdown). `glue`: the text of a list item (see GLUE).
+ * `links`: how links are drawn (none followed when unknown), and whether this
+ * is a link's text (its plain text is drawn as written).
  */
-export function inline(out: VisibleText, tokens: readonly Token[], src: string, offset: number, glue = false): boolean {
+export function inline(out: VisibleText, tokens: readonly Token[], src: string, offset: number, glue = false, links: InlineLinks = {}): boolean {
   let at = 0
   for (const token of tokens) {
     if (!src.startsWith(token.raw, at)) return false
@@ -130,6 +149,11 @@ export function inline(out: VisibleText, tokens: readonly Token[], src: string, 
         const text = token as Tokens.Text
         if (text.tokens) return false
         if (text.text !== text.raw) return false
+        if (links.inside) {
+          // A link's text keeps entities as written; no glue, no issue links.
+          emit(out, text.raw, base)
+          break
+        }
         const run = out.text.length
         if ((text as { escaped?: boolean }).escaped === false) {
           // `&nbsp;` and its numeric forms are drawn as a plain space.
@@ -144,7 +168,11 @@ export function inline(out: VisibleText, tokens: readonly Token[], src: string, 
         } else {
           emit(out, text.raw, base)
         }
-        if (glue) out.text = out.text.slice(0, run) + out.text.slice(run).replace(GLUE, '\u00a0$1')
+        if (glue) {
+          const drawn = out.text.slice(run)
+          if (links.hyperlinks !== false && !refGlueAgrees(drawn, GLUE)) return false
+          out.text = out.text.slice(0, run) + drawn.replace(GLUE, '\u00a0$1')
+        }
         break
       }
       case 'escape': {
@@ -167,7 +195,14 @@ export function inline(out: VisibleText, tokens: readonly Token[], src: string, 
         const lead = styled.raw.indexOf(styled.text)
         const trail = styled.raw.length - lead - styled.text.length
         if (lead < 1 || lead !== trail) return false
-        if (!inline(out, styled.tokens, styled.text, base + lead, glue)) return false
+        if (!inline(out, styled.tokens, styled.text, base + lead, glue, links)) return false
+        break
+      }
+      case 'link': {
+        const link = token as Tokens.Link
+        const label = (into: VisibleText, inner: readonly Token[], text: string, at: number) =>
+          inline(into, inner, text, at, false, { ...links, inside: true })
+        if (!drawLink(out, link, base, links, label)) return false
         break
       }
       case 'br':
