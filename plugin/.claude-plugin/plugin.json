@@ -1,0 +1,8 @@
+{
+  "name": "kittex",
+  "version": "0.1.0",
+  "description": "Typesets the LaTeX math in Claude's replies as real TeX in kitty and Ghostty, and as Unicode elsewhere",
+  "author": {
+    "name": "Breno Cunha Queiroz"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "kittex",
+  "description": "kittex: LaTeX math typeset in Claude Code replies",
+  "owner": {
+    "name": "Breno Cunha Queiroz"
+  },
+  "plugins": [
+    {
+      "name": "kittex",
+      "source": "./plugin",
+      "description": "Typesets the LaTeX math in Claude's replies as real TeX in kitty and Ghostty, and as Unicode elsewhere"
+    }
+  ]
+}
