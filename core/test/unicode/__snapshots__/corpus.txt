@@ -1,0 +1,437 @@
+$$ f'(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}
+  │            f(x + h) − f(x)│
+> │f′(x) = lim ───────────────│
+  │        h→0        h       │
+$ f′(x) = lim_(h→0) (f(x + h) − f(x))/h
+
+$$ \int_a^b f(x)\,dx = F(b) - F(a)
+> │∫ₐᵇ f(x) dx = F(b) − F(a)│
+$ ∫ₐᵇ f(x) dx = F(b) − F(a)
+
+$$ \frac{d}{dx}\left[ x^n \right] = n x^{n-1}
+  │d              │
+> │── [xⁿ] = nxⁿ⁻¹│
+  │dx             │
+$ (d/dx)[xⁿ] = nxⁿ⁻¹
+
+$$ \mathcal{L}\{f\}(s) = \int_0^{\infty} e^{-st} f(t)\,dt
+  │          ⌠∞            │
+> │ℒ{f}(s) = ⎮  e⁻ˢᵗf(t) dt│
+  │          ⌡₀            │
+$ ℒ{f}(s) = ∫₀^∞ e⁻ˢᵗf(t) dt
+
+$$ f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!}(x-a)^n
+  │        ∞  f⁽ⁿ⁾(a)         │
+> │f(x) =  ∑  ─────── (x − a)ⁿ│
+  │       n=0   n!            │
+$ f(x) = ∑ₙ₌₀^∞ (f⁽ⁿ⁾(a)/n!)(x − a)ⁿ
+
+$$ \frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u
+  │∂²u        │
+> │─── = c²∇²u│
+  │∂t²        │
+$ ∂²u/∂t² = c²∇²u
+
+$$ \oint_C \mathbf{F} \cdot d\mathbf{r} = \iint_S (\nabla \times \mathbf{F}) \cdot d\mathbf{S}
+> │∮  𝐅 ⋅ d𝐫 = ∬ (∇ × 𝐅) ⋅ d𝐒│
+  │ C           S            │
+$ ∮_C 𝐅 ⋅ d𝐫 = ∬_S(∇ × 𝐅) ⋅ d𝐒
+
+$$ \lim_{n\to\infty} \left(1 + \frac{1}{n}\right)^n = e
+  │    ⎛    1⎞ⁿ    │
+> │lim ⎜1 + ─⎟  = e│
+  │n→∞ ⎝    n⎠     │
+$ lim_(n→∞) (1 + 1/n)ⁿ = e
+
+$$ \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+  │⌠∞   −x²        │
+> │⎮   e    dx = √π│
+  │⌡−∞             │
+$ ∫_(−∞)^∞ e^(−x²) dx = √π
+
+$$ \frac{d}{dx} \int_a^x f(t)\,dt = f(x)
+  │d                    │
+> │── ∫ₐˣ f(t) dt = f(x)│
+  │dx                   │
+$ (d/dx) ∫ₐˣ f(t) dt = f(x)
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
+  │ ∞  1    π²│
+> │ ∑  ── = ──│
+  │n=1 n²   6 │
+$ ∑ₙ₌₁^∞ 1/n² = π²/6
+
+$$ e^{i\theta} = \cos\theta + i\sin\theta
+> │eⁱᶿ = cos θ + i sin θ│
+$ eⁱᶿ = cos θ + i sin θ
+
+$$ \nabla f = \left( \frac{\partial f}{\partial x}, \frac{\partial f}{\partial y}, \frac{\partial f}{\partial z} \right)
+  │     ⎛∂f  ∂f  ∂f⎞│
+> │∇f = ⎜──, ──, ──⎟│
+  │     ⎝∂x  ∂y  ∂z⎠│
+$ ∇f = (∂f/∂x, ∂f/∂y, ∂f/∂z)
+
+$$ \int_0^1 \frac{dx}{1 + x^2} = \frac{\pi}{4}
+  │⌠¹   dx     π│
+> │⎮  ────── = ─│
+  │⌡₀ 1 + x²   4│
+$ ∫₀¹ dx/(1 + x²) = π/4
+
+$$ A\mathbf{x} = \mathbf{b}
+> │A𝐱 = 𝐛│
+$ A𝐱 = 𝐛
+
+$$ \det(A - \lambda I) = 0
+> │det(A − λI) = 0│
+$ det(A − λI) = 0
+
+$$ A = \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}
+> │A = ⎛a₁₁  a₁₂⎞│
+  │    ⎝a₂₁  a₂₂⎠│
+$ (none)
+
+$$ I_3 = \begin{bmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}
+  │     ⎡1  0  0⎤│
+> │I₃ = ⎢0  1  0⎥│
+  │     ⎣0  0  1⎦│
+$ (none)
+
+$$ \begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc
+> ││a  b│ = ad − bc│
+  ││c  d│          │
+$ (none)
+
+$$ A^{-1} = \frac{1}{\det A} \operatorname{adj}(A)
+  │        1         │
+> │A⁻¹ = ───── adj(A)│
+  │      det A       │
+$ A⁻¹ = (1/(det A)) adj(A)
+
+$$ \|\mathbf{v}\|_2 = \sqrt{\sum_{i=1}^n v_i^2}
+  │        ┌────────│
+  │        │  n     │
+> │‖𝐯‖₂ =  │  ∑  vᵢ²│
+  │       ╲│ i=1    │
+$ ‖𝐯‖₂ = √(∑ᵢ₌₁ⁿ vᵢ²)
+
+$$ \langle \mathbf{u}, \mathbf{v} \rangle = \mathbf{u}^\top \mathbf{v}
+> │⟨𝐮, 𝐯⟩ = 𝐮ᵀ𝐯│
+$ ⟨𝐮, 𝐯⟩ = 𝐮ᵀ𝐯
+
+$$ A = U \Sigma V^T
+> │A = UΣVᵀ│
+$ A = UΣVᵀ
+
+$$ \mathbf{x} = \begin{pmatrix} x_1 \\ x_2 \\ \vdots \\ x_n \end{pmatrix}
+  │    ⎛x₁⎞│
+> │𝐱 = ⎜x₂⎟│
+  │    ⎜⋮ ⎟│
+  │    ⎝xₙ⎠│
+$ (none)
+
+$$ \operatorname{tr}(AB) = \operatorname{tr}(BA)
+> │tr(AB) = tr(BA)│
+$ tr(AB) = tr(BA)
+
+$$ \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \begin{pmatrix} x \\ y \end{pmatrix}
+> │⎛cos θ  −sin θ⎞⎛x⎞│
+  │⎝sin θ  cos θ ⎠⎝y⎠│
+$ (none)
+
+$$ P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+  │           P(B ∣ A) P(A)│
+> │P(A ∣ B) = ─────────────│
+  │               P(B)     │
+$ P(A ∣ B) = (P(B ∣ A) P(A))/P(B)
+
+$$ \mathbb{E}[X] = \sum_{x} x\,p(x)
+> │𝔼[X] = ∑ x p(x)│
+  │       x       │
+$ 𝔼[X] = ∑ₓ x p(x)
+
+$$ \operatorname{Var}(X) = \mathbb{E}[X^2] - (\mathbb{E}[X])^2
+> │Var(X) = 𝔼[X²] − (𝔼[X])²│
+$ Var(X) = 𝔼[X²] − (𝔼[X])²
+
+$$ f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{(x-\mu)^2}{2\sigma^2}}
+  │         1     −(x−μ)²/(2σ²)│
+> │f(x) = ────── e             │
+  │          __                │
+  │        σ√2π                │
+$ f(x) = (1/(σ√(2π)))e^(−(x−μ)²/(2σ²))
+
+$$ X \sim \mathcal{N}(\mu, \sigma^2)
+> │X ∼ 𝒩(μ, σ²)│
+$ X ∼ 𝒩(μ, σ²)
+
+$$ P(X = k) = \binom{n}{k} p^k (1-p)^{n-k}
+  │           ⎛n⎞            │
+> │P(X = k) = ⎜ ⎟pᵏ(1 − p)ⁿ⁻ᵏ│
+  │           ⎝k⎠            │
+$ P(X = k) = C(n, k)pᵏ(1 − p)ⁿ⁻ᵏ
+
+$$ \bar{x} = \frac{1}{n}\sum_{i=1}^n x_i
+  │    1  n    │
+> │x̄ = ─  ∑  xᵢ│
+  │    n i=1   │
+$ x̄ = (1/n) ∑ᵢ₌₁ⁿ xᵢ
+
+$$ H(X) = -\sum_{i} p_i \log_2 p_i
+> │H(X) = −∑ pᵢ log₂ pᵢ│
+  │        i           │
+$ H(X) = −∑ᵢ pᵢ log₂ pᵢ
+
+$$ \hat{\theta} = \arg\max_\theta \mathcal{L}(\theta)
+> │θ̂ = arg max ℒ(θ)│
+  │         θ      │
+$ θ̂ = arg max_θ ℒ(θ)
+
+$$ D_{\mathrm{KL}}(P \parallel Q) = \sum_x P(x) \log \frac{P(x)}{Q(x)}
+  │                        P(x)│
+> │D  (P ∥ Q) = ∑ P(x) log ────│
+  │ KL          x          Q(x)│
+$ D_(KL)(P ∥ Q) = ∑ₓ P(x) log(P(x)/Q(x))
+
+$$ E = mc^2
+> │E = mc²│
+$ E = mc²
+
+$$ \mathbf{F} = m\mathbf{a}
+> │𝐅 = m𝐚│
+$ 𝐅 = m𝐚
+
+$$ i\hbar \frac{\partial}{\partial t} \Psi(\mathbf{r}, t) = \hat{H} \Psi(\mathbf{r}, t)
+  │   ∂                    │
+> │iℏ ── Ψ(𝐫, t) = ĤΨ(𝐫, t)│
+  │   ∂t                   │
+$ iℏ(∂/∂t)Ψ(𝐫, t) = ĤΨ(𝐫, t)
+
+$$ \begin{aligned} \nabla\cdot\mathbf{E} &= \frac{\rho}{\varepsilon_0} \\ \nabla\times\mathbf{B} &= \mu_0\mathbf{J} + \mu_0\varepsilon_0\frac{\partial\mathbf{E}}{\partial t} \end{aligned}
+  │        ρ            │
+  │∇ ⋅ 𝐄 = ──           │
+  │        ε₀           │
+> │                     │
+  │                   ∂𝐄│
+  │∇ × 𝐁 = μ₀𝐉 + μ₀ε₀ ──│
+  │                   ∂t│
+$ (none)
+
+$$ \Delta x \, \Delta p \ge \frac{\hbar}{2}
+  │        ℏ│
+> │Δx Δp ≥ ─│
+  │        2│
+$ Δx Δp ≥ ℏ/2
+
+$$ F = G \frac{m_1 m_2}{r^2}
+  │      m₁m₂│
+> │F = G ────│
+  │       r² │
+$ F = G(m₁m₂/r²)
+
+$$ \vec{v} = \frac{d\vec{r}}{dt}
+  │    dr⃗│
+> │v⃗ = ──│
+  │    dt│
+$ v⃗ = dr⃗/dt
+
+$$ E_k = \tfrac{1}{2} m v^2
+> │Eₖ = ½mv²│
+$ Eₖ = ½mv²
+
+$$ \gamma = \frac{1}{\sqrt{1 - v^2/c^2}}
+  │         1      │
+> │γ = ────────────│
+  │      _________ │
+  │     √1 − v²/c² │
+$ γ = 1/√(1 − v²/c²)
+
+$$ T_{\text{eff}} = \left( \frac{L}{4\pi\sigma R^2} \right)^{1/4}
+  │       ⎛  L  ⎞1/4│
+> │T    = ⎜─────⎟   │
+  │ eff   ⎝4πσR²⎠   │
+$ T_(eff) = (L/(4πσR²))^(1/4)
+
+$$ A \cup B = \{ x : x \in A \lor x \in B \}
+> │A ∪ B = {x : x ∈ A ∨ x ∈ B}│
+$ A ∪ B = {x : x ∈ A ∨ x ∈ B}
+
+$$ \forall \varepsilon > 0\; \exists \delta > 0 : |x - a| < \delta \implies |f(x) - f(a)| < \varepsilon
+> │∀ε > 0 ∃δ > 0 : |x − a| < δ ⟹ |f(x) − f(a)| < ε│
+$ ∀ε > 0 ∃δ > 0 : |x − a| < δ ⟹ |f(x) − f(a)| < ε
+
+$$ \mathbb{N} \subset \mathbb{Z} \subset \mathbb{Q} \subset \mathbb{R} \subset \mathbb{C}
+> │ℕ ⊂ ℤ ⊂ ℚ ⊂ ℝ ⊂ ℂ│
+$ ℕ ⊂ ℤ ⊂ ℚ ⊂ ℝ ⊂ ℂ
+
+$$ \left\{ x \in \mathbb{R} \;\middle|\; x^2 < 2 \right\}
+> │{x ∈ ℝ | x² < 2}│
+$ {x ∈ ℝ | x² < 2}
+
+$$ |A \times B| = |A| \cdot |B|
+> │|A × B| = |A| ⋅ |B|│
+$ |A × B| = |A| ⋅ |B|
+
+$$ \neg (p \land q) \iff \neg p \lor \neg q
+> │¬(p ∧ q) ⟺ ¬p ∨ ¬q│
+$ ¬(p ∧ q) ⟺ ¬p ∨ ¬q
+
+$$ f(x) = \begin{cases} x^2 & \text{if } x \ge 0 \\ -x & \text{if } x < 0 \end{cases}
+> │f(x) = ⎰x²  if x ≥ 0│
+  │       ⎱−x  if x < 0│
+$ (none)
+
+$$ |x| = \begin{cases} x, & x \geq 0, \\ -x, & x < 0. \end{cases}
+> │|x| = ⎰x,   x ≥ 0,│
+  │      ⎱−x,  x < 0.│
+$ (none)
+
+$$ \operatorname{sgn}(x) = \begin{cases} -1 & x < 0 \\ 0 & x = 0 \\ 1 & x > 0 \end{cases}
+  │         ⎧−1  x < 0│
+> │sgn(x) = ⎨0   x = 0│
+  │         ⎩1   x > 0│
+$ (none)
+
+$$ H(x) = \begin{cases} \frac{1}{2} & x = 0 \\ 1 & x > 0 \end{cases}
+> │H(x) = ⎰½  x = 0│
+  │       ⎱1  x > 0│
+$ (none)
+
+$$ \begin{aligned} (a+b)^2 &= (a+b)(a+b) \\ &= a^2 + 2ab + b^2 \end{aligned}
+> │(a + b)² = (a + b)(a + b)│
+  │         = a² + 2ab + b² │
+$ (none)
+
+$$ \begin{aligned} \int x e^x\,dx &= x e^x - \int e^x\,dx \\ &= (x - 1) e^x + C \end{aligned}
+> │∫ xeˣ dx = xeˣ − ∫ eˣ dx│
+  │         = (x − 1)eˣ + C│
+$ (none)
+
+$$ \begin{aligned} f(x) &= \frac{x^2 - 1}{x - 1} \\ &= x + 1 \end{aligned}
+  │       x² − 1│
+  │f(x) = ──────│
+> │       x − 1 │
+  │             │
+  │     = x + 1 │
+$ (none)
+
+$$ \begin{aligned} x + y &= 5 & 2x - y &= 1 \end{aligned}
+> │x + y = 5    2x − y = 1│
+$ x + y = 5    2x − y = 1
+
+$$ O(n \log n)
+> │O(n log n)│
+$ O(n log n)
+
+$$ T(n) = 2T\left(\frac{n}{2}\right) + O(n)
+  │         ⎛n⎞       │
+> │T(n) = 2T⎜─⎟ + O(n)│
+  │         ⎝2⎠       │
+$ T(n) = 2T(n/2) + O(n)
+
+$$ a \equiv b \pmod{n}
+> │a ≡ b  (mod n)│
+$ a ≡ b (mod n)
+
+$$ \gcd(a, b) = \gcd(b, a \bmod b)
+> │gcd(a, b) = gcd(b, a mod b)│
+$ gcd(a, b) = gcd(b, a mod b)
+
+$$ \sqrt[n]{x^m} = x^{m/n}
+  │  __    m/n│
+> │ⁿ√xᵐ = x   │
+$ ⁿ√(xᵐ) = x^(m/n)
+
+$$ \frac{1}{1 + \frac{1}{x}}
+  │   1   │
+> │───────│
+  │     1 │
+  │ 1 + ─ │
+  │     x │
+$ 1/(1 + 1/x)
+
+$$ \overline{z} = a - bi
+> │z̅ = a − bi│
+$ z̅ = a − bi
+
+$$ \underbrace{1 + 1 + \cdots + 1}_{n} = n
+> │1 + 1 + ⋯ + 1 = n│
+  │╰─────┬─────╯    │
+  │      n          │
+$ (none)
+
+$$ x \xrightarrow{f} y
+  │   f   │
+> │x ──→ y│
+$ x →ᶠ y
+
+$$ \boxed{E = mc^2}
+  │┌─────────┐│
+> ││ E = mc² ││
+  │└─────────┘│
+$ E = mc²
+
+$$ \lfloor x \rfloor + \lceil x \rceil
+> │⌊x⌋ + ⌈x⌉│
+$ ⌊x⌋ + ⌈x⌉
+
+$$ \sum_{\substack{0 \le i \le m \\ 0 < j < n}} P(i, j)
+> │  ∑   P(i, j)│
+  │0≤i≤m        │
+  │0<j<n        │
+$ (none)
+
+$$ \mathcal{O}, \mathfrak{g}, \mathsf{T}, \mathtt{x}, \mathbf{0}
+> │𝒪, 𝔤, 𝖳, 𝚡, 𝟎│
+$ 𝒪, 𝔤, 𝖳, 𝚡, 𝟎
+
+$$ \frac{a}{b} \cdot \frac{c}{d} = \frac{ac}{bd}
+  │a   c   ac│
+> │─ ⋅ ─ = ──│
+  │b   d   bd│
+$ a/b ⋅ c/d = ac/(bd)
+
+$$ \frac{\cancel{x} y}{\cancel{x}} = y
+  │x̸y    │
+> │── = y│
+  │x̸     │
+$ x̸y/x̸ = y
+
+$$ \left[\begin{array}{cc|c} 1 & 2 & 3 \\ 4 & 5 & 6 \end{array}\right]
+> │⎡1  2 │ 3⎤│
+  │⎣4  5 │ 6⎦│
+$ (none)
+
+$$ x_{n+1} = x_n - \frac{f(x_n)}{f'(x_n)}
+  │            f(xₙ) │
+> │xₙ₊₁ = xₙ − ──────│
+  │            f′(xₙ)│
+$ xₙ₊₁ = xₙ − f(xₙ)/f′(xₙ)
+
+$$ \sigma(z) = \frac{1}{1 + e^{-z}}
+  │          1   │
+> │σ(z) = ───────│
+  │       1 + e⁻ᶻ│
+$ σ(z) = 1/(1 + e⁻ᶻ)
+
+$$ \text{softmax}(z)_i = \frac{e^{z_i}}{\sum_j e^{z_j}}
+  │                 zᵢ   │
+  │                e     │
+> │softmax(z)ᵢ = ────────│
+  │                   zⱼ │
+  │               ∑ⱼ e   │
+$ softmax(z)ᵢ = e^(zᵢ)/(∑ⱼ e^(zⱼ))
+
+$$ \theta \leftarrow \theta - \eta \nabla_\theta J(\theta)
+> │θ ← θ − η∇ J(θ)│
+  │          θ    │
+$ θ ← θ − η∇_θJ(θ)
+
+$$ \alpha, \beta, \gamma \in \{1, 2, \ldots, n\}
+> │α, β, γ ∈ {1, 2, …, n}│
+$ α, β, γ ∈ {1, 2, …, n}
+
+$$ \overbrace{a + b}^{\text{sum}} \cdot \hat{n}
+  │ sum    │
+  │╭─┴─╮   │
+> │a + b ⋅n̂│
+$ (none)
