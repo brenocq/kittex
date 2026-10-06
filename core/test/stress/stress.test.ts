@@ -13,6 +13,7 @@ import { expect, test } from 'vitest'
 
 import {
   emPxForCell,
+  GlyphError,
   init,
   measureDisplay,
   previewDisplay,
@@ -111,7 +112,7 @@ function chosenForm(tex: string, maxWidth: number, rows: number): Form | 'source
   for (const form of ['stacked', 'compact', 'inline'] as const) {
     try {
       const display = form !== 'inline'
-      const result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact' })
+      const result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact', breakLines: true })
       if (result && result.lines.length <= rows) return form
     } catch {
       // not this form
@@ -157,6 +158,15 @@ function run(index: number, width: number): { outcome: Outcome; coverage?: Cover
   } catch (error) {
     if (!(error instanceof TexError)) throw error
     outcome.error = error.message
+    if (error instanceof GlyphError) {
+      // No image, but measureDisplay reserves the preview's rows and the preview stays.
+      outcome.flags.push('glyph-fallback')
+      const rows = measureDisplay(tex, env).rows
+      outcome.rows = rows
+      outcome.previewLines = previewDisplay(tex, { maxColumns: previewWidth }, rows) ?? undefined
+      outcome.preview = outcome.previewLines ? chosenForm(tex, previewWidth, rows) : 'source'
+      return { outcome }
+    }
     outcome.flags.push('tex-error')
     outcome.preview = previewDisplay(tex, { maxColumns: previewWidth }) ? chosenForm(tex, previewWidth, Infinity) : 'source'
   }
@@ -215,7 +225,7 @@ function summarize(all: readonly Outcome[]): string {
     const times = rows.flatMap(o => (o.ms === undefined ? [] : [o.ms])).sort((a, b) => a - b)
     const forms = ['stacked', 'compact', 'inline', 'source'].map(f => `${f} ${rows.filter(o => o.preview === f).length}`).join(', ')
     out.push(
-      `width ${width}: ${rows.length} formulas; tex-error ${count('tex-error')}, no-preview ${count('no-preview')}, padded ${count('padded')}, ` +
+      `width ${width}: ${rows.length} formulas; tex-error ${count('tex-error')}, glyph-fallback ${count('glyph-fallback')}, no-preview ${count('no-preview')}, padded ${count('padded')}, ` +
         `scale<0.6 ${count('scale<0.6')}, scaled ${count('scaled')}, slow ${count('slow')}, png>64K ${count('png>64K')}, rows>=255 ${count('rows>=255')}, edge ${count('edge')}`,
       `  previews: ${forms}`,
       `  render ms: median ${times[Math.floor(times.length / 2)]?.toFixed(1)}, p90 ${times[Math.floor(times.length * 0.9)]?.toFixed(1)}, max ${times[times.length - 1]?.toFixed(1)}`,

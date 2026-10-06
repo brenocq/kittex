@@ -1,7 +1,7 @@
 import { layoutProse, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
-import { initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
+import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
@@ -20,7 +20,7 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
+export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
 export { layoutProse, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
@@ -74,17 +74,49 @@ const imageCache = new Map<string, RenderedImage>()
 const CACHE_LIMIT = 256
 
 /**
+ * Display formulas that would have to shrink below this to fit the column are
+ * refused (TexError): smaller than half size, TeX is no longer readable.
+ */
+export const MIN_DISPLAY_SCALE = 0.5
+
+/**
+ * The columns a display preview's text may take: two fewer than the image's,
+ * so a pad leads every line and none reaches the edge (the plugin writes
+ * previews this way).
+ */
+export function previewWidth(maxColumns: number): number {
+  return Math.max(1, Math.min(255, maxColumns) - 2)
+}
+
+/**
  * The cells to reserve for a display formula, shared by its streaming preview and
  * its image (draw it with `renderDisplay(tex, env, rows)`). That is the image's
- * own size, unless no Unicode preview fits in it: then the shortest preview's
- * height is reserved and the image is padded to it. Throws TexError.
+ * own size, unless no Unicode preview (previewWidth wide) fits in it: then the
+ * shortest preview's height is reserved and the image is padded to it.
+ *
+ * A formula holding characters the font can't draw (GlyphError) has no image,
+ * but when it has a preview, the preview's own rows are reserved: renderDisplay
+ * then throws and the preview stays. Throws TexError, also for a formula that
+ * would be drawn below MIN_DISPLAY_SCALE.
  */
 export function measureDisplay(tex: string, env: RenderEnv): CellBox {
-  const result = typesetDisplay(tex, env)
+  let result: TypesetResult
+  try {
+    result = typesetDisplay(tex, env)
+  } catch (error) {
+    const form = error instanceof GlyphError ? previewForms(tex, previewWidth(env.maxColumns))[0] : undefined
+    if (form) return { columns: Math.max(1, Math.min(255, env.maxColumns)), rows: Math.min(255, form.lines.length), scale: 1 }
+    throw error
+  }
   const box = measure(result, rasterOptions(env))
-  const forms = previewForms(tex, env.maxColumns)
+  if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
+  const forms = previewForms(tex, previewWidth(env.maxColumns))
   if (forms.length === 0 || forms.some(form => form.lines.length <= box.rows)) return box
   return measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
+}
+
+function tooSmall(scale: number): string {
+  return `formula too wide to draw legibly (it would be drawn at ${Math.round(scale * 100)}% size)`
 }
 
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
@@ -96,6 +128,7 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     const result = typesetDisplay(tex, env)
     const options = rasterOptions(env, minRows)
     const box = measure(result, options)
+    if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
     const raster = rasterize(result, options)
     image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
@@ -138,24 +171,34 @@ export function measureInline(tex: string, env: InlineEnv): CellBox | null {
 
 /**
  * Draws an inline formula `columns` wide (at least what measureInline gave)
- * and one row tall, centred across, its baseline on the font's. Throws
- * TexError.
+ * and one row tall, at the left of its slot (a wider slot leaves its gap after
+ * the formula, like the space after a word), its baseline on the font's.
+ * Throws TexError.
  */
 export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetInline(tex)
-    const options = inlineOptions(env, columns, 'center')
+    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns }
     const raster = rasterize(result, options)
     image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
   }
   return { ...image, png: recolorPng(image.png, env.ink) }
 }
 
+export interface InlinePreviewOptions {
+  /**
+   * Drop optional spaces (`O(nlogn)`, `E=mc²`), so a preview standing in for
+   * an inline image is no wider than the image. Default true; false keeps
+   * TeX's spacing, for math that stays text.
+   */
+  tight?: boolean
+}
+
 /** An inline formula as one line of Unicode, or null when it can't be written on one line. */
-export function previewInline(tex: string, maxWidth?: number): string | null {
-  const result = unicodeFor(tex, 'inline', maxWidth)
+export function previewInline(tex: string, maxWidth?: number, options: InlinePreviewOptions = {}): string | null {
+  const result = unicodeFor(tex, options.tight === false ? 'inline' : 'tight', maxWidth)
   return result && result.lines.length === 1 ? result.lines[0]! : null
 }
 
@@ -174,26 +217,34 @@ export function toBase64(bytes: Uint8Array): string {
 
 function typesetDisplay(tex: string, env: RenderEnv): TypesetResult {
   if (tex.length > MAX_TEX_LENGTH) throw new TexError(`formula longer than ${MAX_TEX_LENGTH} characters`)
-  const lineWidth = (Math.min(255, env.maxColumns) * env.cellWidth) / env.emPx
+  // A cell clear of each edge: a tag (\tag, a numbered row) sits at the line's right end.
+  const lineWidth = (previewWidth(env.maxColumns) * env.cellWidth) / env.emPx
   const key = `${lineWidth.toFixed(3)}\n${tex}`
   return remember(typesetCache, key) ?? store(typesetCache, key, typeset(tex, { display: true, lineWidth }))
 }
 
-/** A display formula's Unicode forms that exist, most faithful first: stacked, compact, one line. */
+/**
+ * A display formula's Unicode forms that exist, most faithful first: stacked,
+ * compact, one line; each broken into lines (as MathJax breaks the image)
+ * when it is wider than maxWidth.
+ */
 function previewForms(tex: string, maxWidth: number): UnicodeResult[] {
-  return (['stacked', 'compact', 'inline'] as const).flatMap(form => unicodeFor(tex, form, maxWidth) ?? [])
+  return (['stacked', 'compact', 'lines'] as const).flatMap(form => unicodeFor(tex, form, maxWidth) ?? [])
 }
 
 const unicodeCache = new Map<string, UnicodeResult | null>()
 
-function unicodeFor(tex: string, form: 'stacked' | 'compact' | 'inline', maxWidth?: number): UnicodeResult | null {
+type UnicodeForm = 'stacked' | 'compact' | 'lines' | 'inline' | 'tight'
+
+function unicodeFor(tex: string, form: UnicodeForm, maxWidth?: number): UnicodeResult | null {
   if (tex.length > MAX_TEX_LENGTH) return null
   const key = `${form}${maxWidth ?? ''}\n${tex}`
   if (unicodeCache.has(key)) return remember(unicodeCache, key) ?? null
-  const display = form !== 'inline'
+  const display = form === 'stacked' || form === 'compact'
+  const breakLines = form !== 'inline' && form !== 'tight'
   let result: UnicodeResult | null
   try {
-    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact' })
+    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact', breakLines, tight: form === 'tight' })
   } catch {
     result = null
   }

@@ -16,7 +16,8 @@ describe('measureInline', () => {
 
   test('a taller one is scaled down a little, never below MIN_INLINE_SCALE', async () => {
     await init()
-    for (const tex of ['x^2', 'y', '\\sqrt{2}', 'e^{-x^2}', '\\alpha \\le \\beta']) {
+    // A parenthesis moves the baseline a pixel rather than shrink further.
+    for (const tex of ['x^2', 'y', '\\sqrt{2}', 'e^{-x^2}', '\\alpha \\le \\beta', 'f(x)', 'O(n \\log n)', '\\dot{\\theta}']) {
       const box = measureInline(tex, env)
       expect(box, tex).not.toBeNull()
       expect(box!.rows).toBe(1)
@@ -24,9 +25,18 @@ describe('measureInline', () => {
     }
   })
 
+  test('a subscript with a descender fits on the baseline the plugin uses (20 of 26 px) by moving it up a pixel', async () => {
+    await init()
+    for (const tex of ['a_{ij}', 'p_j', 'g_{jk}']) {
+      const box = measureInline(tex, { ...env, baselinePx: 20 })
+      expect(box, tex).not.toBeNull()
+      expect(box!.scale).toBeGreaterThan(0.9)
+    }
+  })
+
   test('one that would need more stays Unicode (null)', async () => {
     await init()
-    for (const tex of ['\\frac{a}{b}', '\\sum_{i=1}^n a_i', '\\int_0^1 f', 'f(x)', '\\begin{pmatrix}a\\\\b\\end{pmatrix}']) {
+    for (const tex of ['\\frac{a}{b}', '\\sum_{i=1}^n a_i', '\\int_0^1 f', '\\begin{pmatrix}a\\\\b\\end{pmatrix}']) {
       expect(measureInline(tex, env), tex).toBeNull()
     }
   })
@@ -38,6 +48,16 @@ describe('measureInline', () => {
 })
 
 describe('renderInline', () => {
+  test('at the left of a slot wider than the formula', async () => {
+    await init()
+    const image = renderInline('x', env, 4)
+    expect([image.columns, image.rows]).toEqual([4, 1])
+    const r = rasterize(typeset('x', { display: false }), { emPx: env.emPx, cellWidth: 13, cellHeight: 26, maxColumns: 4, minColumns: 4, align: 'left', baselinePx: 21 })
+    let right = -1
+    for (let y = 0; y < r.heightPx; y++) for (let x = 0; x < r.widthPx; x++) if (r.alpha[y * r.widthPx + x]! > 0) right = Math.max(right, x)
+    expect(right).toBeLessThan(26)
+  })
+
   test('one row, the asked columns, the formula resting on the baseline', async () => {
     await init()
     const image = renderInline('x', env, 3)

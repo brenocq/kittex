@@ -81,7 +81,7 @@ describe('the inline preview', () => {
   test('is null for a formula too tall for one row: it stays plain Unicode', async () => {
     await init()
     expect(inlinePreview('\\frac{a}{b}', inlineEnvFor(kitty26()))).toBeNull()
-    expect(inlinePreview('\\sum_{i=1}^n a_i', inlineEnvFor(kitty26()))).toBeNull()
+    expect(inlinePreview('\\int_0^1 f', inlineEnvFor(kitty26()))).toBeNull()
   })
 
   test('puts the math baseline one pixel above the font baseline measured in kitty', () => {
