@@ -66,6 +66,17 @@ describe('LineScanner', () => {
     expect(kinds(scanner.push('$x$` here\n', true))).toEqual(['Use `a\n$x$` here\n'])
   })
 
+  test('a last line holding `\\|` waits for the next: a delimiter row under it makes it a table header', () => {
+    const scanner = createLineScanner()
+    expect(kinds(scanner.push('| $\\|v\\|$ | b |\n', false))).toEqual([])
+    expect(kinds(scanner.push('|---|---|\n| $\\|w\\|$ | c |\n', false))).toEqual(['| ', ['$', false, '|v|'], ' | b |\n|---|---|\n| ', ['$', false, '|w|'], ' | c |\n'])
+    // In prose the line comes once the next one says no table starts, its `\\|` a norm.
+    const prose = createLineScanner()
+    expect(kinds(prose.push('The norm $\\|x\\|$\n', false))).toEqual([])
+    expect(kinds(prose.push('is positive.\n', false))).toEqual(['The norm ', ['$', false, '\\|x\\|'], '\nis positive.\n'])
+    expect(kinds(prose.push('\n', true))).toEqual(['\n'])
+  })
+
   test('final flushes an unclosed block as text', () => {
     const scanner = createLineScanner()
     expect(scanner.push('Intro\n\n$$\n\\frac{a}{b}\n', false)).toEqual([{ kind: 'text', text: 'Intro\n\n', start: 0, end: 7 }])
