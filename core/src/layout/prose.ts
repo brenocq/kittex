@@ -11,7 +11,8 @@ import type { Token, Tokens } from 'marked'
  * marked reads HTML and autolinks there): `a < b` is plain text.
  */
 
-const marked = new Marked({
+/** The engine's marked: its GFM lexer with the tokenizer overrides that change what is drawn. */
+export const marked = new Marked({
   gfm: true,
   tokenizer: {
     // The engine strikes through `~~text~~` only (marked's GFM also takes `~text~`).
@@ -32,7 +33,7 @@ const marked = new Marked({
  * The engine draws a text with none of these as one paragraph, as written,
  * without reading markdown at all (and a text with `&nbsp;` always as markdown).
  */
-const MARKDOWN_LIKE =
+export const MARKDOWN_LIKE =
   /[#*`|[>\-_~]|\n[\r\n]|\r\r|\r\n[\r\n]|(?:^|[\r\n]) {0,3}(?:\d+[.)]|\+) |(?:^|[\r\n]) {0,3}=+ *(?:[\r\n]|$)|https?:\/\/|www\./
 
 /** The no-break space entities the engine draws as a plain space. */
@@ -40,6 +41,21 @@ const NBSP_ENTITY = /&(?:nbsp|#0{0,4}160|#[xX]0{0,4}[aA]0);/g
 
 /** `owner/repo#123`: the engine may draw it as a link to the issue. */
 const ISSUE_REF = /(^|[^\w./-])([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)\b/
+
+/**
+ * What the engine does to the text of a list item (its `glueProse`): a space
+ * before a number that ends in `.` or `)` becomes a no-break space, so the
+ * number never starts a row (where it could read as a list marker).
+ */
+const GLUE = / (\d{1,9}[.)])(?!\w)/g
+
+/** Whether markdown holds something whose drawing kittex can't follow at all (controls, tags, issue links). */
+export function unfollowable(markdown: string): boolean {
+  return /[\t\r\u0000-\u0008\u000b-\u001f\u007f]|<[A-Za-z/!?]/.test(markdown) || ISSUE_REF.test(markdown)
+}
+
+/** Where a drawn text could put a space at the start of a row: the engine's drawing isn't followed there. */
+export const LEADING_SPACE = / {2}|(?:^|\n) /
 
 /** The text as drawn, and for each of its UTF-16 units the offset in the markdown it came from (-1: none). */
 export interface VisibleText {
@@ -55,7 +71,7 @@ export interface VisibleText {
  * sure of.
  */
 export function visibleProse(markdown: string): VisibleText | null {
-  if (/[\t\r\u0000-\u0008\u000b-\u001f\u007f]|<[A-Za-z/!?]/.test(markdown) || ISSUE_REF.test(markdown)) return null
+  if (unfollowable(markdown)) return null
   const out: VisibleText = { text: '', source: [] }
   if (!MARKDOWN_LIKE.test(markdown) && !markdown.includes('&nbsp;')) {
     emit(out, markdown, 0)
@@ -91,7 +107,7 @@ export function visibleProse(markdown: string): VisibleText | null {
   const kept = out.text.slice(lead).trimEnd().length
   const text = out.text.slice(lead, lead + kept)
   // Where a row could start with a space, the engine's drawing isn't followed here.
-  if (/ {2}|(?:^|\n) /.test(text)) return null
+  if (LEADING_SPACE.test(text)) return null
   return { text, source: out.source.slice(lead, lead + kept) }
 }
 
@@ -100,8 +116,11 @@ function emit(out: VisibleText, text: string, offset: number): void {
   for (let i = 0; i < text.length; i++) out.source.push(offset + i)
 }
 
-/** Appends the drawing of inline tokens whose raws, concatenated, are `src` (at `offset` in the markdown). */
-function inline(out: VisibleText, tokens: readonly Token[], src: string, offset: number): boolean {
+/**
+ * Appends the drawing of inline tokens whose raws, concatenated, are `src` (at
+ * `offset` in the markdown). `glue`: the text of a list item (see GLUE).
+ */
+export function inline(out: VisibleText, tokens: readonly Token[], src: string, offset: number, glue = false): boolean {
   let at = 0
   for (const token of tokens) {
     if (!src.startsWith(token.raw, at)) return false
@@ -111,6 +130,7 @@ function inline(out: VisibleText, tokens: readonly Token[], src: string, offset:
         const text = token as Tokens.Text
         if (text.tokens) return false
         if (text.text !== text.raw) return false
+        const run = out.text.length
         if ((text as { escaped?: boolean }).escaped === false) {
           // `&nbsp;` and its numeric forms are drawn as a plain space.
           let last = 0
@@ -124,6 +144,7 @@ function inline(out: VisibleText, tokens: readonly Token[], src: string, offset:
         } else {
           emit(out, text.raw, base)
         }
+        if (glue) out.text = out.text.slice(0, run) + out.text.slice(run).replace(GLUE, '\u00a0$1')
         break
       }
       case 'escape': {
@@ -146,7 +167,7 @@ function inline(out: VisibleText, tokens: readonly Token[], src: string, offset:
         const lead = styled.raw.indexOf(styled.text)
         const trail = styled.raw.length - lead - styled.text.length
         if (lead < 1 || lead !== trail) return false
-        if (!inline(out, styled.tokens, styled.text, base + lead)) return false
+        if (!inline(out, styled.tokens, styled.text, base + lead, glue)) return false
         break
       }
       case 'br':
@@ -161,11 +182,19 @@ function inline(out: VisibleText, tokens: readonly Token[], src: string, offset:
   return at === src.length
 }
 
-/** A top-level block of markdown: `[start, end)`, and whether it is a single paragraph. */
+/**
+ * A top-level block of markdown: `[start, end)`, whether it is a single
+ * paragraph, and whether it is a list (list tokens, after one paragraph or
+ * none: a list may follow a paragraph's last line, and a new bullet character
+ * starts a new list).
+ */
 export interface ProseBlock {
   start: number
   end: number
   paragraph: boolean
+  list?: boolean
+  /** A single blockquote, which the engine draws as one text box two cells in (a bar and a space). */
+  quote?: boolean
 }
 
 /**
@@ -186,29 +215,36 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
     return null
   }
   const blocks: ProseBlock[] = []
-  let block: (ProseBlock & { tokens: number }) | undefined
+  let block: { start: number; end: number; types: string[] } | undefined
+  const close = () => {
+    if (!block) return
+    const types = block.types.join(',')
+    blocks.push({
+      start: block.start,
+      end: block.end,
+      paragraph: types === 'paragraph',
+      ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}),
+      ...(types === 'blockquote' ? { quote: true } : {}),
+    })
+    block = undefined
+  }
   let at = 0
   for (const token of tokens) {
     if (!markdown.startsWith(token.raw, at)) return null
     if (token.type === 'space' && /\n[ \t]*\n/.test(markdown.slice(Math.max(0, at - 1), at + token.raw.length))) {
-      if (block) blocks.push({ start: block.start, end: block.end, paragraph: block.paragraph && block.tokens === 1 })
-      block = undefined
+      close()
     } else if (token.type !== 'space' || block) {
-      if (!block) block = { start: at, end: at, paragraph: true, tokens: 0 }
+      if (!block) block = { start: at, end: at, types: [] }
       // Some tokens (a heading, a code block, a rule) take the blank line after
       // them into their raw: it still ends the block, at the token's own text.
       const body = token.raw.replace(/(?:\r?\n[ \t]*)+$/, '')
       block.end = at + (token.type === 'space' ? token.raw.length : body.length)
-      block.tokens += token.type === 'space' ? 0 : 1
-      if (token.type !== 'paragraph' && token.type !== 'space') block.paragraph = false
-      if (token.type !== 'space' && /\n[ \t]*\n[ \t]*$/.test(token.raw)) {
-        blocks.push({ start: block.start, end: block.end, paragraph: block.paragraph && block.tokens === 1 })
-        block = undefined
-      }
+      if (token.type !== 'space') block.types.push(token.type)
+      if (token.type !== 'space' && /\n[ \t]*\n[ \t]*$/.test(token.raw)) close()
     }
     at += token.raw.length
   }
   if (at !== markdown.length) return null
-  if (block) blocks.push({ start: block.start, end: block.end, paragraph: block.paragraph && block.tokens === 1 })
+  close()
   return blocks
 }

@@ -29,7 +29,7 @@ import {
   renderInline,
   toBase64,
 } from './core.js'
-import type { CellSize, TerminalColors, TerminalInfo } from './core.js'
+import type { CellSize, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
 import {
   BULLET,
   bulletFor,
@@ -39,6 +39,7 @@ import {
   copiedFormula,
   FALLBACK_COLUMNS,
   INK_PREFER,
+  IMAGE_LIMIT,
   inlineEnvFor,
   INSTRUCT_WITHOUT_IMAGES,
   joinProse,
@@ -49,6 +50,7 @@ import {
   PIECE_TOP,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
+  quoteColumns,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -83,6 +85,8 @@ let instructByContext = false
 let contextPending = false
 /** The cell probes, bound to the `$` session.start received. */
 let cells: Cells | undefined
+/** Runs a function on session.start's clock once the current dispatch resolves (a hook's `$` belongs to its one dispatch). */
+let later: ((fn: () => void) => void) | undefined
 
 export const register: Register = (on, options) => {
   if (options.enabled === false) return
@@ -95,6 +99,7 @@ export const register: Register = (on, options) => {
     const started = await next(e)
     cells?.stop()
     cells = cellsFor($)
+    later = laterFor($)
     try {
       await setUp($, e.surface)
     } catch {
@@ -180,7 +185,10 @@ export const register: Register = (on, options) => {
       }
       const rewrite = stream.push(delta, e.final, { ...env, inline: inlineImages && env.images })
       if (e.final) streams.delete(e.message_id)
-      if (rewrite.records.length > 0) await remember($, rewrite.records)
+      if (rewrite.records.length > 0) {
+        await remember($, rewrite.records)
+        if (env.images) drawSoon(rewrite.records, env)
+      }
       return rewrite.text === delta ? below : { ...below, displayContent: rewrite.text }
     } catch {
       // Show whatever was held back, as written, and leave the rest of the message alone.
@@ -214,16 +222,15 @@ export const register: Register = (on, options) => {
       const images = e.surface === 'terminal' && env.images
       // The text may lack the block's last flush (or be empty) on the first
       // render: nothing here is final, and the render runs again when it lands.
-      const records = images && /&nbsp;|```|\u00a0|\u2800/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
+      const records = images && /&nbsp;|```|\u00a0|\u2800|\u034f/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
       const renderEnv = renderEnvFor(env, columns)
       const inlineEnv = inlineEnvFor(env, columns)
       const plan = planLanded(e.props.text, records, {
         maxColumns: renderEnv.maxColumns,
-        draw: images ? (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows) : undefined,
-        inline:
-          images && inlineImages
-            ? { env: inlineEnv, width: proseWidthFor(env, columns), draw: (tex, cells) => renderInline(tex, inlineEnv, cells) }
-            : undefined,
+        draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
+        width: proseWidthFor(env, columns),
+        measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+        inline: images && inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), draw: (tex, cells) => inlineImage(tex, inlineEnv, cells) } : undefined,
       })
       if (!plan.changed) return next(e)
       if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
@@ -275,7 +282,7 @@ export const register: Register = (on, options) => {
             {text}
             {piece.inline.map((inline: InlineImage, k: number) => (
               <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
-                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={1} alt={inline.tex} />
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
               </Box>
             ))}
           </Box>
@@ -635,6 +642,89 @@ async function remember($: $, records: readonly PreviewRecord[]): Promise<void> 
   // A preview recorded again replaces the older record (inline previews repeat).
   const fresh = new Set(records.map(record => record.preview))
   await update($, RECORDS, list => [...(list ?? []).filter(record => !fresh.has(record.preview)), ...records].slice(-RECORD_LIMIT))
+}
+
+// ─── Images (stress report F9: the landing render only composes) ─────────────
+
+/**
+ * Images drawn, by formula and geometry (cells, column, ink, rows or columns),
+ * least recently used first. Each keeps one PNG object, so its base64 and its
+ * signature are computed once, and a re-render of a landed block sends the
+ * same source (no new transmission).
+ */
+const drawnImages = new Map<string, RenderedImage>()
+
+function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
+  let image = drawnImages.get(key)
+  if (image) {
+    drawnImages.delete(key)
+  } else {
+    image = draw()
+    while (drawnImages.size >= IMAGE_LIMIT) drawnImages.delete(drawnImages.keys().next().value!)
+  }
+  drawnImages.set(key, image)
+  return image
+}
+
+function geometryKey(env: RenderEnv): string {
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b].join(',')
+}
+
+/** A display formula's image, `rows` tall (measured when not given). Throws TexError. */
+function displayImage(tex: string, env: RenderEnv, rows?: number): RenderedImage {
+  const height = rows ?? measureDisplay(tex, env).rows
+  return cachedImage(`d\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
+}
+
+/** An inline formula's image, `columns` wide. Throws TexError. */
+function inlineImage(tex: string, env: InlineEnv, columns: number): RenderedImage {
+  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns}\n${tex}`, () => renderInline(tex, env, columns))
+}
+
+/** Formulas streaming wrote previews for, waiting to be drawn ahead of their landing. */
+const pending: { record: PreviewRecord; env: KittexEnv }[] = []
+
+/**
+ * Draws the images of previews just written, one per tick of session.start's
+ * clock (between flushes, after this one is shown), with their base64 and
+ * signature: by the time the block lands its drawing only composes.
+ */
+function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
+  const idle = pending.length === 0
+  for (const record of records) if (record.error === undefined) pending.push({ record, env })
+  if (!idle || pending.length === 0) return
+  const step = () => {
+    const next = pending.shift()
+    if (!next) return
+    const { record, env } = next
+    try {
+      const renderEnv = renderEnvFor(env)
+      const image = record.inline
+        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0)
+        : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
+      base64Of(image.png)
+      signatureOf(image.png)
+    } catch {
+      // drawn (or refused) at landing as before
+    }
+    if (pending.length > 0) after(step)
+  }
+  after(step)
+}
+
+function after(fn: () => void): void {
+  try {
+    if (!later) throw new Error('no clock')
+    later(fn)
+  } catch {
+    pending.length = 0
+  }
+}
+
+function laterFor($: $): (fn: () => void) => void {
+  return fn => {
+    $.clock.after(0, fn)
+  }
 }
 
 const base64Cache = new WeakMap<Uint8Array, string>()

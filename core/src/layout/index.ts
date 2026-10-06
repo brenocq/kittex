@@ -1,7 +1,9 @@
+import { drawList } from './list.js'
 import { visibleProse } from './prose.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
+export { markerOf } from './list.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
 export { codeWidth, textWidth } from './width.js'
@@ -68,8 +70,22 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
     rows += wrapped.rows
     lineStart += line.length + 1
   }
-  const places = spans.map(span => placeSpan(markdown, span, text, source, rowOf, colOf, width))
+  const places = spans.map(span => placeSpan(markdown, span, text, source, rowOf, colOf, width, i => i === text.length - 1))
   return { rows, places, lines }
+}
+
+/**
+ * Lays out a block that is a list (after one paragraph or none: a block
+ * proseBlocks marks `list`) as the engine draws it `width` cells wide, and
+ * finds where each span lands, as layoutProse does. Null when the list holds
+ * anything its replay doesn't follow (see drawList).
+ */
+export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = []): ProseLayout | null {
+  const canvas = drawList(markdown, width)
+  if (!canvas) return null
+  const text = canvas.text.join('')
+  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, i => canvas.end[i] === true))
+  return { rows: canvas.rows, places, lines: canvas.lines() }
 }
 
 /**
@@ -81,9 +97,10 @@ function placeSpan(
   span: SourceSpan,
   text: string,
   source: readonly number[],
-  rowOf: Int32Array,
-  colOf: Int32Array,
+  rowOf: ArrayLike<number>,
+  colOf: ArrayLike<number>,
   width: number,
+  ends: (i: number) => boolean,
 ): SpanPlace | null {
   const inside = (i: number) => source[i]! >= span.start && source[i]! < span.end
   let first = -1
@@ -100,7 +117,7 @@ function placeSpan(
   if (span.width !== undefined && span.width !== columns) {
     // Only blanks the engine trimmed off the end of the prose may be missing.
     const rest = markdown.slice(source[last]! + 1, span.end)
-    if (last !== text.length - 1 || span.width < columns || !/^\s*$/.test(rest)) return null
+    if (!ends(last) || span.width < columns || !/^\s*$/.test(rest)) return null
     columns = span.width
   }
   if (colOf[first]! + columns > width) return null

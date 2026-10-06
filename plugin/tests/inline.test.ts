@@ -5,12 +5,15 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth } from '../hooks/core.js'
+import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth, visibleProse } from '../hooks/core.js'
 import {
   INLINE_JOIN,
+  INLINE_MARK,
   INLINE_PAD,
   inlineEnvFor,
   inlinePreview,
+  inlineText,
+  joinProse,
   MessageStream,
   PIECE_TOP,
   planLanded,
@@ -102,9 +105,9 @@ describe('streaming', () => {
     for (const record of records) expect(landed).toContain(record.preview)
   })
 
-  test('outside a plain paragraph inline math streams unpadded, with no record, so no gap stays at landing', async () => {
+  test('outside a paragraph or a list item inline math streams unpadded, with no record, so no gap stays at landing', async () => {
     await init()
-    for (const line of ['- $x_k$: state\n', '1. $x_k$: state\n', '## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
+    for (const line of ['## The $x_k$ state\n', '> the $x_k$ state\n', '| $x_k$ | state |\n']) {
       const { landed, records } = streamed([line])
       expect({ line, records }).toEqual({ line, records: [] })
       expect(landed).toBe(line.replace('$x_k$', previewInline('x_k')!))
@@ -204,9 +207,8 @@ describe('the landed plan', () => {
     expect(live.pieces[0]).toMatchObject({ kind: 'prose', text: landed })
   })
 
-  test('list items and headings keep Unicode', async () => {
+  test('headings keep Unicode', async () => {
     await init()
-    expect(places(plan('- a list item with $x$\n- and $y$').pieces)).toEqual([])
     expect(places(plan('# Title with $x$').pieces)).toEqual([])
   })
 
@@ -319,3 +321,137 @@ describe('MessageDisplay', () => {
 })
 
 void mock
+
+describe('markdown in inline Unicode (stress report F1)', () => {
+  const plainEnv = (): StreamEnv => ({ ...kitty26(), images: false })
+
+  test('every inline Unicode form escapes what markdown would read: emphasis, table bars, links', async () => {
+    await init()
+    for (const [tex, unicode] of [
+      ['\\oint_{\\partial S}', '∮\\_(∂S)'],
+      ['(AB)^* = B^*A^*', '(AB)\\* = B\\*A\\*'],
+      ['|x|', '\\|x\\|'],
+      ['[a](b)', '\\[a](b)'],
+    ]) {
+      expect(inlineText(tex!)).toBe(unicode)
+      // Streamed with no images, in a heading (no image there), and landed after --resume: the same text.
+      expect(streamed([`See $${tex}$ here.\n`], plainEnv()).landed).toBe(`See ${unicode} here.\n`)
+      expect(streamed([`## See $${tex}$\n`]).landed).toBe(`## See ${unicode}\n`)
+      expect(joinProse(planLanded(`See $${tex}$ here.`, [], { maxColumns: 98 }).pieces)).toBe(`See ${unicode} here.`)
+    }
+  })
+
+  test('the engine draws the escaped text as the Unicode itself: the replay sees no backslash', async () => {
+    await init()
+    const text = `where ${inlineText('\\oint_{\\partial S}')} denotes a line and ${inlineText('\\oint_{\\partial V}')} a surface`
+    expect(visibleProse(text)?.text).toBe('where ∮_(∂S) denotes a line and ∮_(∂V) a surface')
+    const preview = inlinePreview('(AB)^* = B^*A^*', inlineEnvFor(kitty26()))!
+    expect(visibleProse(`so ${preview.markdown} holds`)?.text).toBe(`so ${previewInline('(AB)^* = B^*A^*')!}${'⠀'.repeat(preview.columns - textWidth(previewInline('(AB)^* = B^*A^*')!))} holds`)
+  })
+
+  test('a table keeps its cells with a bar in a formula', async () => {
+    await init()
+    const { landed } = streamed(['| norm | $|x|$ |\n', '|---|---|\n', '| cond | $P(A|B)$ |\n'])
+    expect(landed).toContain('\\|x\\|')
+    expect(landed).toContain('P(A\\|B)')
+    expect(landed.split('\n')[0]!.match(/(?<!\\)\|/g)).toHaveLength(3)
+  })
+
+  test('a tight preview never puts a < against a letter (an HTML tag to markdown)', async () => {
+    await init()
+    const preview = inlinePreview('a < b', inlineEnvFor(kitty26()))
+    if (preview) expect(preview.markdown).not.toMatch(/<[A-Za-z]/)
+  })
+
+  test('a preview as wide as its image takes no extra cell: a zero-width mark finds it again', async () => {
+    await init()
+    const env = inlineEnvFor(kitty26())
+    const fits = ['a_{ij}', 'x_k', 'p_{\\text{max}}', 'n!', 'ab'].map(tex => inlinePreview(tex, env)).find(p => p && !p.markdown.includes(INLINE_PAD))
+    expect(fits).toBeDefined()
+    expect(fits!.markdown.endsWith(INLINE_MARK)).toBe(true)
+    expect(textWidth(fits!.markdown.replace(/\\(.)/g, '$1'))).toBe(fits!.columns)
+    const { landed, records } = streamed([`Let $${fits!.tex}$ be.`])
+    expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual([fits!.tex])
+  })
+})
+
+describe('characters outside the font', () => {
+  test('after --resume a display formula the font cannot draw keeps its Unicode preview, not a refused source block', async () => {
+    await init()
+    const { pieces } = plan('Before.\n\n$$\n\\text{Привет} = x\n$$\n\nAfter.')
+    expect(pieces.some(piece => piece.kind === 'image' || piece.kind === 'note')).toBe(false)
+    const text = joinProse(pieces)
+    expect(text).toContain('Привет')
+    expect(text).not.toContain('```latex')
+  })
+})
+
+describe('inline math wider than a row (stress report F5)', () => {
+  const long = Array.from({ length: 40 }, (_, k) => `a_{${k}}`).join(' + ')
+
+  test('stays one line of Unicode that prose wraps, not raw TeX', async () => {
+    await init()
+    for (const env of [inlineOn(), { ...kitty26(), images: false }]) {
+      const { landed } = streamed([`The sum $${long}$ ends.\n`], env)
+      expect(landed).not.toContain('$')
+      expect(landed).toContain('a₃₉')
+    }
+    expect(joinProse(plan(`The sum $${long}$ ends.`).pieces)).toContain('a₃₉')
+  })
+
+  test('a formula whose image is wider than maxProseWidth streams plain, not padded', async () => {
+    await init()
+    const tex = 'x_1 + x_2 + x_3 + x_4 + x_5 + x_6 + x_7 + x_8'
+    expect(streamed([`So $${tex}$.\n`]).records).toHaveLength(1)
+    expect(streamed([`So $${tex}$.\n`], { ...inlineOn(), maxProseWidth: 12 }).records).toEqual([])
+  })
+})
+
+describe('display math in a blockquote (stress report F11)', () => {
+  const quote = '> A well-tuned filter has white innovations:\n>\n> $$\n> \\mathbb{E}[y_k y_j^T] = 0\n> $$\n>\n> for every $k \\ne j$.\n\nAfter the quote.\n'
+
+  test('streams its preview inside the quote, every line under the quote marker, as wide as the quote text', async () => {
+    await init()
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const record = records.find(one => !one.inline)!
+    expect(record.quote).toBe(1)
+    const lines = landed.split('\n')
+    const first = lines.findIndex(line => line.includes('&nbsp;'))
+    for (const line of lines.slice(first, first + record.rows)) expect(line.startsWith('> ')).toBe(true)
+    expect(lines[first - 1]).toBe('>')
+    expect(lines[first + record.rows]).toBe('>')
+    expect(landed).toContain('> for every')
+  })
+
+  test('lands with the preview kept in the quote and the image over it, two cells in, a row under the text before it', async () => {
+    await init()
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const { pieces } = plan(landed, records, kitty26(), {
+      width: proseWidthFor(kitty26()),
+      measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnvFor(kitty26()), maxColumns }).rows,
+    })
+    expect(pieces.some(piece => piece.kind === 'image')).toBe(false)
+    const quoted = pieces.find(piece => piece.kind === 'prose' && piece.text.startsWith('>'))!
+    expect(quoted.kind === 'prose' && quoted.inline?.map(image => [image.tex, image.row, image.col, image.image.rows])).toEqual([
+      [records.find(one => !one.inline)!.tex, 2, 2, records.find(one => !one.inline)!.rows],
+    ])
+  })
+
+  test('after --resume the LaTeX in a quote gets the same drawing', async () => {
+    await init()
+    const options = {
+      width: proseWidthFor(kitty26()),
+      measure: (tex: string, maxColumns: number) => measureDisplay(tex, { ...renderEnvFor(kitty26()), maxColumns }).rows,
+    }
+    const { landed, records } = streamed(quote.split(/(?<=\n)/))
+    const strip = (pieces: ReturnType<typeof plan>['pieces']) => pieces.map(piece => (piece.kind === 'prose' ? piece.inline?.map(image => [image.tex, image.row, image.col]) : piece.kind))
+    expect(strip(plan(quote, [], kitty26(), options).pieces)).toEqual(strip(plan(landed, records, kitty26(), options).pieces))
+  })
+
+  test('two quotes deep the preview stays Unicode inside the quote', async () => {
+    await init()
+    const { landed, records } = streamed(['> > $$\n', '> > x^2 + y^2\n', '> > $$\n'])
+    expect(records).toEqual([])
+    expect(landed.split('\n').filter(line => line.includes('&nbsp;')).every(line => line.startsWith('> > '))).toBe(true)
+  })
+})
