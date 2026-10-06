@@ -186,6 +186,8 @@ export const RESIZE_SETTLE_MS = 400
  * so no render says so. A probe is one short process.
  */
 export const CELL_POLL_MS = 2500
+/** Formula images kept drawn, by formula and geometry (a long reply holds hundreds, inline ones included). */
+export const IMAGE_LIMIT = 1024
 /** Preview records kept for mapping landed replies back to TeX (inline ones included). */
 export const RECORD_LIMIT = 512
 /** Streaming messages tracked at once (a message that never sees `final` is dropped past this). */
