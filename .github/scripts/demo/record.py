@@ -44,7 +44,7 @@ import tempfile
 import termios
 import time
 
-PROMPT = 'Show the key equations behind training an LLM: pretraining, RLHF and DPO, one short sentence each.'
+PROMPT = 'Show one key equation each for pretraining, RLHF and DPO, with one short sentence each.'
 # Claude Code's fullscreen layout (alternate screen), where kittex lands its images without a blank frame.
 SETTINGS = '{"tui": "fullscreen"}'
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
