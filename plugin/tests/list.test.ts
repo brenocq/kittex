@@ -3,12 +3,12 @@
 // indent, nested lists), measured live on Claude Code 2.1.291 (research/lab
 // runs LB-*).
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { init, layoutList, measureDisplay, previewInline, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv } from './support.ts'
+import { kittyEnv, test } from './support.ts'
 
 const kitty26 = (): KittexEnv => ({ ...kittyEnv(), cellHeight: 26 })
 const inlineOn = (): StreamEnv => ({ ...kitty26(), inline: true })

@@ -1,7 +1,7 @@
 // kittex's hooks through the engine: the off switch, the landed reply's
 // drawing, MessageDisplay's wiring, and the instructions to the model.
 
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { chooseInk, init, measureDisplay, renderDisplay, toBase64 } from '../hooks/core.js'
@@ -17,7 +17,7 @@ import {
   replyColumns,
   SECTION_ID,
 } from '../hooks/math.ts'
-import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession } from './support.ts'
+import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
 const REPLY = `Euler's identity:\n\n$$${TEX}$$\n\nis beautiful.`

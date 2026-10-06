@@ -2,12 +2,12 @@
 // new cells too), a move to a monitor of another scale (new cells at the same
 // width), and the images drawn after it.
 
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
 import { init } from '../hooks/core.js'
 import { CELL_POLL_MS, REPLY_INDENT, replyColumns, RESIZE_SETTLE_MS } from '../hooks/math.ts'
-import { CELL, COLUMNS, startSession } from './support.ts'
+import { CELL, COLUMNS, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
 const REPLY = `Euler's identity:\n\n$$${TEX}$$\n\nis beautiful.`

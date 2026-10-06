@@ -3,12 +3,12 @@
 // the replay of the engine's table drawing (core/src/layout/table.ts, measured
 // live on Claude Code 2.1.291, research/lab runs TB-*).
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { init, layoutTable, measureDisplay, previewInline, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, joinProse, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv } from './support.ts'
+import { kittyEnv, test } from './support.ts'
 
 const kitty26 = (columns = 100): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, columns })
 const inlineOn = (columns = 100): StreamEnv => ({ ...kitty26(columns), inline: true })

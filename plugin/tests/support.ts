@@ -1,13 +1,23 @@
 // Shared pieces of kittex's tests: the world beneath the plugin for a session
 // in kitty.
 
-import { mock } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import { mock, test as kitTest } from 'claude-code/testing'
+import type { Engine, TestRest } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { cellProbe, chooseInk, emPxForCell } from '../hooks/core.js'
 import { INK_PREFER } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
+
+/**
+ * The kit's `test`, with a 30 s default timeout in place of its 5 s: a test
+ * that typesets and rasterizes takes a few seconds on a CI runner. A test's
+ * own `timeoutMs` still wins.
+ */
+export function test(name: string, ...rest: TestRest): void {
+  const [options, body] = rest.length === 1 ? [{}, rest[0]] : rest
+  kitTest(name, { timeoutMs: 30_000, ...options }, body)
+}
 
 /** A kitty window of 100×50 cells of 13×20 px. */
 export const KITTY = { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' }

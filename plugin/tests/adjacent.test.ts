@@ -5,12 +5,12 @@
 // whole has, or none (core/src/layout/blocks.ts, measured live on Claude Code
 // 2.1.291, research/lab runs AB-*).
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { init, layoutList, layoutProse, measureDisplay, renderDisplay, renderInline } from '../hooks/core.js'
 import { inlineEnvFor, joinProse, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv } from './support.ts'
+import { kittyEnv, test } from './support.ts'
 
 const kitty26 = (): KittexEnv => ({ ...kittyEnv(), cellHeight: 26 })
 const inlineOn = (): StreamEnv => ({ ...kitty26(), inline: true })

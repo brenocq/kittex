@@ -1,6 +1,6 @@
 // The streaming rewrite and the plan of a landed reply, with core's own scanner.
 
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { init, measureDisplay, previewDisplay, previewInline, renderDisplay, TexError } from '../hooks/core.js'
 import {
@@ -23,7 +23,7 @@ import {
   withoutTextOverride,
 } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PlanOptions, PreviewRecord } from '../hooks/math.ts'
-import { COLUMNS, kittyEnv } from './support.ts'
+import { COLUMNS, kittyEnv, test } from './support.ts'
 
 const TEX = 'E = mc^2'
 const INTEGRAL = '\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}'
