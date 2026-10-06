@@ -8,6 +8,7 @@ import {
   BULLET,
   bulletFor,
   cellsOf,
+  displayPreviewLines,
   escapeMarkdown,
   HELD_DISPLAY,
   LANDED_PATTERN,
@@ -18,6 +19,7 @@ import {
   previewMarkdownLines,
   renderEnvFor,
   replyColumns,
+  spreadRows,
   withoutTextOverride,
 } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PlanOptions, PreviewRecord } from '../hooks/math.ts'
@@ -269,5 +271,32 @@ describe('ink and bullet', () => {
     expect(bulletFor('Linux\n', '/Users/x')).toBe(BULLET.other)
     expect(bulletFor(undefined, '/Users/me')).toBe(BULLET.macos)
     expect(bulletFor(undefined, '/home/me')).toBe(BULLET.other)
+  })
+})
+
+/** kitty's 13×26 px cells. */
+const kitty26 = (): KittexEnv => ({ ...kittyEnv(), cellHeight: 26 })
+
+describe('tall previews (stress report F18)', () => {
+  const DERIVATION = "\\begin{aligned}\nI &= \\int_0^\\infty x^2 e^{-ax^2}\\,dx \\\\\n&= -\\frac{\\partial}{\\partial a}\\int_0^\\infty e^{-ax^2}\\,dx \\\\\n&= -\\frac{\\partial}{\\partial a}\\left(\\frac{1}{2}\\sqrt{\\frac{\\pi}{a}}\\right) \\\\\n&= -\\frac{\\sqrt{\\pi}}{2}\\frac{\\partial}{\\partial a}a^{-1/2} \\\\\n&= -\\frac{\\sqrt{\\pi}}{2}\\left(-\\frac{1}{2}\\right)a^{-3/2} \\\\\n&= \\frac{\\sqrt{\\pi}}{4}a^{-3/2} \\\\\n&= \\frac{1}{4}\\sqrt{\\frac{\\pi}{a^3}} \\\\\nJ &= \\int_0^\\infty x^4 e^{-ax^2}\\,dx \\\\\n&= \\frac{\\partial^2}{\\partial a^2}\\int_0^\\infty e^{-ax^2}\\,dx \\\\\n&= \\frac{\\sqrt{\\pi}}{2}\\frac{\\partial^2}{\\partial a^2}a^{-1/2} \\\\\n&= \\frac{\\sqrt{\\pi}}{2}\\cdot\\frac{3}{4}a^{-5/2} \\\\\n&= \\frac{3\\sqrt{\\pi}}{8}a^{-5/2} \\\\\n\\langle x^2 \\rangle &= \\frac{I}{\\int_0^\\infty e^{-ax^2}dx} \\\\\n&= \\frac{\\frac{\\sqrt{\\pi}}{4}a^{-3/2}}{\\frac{1}{2}\\sqrt{\\pi}a^{-1/2}} \\\\\n&= \\frac{1}{2a} \\\\\n\\langle x^4 \\rangle &= \\frac{3}{4a^2}\n\\end{aligned}"
+
+  test('a line per row of a tall derivation is spread over its image rows, not a block between blank slabs', async () => {
+    await init()
+    const env = renderEnvFor(kitty26())
+    const rows = measureDisplay(DERIVATION, env).rows
+    const lines = displayPreviewLines(DERIVATION, env.maxColumns, rows)!
+    expect(lines).toHaveLength(rows)
+    const filled = lines.flatMap((line, row) => (line.endsWith(BLANK_CELL) ? [] : [row]))
+    expect(filled).toHaveLength(16)
+    // The longest run of blank rows is short: no slab above or below.
+    const gaps = filled.map((row, k) => row - (k === 0 ? -1 : filled[k - 1]!) - 1)
+    expect(Math.max(...gaps, rows - 1 - filled.at(-1)!)).toBeLessThanOrEqual(2)
+  })
+
+  test('other previews keep their shape', () => {
+    const fraction = ['  a  ', '-----', '  b  ', '', '']
+    expect(spreadRows(fraction, '\\frac{a}{b}')).toEqual(fraction)
+    const nested = ['', '', '', 'x', 'y', 'z', '', '', '']
+    expect(spreadRows(nested, '\\begin{aligned}x \\\\ \\begin{matrix}y\\end{matrix} \\\\ z\\end{aligned}')).toEqual(nested)
   })
 })

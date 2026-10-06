@@ -368,13 +368,38 @@ export function previewMarkdownLines(lines: readonly string[], maxColumns: numbe
 /** A display preview's markdown lines: exactly `rows` lines when given (the rows its image takes). */
 export function displayPreviewLines(tex: string, maxColumns: number, rows?: number): string[] | null {
   const lines = previewDisplay(tex, { maxColumns: previewColumns(maxColumns) }, rows)
-  if (lines && lines.length > 0) return previewMarkdownLines(lines, maxColumns)
+  if (lines && lines.length > 0) return previewMarkdownLines(spreadRows(lines, tex), maxColumns)
   if (rows === undefined || rows < 1) return null
   // No Unicode form fits: the source on the middle row keeps the rows reserved.
   const source = oneLine(tex, previewColumns(maxColumns))
   const above = Math.floor((rows - 1) / 2)
   const padded = [...Array<string>(above).fill(''), source, ...Array<string>(rows - 1 - above).fill('')]
   return previewMarkdownLines(padded, maxColumns)
+}
+
+/**
+ * A preview with a line per row of a tall environment (`aligned`, `gathered`,
+ * a derivation), padded to its image's rows with more blank rows than it has
+ * lines, spread over the image's height: each line about where its row of the
+ * image will be, instead of a block in the middle with blank slabs above and
+ * below (stress report F18). Anything else is returned as it is.
+ */
+export function spreadRows(lines: readonly string[], tex: string): readonly string[] {
+  const blank = (line: string) => line.trim() === ''
+  const first = lines.findIndex(line => !blank(line))
+  const last = lines.findLastIndex(line => !blank(line))
+  if (first < 0) return lines
+  const content = lines.slice(first, last + 1)
+  const rows = lines.length
+  if (content.length < 3 || content.some(blank) || rows - content.length < content.length) return lines
+  // One line per row of the environment: as many lines as the formula has rows (its `\\`s, none nested).
+  const body = /^\s*\\begin\{(aligned|align\*?|gathered|gather\*?|split|eqnarray\*?|multline\*?)\}([\s\S]*)\\end\{\1\}\s*$/.exec(tex)?.[2]
+  if (body === undefined || /\\begin\{/.test(body)) return lines
+  if (body.replace(/\\\\\s*$/, '').split('\\\\').length !== content.length) return lines
+  const width = Math.max(...content.map(line => line.length))
+  const out = Array.from({ length: rows }, () => ' '.repeat(width))
+  for (const [i, line] of content.entries()) out[Math.floor(((i + 0.5) * rows) / content.length)] = line
+  return out
 }
 
 /** Text on one line (whitespace runs collapsed), cut with `…` to `max` cells. */
