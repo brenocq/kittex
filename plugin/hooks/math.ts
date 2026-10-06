@@ -316,6 +316,7 @@ export function inlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxCol
   let unicode = previewInline(tex, env.maxColumns)?.trim()
   if (unicode && TAG_OPEN.test(unicode)) unicode = previewInline(tex, env.maxColumns, { tight: false })?.trim()
   if (unicode && TAG_OPEN.test(unicode)) return null
+  if (unicode) unicode = ungroupScripts(unicode, tex)
   if (!unicode || /[\\\s]/.test(unicode.replaceAll(' ', ''))) return null
   const width = textWidth(unicode)
   if (width < 1) return null
@@ -327,6 +328,24 @@ export function inlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxCol
   const body = escapeInline(unicode.replaceAll(' ', INLINE_JOIN))
   const mark = columns === width && !unicode.includes(' ') ? INLINE_MARK : ''
   return { markdown: body + mark + INLINE_PAD.repeat(columns - width), tex, columns }
+}
+
+/**
+ * A script written as letters or digits with no Unicode script form, which
+ * the Unicode renderer groups as `_(…)` or `^(…)`, when nothing that could
+ * read as part of it (a letter, a digit, a mark, another script) follows.
+ */
+const GROUPED_SCRIPT = /([_^])\(([\p{L}\p{N}]+)\)(?![\p{L}\p{N}\p{M}_^])/gu
+
+/**
+ * An inline preview's scripts without the parentheses the Unicode renderer
+ * groups them in (`π_(ref)` as `π_ref`, `D_(KL)` as `D_KL`), where they
+ * only take cells: the preview sets its image's slot, and every cell it is
+ * wider than the image is blank around the formula once it lands. Kept where
+ * the formula has parentheses of its own (one could be the group's).
+ */
+export function ungroupScripts(unicode: string, tex: string): string {
+  return /\(|\\lparen/.test(tex) ? unicode : unicode.replace(GROUPED_SCRIPT, '$1$2')
 }
 
 // ─── Markdown forms ──────────────────────────────────────────────────────────

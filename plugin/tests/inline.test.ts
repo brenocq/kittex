@@ -5,7 +5,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { init, layoutProse, previewInline, renderDisplay, measureDisplay, renderInline, textWidth, visibleProse } from '../hooks/core.js'
+import { init, layoutProse, measureInline, previewInline, renderDisplay, measureDisplay, renderInline, textWidth, visibleProse } from '../hooks/core.js'
 import {
   INLINE_JOIN,
   INLINE_MARK,
@@ -21,6 +21,7 @@ import {
   renderEnvFor,
   REPLY_INDENT,
   TEXT_BASELINE,
+  ungroupScripts,
 } from '../hooks/math.ts'
 import type { KittexEnv, PlanOptions, PreviewRecord, StreamEnv } from '../hooks/math.ts'
 import { CELL, COLUMNS, kittyEnv, startSession } from './support.ts'
@@ -348,6 +349,78 @@ describe('MessageDisplay', () => {
 })
 
 void mock
+
+describe('narrow formulas next to punctuation', () => {
+  // A real reply: "preferred ($y_w$) versus rejected ($y_l$) responses" landed
+  // as "(𝑦𝑤 ) versus rejected (𝑦𝑙 )": each image's whole cells leave part of
+  // one blank, and the formula was drawn at the slot's left end, so all of it
+  // fell before the closing parenthesis.
+  const reply = 'DPO compares preferred ($y_w$) versus rejected ($y_l$) responses at step ($x_k$), under ($\\pi_\\theta(y_w|x)$).'
+  const texs = ['y_w', 'y_l', 'x_k', '\\pi_\\theta(y_w|x)']
+
+  test('each slot is the image or its preview, whichever is wider, and the preview is never cut', async () => {
+    await init()
+    const env = inlineEnvFor(kitty26())
+    for (const tex of texs) {
+      const preview = inlinePreview(tex, env)!
+      const own = measureInline(tex, env)!.columns
+      const unicode = textWidth(previewInline(tex)!)
+      expect({ tex, columns: preview.columns }).toEqual({ tex, columns: Math.max(own, unicode) })
+      expect(textWidth(preview.markdown.replace(/\\(.)/g, '$1'))).toBe(preview.columns)
+    }
+    // π_θ(y_w|x) has no narrower Unicode: its slot is its preview's, wider than its image.
+    expect(inlinePreview(texs[3]!, env)!.columns).toBeGreaterThan(measureInline(texs[3]!, env)!.columns)
+  })
+
+  test('each lands where it streamed, its image as wide as its slot and centred in it', async () => {
+    await init()
+    const { landed, records } = streamed([reply + '\n'])
+    expect(records.map(record => record.tex)).toEqual(texs)
+    const { pieces } = plan(landed, records)
+    const env = inlineEnvFor(kitty26())
+    const layout = layoutProse(landed.trimEnd(), proseWidthFor(kitty26()))!
+    const images = pieces.flatMap(piece => (piece.kind === 'prose' ? piece.inline ?? [] : []))
+    expect(images.map(image => image.tex)).toEqual(texs)
+    for (const [k, image] of images.entries()) {
+      const record = records[k]!
+      const line = layout.lines[image.row]!
+      // As drawn: the escapes read as markdown.
+      const shown = record.preview.replace(/\\(.)/g, '$1')
+      expect(line).toContain(shown)
+      // The column the preview was drawn at while streaming, and its width: nothing moves at landing.
+      expect(textWidth(line.slice(0, line.indexOf(shown)))).toBe(image.col)
+      expect(image.image.columns).toBe(record.columns)
+      const ihdr = new DataView(image.image.png.buffer, image.image.png.byteOffset + 16, 8)
+      expect([ihdr.getUint32(0), ihdr.getUint32(4)]).toEqual([record.columns! * 13, 26])
+      // The image drawn centred (core's renderInline, the ink's margins split evenly).
+      expect(image.image.png).toEqual(renderInline(image.tex, env, record.columns!).png)
+      // A closing parenthesis follows in the very next cell.
+      expect(line.slice(line.indexOf(shown) + shown.length)).toMatch(/^\)/)
+    }
+    // After --resume the LaTeX lands the same.
+    expect(plan(reply).pieces).toEqual(pieces)
+  })
+
+  test('a script with no Unicode form loses the parentheses that only take cells', async () => {
+    await init()
+    const env = inlineEnvFor(kitty26())
+    expect(inlinePreview('\\pi_{\\text{ref}}', env)!.markdown).toMatch(/^π\\_ref[⠀͏]*$/)
+    // D_KL: as narrow as its image now, no blank around it once it lands.
+    const kl = inlinePreview('D_{KL}', env)!
+    expect(kl.markdown.startsWith('D\\_KL')).toBe(true)
+    expect(kl.columns).toBe(measureInline('D_{KL}', env)!.columns)
+    // Kept where something could read as part of the script, or where the formula has parentheses of its own.
+    expect(ungroupScripts('x_(bd)y', 'x_{bd}y')).toBe('x_(bd)y')
+    expect(ungroupScripts('x_(ab)^(cd)', 'x_{ab}^{cd}')).toBe('x_(ab)^cd')
+    expect(ungroupScripts('x_(ab)', 'x_{(ab)}')).toBe('x_(ab)')
+    expect(ungroupScripts('y_(w,i)', 'y_{w,i}')).toBe('y_(w,i)')
+    expect(ungroupScripts('x_(k|k−1)', 'x_{k|k-1}')).toBe('x_(k|k−1)')
+    // Streamed and landed alike.
+    const { landed, records } = streamed(['under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.\n'])
+    expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual(['\\pi_{\\text{ref}}', 'D_{KL}'])
+    expect(plan('under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.').pieces).toEqual(plan(landed, records).pieces)
+  })
+})
 
 describe('markdown in inline Unicode (stress report F1)', () => {
   const plainEnv = (): StreamEnv => ({ ...kitty26(), images: false })
