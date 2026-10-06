@@ -55,10 +55,13 @@ UNSET = ('CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CLAUDE_COD
          'CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_PID CLAUDE_EFFORT '
          'CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_EXECPATH').split()
 
-# Every tool off: a reply is all the demo needs, and a session with tools once
-# published an artifact on the account.
-NO_TOOLS = ['--tools', '', '--disallowedTools',
-            'Artifact,ArtifactComments,ArtifactData,Skill,Agent,Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch']
+# Every tool off: a reply is all the demo needs, and test sessions with tools
+# once published an artifact and created documents on the account. `--tools ''`
+# leaves the claude.ai connectors (Docs, Drive, ...) on, so they are turned off
+# too: --strict-mcp-config, their names below, and ENABLE_CLAUDEAI_MCP_SERVERS.
+NO_TOOLS = ['--tools', '', '--strict-mcp-config', '--disallowedTools',
+            'Artifact,ArtifactComments,ArtifactData,Skill,Agent,Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,'
+            'mcp__claude_ai_Claude_Docs,mcp__claude_ai_Improved,mcp__claude_ai_Google_Drive']
 
 TRUST = r'trust\s*(the\s*files|this\s*folder)|Yes,\s*I\s*trust'
 APC = re.compile(rb'\x1b_(.*?)\x1b\\', re.S)
@@ -225,7 +228,7 @@ def main():
     env = {k: v for k, v in os.environ.items() if k not in UNSET}
     env.update({
         'TERM': 'xterm-kitty', 'TERM_PROGRAM': 'kitty', 'KITTY_WINDOW_ID': '1', 'COLORTERM': 'truecolor',
-        'CLAUDE_CODE_FORCE_TERMINAL_IMAGES': '1', 'DISABLE_AUTOUPDATER': '1',
+        'CLAUDE_CODE_FORCE_TERMINAL_IMAGES': '1', 'DISABLE_AUTOUPDATER': '1', 'ENABLE_CLAUDEAI_MCP_SERVERS': 'false',
         'CLAUDE_CODE_HIDE_CWD': '1',
     })
     cwd = args.cwd or os.path.join(tempfile.gettempdir(), 'kittex-demo', 'kittex')
