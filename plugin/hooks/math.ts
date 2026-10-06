@@ -12,6 +12,7 @@ import {
   layoutList,
   layoutProse,
   layoutQuote,
+  layoutTable,
   measureDisplay,
   measureInline,
   previewDisplay,
@@ -21,7 +22,7 @@ import {
   TexError,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
+import type { CellSize, InlineEnv, LineScanner, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -551,7 +552,10 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
       const written = writer.recent()
       const width = proseWidthFor(env)
       // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
-      const inline = env.inline && env.images && placeable(written, width) ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written)) : null
+      const inline =
+        env.inline && env.images && placeable(written, width, env.columns)
+          ? inlinePreview(segment.tex, inlineEnvFor(env), width - QUOTE_INDENT * quotesOpening(written))
+          : null
       if (inline) {
         writer.text(inline.markdown)
         records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
@@ -589,25 +593,29 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 /**
  * Whether inline math written next, after `written`, lands in a part whose
  * inline previews get images at landing (blockParts, the rule the landed
- * drawing uses): a paragraph, a heading, or a list or a blockquote the replay
- * follows so far (`width`: the width prose wraps at), whether or not a blank
+ * drawing uses): a paragraph, a heading, or a list, a blockquote or a table
+ * the replay follows so far (`width`: the width prose wraps at; `columns`:
+ * the terminal's width, which tables are laid out in), whether or not a blank
  * line sets it apart from the part before it. A part's drawing never depends
  * on what comes after it, so the decision holds whatever the next lines are.
- * Anywhere else (a table, a code block) the formula is drawn as plain
- * Unicode, so streaming writes it unpadded: padding there would stay behind
- * as gaps.
+ * A table's first row reads as a paragraph until its delimiter row arrives,
+ * and is padded as one. Anywhere else (a code block, a part the replay
+ * doesn't follow) the formula is drawn as plain Unicode, so streaming writes
+ * it unpadded: padding there would stay behind as gaps.
  */
-export function placeable(written: string, width: number): boolean {
-  // A table's first row reads as a paragraph until its delimiter row arrives.
-  if (/^[ \t]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
+export function placeable(written: string, width: number, columns = width + REPLY_INDENT): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
   const last = blockParts(text)?.at(-1)
   if (last === undefined || last.end !== text.length) return false
   if (last.paragraph) return true
+  // A line opening with a bar may be a table's first row until its delimiter
+  // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
+  if (!last.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
   const block = text.slice(last.start, last.end)
   if (last.heading) return layoutHeading(block, width) !== null
   if (last.quote) return layoutQuote(block, width) !== null
+  if (last.table) return layoutTable(block, columns, [], width) !== null
   return last.list === true && layoutList(block, width) !== null
 }
 
@@ -703,9 +711,11 @@ export interface PlanOptions {
   scan?: (markdown: string) => Segment[]
   /**
    * Inline math drawn as images: where (one text row), the width prose wraps
-   * at, and the drawing (throws TexError). Absent: inline math stays Unicode.
+   * at, the terminal's width (tables are laid out in it; the reply column and
+   * two cells when absent), and the drawing (throws TexError). Absent: inline
+   * math stays Unicode.
    */
-  inline?: { env: InlineEnv; width: number; draw: (tex: string, columns: number) => RenderedImage }
+  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage }
 }
 
 interface Span {
@@ -929,13 +939,13 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
 
 /**
  * Gives the inline previews marked in prose pieces their images. A paragraph,
- * a list, a heading or a blockquote holding previews is drawn as a piece of
- * its own (so its first row is the piece's), laid out as the engine lays it
- * out, and each preview drawn whole on one row gets its image there. It is
- * cut out of the text at the blank lines around it, or, inside a block of
- * several parts (a heading or a paragraph right above it, a code block right
- * under it), between its tokens: each piece then has a blank row above it
- * where the engine's drawing of the whole has one (blockParts). Everything
+ * a list, a heading, a blockquote or a table holding previews is drawn as a
+ * piece of its own (so its first row is the piece's), laid out as the engine
+ * lays it out, and each preview drawn whole on one row gets its image there.
+ * It is cut out of the text at the blank lines around it, or, inside a block
+ * of several parts (a heading or a paragraph right above it, a code block
+ * right under it), between its tokens: each piece then has a blank row above
+ * it where the engine's drawing of the whole has one (blockParts). Everything
  * else keeps its text: previews streamed padded stay as they were shown, math
  * read back as LaTeX goes back to its plain Unicode.
  */
@@ -969,9 +979,8 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
       const inline = inside.filter(span => span.mark.rows === undefined)
       const quoted = inside.filter(span => span.mark.rows !== undefined)
       let images: [SourceSpan, InlineImage][] = []
-      if ((block.paragraph || block.list || block.heading) && inline.length > 0 && options.inline) {
-        const layout = block.list ? layoutList : block.heading ? layoutHeading : layoutProse
-        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, layout)
+      if ((block.paragraph || block.list || block.heading || block.table) && inline.length > 0 && options.inline) {
+        images = placeImages(text.slice(block.start, block.end), inline, block.start, options.inline, layoutOf(block, options))
       } else if (block.quote && (quoted.length > 0 || (inline.length > 0 && options.inline))) {
         images = placeQuote(text.slice(block.start, block.end), inside, block.start, options)
       }
@@ -1013,7 +1022,18 @@ function placeInline(pieces: readonly Piece[], marks: readonly InlineMark[], opt
   return out
 }
 
-/** Lays out one block (a paragraph, a list, a heading) and draws the images of the previews found whole on a row. */
+/** The terminal's width a plan is drawn in: given, or the reply column and the bullet's two cells. */
+function maxColumnsOf(options: PlanOptions): number {
+  return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
+}
+
+/** The replay that lays out a part: a table in the terminal's width, everything else in the prose width given. */
+function layoutOf(part: ProseBlock, options: PlanOptions): (markdown: string, width: number, spans: readonly SourceSpan[]) => ProseLayout | null {
+  if (part.table) return (markdown, width, spans) => layoutTable(markdown, maxColumnsOf(options), spans, width)
+  return part.list ? layoutList : part.heading ? layoutHeading : layoutProse
+}
+
+/** Lays out one part (a paragraph, a list, a heading, a table) and draws the images of the previews found whole on a row. */
 function placeImages(
   block: string,
   spans: readonly (SourceSpan & { mark: InlineMark })[],

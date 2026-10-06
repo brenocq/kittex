@@ -79,9 +79,9 @@ describe('adjacent blocks: streaming', () => {
     }
   })
 
-  test('math in a heading or a quote right under a paragraph streams padded too', async () => {
+  test('math in a heading, a quote or a table right under a paragraph streams padded too', async () => {
     await init()
-    for (const flushes of [['Intro.\n', '## The $x_k$ case\n'], ['Intro:\n', '> quoted $x_k$\n']]) {
+    for (const flushes of [['Intro.\n', '## The $x_k$ case\n'], ['Intro:\n', '> quoted $x_k$\n'], ['Intro:\n', '| $x_k$ | b |\n']]) {
       expect(streamed(flushes).records.map(record => record.tex)).toEqual(['x_k'])
     }
   })

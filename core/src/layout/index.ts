@@ -3,6 +3,7 @@ import { drawList } from './list.js'
 import type { Canvas } from './list.js'
 import { visibleProse } from './prose.js'
 import { drawQuote } from './quote.js'
+import { drawTable } from './table.js'
 import { codeWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
@@ -112,10 +113,33 @@ export function layoutQuote(markdown: string, width: number, spans: readonly Sou
   return layoutCanvas(markdown, drawQuote(markdown, width), width, spans)
 }
 
-function layoutCanvas(markdown: string, canvas: Canvas | null, width: number, spans: readonly SourceSpan[]): ProseLayout | null {
+/**
+ * Lays out a block that is a table (after one paragraph or none: a block
+ * proseBlocks marks `table`) as the engine draws it in a terminal `columns`
+ * wide (tables are not held to maxProseWidth; the paragraph wraps at
+ * `proseWidth`), and finds where each span lands, as layoutProse does, within
+ * the reply column. Null when the table holds anything its replay doesn't
+ * follow (see drawTable).
+ */
+export function layoutTable(markdown: string, columns: number, spans: readonly SourceSpan[] = [], proseWidth = columns - 2): ProseLayout | null {
+  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth), columns - 2, spans, () => false)
+}
+
+/**
+ * Finds where each span lands on a drawn canvas, `width` cells wide; `ends`
+ * tells the characters that end a text the engine trims (by default those the
+ * canvas marks).
+ */
+function layoutCanvas(
+  markdown: string,
+  canvas: Canvas | null,
+  width: number,
+  spans: readonly SourceSpan[],
+  ends = (i: number) => canvas?.end[i] === true,
+): ProseLayout | null {
   if (!canvas) return null
   const text = canvas.text.join('')
-  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, i => canvas.end[i] === true))
+  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, ends))
   return { rows: canvas.rows, places, lines: canvas.lines() }
 }
 

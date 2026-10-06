@@ -108,7 +108,6 @@ describe('streaming', () => {
   test('outside a block the replay follows inline math streams unpadded, with no record, so no gap stays at landing', async () => {
     await init()
     for (const lines of [
-      ['| $x_k$ | state |\n'],
       ['> see [docs](https://example.com) for the $x_k$ state\n'],
       ['> ```\n', '> code\n', '> ```\n', '> the $x_k$ state\n'],
     ]) {

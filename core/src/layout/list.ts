@@ -74,23 +74,7 @@ export class Canvas {
       if (!wrapped) return false
       this.grow(r + wrapped.rows)
       for (let i = 0; i < line.length; i++) {
-        const row = r + wrapped.row[i]!
-        const col = left + wrapped.col[i]!
-        this.text.push(line[i]!)
-        this.source.push(visible.source[at + i]!)
-        this.row.push(row)
-        this.col.push(col)
-        this.end.push(false)
-        if (wrapped.hidden[i]) continue
-        const cells = this.cells[row]!
-        // A combining mark or the low half of a pair joins the cell before it.
-        const code = line.charCodeAt(i)
-        if ((code >= 0xdc00 && code <= 0xdfff) || codeWidth(line.codePointAt(i)!) === 0) {
-          const last = Math.max(0, cells.length - 1)
-          cells[last] = (cells[last] ?? '') + line[i]!
-        } else {
-          cells[col] = line[i]!
-        }
+        this.unit(line[i]!, visible.source[at + i]!, r + wrapped.row[i]!, left + wrapped.col[i]!, !wrapped.hidden[i])
       }
       // The line break itself, as layoutProse counts it.
       this.text.push('\n')
@@ -111,12 +95,39 @@ export class Canvas {
     return true
   }
 
+  /**
+   * Puts one UTF-16 unit of drawn text at a cell (its column as wrapLine
+   * gives it); `drawn: false` counts it without drawing it (a space the
+   * engine hides at a row's start).
+   */
+  unit(unit: string, source: number, row: number, col: number, drawn = true): void {
+    this.grow(row + 1)
+    this.text.push(unit)
+    this.source.push(source)
+    this.row.push(row)
+    this.col.push(col)
+    this.end.push(false)
+    if (!drawn) return
+    const cells = this.cells[row]!
+    const code = unit.charCodeAt(0)
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      // The low half of a pair joins its high half, in the same cell.
+      cells[col] = (cells[col] ?? '') + unit
+    } else if (code < 0xd800 && codeWidth(code) === 0) {
+      // A combining mark joins the cell before it.
+      const at = Math.max(0, col - 1)
+      cells[at] = (cells[at] ?? '') + unit
+    } else {
+      cells[col] = unit
+    }
+  }
+
   lines(): string[] {
     this.grow(this.rows)
     return this.cells.slice(0, this.rows).map(cells => Array.from(cells, cell => cell ?? ' ').join('').replace(/ +$/, ''))
   }
 
-  private grow(rows: number): void {
+  grow(rows: number): void {
     while (this.cells.length < rows) this.cells.push([])
     this.rows = Math.max(this.rows, rows)
   }

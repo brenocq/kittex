@@ -1,4 +1,4 @@
-import { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
+import { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
@@ -21,7 +21,7 @@ export {
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
-export { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
+export { blockParts, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
 /** Where a display formula is drawn. */

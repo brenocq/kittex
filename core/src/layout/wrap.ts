@@ -26,8 +26,13 @@ export interface WrappedLine {
   hidden: Uint8Array
 }
 
-/** Wraps one line (no newline in it) to `columns`; null when a character's width is unknown. */
-export function wrapLine(line: string, columns: number): WrappedLine | null {
+/**
+ * Wraps one line (no newline in it) to `columns`; null when a character's
+ * width is unknown. `hard: false` replays `{ hard: false }` (the engine's
+ * table cells): a word wider than the row is not cut, it takes a row of its
+ * own and overflows it.
+ */
+export function wrapLine(line: string, columns: number, hard = true): WrappedLine | null {
   if (!(columns >= 1)) return null
   const row = new Int32Array(line.length)
   const col = new Int32Array(line.length)
@@ -77,7 +82,7 @@ export function wrapLine(line: string, columns: number): WrappedLine | null {
       }
       length += 1
     }
-    if (word.width > columns) {
+    if (hard && word.width > columns) {
       const remaining = columns - length
       const breaksHere = 1 + Math.floor((word.width - remaining - 1) / columns)
       const breaksNext = Math.floor((word.width - 1) / columns)

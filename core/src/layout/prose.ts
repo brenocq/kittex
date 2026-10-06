@@ -197,6 +197,8 @@ export interface ProseBlock {
   quote?: boolean
   /** A single heading, which the engine draws as prose with no marker. */
   heading?: boolean
+  /** A table, after one paragraph or none (layoutTable). */
+  table?: boolean
 }
 
 /**
@@ -228,6 +230,7 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
       ...(/^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {}),
       ...(types === 'blockquote' ? { quote: true } : {}),
       ...(types === 'heading' ? { heading: true } : {}),
+      ...(/^(?:paragraph,)?table$/.test(types) ? { table: true } : {}),
     })
     block = undefined
   }
