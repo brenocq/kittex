@@ -107,6 +107,16 @@ export interface RasterOptions {
    * baseline. Without it the formula is centred vertically.
    */
   baselinePx?: number
+  /**
+   * Inline only: the smallest scale an inline formula may be drawn at. One that
+   * fits only below it may instead be drawn at this scale with up to
+   * `overflowPx` of its tallest or deepest ink past the cell, clipped (the tip
+   * of a bar in a subscript, as in P_{k|k-1}); further than that, `scale`
+   * reports the smaller fit and the caller keeps the formula as text.
+   */
+  minScale?: number
+  /** Inline only: how many pixels of ink may run past the cell when `minScale` is used. */
+  overflowPx?: number
 }
 
 /** The cells a formula takes, known before rasterizing. */

@@ -81,3 +81,35 @@ describe('renderInline', () => {
     expect([20, 21]).toContain(lowest)
   })
 })
+
+describe('ink past the row', () => {
+  // kitty's 13×26 and 9×18 px cells, the math baseline a pixel above the font's (20/26).
+  const at = (cellWidth: number, cellHeight: number) => ({
+    cellWidth,
+    cellHeight,
+    maxColumns: 100,
+    emPx: emPxForCell({ cellWidth, cellHeight }),
+    ink: { r: 235, g: 219, b: 178 },
+    baselinePx: Math.round((cellHeight * 20) / 26),
+  })
+
+  test('a bar in a subscript is drawn at the floor, its tip past the row', async () => {
+    await init()
+    for (const geometry of [at(13, 26), at(9, 18)]) {
+      for (const tex of ['P_{k|k-1}', '\\hat{x}_{0|0}', 'h(\\hat{x}_{k|k-1})']) {
+        expect({ tex, scale: measureInline(tex, geometry)?.scale }).toEqual({ tex, scale: MIN_INLINE_SCALE })
+      }
+    }
+  })
+
+  test('formulas that fit keep their scale', async () => {
+    await init()
+    expect(measureInline('F_k', at(13, 26))?.scale).toBe(1)
+    expect(measureInline('f(x)', at(13, 26))?.scale).toBeGreaterThan(0.95)
+  })
+
+  test('a cut through a letter is refused: a stacked fraction stays text at 13×26', async () => {
+    await init()
+    expect(measureInline('\\frac{a}{b}', at(13, 26))).toBeNull()
+  })
+})

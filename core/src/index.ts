@@ -50,6 +50,14 @@ export interface InlineEnv extends RenderEnv {
  */
 export const MIN_INLINE_SCALE = 0.85
 
+/**
+ * How far, as a fraction of the cell height (at least a pixel), an inline
+ * formula drawn at MIN_INLINE_SCALE may run past its row: 2 px at 26 px cells,
+ * 1 px at 18. A bar in a subscript (P_{k|k-1}, \hat{x}_{0|0}) reaches 0.35 em
+ * below the baseline and would otherwise need about 0.8 and stay Unicode.
+ */
+export const INLINE_OVERFLOW = 0.06
+
 /** A display formula ready for an Image element. */
 export interface RenderedImage extends CellBox {
   /** A PNG of exactly columns × cellWidth by rows × cellHeight pixels. */
@@ -165,16 +173,50 @@ export function measureInline(tex: string, env: InlineEnv): CellBox | null {
     if (error instanceof TexError) return null
     throw error
   }
-  const box = measure(result, inlineOptions(env, 255, 'left'))
-  return box.scale >= MIN_INLINE_SCALE ? box : null
+  const options = inlineOptions(env, 255, 'left')
+  const box = measure(result, options)
+  if (box.scale < MIN_INLINE_SCALE) return null
+  // Drawn at the floor only because its ink may pass the row: allowed when what
+  // the row cuts is the tip of a thin stroke (a bar, a parenthesis), never part of a letter.
+  const strict = measure(result, { ...options, overflowPx: 0 })
+  if (strict.scale < MIN_INLINE_SCALE && !clipsOnlyThinInk(result, options)) return null
+  return box
 }
 
+/** The widest run of ink, in pixels, a row may have where an inline image cuts it. */
+const CLIPPED_RUN_PX = 2.5
+
 /**
- * Draws an inline formula `columns` wide (at least what measureInline gave)
- * and one row tall, at the left of its slot (a wider slot leaves its gap after
- * the formula, like the space after a word), its baseline on the font's.
- * Throws TexError.
+ * Whether the rows an inline image cuts off hold only thin strokes: draws the
+ * formula as placed, then again at the same size and baseline in a row
+ * `overflowPx` taller at each end, and checks that no row outside the image
+ * has a run of ink wider than CLIPPED_RUN_PX.
  */
+function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolean {
+  const slack = Math.max(0, Math.ceil(options.overflowPx ?? 0))
+  const placed = rasterize(result, options)
+  const tall = rasterize(result, {
+    ...options,
+    emPx: options.emPx * placed.scale,
+    cellHeight: options.cellHeight + 2 * slack,
+    baselinePx: placed.baselinePx + slack,
+    minColumns: placed.columns,
+    minScale: 0,
+    overflowPx: 0,
+  })
+  if (Math.abs(tall.scale - 1) > 1e-6) return false
+  const { alpha, widthPx, heightPx } = tall
+  for (let y = 0; y < heightPx; y++) {
+    if (y >= slack && y < heightPx - slack) continue
+    let run = 0
+    for (let x = 0; x < widthPx; x++) {
+      run = alpha[y * widthPx + x]! >= 64 ? run + 1 : 0
+      if (run > CLIPPED_RUN_PX) return false
+    }
+  }
+  return true
+}
+
 export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
   let image = remember(imageCache, key)
@@ -266,6 +308,8 @@ function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'
     align,
     minRows: 1,
     baselinePx: env.baselinePx,
+    minScale: MIN_INLINE_SCALE,
+    overflowPx: Math.max(1, Math.round(env.cellHeight * INLINE_OVERFLOW)),
   }
 }
 

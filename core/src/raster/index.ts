@@ -102,6 +102,24 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     }
     inlineBaseline = best
     scale = fit(best)
+    // A formula that fits only below the floor (a bar in a subscript reaches
+    // 0.35 em down) is drawn at the floor if its ink then passes the cell by no
+    // more than overflowPx: the clipped pixel or two is the tip of a thin stroke.
+    const floor = options.minScale ?? 0
+    const slack = Math.max(0, options.overflowPx ?? 0)
+    if (scale < floor && slack > 0) {
+      const fitWith = (at: number) => Math.min(above > 0 ? (at + slack) / above : Infinity, below > 0 ? (heightPx - at + slack) / below : Infinity)
+      let rescue = baseline
+      for (let d = 1; d <= shift; d++) {
+        for (const at of [baseline - d, baseline + d]) {
+          if (at >= 0 && at <= heightPx && fitWith(at) > fitWith(rescue) + 1e-9) rescue = at
+        }
+      }
+      if (fitWith(rescue) >= floor - 1e-9 && (width * emPx * floor <= availWidth || availWidth <= 0)) {
+        inlineBaseline = rescue
+        scale = floor
+      }
+    }
   } else if (boxHeight * emPx * scale > availHeight) {
     scale = Math.max(0, availHeight) / (boxHeight * emPx)
   }
