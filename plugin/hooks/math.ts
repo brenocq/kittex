@@ -23,7 +23,7 @@ import {
   TexError,
   textWidth,
 } from './core.js'
-import type { CellSize, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
+import type { CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
@@ -367,6 +367,45 @@ export function ungroupScripts(unicode: string, tex: string): string {
   return /\(|\\lparen/.test(tex) ? unicode : unicode.replace(GROUPED_SCRIPT, '$1$2')
 }
 
+/** What may open a phrase right before a formula: an opening bracket or quote. */
+const OPENS = /^[\p{Ps}\p{Pi}"'`]$/u
+/** What may close one right after it: a closing bracket or quote, or punctuation (`,`, `:`, `.`). */
+const CLOSES = /^[\p{Pe}\p{Pf}\p{Po}]$/u
+
+/**
+ * Where an inline formula's ink goes in a slot wider than it, from the
+ * characters drawn in the cells right before and after the slot (undefined at
+ * the row's start or end): against the slot's right edge when a space (or the
+ * row's start) is before it and punctuation or a closing bracket after it
+ * (`y_l,`: the blank joins the space before), against its left edge in the
+ * mirror case (`(x_k `), centred otherwise (`(y_w)`, `a x b`).
+ */
+export function inkPlaceBeside(before: string | undefined, after: string | undefined): InkPlace {
+  const blankBefore = before === undefined || /^\s$/u.test(before)
+  const blankAfter = after === undefined || /^\s$/u.test(after)
+  if (blankBefore && !blankAfter && CLOSES.test(after!)) return 'end'
+  if (blankAfter && !blankBefore && OPENS.test(before!)) return 'start'
+  return 'center'
+}
+
+/**
+ * The characters drawn in the cell before column `col` of a row and in the
+ * cell after the `columns` from it (zero-width marks skipped; undefined past
+ * the row's ends).
+ */
+export function cellsBeside(line: string, col: number, columns: number): [string | undefined, string | undefined] {
+  let at = 0
+  let before: string | undefined
+  for (const char of line) {
+    const cells = cellsOf(char)
+    if (cells === 0) continue
+    if (at + cells <= col) before = char
+    else if (at >= col + columns) return [col === 0 ? undefined : before, char]
+    at += cells
+  }
+  return [col === 0 ? undefined : before, undefined]
+}
+
 // ─── Markdown forms ──────────────────────────────────────────────────────────
 
 /** Terminal cells a line takes, counting common wide characters as two. */
@@ -594,7 +633,7 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
   const renderEnv = renderEnvFor(env)
   const { maxColumns } = renderEnv
   const records: PreviewRecord[] = []
-  for (const segment of segments) {
+  for (const [k, segment] of segments.entries()) {
     if (segment.kind === 'text') {
       writer.text(segment.text)
     } else if (!segment.display) {
@@ -607,7 +646,11 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
           : null
       if (inline) {
         writer.text(inline.markdown)
-        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns })
+        // Where its ink will go, as the source around it says (the landed rows decide; this draws it ahead).
+        const next = segments[k + 1]
+        const after = next === undefined ? undefined : next.kind === 'text' ? [...next.text][0] : next.raw[0]
+        const place = inkPlaceBeside([...written].at(-1)?.replace('\n', ' '), after)
+        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns, ...(place === 'center' ? {} : { place }) })
       } else {
         writer.text(inlineText(segment.tex) ?? segment.raw)
       }
@@ -766,7 +809,14 @@ export interface PlanOptions {
    * draws links (`hyperlinks`, KittexEnv's). Absent: inline math stays
    * Unicode.
    */
-  inline?: { env: InlineEnv; width: number; columns?: number; draw: (tex: string, columns: number) => RenderedImage; hyperlinks?: boolean | undefined }
+  inline?: {
+    env: InlineEnv
+    width: number
+    columns?: number
+    /** Draws a formula `columns` wide, its ink where `place` says in that slot (inkPlaceBeside). */
+    draw: (tex: string, columns: number, place?: InkPlace) => RenderedImage
+    hyperlinks?: boolean | undefined
+  }
 }
 
 interface Span {
@@ -1101,22 +1151,29 @@ function placeImages(
     spans.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
     { hyperlinks: inline.hyperlinks },
   )
-  return layout ? inlineImages(spans, layout.places, inline) : []
+  return layout ? inlineImages(spans, layout.places, inline, layout.lines) : []
 }
 
-/** The images of inline previews laid out at `places` (one per span): those drawn whole on a row, as wide as their image. */
+/**
+ * The images of inline previews laid out at `places` (one per span): those
+ * drawn whole on a row, as wide as their image, each with its ink placed by
+ * the cells beside its slot on that row of `lines` (the layout's rows).
+ */
 function inlineImages(
   spans: readonly (SourceSpan & { mark: InlineMark })[],
   places: readonly (SpanPlace | null)[],
   inline: NonNullable<PlanOptions['inline']>,
+  lines: readonly string[] = [],
 ): [SourceSpan, InlineImage][] {
   const images: [SourceSpan, InlineImage][] = []
   for (const [k, place] of places.entries()) {
     const span = spans[k]!
     const { mark } = span
     if (!place || mark.columns < 1 || place.columns !== mark.columns) continue
+    const line = lines[place.row]
+    const ink = line === undefined ? 'center' : inkPlaceBeside(...cellsBeside(line, place.col, mark.columns))
     try {
-      images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns), row: place.row, col: place.col }])
+      images.push([span, { tex: mark.tex, image: inline.draw(mark.tex, mark.columns, ink), row: place.row, col: place.col }])
     } catch (error) {
       if (!(error instanceof TexError)) throw error
     }
@@ -1151,7 +1208,7 @@ function placeQuote(
     ...quoted.map(firstLine),
   ], { hyperlinks: options.inline?.hyperlinks })
   if (!layout) return placeQuoted(quote, quoted, offset, options)
-  const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline) : []
+  const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline, layout.lines) : []
   for (const [k, span] of quoted.entries()) {
     const place = layout.places[inline.length + k]
     if (!place) continue

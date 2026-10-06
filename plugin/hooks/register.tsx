@@ -29,7 +29,7 @@ import {
   renderInline,
   toBase64,
 } from './core.js'
-import type { CellSize, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
+import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
 import {
   BULLET,
   bulletFor,
@@ -259,7 +259,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
       inline:
         images && inlineImages
-          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks }
+          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks }
           : undefined,
     })
     if (!plan.changed) return next(e)
@@ -723,9 +723,9 @@ function displayImage(tex: string, env: RenderEnv, rows?: number): RenderedImage
   return cachedImage(`d\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
 }
 
-/** An inline formula's image, `columns` wide. Throws TexError. */
-function inlineImage(tex: string, env: InlineEnv, columns: number): RenderedImage {
-  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns}\n${tex}`, () => renderInline(tex, env, columns))
+/** An inline formula's image, `columns` wide, its ink where `place` says. Throws TexError. */
+function inlineImage(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
+  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
 }
 
 /** Formulas streaming wrote previews for, waiting to be drawn ahead of their landing. */
@@ -747,7 +747,7 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
     try {
       const renderEnv = renderEnvFor(env)
       const image = record.inline
-        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0)
+        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
         : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
       base64Of(image.png)
       signatureOf(image.png)

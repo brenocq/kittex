@@ -38,6 +38,12 @@ export type KittexPreview = {
   inline?: true
   /** Inline: the cells the preview and its image take. */
   columns?: number
+  /**
+   * Inline: where its ink goes in those cells, as the characters around it in
+   * the source suggest (an image drawn ahead of landing; the landed layout's
+   * rows decide).
+   */
+  place?: 'center' | 'start' | 'end'
   /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
   quote?: number
 }

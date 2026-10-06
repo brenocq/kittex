@@ -21,6 +21,8 @@ import {
   renderEnvFor,
   REPLY_INDENT,
   TEXT_BASELINE,
+  cellsBeside,
+  inkPlaceBeside,
   ungroupScripts,
 } from '../hooks/math.ts'
 import type { KittexEnv, PlanOptions, PreviewRecord, StreamEnv } from '../hooks/math.ts'
@@ -50,7 +52,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
   return planLanded(text, records, {
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
-    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns) => renderInline(tex, inlineEnv, columns) },
+    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place) },
     ...extra,
   })
 }
@@ -419,6 +421,51 @@ describe('narrow formulas next to punctuation', () => {
     const { landed, records } = streamed(['under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.\n'])
     expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual(['\\pi_{\\text{ref}}', 'D_{KL}'])
     expect(plan('under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.').pieces).toEqual(plan(landed, records).pieces)
+  })
+})
+
+describe('where the blank of a wide slot goes', () => {
+  // A slot wider than its ink (π_ref streams in 5 cells, its ink takes 3.5)
+  // with the ink centred showed a gap before punctuation: "π_ref :". The blank
+  // goes where whitespace already is.
+  test('against the right edge between a space and punctuation, the left edge in the mirror case, else centred', () => {
+    expect(inkPlaceBeside(' ', ',')).toBe('end')
+    expect(inkPlaceBeside(' ', ':')).toBe('end')
+    expect(inkPlaceBeside(' ', ')')).toBe('end')
+    expect(inkPlaceBeside(undefined, '.')).toBe('end')
+    expect(inkPlaceBeside('(', ' ')).toBe('start')
+    expect(inkPlaceBeside('“', undefined)).toBe('start')
+    expect(inkPlaceBeside('(', ')')).toBe('center')
+    expect(inkPlaceBeside(' ', ' ')).toBe('center')
+    expect(inkPlaceBeside(undefined, undefined)).toBe('center')
+    expect(inkPlaceBeside(' ', 's')).toBe('center')
+    expect(inkPlaceBeside('a', ',')).toBe('center')
+  })
+
+  test('the cells beside a slot, wide characters and zero-width marks counted as drawn', () => {
+    expect(cellsBeside('ab xyz, c', 3, 3)).toEqual([' ', ','])
+    expect(cellsBeside('xyz, c', 0, 3)).toEqual([undefined, ','])
+    expect(cellsBeside('a (xy', 3, 2)).toEqual(['(', undefined])
+    expect(cellsBeside('漢 xy͏z!', 3, 3)).toEqual([' ', '!'])
+  })
+
+  test('each lands with its ink placed by its row, the same cells streamed and landed', async () => {
+    await init()
+    const reply = 'Against the policy $\\pi_{\\text{ref}}$: the rejected $y_l$, and ($x$ alone) and ($y_w$).'
+    const { landed, records } = streamed([reply + '\n'])
+    const { pieces } = plan(landed, records)
+    const env = inlineEnvFor(kitty26())
+    const images = pieces.flatMap(piece => (piece.kind === 'prose' ? piece.inline ?? [] : []))
+    expect(images.map(image => image.tex)).toEqual(['\\pi_{\\text{ref}}', 'y_l', 'x', 'y_w'])
+    const want = ['end', 'end', 'start', 'center'] as const
+    const placed = images.map((image, k) =>
+      (['center', 'start', 'end'] as const).find(place => String(renderInline(image.tex, env, records[k]!.columns!, place).png) === String(image.image.png)),
+    )
+    expect(placed).toEqual([...want])
+    // Ahead of landing, the record's guess from the source drew the same.
+    expect(records.map(record => record.place ?? 'center')).toEqual([...want])
+    // After --resume the LaTeX lands the same.
+    expect(plan(reply).pieces).toEqual(pieces)
   })
 })
 
