@@ -225,22 +225,40 @@ export const MATH_INSTRUCTIONS =
 export const LANDED_PATTERN = /\$|\\[([]|\\begin\{|&nbsp;|```latex|\u00a0|\u2800|\u034f/
 
 /**
- * LaTeX as written: a reply that never streamed through MessageDisplay, or one
- * read back after `--resume`. A `\[` counts only in a text holding none of
- * kittex's previews, which escape every `[` they show as `\[` (`𝔼\[x\]`).
+ * What only kittex writes into a streamed block: a display preview's pad, an
+ * inline preview's join, pad or mark, a refused formula's note. A block
+ * holding one is one kittex streamed, whatever else it holds (a reply's
+ * currency, `$` in code, a `$` a preview shows).
  */
-export const SOURCE_PATTERN = /\$|\\\(|\\begin\{|^(?![\s\S]*(?:&nbsp;|```latex|\u00a0|\u2800|\u034f))[\s\S]*\\\[/
+const PREVIEW_MARK = String.raw`&nbsp;|\u00a0|\u2800|\u034f|\*${NOT_RENDERED}`
 
 /**
- * A block as kittex streamed it: its previews (a display preview's pad, an
- * inline preview's join, pad or mark, a refused formula's source block) and
- * no LaTeX as written (a `\[` is a bracket its previews escaped). The
- * engine's own drawing of such a text is the streaming preview row for row,
- * so it may stand in while kittex's drawing is on its way (the
- * AssistantMessage hook, in the fullscreen layout). Never matches a text
- * SOURCE_PATTERN matches.
+ * Inline math as written, by the scanner's dollar rules (scan/inline.ts): a
+ * single unescaped `$` not followed by whitespace, closed by the next `$` if
+ * that one is single, not after whitespace and not before a digit, within a
+ * paragraph and no code span. So a reply's currency (`$100`, `\$100`, `$25,000
+ * at 6.5% and $25,000`, `$5-$10`) is no math.
  */
-export const STREAMED_PATTERN = /^(?![\s\S]*(?:\$|\\\(|\\begin\{))[\s\S]*?(?:&nbsp;|```latex|\u00a0|\u2800|\u034f)/
+const INLINE_DOLLARS = String.raw`(?<![\\$\`])\$(?![\s$])(?:[^$\`\\\n]|\\[^\n]|\n(?![ \t]*\n))*(?<![\s\\])\$(?![$\d])`
+
+/** Display math as written: `$$` (not escaped, not a longer run) up to the next `$$`. */
+const DISPLAY_DOLLARS = String.raw`(?<![\\$])\$\$(?!\$)[\s\S]*?\$\$`
+
+/**
+ * LaTeX as written: a reply that never streamed through MessageDisplay, or one
+ * read back after `--resume`. Never a block holding a preview mark (one kittex
+ * streamed: its `\[` is a bracket its previews escaped, `𝔼\[x\]`, and a `$`
+ * left in it is code or a preview's), and never for a currency dollar alone.
+ */
+export const SOURCE_PATTERN = new RegExp(String.raw`^(?![\s\S]*(?:${PREVIEW_MARK}))[\s\S]*?(?:${INLINE_DOLLARS}|${DISPLAY_DOLLARS}|\\\(|\\\[|\\begin\{)`)
+
+/**
+ * A block as kittex streamed it: one holding a preview mark. The engine's own
+ * drawing of such a text is the streaming preview row for row, so it may
+ * stand in while kittex's drawing is on its way (the AssistantMessage hook,
+ * in the fullscreen layout). Never matches a text SOURCE_PATTERN matches.
+ */
+export const STREAMED_PATTERN = new RegExp(PREVIEW_MARK)
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 

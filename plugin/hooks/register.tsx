@@ -217,10 +217,12 @@ export const register: Register = (on, options) => {
   // `onScreen` is reported, which it never is on a block's first render: the
   // engine draws that one itself, and its drawing of a streamed text is the
   // streaming preview row for row, so the landing shows no blank, only the
-  // images arriving over their previews. LaTeX as written (after --resume) is
-  // hooked from the first render (its own drawing would show the source), as
-  // is every block on the main screen, which reports no `onScreen`. The four
-  // matchers never select the same render, so kittex runs once per render.
+  // images arriving over their previews. A block holding a preview mark is a
+  // streamed one whatever else it holds (a reply's `$100` stays as written in
+  // it). LaTeX as written (after --resume) is hooked from the first render (its
+  // own drawing would show the source), as is every block on the main screen,
+  // which reports no `onScreen`. The four matchers never select the same
+  // render, so kittex runs once per render.
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, inlineImages))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))

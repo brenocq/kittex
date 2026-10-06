@@ -8,7 +8,7 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 
 import { emPxForCell, init, measureDisplay, renderDisplay, renderInline } from '../../../plugin/hooks/core.js'
-import { inlineEnvFor, inlineFlow, MessageStream, PIECE_TOP, planLanded, proseWidthFor, renderEnvFor, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
+import { inlineEnvFor, inlineFlow, MessageStream, PIECE_TOP, planLanded, proseWidthFor, renderEnvFor, SOURCE_PATTERN, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
 import type { InlineImage, KittexEnv, PreviewRecord, StreamEnv } from '../../../plugin/hooks/math.js'
 
 const CELL = { cellWidth: 13, cellHeight: 26 }
@@ -57,11 +57,14 @@ describe('live QA regressions', () => {
   // fullscreen run whose streamed text held a `$`, kitty and Ghostty alike
   // (p09, p11, p16, p30; still on main 66e695b, p09-K120-m2). The same blank
   // for kittex's own escaped `\[` was fixed on main meanwhile (1c9f43a).
-  test.skip('a streamed block with a dollar amount is still matched as streamed', () => {
+  test('a streamed block with a dollar amount is still matched as streamed', () => {
     for (const reply of ['You save \\$100 at a rate $r = 0.05$ a year.\n', 'You save $100 at a rate $r = 0.05$ a year.\n']) {
       const { text } = stream(reply)
       expect(STREAMED_PATTERN.test(text)).toBe(true)
+      expect(SOURCE_PATTERN.test(text)).toBe(false)
     }
+    // Currency alone is never LaTeX source (p11: two loans of $25,000).
+    expect(SOURCE_PATTERN.test("I'm comparing two loans: $25,000 at 6.5% APR over 5 years, and $25,000 at 4.9% over 7 years.")).toBe(false)
   })
 
   // Pipes in table cells. A model escapes `|` as `\|` inside a table row (GFM
