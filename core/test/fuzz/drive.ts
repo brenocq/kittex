@@ -13,6 +13,7 @@ import {
   GlyphError,
   measureDisplay,
   measureDisplayResult,
+  previewDisplay,
   renderDisplay,
   renderDisplayResult,
   renderInline,
@@ -30,6 +31,7 @@ import {
   inlineText,
   joinProse,
   MessageStream,
+  NOT_RENDERED,
   pictureEnvFor,
   planLanded,
   proseWidthFor,
@@ -181,15 +183,15 @@ function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?:
 export interface Streamed {
   /** What the engine shows: every flush's displayContent, joined. */
   shown: string
-  /** Records this reply wrote, in order (one per preview written). */
+  /** Records this reply wrote, in order (one per preview written), each where it was shown (`at`). */
   written: PreviewRecord[]
-  /** The record store after the reply (register.tsx's remember). */
+  /** The reply's block as register.tsx stores it (kittex.blocks): its records, each with `at`. */
   store: PreviewRecord[]
   flushes: number
   maxPushMs: number
 }
 
-export function streamReply(markdown: string, shape: Shape, store: readonly PreviewRecord[] = []): Streamed {
+export function streamReply(markdown: string, shape: Shape): Streamed {
   const env = envFor(shape)
   const math = mathOf(shape)
   const tex = shape.tex ? { block: math.block === 'image', inline: math.inline === 'image' } : undefined
@@ -197,10 +199,9 @@ export function streamReply(markdown: string, shape: Shape, store: readonly Prev
   const stream = new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true }))
   const flushes = flushesOf(markdown, shape.flushSeed)
   // register.tsx: with both kinds raw kittex registers no hook, and every flush shows as written.
-  if (math.block === 'raw' && math.inline === 'raw') return { shown: flushes.join(''), written: [], store: [...store], flushes: flushes.length, maxPushMs: 0 }
+  if (math.block === 'raw' && math.inline === 'raw') return { shown: flushes.join(''), written: [], store: [], flushes: flushes.length, maxPushMs: 0 }
   let shown = ''
-  let records = [...store]
-  const written: PreviewRecord[] = []
+  let block: PreviewRecord[] = []
   let maxPushMs = 0
   for (const [index, delta] of flushes.entries()) {
     const final = index === flushes.length - 1
@@ -208,21 +209,22 @@ export function streamReply(markdown: string, shape: Shape, store: readonly Prev
     if (index === 0 && delta === '' && final) break
     let start = performance.now()
     let rewrite = stream.push(delta, final, streamEnv)
-    // register.tsx's withTex: TeX answers what the flush waits for, then the stream resumes.
+    // register.tsx's withTex: TeX answers what the flush waits for, then the stream resumes; the flush's text is all of it.
+    let text = ''
+    const records: PreviewRecord[] = []
     for (let round = 0; ; round++) {
       maxPushMs = Math.max(maxPushMs, performance.now() - start)
-      shown += rewrite.text
-      if (rewrite.records.length > 0) {
-        written.push(...rewrite.records)
-        records = remember(records, rewrite.records)
-      }
+      text += rewrite.text
+      records.push(...rewrite.records)
       if (!rewrite.pending?.length || round >= 64) break
       compileFake(rewrite.pending)
       start = performance.now()
       rewrite = stream.resume(streamEnv)
     }
+    if (records.length > 0) block = remember(block, records, shown, text)
+    shown += text
   }
-  return { shown, written, store: records, flushes: flushes.length, maxPushMs }
+  return { shown, written: block, store: block, flushes: flushes.length, maxPushMs }
 }
 
 // ─── Landing ─────────────────────────────────────────────────────────────────
@@ -236,8 +238,12 @@ export interface Landed {
   ms: number
 }
 
-/** drawLanded's plan for a landed text, in a terminal of this shape. */
-export function land(text: string, store: readonly PreviewRecord[], shape: Shape): Landed {
+/**
+ * drawLanded's plan for a landed text, in a terminal of this shape: `block`,
+ * the records of the block it streamed as (the one its row links), or none
+ * for LaTeX as written (after --resume).
+ */
+export function land(text: string, block: readonly PreviewRecord[] | undefined, shape: Shape): Landed {
   const env = envFor(shape)
   const columns = shape.columns
   const math = mathOf(shape)
@@ -248,12 +254,16 @@ export function land(text: string, store: readonly PreviewRecord[], shape: Shape
   const blockImages = env.images && math.block === 'image'
   const inlineImages = env.images && math.inline === 'image'
   const images = blockImages || inlineImages
-  const records = images && /&nbsp;|```| |⠀|͏/.test(text) ? store : []
+  const records = images ? (block ?? []) : []
+  const streamed = block !== undefined || STREAMED_PATTERN.test(text)
   const renderEnv = renderEnvFor(env, columns)
   const inlineEnv = inlineEnvFor(env, columns)
   const start = performance.now()
   const pictureEnv = pictureEnvFor(env, columns)
   const plan = planLanded(text, records, {
+    ...(streamed ? { streamed: {} } : {}),
+    mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
+    columns,
     maxColumns: renderEnv.maxColumns,
     draw: blockImages ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
     width: proseWidthFor(env, columns),
@@ -325,7 +335,7 @@ const SLOW_PUSH_MS = 1000
 const SLOW_LAND_MS = 2000
 
 /** Runs one reply in one terminal shape and checks every invariant. */
-export function runCase(markdown: string, shape: Shape, options: { store?: PreviewRecord[]; partial?: boolean } = {}): CaseResult {
+export function runCase(markdown: string, shape: Shape, options: { partial?: boolean } = {}): CaseResult {
   const failures: Failure[] = []
   const fail: Fail = (check, cause, detail, at = {}) => failures.push({ check, cause, detail, ...at })
   const result: CaseResult = {
@@ -342,7 +352,7 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
 
   let streamed: Streamed
   try {
-    streamed = streamReply(markdown, shape, options.store)
+    streamed = streamReply(markdown, shape)
   } catch (error) {
     fail('exception', 'stream', `MessageStream.push threw: ${(error as Error)?.stack ?? error}`)
     return result
@@ -361,7 +371,7 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
     return result
   }
   try {
-    resumed = land(markdown, [], shape)
+    resumed = land(markdown, undefined, shape)
   } catch (error) {
     fail('exception', 'resume', `planLanded (resumed) threw: ${(error as Error)?.stack ?? error}`)
     return result
@@ -477,15 +487,9 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
     }
     seen.set(key, record.preview)
   }
-  const byPreview = new Map<string, string>()
-  for (const record of streamed.written) {
-    if (!record.inline) continue
-    const other = byPreview.get(record.preview)
-    if (other !== undefined && other !== record.tex) {
-      fail('impure', 'collision', `${JSON.stringify(other)} and ${JSON.stringify(record.tex)} stream the same preview ${JSON.stringify(record.preview)}: both land with the image of the later one`)
-    }
-    byPreview.set(record.preview, record.tex)
-  }
+  // Two formulas may stream the same preview (\tfrac12 and \frac12 are both `½`): records are found again by
+  // where they were written, so each lands with its own image (FUZZ-7; the image checks above and the resumed
+  // comparison see a swap).
 
   // Resumed equals live.
   compareResumed(liveDrawing, resumedDrawing, fail, failures.some(failure => failure.check === 'padVisible' || failure.cause.startsWith('inline-missing')))
@@ -670,7 +674,8 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
   const env = envFor(shape)
   const renderEnv = renderEnvFor(env)
   const landedText = live.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('\n')
-  const notes = live.pieces.filter(piece => piece.kind === 'note').length
+  // A note is dim in the reply column, or, in a list item or a quote, italic in its text as it streamed.
+  const notes = live.pieces.filter(piece => piece.kind === 'note' || (piece.kind === 'prose' && piece.text.includes(`*${NOT_RENDERED}`))).length
   const segments = scan(markdown).filter(segment => segment.kind === 'math')
   let refused = 0
   const reported = new Set<string>()
@@ -683,7 +688,8 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
       measureDisplay(segment.tex, renderEnv)
     } catch (e) {
       if (!(e instanceof TexError)) throw e
-      error = e instanceof GlyphError ? undefined : e.message
+      // Characters the font lacks: the Unicode preview stays where it has one; with none, the source and a note.
+      error = e instanceof GlyphError && previewDisplay(segment.tex, { maxColumns: renderEnv.maxColumns }) !== null ? undefined : e.message
     }
     if (error !== undefined) {
       // One the local TeX drew needs no note.

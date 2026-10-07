@@ -4,7 +4,7 @@
 
 import { drawsEmojiSequences, emPxForCell, fontCell } from '../../hooks/core.js'
 import type { CellAdjust, TerminalInfo } from '../../hooks/core.js'
-import { linkEnv, RECORD_LIMIT } from '../../hooks/math.ts'
+import { linkEnv, locatePreviews } from '../../hooks/math.ts'
 import type { KittexEnv, MathMode, MathOptions, PreviewRecord } from '../../hooks/math.ts'
 import { Rng } from './rng.ts'
 
@@ -145,9 +145,11 @@ export function flushesOf(markdown: string, seed: number): string[] {
   return out.length > 0 ? out : ['']
 }
 
-/** Keeps records as register.tsx's remember does: a preview recorded again replaces the older one; the newest RECORD_LIMIT kept. */
-export function remember(store: readonly PreviewRecord[], records: readonly PreviewRecord[]): PreviewRecord[] {
-  const fresh = new Set(records.map(record => record.preview))
-  return [...store.filter(record => !fresh.has(record.preview)), ...records].slice(-RECORD_LIMIT)
+/**
+ * Keeps a flush's records as register.tsx stores them in their block: each
+ * preview located where the engine shows it (`shown`: the text shown before
+ * this flush, `text`: the flush's rewrite).
+ */
+export function remember(block: readonly PreviewRecord[], records: readonly PreviewRecord[], shown: string, text: string): PreviewRecord[] {
+  return [...block, ...locatePreviews(text, records, shown.length)]
 }
-

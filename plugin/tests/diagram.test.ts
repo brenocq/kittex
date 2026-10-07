@@ -28,7 +28,7 @@ import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { createLineScanner } from '../hooks/core.js'
 import { diagramJob, hiddenDirs, probeTex, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
 import type { TexHost, TexSetup } from '../hooks/tex.ts'
-import { COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
+import { CELL, COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 /** dvisvgm's SVG of a small picture: a red line over a pale circle, 100 × 50 big points. */
 const SVG = `<?xml version='1.0'?><svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 50'><path d='M0 0L100 50' stroke='#f00' stroke-width='2' fill='none'/><circle cx='50' cy='25' r='10' fill='#ccf'/></svg>`
@@ -217,9 +217,11 @@ describe('diagrams landing', () => {
         return outcome?.ok ? renderPicture(outcome.picture, pictureEnv, rows) : null
       },
     })
-    const image = plan.pieces.find(piece => piece.kind === 'image')
-    expect(image).toMatchObject({ kind: 'image', copy: TIKZ, gap: true, image: { rows: records[0]!.rows, columns: pictureEnv.maxColumns } })
-    expect(plan.pieces.map(piece => piece.kind)).toEqual(['prose', 'image', 'prose'])
+    // Laid over the placeholder in the streamed text, which the engine draws as it streamed (nothing moves).
+    const overlays = plan.pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
+    expect(overlays).toEqual([expect.objectContaining({ tex: TIKZ, copy: TIKZ, display: true, col: 0, image: expect.objectContaining({ rows: records[0]!.rows, columns: pictureEnv.maxColumns }) })])
+    expect(plan.pieces.every(piece => piece.kind === 'prose')).toBe(true)
+    expect(plan.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain(records[0]!.preview)
   })
 
   test('after --resume the block as written is drawn too; a refused one keeps its source and a note', async () => {
@@ -246,10 +248,15 @@ describe('diagrams landing', () => {
       },
     })
     expect(plan.changed).toBe(true)
-    expect(plan.pieces.map(piece => piece.kind)).toEqual(['prose', 'image', 'prose', 'note'])
-    expect(plan.pieces[2]).toMatchObject({ kind: 'prose' })
-    expect((plan.pieces[2] as { text: string }).text).toContain(evil)
-    expect(plan.pieces[3]).toMatchObject({ kind: 'note', text: `${NOT_RENDERED}uses \\input` })
+    // The drawn one: the placeholder streaming would have written, its picture over it.
+    const overlays = plan.pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
+    expect(overlays).toEqual([expect.objectContaining({ tex: TIKZ, copy: TIKZ, display: true })])
+    const text = plan.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')
+    expect(text).toContain('· diagram ·')
+    expect(text).not.toContain(FENCE)
+    // The refused one: as written, and its note.
+    expect(text).toContain(evil)
+    expect(plan.pieces.at(-1)).toMatchObject({ kind: 'note', text: `${NOT_RENDERED}uses \\input` })
   })
 
   test('a resumed reply with only a diagram fence reaches the landing hook', () => {
@@ -365,7 +372,7 @@ describe('the TeX book', () => {
 
 describe('instructions to the model', () => {
   test('one line on diagrams, only where TeX was found', async ($, on) => {
-    await startSession($, on, KITTY, 'dark', argv => ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version' ? { exitCode: 0, stdout: `${argv[0]} 1.0\n` } : undefined))
+    await startSession($, on, KITTY, 'dark', CELL, argv => ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version' ? { exitCode: 0, stdout: `${argv[0]} 1.0\n` } : undefined))
     const { sections } = await $.prompt.compose(COMPOSE)
     const section = sections.find(one => one.id === SECTION_ID)
     expect(section?.text).toBe(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`)
@@ -380,7 +387,7 @@ describe('instructions to the model', () => {
 
   test('with the option off, TeX is never asked', { options: { latex: 'off' } }, async ($, on) => {
     const asked: string[] = []
-    await startSession($, on, KITTY, 'dark', argv => {
+    await startSession($, on, KITTY, 'dark', CELL, argv => {
       asked.push(argv[0]!)
       return { exitCode: 0, stdout: 'x 1.0\n' }
     })

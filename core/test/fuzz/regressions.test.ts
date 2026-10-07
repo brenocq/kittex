@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest'
 import { init, previewInline } from '../../../plugin/hooks/core.js'
 import { performance } from 'node:perf_hooks'
 
-import { MessageStream, RECORD_LIMIT } from '../../../plugin/hooks/math.js'
+import { BLOCK_LIMIT, MessageStream } from '../../../plugin/hooks/math.js'
 import { envFor, land, remember, runCase, streamReply } from './drive.js'
 import type { CheckName, Shape } from './drive.js'
 
@@ -58,7 +58,8 @@ describe('fuzz regressions', () => {
   // then `which gives y.` and `2. Norm.`: the note lands at the reply's edge
   // instead of the item's, and `2. Norm.` a row lower). A list whose display
   // formula is not drawn (refused, or kept as its preview) is still cut there.
-  test.skip('FUZZ-1: a list holding a display formula that is not drawn is not cut', () => {
+  // Fixed: a refused note or a kept preview in a list item stays in the item, as it streamed.
+  test('FUZZ-1: a list holding a display formula that is not drawn is not cut', () => {
     const md = '* integral\n  \\[\n\\sum_{\\begin{subarray}{l} < n \\end{subarray}}\n\\]\n  $$\nT_{\\mu\\nu}\n$$\n  $[0, 1)$ gives that sum!\n'
     expect(failures(md, { columns: 21 }, ['moved'])).toEqual([])
   })
@@ -78,12 +79,13 @@ describe('fuzz regressions', () => {
   // preview's lines (lead pads + formula) wrap while streaming, and the image,
   // as tall as the unwrapped preview, lands with the text below moving up.
   // Fix: lay previews (and notes) out in proseWidthFor, or pad to its rows.
-  test.skip('FUZZ-2: with maxProseWidth, a display preview takes the rows its image takes', () => {
+  // Fixed: renderEnvFor's maxColumns is proseWidthFor, streaming and landing alike.
+  test('FUZZ-2: with maxProseWidth, a display preview takes the rows its image takes', () => {
     const md = 'The roots are\n\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n\nfor any $a \\ne 0$.\n'
     expect(failures(md, { columns: 120, maxProseWidth: 60 }, ['moved', 'overPreview'])).toEqual([])
   })
 
-  test.skip('FUZZ-2: with maxProseWidth, a refused formula\'s note takes one row', () => {
+  test('FUZZ-2: with maxProseWidth, a refused formula\'s note takes one row', () => {
     const md = '\\[\n\\def\\a{\\b\\b}\\def\\b{\\c\\c}\\def\\c{\\d\\d}\\def\\d{\\e\\e}\\def\\e{\\f\\f}\\def\\f{xx} \\a\\a\\a\\a\n\\]\n'
     expect(failures(md, { maxProseWidth: 55 }, ['moved'])).toEqual([])
   })
@@ -177,7 +179,9 @@ describe('fuzz regressions', () => {
   // and \frac12 are both `½`, A^T and A^\top both `Aᵀ`) both land with the
   // later one's image (and the records outlive the reply: a later reply can
   // change an earlier one's image when it redraws).
-  test.skip('FUZZ-7: formulas with the same preview keep their own images', () => {
+  // Fixed: records carry where their preview was written (`at`), kept per block; a landed block is linked to
+  // its stream by its row (plugin/tests/blocks.test.ts).
+  test('FUZZ-7: formulas with the same preview keep their own images', () => {
     expect(failures('$\\tfrac{1}{2}$\n\n$\\frac{1}{2}$\n', {}, ['impure', 'inlineImage'])).toEqual([])
     expect(failures('$A^\\top$\n$A^T$\n', {}, ['impure', 'inlineImage'])).toEqual([])
   })
@@ -185,14 +189,16 @@ describe('fuzz regressions', () => {
   // FUZZ-8 (live; stress report F15). SOURCE_PATTERN and planLanded's
   // pre-check know `$`, `\(`, `\[` and `\begin{`, not a ```math fence: a reply
   // whose only math is one is drawn live but stays a code block after --resume.
-  test.skip('FUZZ-8: a ```math fence lands as an image after --resume', () => {
+  // Fixed: MATH_FENCE in SOURCE_PATTERN, LANDED_PATTERN and planLanded's check.
+  test('FUZZ-8: a ```math fence lands as an image after --resume', () => {
     expect(failures('```math\ne^{i\\pi} + 1 = 0\n```\n', {}, ['resumed'])).toEqual([])
   })
 
   // FUZZ-9. Display math two quotes deep is never measured (drawn only at
   // depth 1): with no Unicode form that fits it stays raw LaTeX; one MathJax
   // refuses there gets no note.
-  test.skip('FUZZ-9: display math in a nested quote is drawn or noted', () => {
+  // Fixed: measured and drawn at any depth where the quote so far is followed.
+  test('FUZZ-9: display math in a nested quote is drawn or noted', () => {
     expect(failures('> > > \\begin{aligned}\n> > > \\pmod{p}\n> > > \\end{aligned}\n', {}, ['rawLatex'])).toEqual([])
   })
 
@@ -239,7 +245,9 @@ describe('fuzz regressions', () => {
   // its escapes and entities show: `\$5`, which the instructions tell the
   // model to write, streams as `$5` (the whole text is markdown) and lands as
   // `\$5`.
-  test.skip('FUZZ-11: escapes in a piece after an image are read as in the whole', () => {
+  // Fixed: images lie over the streamed text, so a piece is cut only where rows aren't known, and a cut piece
+  // with no markdown of its own gets MARKDOWN_TAIL, so the engine reads it as markdown.
+  test('FUZZ-11: escapes in a piece after an image are read as in the whole', () => {
     expect(failures('The area is\n\n$$\nA = \\pi r^2\n$$\n\nand it costs \\$5 per m.\n', {}, ['moved'])).toEqual([])
   })
 
@@ -282,10 +290,7 @@ describe('fuzz regressions', () => {
   // block is written after a blank line, at the reply's edge). Fixed: guards.
   test('FUZZ-16: live lands the images resumed lands', () => {
     const cases: [string, Partial<Shape>][] = [
-      // After a display image, a list laid out on its own (a link the replay doesn't follow before it).
-      ['- https://example.com/a/very/long/path/that/keeps/going/and/going/index.html?query=1&other=2\n  \\begin{array}{c||c} \\end{array}\n- $\\emptyset$ step\n', { links: 'unknown' }],
-      // An unclosed fence before an image does not reach the piece after it.
-      ['+\n    ```text\n```\n\\begin{align}\ne\n\\end{align}\n$\\hat{x}_{k|k} \\hat{x}_{k|k-1})$\n', {}],
+
       // A table's header row, its delimiter row in the next flush.
       ['|  | | | $|a| |b|$\n-------- | ---: | :--- | ---\n', {}],
       // A display right after a list item's line is no part of the item.
@@ -300,14 +305,30 @@ describe('fuzz regressions', () => {
     for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'displayImage']) }).toEqual({ md, failures: [] })
   })
 
+  // FUZZ-16 with fix/landing-map: a display in a list item the replay doesn't follow up to it (a link it can't
+  // lay out) keeps its preview, the list drawn whole as it streamed (no cut: FUZZ-1); the stream plans no cut
+  // there either, so a formula in a later item streams as plain Unicode, live as resumed.
+  test('FUZZ-16: a kept display in an item does not cut the list, live or resumed', () => {
+    const md = '- https://example.com/a/very/long/path/that/keeps/going/and/going/index.html?query=1&other=2\n  \\begin{array}{c||c} \\end{array}\n- $\\emptyset$ step\n'
+    expect(failures(md, { links: 'unknown' }, ['resumed', 'inlineImage', 'moved', 'padVisible'])).toEqual([])
+  })
+
+  // The same for an unclosed fence before a display (marked reads the rest as its code; the scanner took the
+  // fence for closed, so the display streamed as a preview): no piece starts after it, so the formula after it
+  // isn't padded, and nothing is drawn over the code.
+  test('FUZZ-16: an unclosed fence before a display reaches the text after it, live and resumed', () => {
+    const md = '+\n    ```text\n```\n\\begin{align}\ne\n\\end{align}\n$\\hat{x}_{k|k} \\hat{x}_{k|k-1})$\n'
+    expect(failures(md, {}, ['resumed', 'inlineImage', 'moved', 'padVisible'])).toEqual([])
+  })
+
   // FUZZ-16, the landing's part: with inline images off, planLanded gets no
   // link mode (PlanOptions has it only in `inline`), so a list item holding a
   // link is a list it doesn't follow there; the stream knows the mode and
   // writes the display as the item's, whose image the landing then can't
   // place (live keeps the preview), while resumed draws it as an image of its
   // own and cuts the list. Fix (landing): give planLanded the link mode
-  // whatever the inline option.
-  test.skip('FUZZ-16: with inline images off, a display in an item holding a link lands as resumed lands it', () => {
+  // whatever the inline option. Fixed: PlanOptions.mode.
+  test('FUZZ-16: with inline images off, a display in an item holding a link lands as resumed lands it', () => {
     const md = '2. rank](https://github.com/owner/repo/issues/42)\n   \\[\nN(d_2)\n\\]\n   $\\frac{n(n+1)}{2}$\n'
     expect(failures(md, { inline: 'unicode' }, ['resumed', 'displayImage'])).toEqual([])
   })
@@ -317,17 +338,30 @@ describe('fuzz regressions', () => {
     for (const flushSeed of [1, 2, 3]) expect(failures(md, { inline: 'unicode', flushSeed }, ['resumed', 'moved'])).toEqual([])
   })
 
-  // FUZZ-14. remember() keeps the newest RECORD_LIMIT (512) previews for the
-  // whole session: once a session has streamed more distinct previews, an
+  // fix/landing-map's fuzz run: with inline images off the plan knew no terminal width (only `inline` had it),
+  // so a table above a display was laid out in the prose width (its list form) and the image landed rows low;
+  // and math read back as LaTeX in a table cell kept the unpadded form where the plain one was its last chance.
+  test('the plan lays tables out in the terminal width, and gives resumed math its last form', () => {
+    const md = '[value](https://github.com/owner/repo/issues/42) | $D_{KL}(p \\sum_x p(x) \\log | | |\n- | - | - | -------- \n$\\min_i x_i$ \n\\mid B)$ | | `\\frac{a}{b}` \n$$\n\\ointctrclockwise_C \n$$\n\n- norm.\n'
+    expect(failures(md, { inline: 'unicode', maxProseWidth: 49 }, ['overPreview', 'moved'])).toEqual([])
+    const table = 'likelihood | $\\hbar$ | | averyveryveryveryveryveryveryveryveryveryverylongidentifierwithoutanybreaks \n| - | :--- | :--- | :--- \n$\\beta_1$ \nupdate | holds $\\arg\\max_x f(x)$ space \n\n'
+    expect(failures(table, {}, ['resumed'])).toEqual([])
+  })
+
+  // FUZZ-14. remember() kept the newest RECORD_LIMIT (512) previews for the
+  // whole session: once a session had streamed more distinct previews, an
   // earlier block that redraws (a resize, a theme change, scrolling in the
-  // fullscreen layout) finds none of its records and loses its images, its
-  // pads left as gaps.
-  test.skip('FUZZ-14: an early reply keeps its images after many later formulas', () => {
+  // fullscreen layout) found none of its records and lost its images, its
+  // pads left as gaps. Records are kept per block now (kittex.blocks, by
+  // message, the oldest dropped past BLOCK_LIMIT blocks): a block lands with
+  // its own records whatever streamed after it (plugin/tests/blocks.test.ts
+  // drives the store itself through register.tsx).
+  test('FUZZ-14: an early reply keeps its images after many later formulas', () => {
     const first = streamReply('Take $x_{0}$ and $y$.\n', BASE)
-    let store = first.store
-    for (let k = 1; k <= RECORD_LIMIT; k++) store = remember(store, streamReply(`Then $z_{${k}}$.\n`, BASE, store).written)
-    const images = (records: typeof store) => land(first.shown, records, BASE).pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
-    expect(images(first.store)).toHaveLength(2)
-    expect(images(store)).toHaveLength(2)
+    const later = Array.from({ length: 600 }, (_, k) => streamReply(`Then $z_{${k}}$.\n`, BASE))
+    expect(later.every(reply => reply.store.length === 1)).toBe(true)
+    expect(BLOCK_LIMIT).toBeGreaterThan(later.length)
+    const images = land(first.shown, first.store, BASE).pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
+    expect(images.map(image => image.tex)).toEqual(['x_{0}', 'y'])
   })
 })

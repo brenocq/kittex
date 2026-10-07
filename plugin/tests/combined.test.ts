@@ -10,7 +10,7 @@ import { describe, expect } from 'claude-code/testing'
 import { init, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, measureDisplay, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv, test } from './support.ts'
+import { kittyEnv, pieceLines, test } from './support.ts'
 
 const kitty26 = (hyperlinks?: boolean): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, ...(hyperlinks === undefined ? {} : { hyperlinks }) })
 const inlineOn = (hyperlinks?: boolean): StreamEnv => ({ ...kitty26(hyperlinks), inline: true })
@@ -49,24 +49,17 @@ function shape(pieces: readonly Piece[]): [string, boolean, [string, number, num
   ])
 }
 
-/** Every image of a prose piece lies over its preview in the piece's own drawing (its replay, found by its first characters). */
+/** Every image of a prose piece lies over its preview in the piece's own drawing (its parts' replays, one under the other). */
 function expectOverPreviews(pieces: readonly Piece[], records: readonly PreviewRecord[], hyperlinks?: boolean) {
   const mode = { hyperlinks }
   for (const piece of pieces) {
     if (piece.kind !== 'prose' || !piece.inline?.length) continue
-    const text = piece.text
-    const layout = text.startsWith('|')
-      ? layoutTable(text, COLUMNS, [], WIDTH, mode)
-      : text.startsWith('#')
-        ? layoutHeading(text, WIDTH, [], mode)
-        : text.startsWith('>')
-          ? layoutQuote(text, WIDTH, [], mode)
-          : (layoutProse(text, WIDTH, [], mode) ?? layoutList(text, WIDTH, [], mode))
-    expect(layout).not.toBeNull()
+    const lines = pieceLines(piece.text, WIDTH, COLUMNS, mode)
+    expect(lines).not.toBeNull()
     for (const image of piece.inline) {
       const record = records.find(one => one.tex === image.tex)
       const preview = (record?.preview ?? '').replace(/\\(.)/g, '$1')
-      const line = layout!.lines[image.row]!
+      const line = lines![image.row]!
       const at = line.indexOf(preview)
       expect([image.tex, at >= 0]).toEqual([image.tex, true])
       expect([image.tex, image.col]).toEqual([image.tex, textWidth(line.slice(0, at))])
@@ -81,9 +74,9 @@ describe('parts laid out by their own replays', () => {
     const { landed, records } = streamed(['Values of $\\alpha$ and $x_k$:\n', '| Symbol | Value |\n', '|---|---|\n', '| $\\alpha$ | $10^{-3}$ |\n'])
     expect(records.map(record => record.tex)).toEqual(['\\alpha', 'x_k', '\\alpha', '10^{-3}'])
     const { pieces } = plan(landed, records)
-    expect(shape(pieces).map(([text, gap, images]) => [text.slice(0, 9), gap, images.map(([tex]) => tex)])).toEqual([
-      ['Values of', false, ['\\alpha', 'x_k']],
-      ['| Symbol ', true, ['\\alpha', '10^{-3}']],
+    // One piece: the table's images on its rows, a blank row under the paragraph.
+    expect(shape(pieces).map(([text, gap, images]) => [text.slice(0, 9), gap, images.map(([tex, row]) => [tex, row])])).toEqual([
+      ['Values of', false, [['\\alpha', 0], ['x_k', 0], ['\\alpha', 5], ['10^{-3}', 5]]],
     ])
     expectOverPreviews(pieces, records)
   })
@@ -93,9 +86,9 @@ describe('parts laid out by their own replays', () => {
     const { landed, records } = streamed(['### Steps for $u_k$\n', '- predict $x_k$\n', '- update with $K_k$\n'])
     expect(records.map(record => record.tex)).toEqual(['u_k', 'x_k', 'K_k'])
     const { pieces } = plan(landed, records)
+    // One piece: the list a blank row under the heading.
     expect(shape(pieces).map(([text, gap, images]) => [text, gap, images.map(([tex, row]) => [tex, row])])).toEqual([
-      [expect.stringMatching(/^### Steps for /), false, [['u_k', 0]]],
-      [expect.stringMatching(/^- predict /), true, [['x_k', 0], ['K_k', 1]]],
+      [expect.stringMatching(/^### Steps for /), false, [['u_k', 0], ['x_k', 2], ['K_k', 3]]],
     ])
     expectOverPreviews(pieces, records)
   })
@@ -106,9 +99,8 @@ describe('parts laid out by their own replays', () => {
     expect(records.map(record => record.tex)).toEqual(['K_k', 'K_k = P H^T S^{-1}', 'z_k'])
     const { pieces } = plan(landed, records)
     expect(shape(pieces).map(([text, gap, images]) => [[...text].slice(0, 3).join(''), gap, images])).toEqual([
-      ['The', false, [['K_k', 0, 'The gain '.length]]],
-      // The bar and a space, then two cells for each emoji.
-      ['> ✅', true, [['K_k = P H^T S^{-1}', 0, 2 + 2 + ' done: '.length], ['z_k', 0, 2 + 2 + ' done: '.length + records[1]!.columns! + ' '.length + 2 + ' and '.length + 2]]],
+      // One piece, the quote a blank row under the paragraph: the bar and a space, then two cells for each emoji.
+      ['The', false, [['K_k', 0, 'The gain '.length], ['K_k = P H^T S^{-1}', 2, 2 + 2 + ' done: '.length], ['z_k', 2, 2 + 2 + ' done: '.length + records[1]!.columns! + ' '.length + 2 + ' and '.length + 2]]],
     ])
     expectOverPreviews(pieces, records)
   })
@@ -117,14 +109,15 @@ describe('parts laid out by their own replays', () => {
     await init()
     const { pieces } = plan('## 🚀 Launch at $t_0$\n| Stage | Thrust |\n|---|---|\n| ⭐ one | $F = ma$ ✅ |')
     expect(shape(pieces).map(([text, gap, images]) => [[...text].slice(0, 4).join(''), gap, images.map(([tex, , col]) => [tex, col])])).toEqual([
-      ['## 🚀', false, [['t_0', 2 + ' Launch at '.length]]],
-      ['| St', true, [['F = ma', expect.any(Number)]]],
+      ['## 🚀', false, [['t_0', 2 + ' Launch at '.length], ['F = ma', expect.any(Number)]]],
     ])
-    const table = pieces[1]!.kind === 'prose' ? pieces[1]! : undefined
-    const layout = layoutTable(table!.text, COLUMNS, [], WIDTH)!
-    // The emoji's row: the cell after ⭐ one starts where its two cells end.
+    const piece = pieces[0]!.kind === 'prose' ? pieces[0]! : undefined
+    const table = piece!.text.slice(piece!.text.indexOf('|'))
+    const layout = layoutTable(table, COLUMNS, [], WIDTH)!
+    // The emoji's row (the table a blank row under the heading): the cell after ⭐ one starts where its two cells end.
     expect(layout.lines[3]).toMatch(/^│ ⭐ one │ /)
-    expect(table!.inline![0]!.col).toBe(textWidth('│ ⭐ one │ '))
+    expect(piece!.inline![1]!.row).toBe(2 + 3)
+    expect(piece!.inline![1]!.col).toBe(textWidth('│ ⭐ one │ '))
   })
 })
 
@@ -162,14 +155,25 @@ describe('links in headings, quotes and tables', () => {
   test('the places the live check saw (100 columns, hyperlinks)', async () => {
     await init()
     const { pieces } = plan(reply.join('').trimEnd(), [], kitty26(true))
+    // Live, each part was a piece of its own (the rows below are those, each moved down by the parts above it
+    // and the blank rows between them): drawn as one piece now, the images are where they were.
     expect(shape(pieces).map(([, gap, images]) => [gap, images])).toEqual([
-      [false, [['x_k', 0, 10]]],
-      [true, [['P_k = A P_{k-1} A^T + Q', 0, 16]]],
-      [true, [['K_k', 0, 20], ['z_k = H x_k', 0, 44]]],
-      [true, [['\\alpha', 0, 30]]],
-      [true, [['\\alpha', 3, 2], ['\\beta_1', 5, 2]]],
-      [true, [['u_k', 0, 14]]],
-      [true, [['w_k', 0, 18], ['v_k', 1, 10]]],
+      [
+        false,
+        [
+          ['x_k', 0, 10],
+          ['P_k = A P_{k-1} A^T + Q', 0 + 2, 16],
+          ['K_k', 2 + 2, 20],
+          ['z_k = H x_k', 2 + 2, 44],
+          ['\\alpha', 4 + 2, 30],
+          ['\\alpha', 6 + 2 + 3, 2],
+          ['\\beta_1', 6 + 2 + 5, 2],
+          // The table's seven rows, a blank one, the heading.
+          ['u_k', 8 + 7 + 1, 14],
+          ['w_k', 16 + 2, 18],
+          ['v_k', 16 + 2 + 1, 10],
+        ],
+      ],
     ])
   })
 

@@ -62,6 +62,14 @@ function shape(pieces: readonly Piece[]): string[] {
   return pieces.map(piece => (piece.kind === 'prose' ? `prose${piece.gap ? '+gap' : ''}:${piece.text}` : `${piece.kind}${piece.gap ? '+gap' : ''}`))
 }
 
+/** Each piece's kind and gap, and the display formulas drawn over a prose piece: their TeX and first row. */
+function displays(pieces: readonly Piece[]): [string, ...[string, number][]][] {
+  return pieces.map(piece => [
+    `${piece.kind}${piece.gap ? '+gap' : ''}`,
+    ...(piece.kind === 'prose' ? (piece.inline ?? []).filter(image => image.display).map(image => [image.tex, image.row] as [string, number]) : []),
+  ])
+}
+
 describe('preview lines', () => {
   test('leading spaces become pads, blank lines keep theirs, markdown syntax is escaped', () => {
     const lines = previewMarkdownLines(['  a*b_c', '       ', '# x|y <z> `w` \\ [k] ~ & !'], 40)
@@ -166,7 +174,10 @@ describe('MessageStream', () => {
     expect(refused.preview).toBe(`\`\`\`latex\n\\foo{x}\n\`\`\`\n\n*not rendered: ${escapeMarkdown(refused.error!)}*`)
     expect(records.slice(1).map(record => record.tex)).toEqual([TEX, INTEGRAL])
     const pieces = plan(landed, records).pieces
-    expect(shape(pieces)).toEqual(['prose:```latex\n\\foo{x}\n```', 'note+gap', 'image+gap', 'image+gap', 'prose+gap:end'])
+    // The note cuts the text (the code block's rows aren't known); the images lie over their previews under it.
+    expect(shape(pieces).slice(0, 2)).toEqual(['prose:```latex\n\\foo{x}\n```', 'note+gap'])
+    expect(displays(pieces).slice(2)).toEqual([['prose+gap', [TEX, 0], [INTEGRAL, records[1]!.rows + 1]]])
+    expect(pieces[2]!.kind === 'prose' && pieces[2]!.text.endsWith('end')).toBe(true)
     expect(pieces[1]).toMatchObject({ text: NOT_RENDERED + refused.error })
   })
 
@@ -179,7 +190,8 @@ describe('MessageStream', () => {
     expect(records[0]!.preview).toContain('Привет x = 1')
     const pieces = plan(landed, records).pieces
     expect(shape(pieces)[0]).toContain('Привет x = 1')
-    expect(pieces.filter(piece => piece.kind === 'image').length).toBe(1)
+    // Only the other formula gets an image; its preview's rows are under the one that stays.
+    expect(displays(pieces)).toEqual([['prose', [TEX, records[0]!.rows + 1]]])
     expect(pieces.some(piece => piece.kind === 'note')).toBe(false)
   })
 
@@ -199,24 +211,25 @@ describe('planLanded', () => {
     const { landed, records } = streamed(["Euler's identity:\n\n$$\n", `${TEX}\n`, '$$\n\nis beautiful.'])
     const { pieces, changed } = plan(landed, records)
     expect(changed).toBe(true)
-    expect(shape(pieces)).toEqual(["prose:Euler's identity:", 'image+gap', 'prose+gap:is beautiful.'])
-    const image = pieces[1]!
-    if (image.kind !== 'image') throw new Error('not an image')
-    expect(image.tex).toBe(TEX)
-    expect(image.image.rows).toBe(records[0]!.rows)
-    expect(image.image.columns).toBe(replyColumns(COLUMNS))
+    // Drawn as it streamed, the image over the preview's rows (under the text and the blank row).
+    expect(displays(pieces)).toEqual([['prose', [TEX, 2]]])
+    const piece = pieces[0]!
+    if (piece.kind !== 'prose') throw new Error('not prose')
+    expect(piece.text).toBe(landed.trimEnd())
+    const image = piece.inline![0]!
+    expect([image.col, image.image.rows, image.image.columns]).toEqual([0, records[0]!.rows, replyColumns(COLUMNS)])
   })
 
   test('a reply that opens with a formula plans the image first', async () => {
     await init()
     const { landed, records } = streamed([`$$\n${TEX}\n$$\n`, 'is famous.'])
-    expect(shape(plan(landed, records).pieces)).toEqual(['image', 'prose+gap:is famous.'])
+    expect(displays(plan(landed, records).pieces)).toEqual([['prose', [TEX, 0]]])
   })
 
   test('trailing spaces the engine trims still map back', async () => {
     await init()
     const { landed, records } = streamed([`$$\n${TEX}\n$$\n`, ''])
-    expect(shape(plan(landed.replace(/[ \t]+$/gm, ''), records).pieces)).toEqual(['image'])
+    expect(displays(plan(landed.replace(/[ \t]+$/gm, ''), records).pieces)).toEqual([['prose', [TEX, 0]]])
   })
 
   test('a render before the last flush: a preview cut off stays text', async () => {
@@ -226,13 +239,16 @@ describe('planLanded', () => {
     const partial = plan(cut, records)
     expect(partial.pieces.every(piece => piece.kind === 'prose')).toBe(true)
     expect(plan('', records).changed).toBe(false)
-    expect(shape(plan(landed, records).pieces)).toEqual(['prose:Intro.', 'image+gap', 'prose+gap:tail'])
+    expect(partial.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)).toBe(true)
+    expect(displays(plan(landed, records).pieces)).toEqual([['prose', [INTEGRAL, 2]]])
   })
 
   test('after --resume the original LaTeX is typeset directly', async () => {
     await init()
     const pieces = plan(`Energy is\n\n$$\n${TEX}\n$$\n\nas Einstein said.`, []).pieces
-    expect(shape(pieces)).toEqual(['prose:Energy is', 'image+gap', 'prose+gap:as Einstein said.'])
+    // Written as it would have streamed: the preview a paragraph of its own, its image over it.
+    expect(displays(pieces)).toEqual([['prose', [TEX, 2]]])
+    expect(shape(pieces)[0]).toMatch(/^prose:Energy is\n\n&nbsp;[^]*\nas Einstein said\.$/)
   })
 
   test('rewrites inline math in a reply that never streamed', async () => {

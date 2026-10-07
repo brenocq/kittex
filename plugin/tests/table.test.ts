@@ -8,7 +8,7 @@ import { describe, expect } from 'claude-code/testing'
 import { init, layoutTable, measureDisplay, previewInline, renderDisplay, renderInline, textWidth } from '../hooks/core.js'
 import { inlineEnvFor, joinProse, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv, test } from './support.ts'
+import { kittyEnv, pieceLines, test } from './support.ts'
 
 const kitty26 = (columns = 100): KittexEnv => ({ ...kittyEnv(), cellHeight: 26, columns })
 const inlineOn = (columns = 100): StreamEnv => ({ ...kitty26(columns), inline: true })
@@ -46,11 +46,12 @@ function places(pieces: ReturnType<typeof plan>['pieces']): [string, number, num
 function expectOverPreviews(pieces: ReturnType<typeof plan>['pieces'], records: readonly PreviewRecord[], env: KittexEnv) {
   for (const piece of pieces) {
     if (piece.kind !== 'prose' || !piece.inline) continue
-    const layout = layoutTable(piece.text, env.columns, [], proseWidthFor(env))!
-    expect(layout).not.toBeNull()
+    // The piece's parts one under the other: the table, and the prose above or under it.
+    const lines = pieceLines(piece.text, proseWidthFor(env), env.columns, { hyperlinks: env.hyperlinks })!
+    expect(lines).not.toBeNull()
     for (const image of piece.inline) {
       const preview = records.find(record => record.tex === image.tex)!.preview.replace(/\\(.)/g, '$1')
-      const line = layout.lines[image.row]!
+      const line = lines[image.row]!
       const at = line.indexOf(preview)
       expect(at).toBeGreaterThanOrEqual(0)
       expect(image.col).toBe(textWidth(line.slice(0, at)))
@@ -146,16 +147,13 @@ describe('tables: landing', () => {
     expectOverPreviews(pieces, records, kitty26(30))
   })
 
-  test('a paragraph right before the table: the table is a piece of its own, a blank row under it', async () => {
+  test('a paragraph right before the table: one piece, the table a blank row under it', async () => {
     await init()
     const { landed, records } = streamed(['The symbols:\n', ...TABLE])
     const { pieces } = plan(landed, records)
-    expect(pieces.map(piece => piece.kind === 'prose' && [piece.text.split('\n')[0], piece.gap, piece.inline?.length ?? 0])).toEqual([
-      ['The symbols:', false, 0],
-      [TABLE[0]!.trimEnd(), true, 4],
-    ])
-    // The first formula, in the first body row: under the top border, the header and its rule.
-    expect(places(pieces)[0]![1]).toBe(3)
+    expect(pieces.map(piece => piece.kind === 'prose' && [piece.text.split('\n')[0], piece.gap, piece.inline?.length ?? 0])).toEqual([['The symbols:', false, 4]])
+    // The first formula, in the first body row: under the paragraph, the blank row, the top border, the header and its rule.
+    expect(places(pieces)[0]![1]).toBe(2 + 3)
     expectOverPreviews(pieces, records, kitty26())
   })
 

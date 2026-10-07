@@ -51,22 +51,36 @@ Derive the quadratic formula step by step
 
 ## Config
 
-Two pickers in `/config`, one for each kind of math:
+Change these in `/config`.
 
-- **Block math**: equations on their own line (`$$…$$`).
-- **Inline math**: math inside a sentence (`$…$`).
+<details>
+<summary><b>Block math</b>: equations on their own line (<code>$$…$$</code>)</summary>
+<br>
 
-Each one is `image` (the default), `unicode` or `raw`:
+- `image` (default): typeset equations, or Unicode math in terminals that can't show images.
+- `unicode`: Unicode math, never images.
+- `raw`: Claude's LaTeX, as written. Set both to `raw` to turn kittex off.
 
-| Choice | You see |
-| --- | --- |
-| `image` | typeset equations, or Unicode math in terminals that can't show images |
-| `unicode` | Unicode math, never images |
-| `raw` | Claude's LaTeX, as written |
+</details>
 
-Set both to `raw` to turn kittex off.
+<details>
+<summary><b>Inline math</b>: math inside a sentence (<code>$…$</code>)</summary>
+<br>
 
-**Local LaTeX** (`auto` or `off`): with `auto`, diagrams (TikZ, pgfplots, chemfig, circuitikz) and math MathJax can't render are drawn with your TeX install, when `latex` and `dvisvgm` are on your PATH.
+- `image` (default): typeset equations, or Unicode math in terminals that can't show images.
+- `unicode`: Unicode math, never images.
+- `raw`: Claude's LaTeX, as written. Set both to `raw` to turn kittex off.
+
+</details>
+
+<details>
+<summary><b>Local LaTeX</b>: diagrams and math MathJax can't render, with your TeX install</summary>
+<br>
+
+- `auto` (default): TikZ, pgfplots, chemfig and circuitikz diagrams, and math MathJax can't render, drawn with your TeX when `latex` and `dvisvgm` are on your PATH.
+- `off`: never runs TeX; diagrams stay code blocks.
+
+</details>
 
 ## FAQ
 

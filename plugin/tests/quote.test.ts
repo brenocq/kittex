@@ -89,17 +89,16 @@ describe('headings', () => {
     await init()
     const { landed, records } = streamed(['## The $x_k$ state and $u_k$\n', '\n', 'Then $y$ follows.\n'])
     const { pieces } = plan(landed, records)
+    // One piece: the paragraph a blank row under the heading.
     expect(places(pieces).map(([tex, row]) => [tex, row])).toEqual([
       ['x_k', 0],
       ['u_k', 0],
-      ['y', 0],
+      ['y', 2],
     ])
     expect(places(pieces)[0]![2]).toBe('The '.length)
-    expect(pieces.map(piece => [piece.kind, piece.gap])).toEqual([
-      ['prose', false],
-      ['prose', true],
-    ])
-    expect(expectOverPreviews(pieces.slice(0, 1), records, proseWidthFor(kitty26()))).toBe(2)
+    expect(pieces.map(piece => [piece.kind, piece.gap])).toEqual([['prose', false]])
+    const heading = pieces[0]!.kind === 'prose' ? { ...pieces[0]!, text: pieces[0]!.text.split('\n')[0]!, inline: pieces[0]!.inline!.slice(0, 2) } : pieces[0]!
+    expect(expectOverPreviews([heading], records, proseWidthFor(kitty26()))).toBe(2)
   })
 
   test('a long heading wraps as prose: a formula at the start of a row, and one ending the heading', async () => {
@@ -160,13 +159,11 @@ describe('blockquotes', () => {
     expect(expectOverPreviews(pieces, records, proseWidthFor(env))).toBe(6)
   })
 
-  test('a quote is a piece of its own, between the prose around it', async () => {
+  test('a quote is drawn with the prose around it, its images on its rows under the paragraph above', async () => {
     await init()
     const { pieces } = plan('Intro.\n\n> a $x$ here\n\nOutro.')
-    expect(pieces.map(piece => [piece.kind, piece.gap, piece.kind === 'prose' ? piece.inline?.length ?? 0 : -1])).toEqual([
-      ['prose', false, 0],
-      ['prose', true, 1],
-      ['prose', true, 0],
+    expect(pieces.map(piece => [piece.kind, piece.gap, piece.kind === 'prose' ? (piece.inline ?? []).map(image => [image.tex, image.row, image.col]) : []])).toEqual([
+      ['prose', false, [['x', 2, 2 + 'a '.length]]],
     ])
   })
 

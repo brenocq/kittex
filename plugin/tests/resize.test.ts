@@ -139,7 +139,7 @@ describe('new cells at the same width', () => {
     // gets it under a new image id: Ghostty keeps showing an earlier
     // transmission sent again under the same id.
     const keys = async () => formulaKeys(await ui.drawn())
-    expect(await keys()).toEqual([expect.stringMatching(/^kittex-formula-1-/)])
+    expect(await keys()).toEqual([expect.stringMatching(/^kittex-formula-0-/)])
     Object.assign(session.screen, { cellWidth: 13, cellHeight: 20 })
     const changed = await keys()
     await clock.advance(CELL_POLL_MS)

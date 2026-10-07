@@ -5,8 +5,9 @@ import { mock, test as kitTest } from 'claude-code/testing'
 import type { Engine, TestRest } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { cellProbe, chooseInk, emPxForCell } from '../hooks/core.js'
-import { INK_PREFER } from '../hooks/math.ts'
+import { blockParts, cellProbe, chooseInk, emPxForCell, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable } from '../hooks/core.js'
+import type { LinkMode } from '../hooks/core.js'
+import { INK_PREFER, readAsMarkdown } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
 
 /**
@@ -62,11 +63,12 @@ export async function startSession(
   on: On,
   terminal: Record<string, string> = KITTY,
   theme = 'dark',
+  cell: { cellWidth: number; cellHeight: number } = CELL,
   /** How the host answers a command other than the cell probe (by default it fails). */
   command: (argv: readonly string[]) => { exitCode: number; stdout: string } | undefined = () => undefined,
-): Promise<{ cellProbes: () => number; screen: Screen }> {
+): Promise<{ cellProbes: () => number; screen: Screen; renders: () => number }> {
   mock.env(on, terminal)
-  const screen: Screen = { rows: 50, columns: COLUMNS, ...CELL }
+  const screen: Screen = { rows: 50, columns: COLUMNS, ...cell }
   let cellProbes = 0
   on('process.run', ($, e) => {
     const isCellProbe = e.argv.join('\0') === cellProbe.argv.join('\0')
@@ -83,7 +85,42 @@ export async function startSession(
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('prompt.compose', () => ({ sections: [INTRO] }))
   on('classic.MessageDisplay', () => ({}))
-  on('ui.render', { component: 'AssistantMessage' }, ($, e) => ({ type: 'Text' as const, children: [e.props.text] }))
+  // The engine's drawing of a reply's text: each one a round trip from kittex's hook (counted).
+  let renders = 0
+  on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
+    renders += 1
+    return { type: 'Text' as const, children: [e.props.text] }
+  })
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
-  return { cellProbes: () => cellProbes, screen }
+  return { cellProbes: () => cellProbes, screen, renders: () => renders }
+}
+
+/**
+ * A landed prose piece's rows as the engine draws it, by the replays: its
+ * parts (blockParts) one under the other, a blank row between two where the
+ * engine puts one; a paragraph of display preview lines a row a line (their
+ * pads as blanks), a paragraph with no markdown of its own read as markdown
+ * where the piece is. Null where a part isn't followed.
+ */
+export function pieceLines(text: string, width: number, columns: number, mode: LinkMode = {}, code = false): string[] | null {
+  const parts = blockParts(text)
+  if (!parts) return null
+  const markdown = readAsMarkdown(text)
+  const lines: string[] = []
+  for (const [k, part] of parts.entries()) {
+    if (k > 0 && part.gap) lines.push('')
+    const block = text.slice(part.start, part.end)
+    let rows: string[] | undefined
+    if (part.paragraph && block.split('\n').every(line => /^[ \t]{0,3}&nbsp;/.test(line))) rows = block.split('\n').map(line => line.replaceAll('&nbsp;', ' ').replace(/\\(.)/g, '$1'))
+    else if (part.table) rows = layoutTable(block, columns, [], width, mode)?.lines
+    else if (part.heading) rows = layoutHeading(block, width, [], mode)?.lines
+    else if (part.quote) rows = layoutQuote(block, width, [], mode)?.lines
+    else if (part.list) rows = layoutList(block, width, [], mode)?.lines
+    else if (part.paragraph) rows = markdown && !readAsMarkdown(block) ? layoutProse(`${block}\n\nx`, width, [], mode)?.lines.slice(0, -2) : layoutProse(block, width, [], mode)?.lines
+    // A code block (with `code`): its lines inside the fences, as the tests take the engine to draw a short one.
+    else if (part.type === 'code' && code) rows = block.split('\n').slice(1, -1)
+    if (!rows) return null
+    lines.push(...rows)
+  }
+  return lines
 }
