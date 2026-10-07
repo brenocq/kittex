@@ -28,41 +28,31 @@ Then ask Claude something with math in it:
 Derive the quadratic formula step by step
 ```
 
-Diagrams (TikZ, pgfplots, tikz-cd, circuitikz, chemfig) are drawn by your own TeX, so they need a TeX install:
-
 <details>
-<summary><b>Arch Linux</b></summary>
+<summary><b>Diagrams</b> (optional): install LaTeX to draw TikZ, pgfplots, tikz-cd, circuitikz and chemfig</summary>
 <br>
+
+Diagrams are drawn by your own TeX. Install it with your system's packages:
+
+**Arch Linux**
 
 ```
 sudo pacman -S --needed texlive-basic texlive-latex texlive-latexrecommended texlive-latexextra texlive-pictures texlive-mathscience texlive-plaingeneric dvisvgm bubblewrap
 ```
 
-</details>
-
-<details>
-<summary><b>Debian, Ubuntu</b></summary>
-<br>
+**Debian, Ubuntu**
 
 ```
 sudo apt install texlive-latex-extra texlive-pictures texlive-science texlive-plain-generic preview-latex-style dvisvgm bubblewrap
 ```
 
-</details>
-
-<details>
-<summary><b>Fedora</b></summary>
-<br>
+**Fedora**
 
 ```
 sudo dnf install texlive-latex texlive-dvisvgm texlive-standalone texlive-amsmath texlive-amsfonts texlive-pgf texlive-pgfplots texlive-tikz-cd texlive-circuitikz texlive-chemfig texlive-simplekv texlive-siunitx texlive-dvips texlive-mathtools texlive-preview texlive-mylatexformat bubblewrap
 ```
 
-</details>
-
-<details>
-<summary><b>macOS</b></summary>
-<br>
+**macOS**
 
 ```
 brew install --cask basictex
@@ -73,11 +63,7 @@ sudo /Library/TeX/texbin/tlmgr install dvisvgm standalone amsmath amsfonts pgf p
 Or the full MacTeX, everything included (about 6 GB): `brew install --cask mactex-no-gui`.
 macOS has no bubblewrap, so TeX runs unconfined there (see [Local LaTeX](#config)).
 
-</details>
-
-<details>
-<summary><b>Other (TeX Live)</b></summary>
-<br>
+**Other (TeX Live)**
 
 Install [TeX Live](https://tug.org/texlive/) (its basic scheme is enough), then:
 
@@ -87,9 +73,9 @@ tlmgr install dvisvgm standalone amsmath amsfonts pgf pgfplots tikz-cd circuitik
 
 On Linux, also install `bubblewrap` from your distribution.
 
-</details>
-
 Then restart Claude Code and run `/kittex-doctor` to check.
+
+</details>
 
 > [!NOTE]
 > **On Team and Enterprise plans**, Claude Code doesn't let plugins change a
