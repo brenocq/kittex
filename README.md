@@ -9,7 +9,7 @@
 <br>
 
 <p align="center">
-  <img alt="Claude Code with kittex in kitty: Claude explains how language models are trained, and every equation appears typeset as it lands" src="https://github.com/brenocq/kittex/raw/assets/demo.webp" width="992">
+  <img alt="Claude Code with kittex in kitty: one key equation each for pretraining, RLHF and DPO appears typeset as it lands; then Claude draws the RLHF pipeline and plots the DPO loss, and both come out as pictures" src="https://github.com/brenocq/kittex/raw/assets/demo.webp" width="992">
 </p>
 
 ## Install
@@ -87,8 +87,14 @@ Then restart Claude Code and run `/kittex-doctor` to check.
 
 <p align="center">
   <img alt="Live: readable while Claude writes, typeset when each part is done. Nothing jumps." src="https://github.com/brenocq/kittex/raw/assets/feature-live.svg" width="49%">
+  <img alt="Diagrams: TikZ, plots, circuits and molecules, drawn by your own LaTeX." src="https://github.com/brenocq/kittex/raw/assets/feature-diagrams.svg" width="49%">
+</p>
+<p align="center">
   <img alt="Real TeX: the font of LaTeX papers, in your terminal's colours." src="https://github.com/brenocq/kittex/raw/assets/feature-tex.svg" width="49%">
   <img alt="Inline too: math inside a sentence sits on the line, at your text's size." src="https://github.com/brenocq/kittex/raw/assets/feature-inline.svg" width="49%">
+</p>
+<p align="center">
+  <img alt="Reflow: resize the window and equations break to fit it, then join back as it widens." src="https://github.com/brenocq/kittex/raw/assets/feature-reflow.svg" width="49%">
   <img alt="Copy: hover an equation to copy its LaTeX." src="https://github.com/brenocq/kittex/raw/assets/feature-copy.svg" width="49%">
 </p>
 
