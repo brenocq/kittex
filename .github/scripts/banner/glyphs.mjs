@@ -10,11 +10,25 @@ import opentype from 'opentype.js'
 
 /** Loads core/src/typeset in Node and returns its `typeset(tex, options)`. */
 export async function loadTypesetter() {
+  const module = await bundle('core/src/typeset/index.ts')
+  await module.initTypeset()
+  return module.typeset
+}
+
+/** Loads all of core (core/src/index.ts) in Node, initialised: typeset, previewDisplay, previewInline… */
+export async function loadCore() {
+  const module = await bundle('core/src/index.ts')
+  await module.init()
+  return module
+}
+
+/** Bundles a core entry point with esbuild, as scripts/build.mjs does, and imports it. */
+async function bundle(entry) {
   const dir = mkdtempSync(join(tmpdir(), 'kittex-banner-'))
-  const outfile = join(dir, 'typeset.mjs')
+  const outfile = join(dir, 'bundle.mjs')
   try {
     await build({
-      entryPoints: ['core/src/typeset/index.ts'],
+      entryPoints: [entry],
       bundle: true,
       format: 'esm',
       platform: 'neutral',
@@ -24,9 +38,7 @@ export async function loadTypesetter() {
       outfile,
       logLevel: 'warning',
     })
-    const module = await import(pathToFileURL(outfile).href)
-    await module.initTypeset()
-    return module.typeset
+    return await import(pathToFileURL(outfile).href)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -39,7 +51,7 @@ const MONO_PATHS = [
   '/usr/share/fonts/roboto-mono/RobotoMono-Regular.ttf',
 ].filter(Boolean)
 
-/** Roboto Mono, parsed: `{ upm, advance, xHeight, capHeight, glyph(char) -> path data in font units, y up }`. */
+/** Roboto Mono, parsed: `{ upm, advance, xHeight, capHeight, glyph(char) -> path data in font units, y up, has(char) }`. */
 export function loadMono() {
   let bytes
   for (const path of MONO_PATHS) {
@@ -56,5 +68,6 @@ export function loadMono() {
     xHeight: font.tables.os2.sxHeight,
     capHeight: font.tables.os2.sCapHeight,
     glyph: char => font.charToGlyph(char).path.toPathData(0),
+    has: char => font.charToGlyph(char).index !== 0,
   }
 }

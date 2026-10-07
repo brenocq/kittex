@@ -14,7 +14,7 @@
 
 ## Install
 
-Type this in Claude Code, answer `y` to add the marketplace, and that's it:
+Type this in Claude Code (2.1.290 or newer), answer `y` to add the marketplace, and that's it:
 
 ```
 /plugin install kittex --marketplace brenocq/kittex
@@ -36,30 +36,35 @@ Derive the quadratic formula step by step
 
 ## What you get
 
-<table>
-  <tr>
-    <td width="50%"><b>Live.</b> Readable math while Claude writes, real equations the moment each part is done. Nothing jumps around.</td>
-    <td width="50%"><b>Real TeX.</b> Typeset like a LaTeX paper, in your terminal's own colours.</td>
-  </tr>
-  <tr>
-    <td><b>Inline too.</b> Math in the middle of a sentence sits right on the line, at the size of your text.</td>
-    <td><b>Copy.</b> Hover an equation to copy its LaTeX.</td>
-  </tr>
-</table>
+<p align="center">
+  <img alt="Live: readable while Claude writes, typeset when each part is done. Nothing jumps." src="https://github.com/brenocq/kittex/raw/assets/feature-live.svg" width="49%">
+  <img alt="Real TeX: the font of LaTeX papers, in your terminal's colours." src="https://github.com/brenocq/kittex/raw/assets/feature-tex.svg" width="49%">
+  <img alt="Inline too: math inside a sentence sits on the line, at your text's size." src="https://github.com/brenocq/kittex/raw/assets/feature-inline.svg" width="49%">
+  <img alt="Copy: hover an equation to copy its LaTeX." src="https://github.com/brenocq/kittex/raw/assets/feature-copy.svg" width="49%">
+</p>
 
 ## Terminals
 
-| Terminal | Equations appear as |
-| --- | --- |
-| kitty, Ghostty | typeset images |
-| everything else (WezTerm, iTerm2, Terminal.app, Windows Terminal, tmux) | Unicode math: `∑ᵢ xᵢ²`, stacked fractions, aligned matrices |
+<p align="center">
+  <img alt="kitty and Ghostty show typeset images; every other terminal (WezTerm, iTerm2, Terminal.app, Windows Terminal, Alacritty, tmux) shows Unicode math." src="https://github.com/brenocq/kittex/raw/assets/terminals.svg" width="100%">
+</p>
 
 ## Options
 
-Both are rows in `/config`, on by default.
+Two pickers in `/config`, one for each kind of math:
 
-- **Render LaTeX math.** Off: replies show Claude's raw LaTeX.
-- **Render inline math as images.** Off: inline math stays Unicode text.
+- **Block math**: equations on their own line (`$$…$$`).
+- **Inline math**: math inside a sentence (`$…$`).
+
+Each one is `image` (the default), `unicode` or `raw`:
+
+| Choice | You see |
+| --- | --- |
+| `image` | typeset equations, or Unicode math in terminals that can't show images |
+| `unicode` | Unicode math, never images |
+| `raw` | Claude's LaTeX, as written |
+
+Set both to `raw` to turn kittex off.
 
 <details>
 <summary><b>How it works</b></summary>

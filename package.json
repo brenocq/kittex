@@ -16,6 +16,8 @@
     "readme:banner:preview": "node .github/scripts/banner/build.mjs && node .github/scripts/banner/preview.mjs",
     "readme:demo": "node .github/scripts/demo/render.mjs",
     "readme:demo:record": "python3 .github/scripts/demo/record.py",
+    "readme:features": "node .github/scripts/features/build.mjs",
+    "readme:features:preview": "node .github/scripts/features/build.mjs && node .github/scripts/features/preview.mjs",
     "readme:social": "node .github/scripts/social/build.mjs"
   },
   "devDependencies": {

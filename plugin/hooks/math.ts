@@ -288,12 +288,52 @@ const INLINE_DOLLARS = String.raw`(?<![\\$\`])\$(?![\s$])(?:[^$\`\\\n]|\\[^\n]|\
 const DISPLAY_DOLLARS = String.raw`(?<![\\$])\$\$(?!\$)[\s\S]*?\$\$`
 
 /**
+ * What follows a backslash that the engine's markdown reads as an escape and
+ * drops (`\{` drawn `{`, `\,` drawn `,`): ASCII punctuation, and a line break
+ * (a hard break). `$` aside: an escaped dollar is kittex's scanner's too, and
+ * stays one.
+ */
+const ESCAPED = String.raw`(?:[!-#%-\/:-@\[-\`{-~]|\r?\n)`
+const ESCAPING = new RegExp(String.raw`\\(?=${ESCAPED})`, 'g')
+
+/**
+ * `$$…$$` with other text on its first or last line: inline math (a display
+ * formula has its lines to itself), within a paragraph (no blank line).
+ */
+const INLINE_DISPLAY_DOLLARS = (() => {
+  const one = String.raw`(?<![\\$])\$\$(?!\$)(?:(?!\$\$)(?!\n[ \t]*\n)[\s\S])*?\$\$`
+  return String.raw`[^\s>][^\n]*?${one}|${one}[ \t]*[^\s]`
+})()
+
+/**
  * LaTeX as written: a reply that never streamed through MessageDisplay, or one
  * read back after `--resume`. Never a block holding a preview mark (one kittex
  * streamed: its `\[` is a bracket its previews escaped, `𝔼\[x\]`, and a `$`
  * left in it is code or a preview's), and never for a currency dollar alone.
  */
-export const SOURCE_PATTERN = new RegExp(String.raw`^(?![\s\S]*(?:${PREVIEW_MARK}))[\s\S]*?(?:${INLINE_DOLLARS}|${DISPLAY_DOLLARS}|\\\(|\\\[|\\begin\{)`)
+export const SOURCE_PATTERN = sourcePattern({})
+
+/**
+ * SOURCE_PATTERN for these options: only the math of a kind kittex changes
+ * (a block whose math is all left raw stays the engine's, which would
+ * otherwise draw nothing until kittex answered). Math left raw counts where a
+ * backslash in it needs its mark (rawSource), as math read back after
+ * --resume does. With display math raw, `$$…$$` counts only where it is
+ * inline math.
+ */
+export function sourcePattern(math: Partial<MathOptions>): RegExp {
+  const inline = math.inline !== 'raw'
+  const block = math.block !== 'raw'
+  const needs = String.raw`\\(?=${ESCAPED})`
+  const kinds = [
+    ...(inline ? [INLINE_DOLLARS] : [String.raw`(?<![\\$])\$(?![\s$])[^$\n]*?${needs}`]),
+    String.raw`\\\(`,
+    ...(block
+      ? [DISPLAY_DOLLARS, String.raw`\\\[`, String.raw`\\begin\{`]
+      : [String.raw`(?<![\\$])\$\$(?:(?!\$\$)[\s\S])*?${needs}`, String.raw`\\\[`, String.raw`\\begin\{(?:(?!\\end\{)[\s\S])*?${needs}`, ...(inline ? [INLINE_DISPLAY_DOLLARS] : [])]),
+  ]
+  return new RegExp(String.raw`^(?![\s\S]*(?:${PREVIEW_MARK}))[\s\S]*?(?:${kinds.join('|')})`)
+}
 
 /**
  * A block as kittex streamed it: one holding a preview mark. The engine's own
@@ -379,10 +419,65 @@ export function proseWidthFor(env: KittexEnv, columns = env.columns): number {
   return env.maxProseWidth !== undefined && env.maxProseWidth >= 1 ? Math.min(reply, Math.floor(env.maxProseWidth)) : reply
 }
 
-/** What a streamed message is rewritten for: the terminal, and whether inline math becomes images. */
+// ─── The options ─────────────────────────────────────────────────────────────
+
+/**
+ * How one kind of math is shown (the `block` and `inline` options): `image`,
+ * typeset images where the terminal draws them (Unicode elsewhere);
+ * `unicode`, Unicode text, never an image; `raw`, the LaTeX as Claude wrote it.
+ */
+export type MathMode = 'image' | 'unicode' | 'raw'
+
+export const MATH_MODES: readonly MathMode[] = ['image', 'unicode', 'raw']
+
+/** The two options: display math (`$$…$$`, `\[…\]`, bare environments, ```math fences) and inline math (`$…$`, `\(…\)`). */
+export interface MathOptions {
+  block: MathMode
+  inline: MathMode
+}
+
+/** The options as register receives them; a value that is no mode (unset, or stored by an older manifest) is `image`, the default. */
+export function mathOptions(options: Readonly<Record<string, unknown>>): MathOptions {
+  const mode = (value: unknown): MathMode => (MATH_MODES.includes(value as MathMode) ? (value as MathMode) : 'image')
+  return { block: mode(options.block), inline: mode(options.inline) }
+}
+
+/** What a streamed message is rewritten for, in this terminal with these options. */
+export function streamEnvFor(env: KittexEnv, math: MathOptions): StreamEnv {
+  return { ...env, inline: math.inline === 'image' && env.images, math }
+}
+
+/** What a streamed message is rewritten for: the terminal, whether inline math becomes images, and the options. */
 export type StreamEnv = KittexEnv & {
   /** Inline math is drawn as images (the `inline` option, where the terminal draws images). */
   inline?: boolean
+  /**
+   * The options (each kind `image` when absent): a kind set to `raw` is
+   * written as Claude wrote it, display math set to `unicode` as where the
+   * terminal draws no images.
+   */
+  math?: Partial<MathOptions>
+}
+
+/** Whether a math segment is of a kind these options leave as written. */
+function leftRaw(segment: { display: boolean }, math: Partial<MathOptions> | undefined): boolean {
+  return (segment.display ? math?.block : math?.inline) === 'raw'
+}
+
+
+/**
+ * Math left raw as the engine draws it as written: INLINE_MARK (no width,
+ * drawn as nothing) after every backslash its markdown would read as an escape,
+ * so the backslash is no escape and stays, whether the engine reads the text
+ * as markdown or draws it plain (it does either, part by part, while a reply
+ * streams). A ```math fence is code, where markdown reads no escapes; in a
+ * GFM table row `\|` is the row's escape of a pipe and stays one. Idempotent:
+ * the landing reads the streamed text again.
+ */
+export function rawSource(math: Pick<MathSegment, 'raw' | 'tex' | 'display' | 'delimiter'>): string {
+  if (math.delimiter === 'fence') return math.raw
+  const tableRow = !math.display && math.raw.includes('\\|') && !math.tex.includes('\\|')
+  return math.raw.replace(ESCAPING, (backslash: string, at: number) => (tableRow && math.raw[at + 1] === '|' ? backslash : backslash + INLINE_MARK))
 }
 
 /**
@@ -803,6 +898,8 @@ export class StreamPlan {
  */
 export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, writer: MarkdownWriter, plan = new StreamPlan()): StreamRewrite {
   const records: PreviewRecord[] = []
+  // Math its option leaves raw is text from here on (as written, its backslashes kept), as the landing reads it.
+  segments = asWritten(segments, env.math)
   for (let k = 0; k < segments.length; ) {
     const segment = segments[k]!
     if (segment.kind === 'math' && segment.display) {
@@ -819,6 +916,12 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
 }
 
 type MathSegment = Extract<Segment, { kind: 'math' }>
+
+/** The segments with the math of each kind its option leaves raw turned into text, as written (adjacent text joined). */
+function asWritten(segments: readonly Segment[], math: Partial<MathOptions> | undefined): Segment[] {
+  if (math?.block !== 'raw' && math?.inline !== 'raw') return [...segments]
+  return joinText(segments.map(segment => (segment.kind === 'math' && leftRaw(segment, math) ? { kind: 'text', text: rawSource(segment), start: segment.start, end: segment.end } : segment)))
+}
 
 function isDisplayMath(segment: Segment): boolean {
   return segment.kind === 'math' && segment.display
@@ -841,17 +944,19 @@ function writeDisplay(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
   const renderEnv = renderEnvFor(env)
   const { maxColumns } = renderEnv
   const quote = writer.quoteDepth()
+  // Display math gets images where the terminal draws them, unless the `block` option says Unicode.
+  const images = env.images && env.math?.block !== 'unicode'
   // The item's text is laid out from where its list starts, however far back that is.
-  const indent = quote === 0 && env.images ? itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) : undefined
+  const indent = quote === 0 && images ? itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) : undefined
   const width = quote > 0 ? quoteColumns(env, quote) : indent !== undefined ? Math.max(1, proseWidthFor(env) - indent) : maxColumns
-  const drawn = env.images && quote <= 1
+  const drawn = images && quote <= 1
   let rows: number | undefined
   try {
     rows = drawn ? measureDisplay(segment.tex, { ...renderEnv, maxColumns: width }).rows : undefined
   } catch (error) {
     if (!(error instanceof TexError)) throw error
     const preview = writer.block(refusedMarkdownLines(segment.tex, reasonOf(error), maxColumns))
-    if (env.images) {
+    if (images) {
       records.push({ preview, tex: segment.tex, rows: 0, error: reasonOf(error) })
       plan.cut(writer.recent().length)
     }
@@ -1327,6 +1432,11 @@ export interface PlanOptions {
   /** Splits markdown into prose and math (core's scan unless given). */
   scan?: (markdown: string) => Segment[]
   /**
+   * The options: math of a kind set to `raw` is left as written. Images and
+   * Unicode are `draw` and `inline` (absent for a kind set to `unicode`).
+   */
+  math?: Partial<MathOptions>
+  /**
    * Inline math drawn as images: where (one text row), the width prose wraps
    * at, the terminal's width (tables are laid out in it; the reply column and
    * two cells when absent), the drawing (throws TexError), and how the engine
@@ -1562,6 +1672,10 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     for (const segment of (options.scan ?? scan)(source)) {
       if (segment.kind === 'text') {
         writer.text(segment.text)
+      } else if (leftRaw(segment, options.math)) {
+        const written = rawSource(segment)
+        if (written !== segment.raw) changed = true
+        writer.text(written)
       } else if (!segment.display) {
         const fallback = inlineFallback(segment)
         const id = inlineId++
