@@ -61,6 +61,8 @@ const PROBE_MS = 3000
 export const TEX_STREAM_BUDGET_MS = 3000
 /** How long a compile in the background (a landed block's, after --resume) may run. */
 export const TEX_BACKGROUND_MS = 20_000
+/** Compiles that run at once (each is one TeX process, then one dvisvgm). */
+const MAX_COMPILES = 3
 /** Outcomes kept in memory. */
 const BOOK_LIMIT = 256
 
@@ -110,13 +112,15 @@ export function texCacheDir(env: { XDG_CACHE_HOME?: string | undefined; HOME?: s
 /**
  * Compiles documents and remembers what they gave, by document: the stream
  * and the landing read outcomes from here synchronously (`known`), and ask
- * for the ones missing (`compile`), one compile at a time, each document
+ * for the ones missing (`compile`), MAX_COMPILES at a time, each document
  * compiled once however many ask.
  */
 export class TexBook {
   private readonly outcomes = new Map<string, TexOutcome>()
   private readonly running = new Map<string, Promise<TexOutcome>>()
-  private queue: Promise<unknown> = Promise.resolve()
+  /** Compiles running now, and those waiting for one of them to end (at most MAX_COMPILES at once). */
+  private active = 0
+  private readonly waiting: (() => void)[] = []
   /** Documents the stream showed as source (TeX too slow): left as source when their block lands, though TeX finished later. */
   private readonly shownAsSource = new Set<string>()
   host: TexHost | undefined
@@ -127,7 +131,8 @@ export class TexBook {
     this.outcomes.clear()
     this.running.clear()
     this.shownAsSource.clear()
-    this.queue = Promise.resolve()
+    this.active = 0
+    this.waiting.length = 0
     this.host = host
     this.setup = setup
   }
@@ -204,9 +209,14 @@ export class TexBook {
       const setup = this.setup
       if (!host || !setup) return { ok: false, error: 'no TeX', lasting: false }
       const deadline = Date.now() + timeoutMs
-      const run = this.queue.then(() => compileOnce(host, setup, document, deadline, timeoutMs))
-      this.queue = run.catch(() => undefined)
-      const outcome = await run.catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
+      if (this.active >= MAX_COMPILES) await new Promise<void>(resolve => this.waiting.push(resolve))
+      this.active++
+      const outcome = await compileOnce(host, setup, document, deadline, timeoutMs)
+        .catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
+        .finally(() => {
+          this.active--
+          this.waiting.shift()?.()
+        })
       // A passing failure is remembered too (the stream reads it and shows the source), but compiled again when asked.
       this.remember(document, outcome)
       if ((outcome.ok || outcome.lasting) && setup.cacheDir) await store(host, setup, document, outcome)

@@ -1418,6 +1418,11 @@ export class MessageStream {
     const quoted = (segment: Segment) => QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', segment.start - 1) + 1, segment.start))
     const wait = env.tex ? segments.findIndex(segment => !(segment.kind === 'math' && segment.diagram !== undefined && quoted(segment)) && texPending(segment, env, pending)) : -1
     if (wait >= 0) {
+      // The later ones TeX will be asked for too: compiled side by side, not one per resume.
+      for (const segment of segments.slice(wait + 1)) {
+        const document = segment.kind === 'math' && !(segment.diagram !== undefined && quoted(segment)) ? texDocument(segment, env) : undefined
+        if (document && !texBook.known(document) && !pending.some(one => one.text === document.text)) pending.push(document)
+      }
       this.held = [...segments.slice(wait), ...this.held]
       segments = segments.slice(0, wait)
     }

@@ -968,10 +968,8 @@ async function setUpTex($: $): Promise<void> {
   const host: TexHost = {
     run: (argv, init) => $.process.run(argv, init),
     write: (path, text) => $.fs.write(path, text),
-    read: path => $.fs.read(path).then(
-      text => text,
-      () => undefined,
-    ),
+    // A missing file is no error (a cache miss): asked first, so the engine logs no failed read.
+    read: async path => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).catch(() => undefined) : undefined),
   }
   try {
     const [tmpdir, cacheHome] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME')])
@@ -981,6 +979,8 @@ async function setUpTex($: $): Promise<void> {
     if (!setup) return
     texBook.host = host
     texBook.setup = setup
+    // Blocks drawn before TeX was found (a resumed conversation's) are drawn again with it.
+    $.ui.invalidate('ui.render')
   } catch {
     // no TeX: diagrams stay code
   }
