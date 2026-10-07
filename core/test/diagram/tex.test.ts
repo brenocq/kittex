@@ -198,6 +198,8 @@ const ATTACKS: [string, string][] = [
   ['home path in a macro', '\\def\\p{~/.ssh/id_rsa}'],
   ['absolute path in a macro', '\\def\\p{/home/u/.aws/credentials}'],
   ['font by path', '\\font\\f=/home/u/x'],
+  ['font outside the known roots', '\\font\\f=/data/x \\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}'],
+  ['font by name', '\\font\\f=cmr10 at 40pt \\begin{tikzpicture}\\node {\\f A};\\end{tikzpicture}'],
   ['filecontents', '\\begin{filecontents}{x.tex}\\end{filecontents}'],
   ['pdfTeX file dump', '\\pdffiledump length 100 {/etc/passwd}'],
   ['md5 of a file', '\\pdfmdfivesum file {/etc/passwd}'],
@@ -222,6 +224,7 @@ const LEGIT: string[] = [
   '\\documentclass[tikz]{standalone}\n\\usepackage{amsmath}\n\\begin{document}\n\\begin{tikzpicture}\\draw (0,0) rectangle (1,1);\\end{tikzpicture}\n\\end{document}',
   '$\\SI{9.81}{\\metre\\per\\second\\squared}$ and \\qty{3e8}{m/s} and \\unit{kg.m/s^2}',
   '\\newcommand{\\vect}[1]{\\boldsymbol{#1}}\\def\\r{2}\\draw (0,0) circle (\\r);',
+  '\\begin{tikzpicture}\\node[font=\\small] {a}; \\node {\\fontsize{12}{14}\\selectfont b}; \\node {\\fontfamily{ptm}\\fontseries{b}\\fontshape{it}\\selectfont c};\\end{tikzpicture}',
 ]
 
 describe('refused sources', () => {

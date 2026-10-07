@@ -246,6 +246,8 @@ const REFUSED_COMMANDS = [
   // Raw and indirect reads.
   'input', 'include', 'includeonly', 'InputIfFileExists', 'VerbatimInput', 'BVerbatimInput', 'LVerbatimInput', 'includepdf', 'pgfplotstabletypeset', 'IfFileExists', 'verbatiminput', 'lstinputlisting', 'inputminted', 'includegraphics',
   'includestandalone', 'import', 'subimport', 'inputfrom', 'subinputfrom', 'graphicspath', 'pgfimage', 'pgfdeclareimage', 'filecontents',
+  // \font loads a file by any path (a TFM, or a probe for whether a file exists); \fontsize, \selectfont... are other names.
+  'font',
   'tikzexternalize', 'pgfplotstableread', 'DTLloaddb', 'DTLloadrawdb', 'csvreader', 'csvautotabular', 'detokenize',
   // Names out of characters.
   'csname', 'ifcsname', 'catcode', 'scantokens', 'everyeof', 'endlinechar', 'ExplSyntaxOn', 'makeatletter', 'UseName', 'ExpandArgs',
