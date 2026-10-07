@@ -68,6 +68,14 @@ describe('documents', () => {
   test("pgfplots' interpolated shading is drawn flat (the SVG driver has no shading for it)", () => {
     expect(diagramDocument('\\addplot3[surf, shader=interp] {x};', 'tikz').text).toContain('shader=flat]')
     expect(diagramDocument('\\documentclass{standalone}\n\\begin{document}\\addplot3[shader=interp]{x};\\end{document}', 'latex').text).not.toContain('interp')
+    expect(diagramDocument('\\addplot3[surf, shader=faceted interp, draw opacity=0.25] {x};', 'tikz').text).toContain('shader=faceted,')
+    expect(diagramDocument('\\addplot3[surf, shader = {faceted  interp}] {x};', 'tikz').text).toContain('shader={faceted}')
+    expect(diagramDocument('\\pgfplotsset{every axis plot/.append style={shader=interp}}', 'tikz').text).toContain('{shader=flat}')
+    expect(diagramDocument('\\addplot3[surf, shader=flat corner] {x};', 'tikz').text).toContain('shader=flat corner')
+    // A colorbar is shaded the same way: drawn sampled.
+    expect(diagramDocument('\\begin{axis}[colormap/viridis, colorbar, view={35}{38}]', 'tikz').text).toContain('[colormap/viridis, colorbar sampled, view')
+    expect(diagramDocument('\\begin{axis}[colorbar horizontal]', 'tikz').text).toContain('[colorbar horizontal, colorbar sampled]')
+    expect(diagramDocument('\\begin{axis}[colorbar style={ylabel=z}, colorbar sampled]', 'tikz').text).toContain('[colorbar style={ylabel=z}, colorbar sampled]')
   })
 
   test('a body with \\begin{document} but no class gets one', () => {
