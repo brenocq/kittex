@@ -92,7 +92,7 @@ import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 
 type $ = EngineInterface
@@ -190,6 +190,12 @@ let rememberedEnv: Promise<KittexEnv | undefined> | undefined
 const REMEMBERED = 'env'
 /** The `cache` option: drawings of resumed blocks kept on disk (cache.ts). */
 let cacheOn = true
+/** session.start's dispatches in this process (a hot reload makes a second). */
+let sessions = 0
+/** The local TeX may draw here (the `latex` option on, block math not Unicode): an earlier session's TeX cache is read. */
+let texAllowed = false
+/** Where the setup TeX was found with is remembered for the next session ($.store): its cache's key. */
+const REMEMBERED_TEX = 'tex'
 /** `darwin`, `linux`... from `uname -s`, when it ran. */
 let platform: string | undefined
 /** The probe for the local TeX (the `latex` option), started after session.start; settles once texBook knows. */
@@ -205,6 +211,7 @@ export const register: Register = (on, options) => {
   cacheOn = options.cache !== false
   /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
   const latex = options.latex === 'off' ? 'off' : 'auto'
+  texAllowed = latex === 'auto' && math.block !== 'unicode'
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -214,6 +221,7 @@ export const register: Register = (on, options) => {
     cells = cellsFor($)
     later = laterFor($)
     writeFile = (path, text) => $.fs.write(path, text)
+    sessions += 1
     let settled = false
     void envReady.then(() => (settled = true))
     await Promise.resolve()
@@ -234,7 +242,8 @@ export const register: Register = (on, options) => {
     if (cacheOn) soon(() => void pruneCache($).catch(() => undefined))
     if (unwritten.size > 0) soon(flushEntries)
     // The local TeX, found after setup without holding it up (process.run: the terminal only).
-    texBook.reset()
+    // The first session keeps what renders before it read from TeX's cache (a resume's diagrams).
+    if (sessions > 1) texBook.reset()
     texProbe = undefined
     if (latex === 'auto' && e.surface === 'terminal' && math.block !== 'unicode') {
       redraw = () => $.ui.invalidate('ui.render')
@@ -497,7 +506,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         release()
       }
       // What TeX drew in an earlier session is on disk: read, then planned again (no jump after --resume); the rest is compiled, then redrawn.
-      if (asked.length > 0 && (await loadAsked(asked))) {
+      // Read with this render's own $ (a resume's first renders come before TeX is probed); a missing file asked first, so no failed read is logged.
+      const read = async (path: string) => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).then(text => (typeof text === 'string' ? text : undefined), () => undefined) : undefined)
+      if (asked.length > 0 && (await loadAsked(asked, read))) {
         plan = planLanded(e.props.text, records, options)
         asked = [...asked, ...texBook.takeAsked()]
       }
@@ -682,10 +693,18 @@ async function setUp($: $, surface: string | null): Promise<void> {
     // Strokes as heavy as the terminal's text, when its font's weight is known.
     ...(terminalColors?.fontWeight ? { weight: strokeWeight(terminalColors.fontWeight) } : {}),
   }
-  await $.state.set(ENV, env)
+  // The text font's metrics as the last session read them in this terminal, at
+  // these cells: the first drawing has the size it keeps (loadFont reads them
+  // again and changes nothing when they match), as the renders before
+  // session.start had it from the remembered env.
+  const remembered = (await $.store.get(REMEMBERED).catch(() => undefined)) as { id?: unknown; env?: KittexEnv } | undefined
+  const known = remembered?.id === terminalId(processEnv) && remembered.env?.font && remembered.env.cellWidth === env.cellWidth && remembered.env.cellHeight === env.cellHeight ? remembered.env : undefined
+  const withFont = known ? { ...env, font: known.font, ...(env.weight === undefined && known.weight !== undefined ? { weight: known.weight } : {}) } : env
+  const start: KittexEnv = known ? { ...withFont, emPx: mathEmPxFor(withFont, withFont) } : env
+  await $.state.set(ENV, start)
   envSettled?.()
   // For the next session's first renders, which come before its session.start.
-  await $.store.set(REMEMBERED, { id: terminalId(processEnv), env }).catch(() => undefined)
+  await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: start }).catch(() => undefined)
   // The text font's metrics, read from its file after setup (the first drawing doesn't wait for them).
   if (env.images) later?.(() => void loadFont($).catch(() => undefined))
 
@@ -1031,6 +1050,8 @@ async function loadFont($: $): Promise<void> {
   const weight = env.weight === undefined && metrics.weight && metrics.weight !== 400 ? { weight: strokeWeight(metrics.weight) } : {}
   const next = { ...env, font, ...weight }
   const measured = { ...next, emPx: mathEmPxFor(next, next) }
+  // As setUp started from (the last session's reading): nothing to redraw.
+  if (JSON.stringify(env.font) === JSON.stringify(font) && env.weight === measured.weight && env.emPx === measured.emPx) return
   await $.state.set(ENV, measured)
   // The next session's first renders draw with the font too (their cache keys hold it).
   await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: measured }).catch(() => undefined)
@@ -1309,7 +1330,7 @@ function terminalId(variables: Readonly<Record<string, string | undefined>>): st
 /** The env the last session stored, when it was this terminal's (a render's $: three variables and a store read). */
 async function readRemembered($: $): Promise<KittexEnv | undefined> {
   try {
-    const [stored, TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX, XDG_CACHE_HOME, HOME] = await Promise.all([
+    const [stored, TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX, XDG_CACHE_HOME, HOME, tex] = await Promise.all([
       $.store.get(REMEMBERED),
       $.env.get('TERM'),
       $.env.get('TERM_PROGRAM'),
@@ -1317,9 +1338,12 @@ async function readRemembered($: $): Promise<KittexEnv | undefined> {
       $.env.get('TMUX'),
       $.env.get('XDG_CACHE_HOME'),
       $.env.get('HOME'),
+      texAllowed ? $.store.get(REMEMBERED_TEX) : Promise.resolve(undefined),
     ])
     // The cache is read from the first render on (session.start sets it again).
     cacheFolder ??= cacheDir({ XDG_CACHE_HOME, HOME })
+    // So are the diagrams the last session's TeX drew: their rows are the picture's from the first frame.
+    if (texAllowed) texBook.cached ??= rememberedTex(tex)
     const entry = stored as { id?: unknown; env?: KittexEnv } | undefined
     if (!entry || entry.id !== terminalId({ TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX }) || typeof entry.env?.cellWidth !== 'number') return undefined
     return entry.env
@@ -1470,7 +1494,7 @@ async function pruneCache($: $): Promise<void> {
 
 /** Where the local TeX draws for these options, once it was found: diagrams and display math (`block`), inline math (`inline`). */
 function texUse(env: KittexEnv, math: MathOptions): { tex?: TexUse } {
-  if (!texBook.ready || !env.images) return {}
+  if (!texBook.drawable || !env.images) return {}
   const block = math.block === 'image'
   const inline = math.inline === 'image'
   return block || inline ? { tex: { block, inline } } : {}
@@ -1511,6 +1535,8 @@ async function setUpTex($: $): Promise<void> {
     const home = processEnv.HOME
     const cacheDir = texCacheDir({ XDG_CACHE_HOME: cacheHome, HOME: home })
     const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}) })
+    // For the next session's first renders: the cache's key, or nothing (TeX gone: its diagrams start as code).
+    await $.store.set(REMEMBERED_TEX, setup ?? null).catch(() => undefined)
     if (!setup) return
     texBook.host = host
     texBook.setup = setup
@@ -1526,12 +1552,13 @@ async function setUpTex($: $): Promise<void> {
 /** kittex's instructions to the model: the math, and where TeX draws diagrams, how to ask for one. */
 async function instructions(env: KittexEnv | null, math: MathOptions): Promise<string> {
   await texProbe
-  return env && texUse(env, math).tex?.block ? `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}` : MATH_INSTRUCTIONS
+  // Only where TeX itself is there (an earlier session's cache alone draws what it holds, nothing new).
+  return env && texBook.ready && texUse(env, math).tex?.block ? `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}` : MATH_INSTRUCTIONS
 }
 
 /** A landed block's plan asked for documents TeX hasn't drawn (texBook.ask): read from the disk cache; true when any was there (the plan is made again). */
-async function loadAsked(documents: readonly TexDocument[]): Promise<boolean> {
-  const found = await Promise.all(documents.map(document => texBook.load(document)))
+async function loadAsked(documents: readonly TexDocument[], read: (path: string) => Promise<string | undefined>): Promise<boolean> {
+  const found = await Promise.all(documents.map(document => texBook.load(document, read)))
   return found.some(outcome => outcome !== undefined)
 }
 

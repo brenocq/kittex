@@ -133,10 +133,16 @@ export class TexBook {
   private readonly asked = new Map<string, TexDocument>()
   host: TexHost | undefined
   setup: TexSetup | undefined
+  /**
+   * The setup an earlier session found (rememberedTex): its versions key the
+   * disk cache, so the pictures it compiled are read with it before TeX is
+   * probed (a resume draws them from its first render), and once TeX is gone.
+   */
+  cached: TexSetup | undefined
 
   /** A landing wants this document drawn (a reply read back after --resume): kept until takeAsked. Not one shown as source. */
   ask(document: TexDocument): void {
-    if (this.ready && !this.shownAsSource.has(document.text) && this.asked.size < BOOK_LIMIT) this.asked.set(document.text, document)
+    if (this.drawable && !this.shownAsSource.has(document.text) && this.asked.size < BOOK_LIMIT) this.asked.set(document.text, document)
   }
 
   /** The documents asked for since the last take. */
@@ -156,11 +162,17 @@ export class TexBook {
     this.waiting.length = 0
     this.host = host
     this.setup = setup
+    this.cached = undefined
   }
 
   /** TeX is there to ask. */
   get ready(): boolean {
     return this.host !== undefined && this.setup !== undefined
+  }
+
+  /** Pictures can be shown: TeX is there, or the disk cache of an earlier session's TeX can be read. */
+  get drawable(): boolean {
+    return this.ready || this.cached?.cacheDir !== undefined
   }
 
   /** What a document gave, if it was compiled (or read from the disk cache) in this process; a passing failure (a timeout) included. */
@@ -189,15 +201,19 @@ export class TexBook {
     return this.shownAsSource.has(document.text)
   }
 
-  /** Reads a document's outcome from the disk cache into the book, when it is there. */
-  async load(document: TexDocument): Promise<TexOutcome | undefined> {
+  /**
+   * Reads a document's outcome from the disk cache into the book, when it is
+   * there: with TeX's host, else with `read` (a render's own file reads) and
+   * the cached setup, before TeX is found or once it is gone.
+   */
+  async load(document: TexDocument, read?: (path: string) => Promise<string | undefined>): Promise<TexOutcome | undefined> {
     const known = this.known(document)
     if (known && (known.ok || known.lasting)) return known
-    const host = this.host
-    const setup = this.setup
-    if (!host || !setup?.cacheDir) return undefined
+    const reader = this.host ? (path: string) => this.host!.read(path) : read
+    const setup = this.setup ?? this.cached
+    if (!reader || !setup?.cacheDir) return undefined
     try {
-      const text = await host.read(`${setup.cacheDir}/${await cacheKey(document, setup)}.json`)
+      const text = await reader(`${setup.cacheDir}/${await cacheKey(document, setup)}.json`)
       if (text === undefined) return undefined
       const stored = JSON.parse(text) as { ok?: unknown; svg?: unknown; error?: unknown }
       const outcome: TexOutcome | undefined =
@@ -413,4 +429,18 @@ export function texResult(picture: Picture): TypesetResult {
     results.set(picture, result)
   }
   return result
+}
+
+/** A setup as it is remembered for the next session ($.store): plain data, or undefined when it isn't one. */
+export function rememberedTex(value: unknown): TexSetup | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const setup = value as Partial<TexSetup>
+  if (typeof setup.versions !== 'string' || typeof setup.cacheDir !== 'string' || typeof setup.confinement !== 'object' || setup.confinement === null) return undefined
+  return {
+    versions: setup.versions,
+    confinement: setup.confinement,
+    tmpdir: typeof setup.tmpdir === 'string' ? setup.tmpdir : undefined,
+    cacheDir: setup.cacheDir,
+    ...(setup.format && typeof setup.format.name === 'string' && typeof setup.format.dir === 'string' ? { format: setup.format } : {}),
+  }
 }
