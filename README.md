@@ -1,7 +1,7 @@
 <div align="center">
   <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://github.com/brenocq/kittex/raw/assets/banner.svg" width="880">
 
-  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#options">Options</a>
+  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#options">Options</a> · <a href="#faq">FAQ</a>
 
   <a href="https://github.com/brenocq/kittex/actions/workflows/tests.yml"><img src="https://github.com/brenocq/kittex/actions/workflows/tests.yml/badge.svg" alt="🧪 Tests"/></a>
 </div>
@@ -66,8 +66,10 @@ Each one is `image` (the default), `unicode` or `raw`:
 
 Set both to `raw` to turn kittex off.
 
+## FAQ
+
 <details>
-<summary><b>How it works</b></summary>
+<summary><b>How does it work?</b></summary>
 <br>
 
 While a reply streams, kittex rewrites each line's math into a Unicode preview
@@ -80,10 +82,10 @@ size and colours.
 </details>
 
 <details>
-<summary><b>Using it with other mods</b></summary>
+<summary><b>Does it work with other mods?</b></summary>
 <br>
 
-Install kittex before any mod that redraws whole replies, such as prismantis:
+Yes. Install kittex before any mod that redraws whole replies, such as prismantis:
 the first plugin installed is the outermost one, and kittex only sees a reply
 when it sits outside such a mod (it then hands each piece of prose to it). If
 prismantis is already installed, reinstall it after kittex.
