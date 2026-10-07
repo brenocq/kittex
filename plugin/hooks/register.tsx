@@ -378,14 +378,15 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       const pictureEnv = pictureEnvFor(env, columns)
       planOptions.diagram = (source, kind, rows) => diagramImage(source, kind, pictureEnv, rows)
     }
-    wanted.clear()
+    texBook.takeAsked()
     let plan = planLanded(e.props.text, records, planOptions)
     // What TeX drew in an earlier session is on disk: read, then planned again (no jump after --resume); the rest is compiled, then redrawn.
-    if (wanted.size > 0 && (await loadWanted())) {
-      wanted.clear()
+    let asked = texBook.takeAsked()
+    if (asked.length > 0 && (await loadAsked(asked))) {
       plan = planLanded(e.props.text, records, planOptions)
+      asked = [...asked, ...texBook.takeAsked()]
     }
-    compileWanted()
+    compileAsked(asked)
     if (!plan.changed) return next(e)
     if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
       return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
@@ -1132,26 +1133,20 @@ async function instructions(env: KittexEnv | null, math: MathOptions): Promise<s
   return env && texUse(env, math).tex?.block ? `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}` : MATH_INSTRUCTIONS
 }
 
-/** Documents a landed block's plan wanted that TeX hasn't drawn: read from the disk cache, or compiled in the background (then every block redraws). */
-const wanted = new Map<string, TexDocument>()
-
-function want(document: TexDocument): void {
-  if (texBook.ready && !texBook.wasShownAsSource(document)) wanted.set(document.text, document)
-}
-
-/** Reads the wanted documents from the disk cache; true when any was found (the plan is made again). */
-async function loadWanted(): Promise<boolean> {
-  const documents = [...wanted.values()]
+/** A landed block's plan asked for documents TeX hasn't drawn (texBook.ask): read from the disk cache; true when any was there (the plan is made again). */
+async function loadAsked(documents: readonly TexDocument[]): Promise<boolean> {
   const found = await Promise.all(documents.map(document => texBook.load(document)))
   return found.some(outcome => outcome !== undefined)
 }
 
-/** Compiles what is still wanted, one after another, and redraws once they are done. */
-function compileWanted(): void {
-  const documents = [...wanted.values()].filter(document => !texBook.known(document))
-  wanted.clear()
-  if (documents.length === 0) return
-  void Promise.all(documents.map(document => texBook.compile(document, TEX_BACKGROUND_MS))).then(() => redraw?.(), () => undefined)
+/** Compiles what is still missing in the background, and redraws every block once they are done. */
+function compileAsked(documents: readonly TexDocument[]): void {
+  const missing = documents.filter(document => {
+    const known = texBook.known(document)
+    return !known || (!known.ok && !known.lasting)
+  })
+  if (missing.length === 0) return
+  void Promise.all(missing.map(document => texBook.compile(document, TEX_BACKGROUND_MS))).then(() => redraw?.(), () => undefined)
 }
 
 /** A diagram's image `rows` tall (its own when not given), for the landing: as TexBook has it, or null / { error } (see PlanOptions.diagram). */
@@ -1161,7 +1156,7 @@ function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?:
   if ('refused' in job) return { error: job.refused }
   const outcome = texBook.known(job.document)
   if (!outcome || (!outcome.ok && !outcome.lasting)) {
-    want(job.document)
+    texBook.ask(job.document)
     return null
   }
   if (!outcome.ok) return { error: outcome.error }
@@ -1179,6 +1174,6 @@ function texDrawn(tex: string, display: boolean): ReturnType<typeof texResult> |
   if (!document) return undefined
   const outcome = texBook.known(document)
   if (outcome?.ok) return texResult(outcome.picture)
-  if (!outcome || !outcome.lasting) want(document)
+  if (!outcome || !outcome.lasting) texBook.ask(document)
   return undefined
 }

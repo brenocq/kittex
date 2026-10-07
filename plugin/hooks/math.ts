@@ -2625,6 +2625,8 @@ function texDisplay(tex: string, env: RenderEnv): { rows: number } | { error: st
 export function texInlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxColumns): InlinePreview | null {
   const document = mathJob(tex, false)
   const outcome = document ? texBook.known(document) : undefined
+  // Not drawn yet (read back after --resume): asked for, so the block draws it once TeX has.
+  if (document && texBook.ready && (!outcome || (!outcome.ok && !outcome.lasting)) && refusedByMathJax(tex, false)) texBook.ask(document)
   if (!outcome?.ok) return null
   const box = measureInlineResult(texResult(outcome.picture), env)
   if (!box) return null

@@ -123,14 +123,29 @@ export class TexBook {
   private readonly waiting: (() => void)[] = []
   /** Documents the stream showed as source (TeX too slow): left as source when their block lands, though TeX finished later. */
   private readonly shownAsSource = new Set<string>()
+  /** Documents a landing asked for that TeX hasn't drawn yet (drawn later, then the blocks redraw). */
+  private readonly asked = new Map<string, TexDocument>()
   host: TexHost | undefined
   setup: TexSetup | undefined
+
+  /** A landing wants this document drawn (a reply read back after --resume): kept until takeAsked. Not one shown as source. */
+  ask(document: TexDocument): void {
+    if (this.ready && !this.shownAsSource.has(document.text) && this.asked.size < BOOK_LIMIT) this.asked.set(document.text, document)
+  }
+
+  /** The documents asked for since the last take. */
+  takeAsked(): TexDocument[] {
+    const documents = [...this.asked.values()]
+    this.asked.clear()
+    return documents
+  }
 
   /** Forgets everything (a new host, tests). */
   reset(host?: TexHost, setup?: TexSetup): void {
     this.outcomes.clear()
     this.running.clear()
     this.shownAsSource.clear()
+    this.asked.clear()
     this.active = 0
     this.waiting.length = 0
     this.host = host

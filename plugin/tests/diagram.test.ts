@@ -304,6 +304,25 @@ describe('math MathJax refuses', () => {
     expect(preview?.columns).toBe(inline!.columns)
   })
 
+  test('read back after --resume, an inline one TeX has yet to draw is asked for (then the block redraws)', async () => {
+    await init()
+    const fake = fakeTex('ok', MATH_SVG)
+    texBook.reset(fake.host, fake.setup)
+    const env = kittyEnv()
+    const inlineEnv = inlineEnvFor(env)
+    const options = {
+      maxColumns: renderEnvFor(env).maxColumns,
+      inline: { env: inlineEnv, width: 98, draw: () => ({ columns: 1, rows: 1, scale: 1, png: new Uint8Array(0) }) },
+    }
+    planLanded('The speed is $\\unit{m/s^2}$ here.\n', [], options)
+    const asked = texBook.takeAsked()
+    expect(asked.map(document => document.text)).toEqual([mathDocument('\\unit{m/s^2}', false).text])
+    await texBook.compile(asked[0]!, 3000)
+    const plan = planLanded('The speed is $\\unit{m/s^2}$ here.\n', [], options)
+    expect(plan.pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : [])).map(image => image.tex)).toEqual(['\\unit{m/s^2}'])
+    expect(texBook.takeAsked()).toEqual([])
+  })
+
   test('TeX failing too leaves the formula refused, with its error', async () => {
     await init()
     const fake = fakeTex('error')
