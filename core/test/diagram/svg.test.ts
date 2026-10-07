@@ -28,6 +28,9 @@ describe('xml', () => {
   test('a picture thousands of groups deep reads', () => {
     const body = '<g fill="#00f">'.repeat(3000) + '<path d="M0 0H1V1Z"/>' + '</g>'.repeat(3000)
     expect(read(body).ops).toHaveLength(1)
+    // A faceted pgfplots surface (shader=faceted interp, 46 samples) nests deeper than a recursive walk's stack.
+    const named = Array.from({ length: 15_000 }, (_, i) => `<g id="g${i}" fill="#00f">`).join('') + '<path d="M0 0H1V1Z"/>' + '</g>'.repeat(15_000)
+    expect(read(named).ops).toHaveLength(1)
   })
 })
 

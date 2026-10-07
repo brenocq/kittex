@@ -101,13 +101,15 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
   const root = parseXml(source)
   if (root.name !== 'svg') throw new SvgError('not an SVG document')
   const box = viewBox(root)
+  // Every id, the first in document order winning; with a stack of its own, as the walk below, since a faceted
+  // pgfplots surface nests one group per facet thousands deep.
   const ids = new Map<string, XmlElement>()
-  const collect = (el: XmlElement) => {
+  const pending: XmlElement[] = [root]
+  for (let el = pending.pop(); el; el = pending.pop()) {
     const id = el.attrs.id
     if (id !== undefined && !ids.has(id)) ids.set(id, el)
-    for (const child of el.children) collect(child)
+    for (let i = el.children.length - 1; i >= 0; i--) pending.push(el.children[i]!)
   }
-  collect(root)
 
   const s = options.emPerUnit
   const baselineY = options.baseline === 'origin' ? 0 : box.y + box.height
