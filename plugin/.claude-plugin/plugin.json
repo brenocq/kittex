@@ -8,17 +8,19 @@
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
-    "enabled": {
-      "type": "boolean",
-      "title": "Render LaTeX math",
-      "description": "Show the LaTeX in Claude's replies as equations: images in kitty and Ghostty, text elsewhere. Off: replies show the raw LaTeX.",
-      "default": true
+    "block": {
+      "type": "string",
+      "title": "Block math",
+      "description": "Equations on their own line ($$…$$): image (typeset; Unicode in terminals without images), unicode (Unicode text) or raw (Claude's LaTeX as written).",
+      "options": ["image", "unicode", "raw"],
+      "default": "image"
     },
     "inline": {
-      "type": "boolean",
-      "title": "Render inline math as images",
-      "description": "Draw inline $…$ math as images on the text's baseline. Off: inline math is Unicode text.",
-      "default": true
+      "type": "string",
+      "title": "Inline math",
+      "description": "Math inside a sentence ($…$): image, unicode or raw (same meanings).",
+      "options": ["image", "unicode", "raw"],
+      "default": "image"
     }
   }
 }

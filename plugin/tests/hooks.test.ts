@@ -1,4 +1,4 @@
-// kittex's hooks through the engine: the off switch, the landed reply's
+// kittex's hooks through the engine: both kinds raw (off), the landed reply's
 // drawing, MessageDisplay's wiring, and the instructions to the model.
 
 import { describe, expect, mock } from 'claude-code/testing'
@@ -44,7 +44,7 @@ function formula(image: Record<string, unknown>) {
 }
 
 describe('off switch', () => {
-  test('enabled: false changes nothing', { options: { enabled: false } }, async ($, on) => {
+  test('block and inline both raw change nothing', { options: { block: 'raw', inline: 'raw' } }, async ($, on) => {
     await startSession($, on)
     const ui = await mountReply($, REPLY)
     expect(await ui.drawn()).toEqual({ type: 'Text', children: [REPLY] })

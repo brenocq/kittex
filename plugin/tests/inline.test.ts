@@ -391,7 +391,7 @@ describe('AssistantMessage', () => {
     expect(around).toEqual([])
   })
 
-  test('inline: false draws inline math as Unicode text, as before', { options: { inline: false } }, async ($, on) => {
+  test('inline: unicode draws inline math as Unicode text', { options: { inline: 'unicode' } }, async ($, on) => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, 'Let $x^2$ be real.')
@@ -420,7 +420,7 @@ describe('MessageDisplay', () => {
     expect(drawn).toContain('"alt":"x"')
   })
 
-  test('inline: false streams plain Unicode', { options: { inline: false } }, async ($, on) => {
+  test('inline: unicode streams plain Unicode', { options: { inline: 'unicode' } }, async ($, on) => {
     await startSession($, on)
     await init()
     const shown = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index: 0, final: true, delta: 'Let $x$ be.' })
