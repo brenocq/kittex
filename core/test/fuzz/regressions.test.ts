@@ -450,6 +450,23 @@ describe('fuzz regressions', () => {
     for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
   })
 
+  // FUZZ-3 resumed/structure and FUZZ-9: a display formula MathJax refuses
+  // in a quote the replay doesn't follow streamed its source and MathJax's
+  // note (no TeX asked: no image could be placed there), where resumed asked
+  // the local TeX, which drew it, and wrote the source alone; and a diagram
+  // in a list item the replay doesn't follow streamed as its placeholder,
+  // which the landing (nestedAt) never draws over (a blank box live, the
+  // source resumed). Fixed: resumed asks MathJax alone where it doesn't
+  // measure, and the stream writes such a diagram as it came.
+  test('FUZZ-3/9: a refused display in a quote, or a diagram in an item, the replay does not follow land as resumed', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['> Vector to sample.  \n>\n> $$\n> \\hfill \n> $$\n', { columns: 20, tex: true }],
+      ['> 数学 \n> > $$\n> > \\foo{x} \n> > $$', { terminal: 'ghostty', tex: true }],
+      ['- $x<y$ \n\n  \\begin{tikzpicture}\\draw (1,1);\\end{tikzpicture}', { inline: 'raw', tex: true }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'displayImage']) }).toEqual({ md, failures: [] })
+  })
+
   // FUZZ-14. remember() kept the newest RECORD_LIMIT (512) previews for the
   // whole session: once a session had streamed more distinct previews, an
   // earlier block that redraws (a resize, a theme change, scrolling in the

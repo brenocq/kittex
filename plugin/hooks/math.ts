@@ -2054,7 +2054,8 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     }
     const lines = previewLines(tex, columns, rows)
     if (lines) return void writer.block(lines)
-    const reason = refusal(tex)
+    // Unmeasured, streaming asks MathJax alone (no TeX: no image could be placed there).
+    const reason = measured ? refusal(tex) : texErrorOf(tex, { cellWidth: 10, cellHeight: 20, emPx: 16, maxColumns, ink: { r: 0, g: 0, b: 0 } })
     if (reason) refused(tex, reason, nested)
     else writer.block(sourceMarkdownLines(tex))
   }
@@ -2809,7 +2810,9 @@ export function relaxedUnicode(tex: string): string | null {
 function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
   const kind = segment.diagram!
   const drawn = env.images && env.tex?.block && env.math?.block !== 'unicode' && writer.quoteDepth() === 0
-  const nested = drawn && itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) !== undefined
+  // In a list item, followed or not, as the landing finds it (nestedAt): it draws no picture there.
+  const head = writer.recent().slice(plan.anchor)
+  const nested = drawn && (nestedAt(head, head.length) || itemIndent(head, proseWidthFor(env), linkModeOf(env)) !== undefined)
   const job = drawn && !nested ? diagramJob(segment.tex, kind) : undefined
   if (!job) return writer.text(segment.raw)
   const { maxColumns } = renderEnvFor(env)
