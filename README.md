@@ -74,6 +74,15 @@ Change these in `/config`.
 </details>
 
 <details>
+<summary><b>Local LaTeX</b>: diagrams and math MathJax can't render, with your TeX install</summary>
+<br>
+
+- `auto` (default): TikZ, pgfplots, chemfig and circuitikz diagrams, and math MathJax can't render, drawn with your TeX when `latex` and `dvisvgm` are on your PATH.
+- `off`: never runs TeX; diagrams stay code blocks.
+
+</details>
+
+<details>
 <summary><b>Cache equation images</b>: keep rendered equations on disk for instant resumes</summary>
 <br>
 

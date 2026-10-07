@@ -136,7 +136,7 @@ describe('the cache through the engine', () => {
     await startSession($, on, ENV)
     // The env session.start stores in this kitty, and the key it gives a text.
     const env: KittexEnv = { ...kittyEnv(), ...linkEnv(ENV), emojiSequences: drawsEmojiSequences(detectTerminal(ENV), undefined) }
-    const keyOf = (text: string) => entryKey(text, cacheFacts(env, COLUMNS, mathOptions({}), BUILD_ID))
+    const keyOf = (text: string) => entryKey(text, cacheFacts(env, COLUMNS, mathOptions({}), `${BUILD_ID}|tex:false`))
     // Another session's entry for this text: its drawing, whatever it holds, is what is drawn.
     const hit = 'Hit: $\\frac{1}{2}$ and $\\alpha$ here.\n'
     const path = `${FOLDER}/${keyOf(hit)}.json`

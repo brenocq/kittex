@@ -4,10 +4,10 @@
 // sandbox has. The bundle is the mod's own: the entry and its chain of parts
 // as the build writes them (bundle.mjs, split.mjs), linked as ES modules.
 // Checks that loading it evaluates no MathJax, then typesets and draws sample
-// formulas and reports timings.
+// formulas and a TeX picture, and reports timings.
 //
 //   node --experimental-vm-modules scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
 import { bundleCore } from './bundle.mjs'
@@ -106,6 +106,17 @@ try {
   const layout = kittex.layoutProse('A **bold** move: x + y, then `code` and more words to wrap.', 20, [{ start: 17, end: 22 }])
   if (!layout || layout.places[0] === null) fail('layoutProse could not place a span')
   else console.log(`inline: E = mc^2 in ${box?.columns} cells; prose laid out in ${layout.rows} rows, span at ${JSON.stringify(layout.places[0])}`)
+  // A TeX picture (dvisvgm's SVG, as the local LaTeX writes it): read, measured and drawn in colour.
+  t = performance.now()
+  const picture = kittex.texPicture(readFileSync('core/test/diagram/fixtures/plot.svg', 'utf8'), { baseline: 'bottom', fontSize: 10 })
+  const pictureBox = kittex.measurePicture(picture, env)
+  const readMs = performance.now() - t
+  t = performance.now()
+  const drawn = kittex.renderPicture(picture, { ...env, background: { r: 30, g: 30, b: 30 } }, pictureBox.rows)
+  if (drawn.rows !== pictureBox.rows) fail('renderPicture drew other rows than measurePicture gave')
+  console.log(`picture: ${picture.ops.length} shapes, ${drawn.columns}x${drawn.rows} cells, ${drawn.png.length} B png, read ${readMs.toFixed(1)} ms, drawn ${(performance.now() - t).toFixed(1)} ms`)
+  if (out) writeFileSync(join(out, 'picture.png'), drawn.png)
+  if (kittex.unsafeTex('\\immediate\\write18{id}') === undefined) fail('unsafeTex let \\write18 through')
 } catch (error) {
   fail(error?.stack ?? String(error))
 }

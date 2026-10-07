@@ -17,6 +17,7 @@ import type { EngineInterface, MatchedHook, Register, RenderElement, Timer } fro
 import {
   cellProbes,
   chooseInk,
+  createLineScanner,
   claudeCustomThemePath,
   claudeThemeScheme,
   colorProbes,
@@ -27,14 +28,19 @@ import {
   imageInkBackground,
   measureDisplay,
   previewDisplay,
+  measureDisplayResult,
   readTerminalColors,
   renderDisplay,
+  renderDisplayResult,
   renderInline,
+  renderInlineResult,
+  renderPicture,
+  TexError,
   strokeWeight,
   toBase64,
   BUILD_ID,
 } from './core.js'
-import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
+import type { CellSize, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
 import {
   BLOCK_LIMIT,
   blockMatches,
@@ -44,6 +50,7 @@ import {
   cellOrFallback,
   COPY_LABEL,
   copiedFormula,
+  DIAGRAM_INSTRUCTIONS,
   FALLBACK_COLUMNS,
   INK_PREFER,
   IMAGE_LIMIT,
@@ -58,6 +65,7 @@ import {
   MessageStream,
   MATH_INSTRUCTIONS,
   mathOptions,
+  pictureEnvFor,
   planLanded,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
@@ -77,6 +85,9 @@ import { altText, fallbackLines, overBudget } from './budget.ts'
 import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock } from './math.ts'
+import type { StreamEnv, StreamRewrite, TexUse } from './math.ts'
+import { diagramJob, hiddenDirs, mathJob, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import type { DiagramKind, TexHost } from './tex.ts'
 
 type $ = EngineInterface
 
@@ -129,7 +140,7 @@ let contextPending = false
 let cells: Cells | undefined
 /** Runs a function on session.start's clock once the current dispatch resolves, or `ms` later (a hook's `$` belongs to its one dispatch). */
 let later: ((fn: () => void, ms?: number) => void) | undefined
-/** Writes a file with session.start's `$` (a render's may not): the cache's entries. */
+/** Writes a file with session.start's `$`: the cache's entries a render could not write itself. */
 let writeFile: ((path: string, text: string) => Promise<void>) | undefined
 /** Where the cache's entries go (cache.ts), from XDG_CACHE_HOME or HOME; undefined without either. */
 let cacheFolder: string | undefined
@@ -139,6 +150,8 @@ let cacheFolder: string | undefined
  * session.start: a render that comes first waits for it.
  */
 let envSettled: (() => void) | undefined
+/** session.start has run setUp this process (kittex.env is then the truth, null included). */
+let envKnown = false
 let envReady: Promise<void> = new Promise(resolve => {
   envSettled = resolve
 })
@@ -147,6 +160,10 @@ let rememberedEnv: Promise<KittexEnv | undefined> | undefined
 const REMEMBERED = 'env'
 /** The `cache` option: drawings of resumed blocks kept on disk (cache.ts). */
 let cacheOn = true
+/** The probe for the local TeX (the `latex` option), started after session.start; settles once texBook knows. */
+let texProbe: Promise<void> | undefined
+/** Redraws the landed blocks once a compile they asked for ends (session.start's `$`). */
+let redraw: (() => void) | undefined
 
 export const register: Register = (on, options) => {
   /** The `block` and `inline` options: how each kind of math is shown (image, unicode or raw). */
@@ -154,6 +171,8 @@ export const register: Register = (on, options) => {
   // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model).
   if (math.block === 'raw' && math.inline === 'raw') return
   cacheOn = options.cache !== false
+  /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
+  const latex = options.latex === 'off' ? 'off' : 'auto'
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -177,10 +196,19 @@ export const register: Register = (on, options) => {
     } catch {
       await $.state.set(ENV, null).catch(() => undefined)
     } finally {
+      envKnown = true
       envSettled?.()
     }
     if (cacheOn) soon(() => void pruneCache($).catch(() => undefined))
     if (unwritten.size > 0) soon(flushEntries)
+    // The local TeX, found after setup without holding it up (process.run: the terminal only).
+    texBook.reset()
+    texProbe = undefined
+    if (latex === 'auto' && e.surface === 'terminal' && math.block !== 'unicode') {
+      redraw = () => $.ui.invalidate('ui.render')
+      // Not awaited: a few short commands (each with its time limit) that settle meanwhile.
+      texProbe = setUpTex($)
+    }
     return started
   })
 
@@ -202,9 +230,10 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     try {
-      if (!e.surfaces.includes('terminal') || !instructs(await readEnv($))) return composed
+      const env = await readEnv($)
+      if (!e.surfaces.includes('terminal') || !instructs(env)) return composed
       if (composed.sections.some(section => section.id === SECTION_ID)) return composed
-      return { sections: [...composed.sections, { id: SECTION_ID, text: MATH_INSTRUCTIONS, scope: 'session' as const }] }
+      return { sections: [...composed.sections, { id: SECTION_ID, text: await instructions(env, math), scope: 'session' as const }] }
     } catch {
       return composed
     }
@@ -213,7 +242,7 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     if (!instructByContext || !contextPending) return next(e)
     contextPending = false
-    const entered = await next({ ...e, context: [...(e.context ?? []), MATH_INSTRUCTIONS] })
+    const entered = await next({ ...e, context: [...(e.context ?? []), await instructions(await readEnv($), math)] })
     if (entered.drop !== undefined) contextPending = true
     return entered
   }).catch(($, e, next) => next(e))
@@ -256,16 +285,18 @@ export const register: Register = (on, options) => {
         if (e.final) entry.done = true
         return below
       }
+      const streamEnv: StreamEnv = { ...streamEnvFor(env, math), ...texUse(env, math) }
       if (!entry) {
         if (delta === '' && e.final) return below
-        entry = { stream: new MessageStream(), source: '', shown: 0, stored: false, linked: false, done: false }
+        // Diagrams are held for TeX where it draws them (a block streaming when TeX is found keeps its code).
+        entry = { stream: new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true })), source: '', shown: 0, stored: false, linked: false, done: false }
         streams.delete(e.message_id)
         streams.set(e.message_id, entry)
         for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
       }
       before = entry.shown
       entry.source += e.delta
-      const rewrite = entry.stream!.push(delta, e.final, streamEnvFor(env, math))
+      const rewrite = await withTex(entry.stream!, entry.stream!.push(delta, e.final, streamEnv), streamEnv)
       // Each preview where the engine will show it: a landed block maps its previews back by place, not by content.
       const records = locatePreviews(rewrite.text, rewrite.records, before)
       entry.shown = before + rewrite.text.length
@@ -332,7 +363,7 @@ export const register: Register = (on, options) => {
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math) } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
 }
 
@@ -351,7 +382,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       // measured the terminal: draw with what the last session measured in
       // this terminal, else wait for session.start, rather than draw nothing
       // of kittex's now and everything later (which moves rows twice).
-      env = (await (rememberedEnv ??= readRemembered($))) ?? (await within(envReady, ENV_WAIT_MS, clockOf($)), await readEnv($))
+      env = (envKnown ? undefined : await (rememberedEnv ??= readRemembered($))) ?? (envKnown ? null : (await within(envReady, ENV_WAIT_MS, clockOf($)), await readEnv($)))
       if (!env) return next(e)
     }
     const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
@@ -384,12 +415,18 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       maxColumns: renderEnv.maxColumns,
       draw: blockImages ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
       width: proseWidthFor(env, columns),
-      measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+      measure: (tex, maxColumns) => displayRows(tex, { ...renderEnv, maxColumns }),
       math,
       inline:
         inlineImages
           ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
           : undefined,
+    }
+    // Diagrams where the local TeX draws (its pictures as wide as the prose).
+    const texOn = e.surface === 'terminal' && texUse(env, math).tex?.block === true
+    if (texOn) {
+      const pictureEnv = pictureEnvFor(env, columns)
+      planOptions.diagram = (source, kind, rows) => diagramImage(source, kind, pictureEnv, rows)
     }
     // A block read back as LaTeX (a resumed session) may be on disk already
     // (cache.ts); one off screen in the fullscreen layout (`onScreen` null:
@@ -397,17 +434,32 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // images once it is on screen; every other is typeset in its turn, the
     // newest first (schedule.ts).
     const resumed = e.surface === 'terminal' && images && !streamed && records.length === 0
-    const key = resumed && cacheOn && cacheFolder ? entryKey(e.props.text, cacheFacts(env, columns, math, BUILD_ID)) : undefined
+    const key = resumed && cacheOn && cacheFolder ? entryKey(e.props.text, cacheFacts(env, columns, math, `${BUILD_ID}|tex:${texOn}`)) : undefined
     let plan: LandedPlan | undefined = key ? await readEntry($, key) : undefined
     if (!plan) {
       const offScreen = resumed && e.viewport?.isFullscreen === true && (e.props as { onScreen?: unknown }).onScreen === null
+      const options = offScreen ? reservedOptions(planOptions, renderEnv) : planOptions
+      let asked: ReturnType<typeof texBook.takeAsked> = []
       const release = await turns.take(() => $.state.get(ENV))
       try {
-        plan = planLanded(e.props.text, records, offScreen ? reservedOptions(planOptions, renderEnv) : planOptions)
+        texBook.takeAsked()
+        plan = planLanded(e.props.text, records, options)
+        asked = texBook.takeAsked()
       } finally {
         release()
       }
-      if (key && !offScreen) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
+      // What TeX drew in an earlier session is on disk: read, then planned again (no jump after --resume); the rest is compiled, then redrawn.
+      if (asked.length > 0 && (await loadAsked(asked))) {
+        plan = planLanded(e.props.text, records, options)
+        asked = [...asked, ...texBook.takeAsked()]
+      }
+      compileAsked(asked)
+      // Kept only once final: no TeX document it waits for.
+      const final = asked.every(document => {
+        const known = texBook.known(document)
+        return known !== undefined && (known.ok || known.lasting)
+      })
+      if (key && !offScreen && final) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
     }
     if (!plan.changed) return next(e)
     if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
@@ -434,9 +486,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // formula (the engine copies screen cells and offers no hook), so each image
     // carries a copy button, shown while the pointer is over it (fullscreen), in
     // its top-right corner: absolute, so it moves no row.
-    const copy = (tex: string) => async () => {
-      const copied = await $.ui.copy({ text: copiedFormula(tex), surface: e.surface })
-      $.ui.toast(copied.isCopied ? 'Copied the formula as LaTeX' : 'Could not copy the formula')
+    const copy = (tex: string, source?: string) => async () => {
+      const copied = await $.ui.copy({ text: source ?? copiedFormula(tex), surface: e.surface })
+      $.ui.toast(copied.isCopied ? (source === undefined ? 'Copied the formula as LaTeX' : 'Copied the LaTeX source') : 'Could not copy the formula')
     }
     const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
       piece.kind === 'image' && left.has(piece.image) ? (
@@ -447,7 +499,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
           <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={altText(piece.tex)} />
           <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-            <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
+            <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex, piece.copy)} />
           </Box>
         </Box>
       ) : (
@@ -487,7 +539,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
                 <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={altText(inline.tex)} />
                 {inline.display ? (
                   <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-                    <Button key={`kittex-copy-${k}`} label={COPY_LABEL} plain dimColor onPress={copy(inline.tex)} />
+                    <Button key={`kittex-copy-${k}`} label={COPY_LABEL} plain dimColor onPress={copy(inline.tex, inline.copy)} />
                   </Box>
                 ) : null}
               </Box>
@@ -570,6 +622,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     ink: inkNow(),
     ...inkOverNow(),
+    ...backgroundNow(),
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
     ...linkEnv(processEnv),
@@ -769,6 +822,12 @@ function inkOverNow(): Pick<KittexEnv, 'inkOver'> {
   return over ? { inkOver: { r: over.r, g: over.g, b: over.b } } : {}
 }
 
+/** The terminal's background as kittex.env's `background`, when its colours were read (diagrams are drawn for it). */
+function backgroundNow(): Pick<KittexEnv, 'background'> {
+  const background = terminalColors?.background
+  return background ? { background: { r: background.r, g: background.g, b: background.b } } : {}
+}
+
 const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b || (!!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b)
 
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
@@ -796,9 +855,10 @@ async function refreshInk($: $, setting: string): Promise<void> {
   if (!env) return
   const ink = inkNow()
   const over = inkOverNow()
-  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver)) return
-  const { inkOver: _, ...rest } = env
-  await $.state.set(ENV, { ...rest, ink, ...over })
+  const back = backgroundNow()
+  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver) && sameColor(back.background, env.background)) return
+  const { inkOver: _, background: __, ...rest } = env
+  await $.state.set(ENV, { ...rest, ink, ...over, ...back })
 }
 
 /**
@@ -986,13 +1046,41 @@ function geometryKey(env: RenderEnv): string {
 
 /** A display formula's image, `rows` tall (measured when not given). Throws TexError. */
 function displayImage(tex: string, env: RenderEnv, rows?: number): RenderedImage {
-  const height = rows ?? measureDisplay(tex, env).rows
-  return cachedImage(`d\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
+  let height: number
+  try {
+    height = rows ?? measureDisplay(tex, env).rows
+    return cachedImage(`d\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
+  } catch (error) {
+    // MathJax refused it: TeX's drawing where the local LaTeX made one.
+    const result = error instanceof TexError ? texDrawn(tex, true) : undefined
+    if (!result) throw texRefusal(tex, true) ?? error
+    height = rows ?? measureDisplayResult(result, env).rows
+    return cachedImage(`t\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplayResult(result, env, height))
+  }
+}
+
+/** The rows a display formula's image takes: MathJax's, or TeX's where MathJax refused it. Throws TexError. */
+function displayRows(tex: string, env: RenderEnv): number {
+  try {
+    return measureDisplay(tex, env).rows
+  } catch (error) {
+    const result = error instanceof TexError ? texDrawn(tex, true) : undefined
+    if (!result) throw texRefusal(tex, true) ?? error
+    return measureDisplayResult(result, env).rows
+  }
 }
 
 /** An inline formula's image, `columns` wide, its ink where `place` says. Throws TexError. */
 function inlineImage(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
-  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
+  const key = `${geometryKey(env)},${env.baselinePx}\n${columns},${place}\n${tex}`
+  try {
+    return cachedImage(`i\n${key}`, () => renderInline(tex, env, columns, place))
+  } catch (error) {
+    // MathJax refused it: TeX's drawing where the local LaTeX made one.
+    const result = error instanceof TexError ? texDrawn(tex, false) : undefined
+    if (!result) throw error
+    return cachedImage(`ti\n${key}`, () => renderInlineResult(result, env, columns, place))
+  }
 }
 
 /** Formulas streaming wrote previews for, waiting to be drawn ahead of their landing. */
@@ -1013,9 +1101,12 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
     const { record, env } = next
     try {
       const renderEnv = renderEnvFor(env)
-      const image = record.inline
-        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
-        : displayImage(record.tex, { ...renderEnv, maxColumns: displayColumns(record, env) }, record.rows)
+      const image = record.diagram !== undefined
+        ? diagramImage(record.tex, record.diagram, pictureEnvFor(env), record.rows)
+        : record.inline
+          ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
+          : displayImage(record.tex, { ...renderEnv, maxColumns: displayColumns(record, env) }, record.rows)
+      if (image === null || !('png' in image)) throw new Error('not drawn')
       base64Of(image.png)
       signatureOf(image.png)
     } catch {
@@ -1249,4 +1340,117 @@ async function pruneCache($: $): Promise<void> {
     const paths = names.slice(i, i + PRUNE_BATCH).map(name => `${folder}/${name}`)
     await $.process.run(['rm', '-f', '--', ...paths], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => undefined)
   }
+}
+
+// ─── The local TeX (tex.ts) ──────────────────────────────────────────────────
+
+/** Where the local TeX draws for these options, once it was found: diagrams and display math (`block`), inline math (`inline`). */
+function texUse(env: KittexEnv, math: MathOptions): { tex?: TexUse } {
+  if (!texBook.ready || !env.images) return {}
+  const block = math.block === 'image'
+  const inline = math.inline === 'image'
+  return block || inline ? { tex: { block, inline } } : {}
+}
+
+/**
+ * A flush's rewrite once TeX has answered what it waits for: the documents
+ * compiled (each within the stream's budget, counted from the ask), then the
+ * held segments written, until none waits. A compile that fails or runs out
+ * of time is an outcome too: the stream shows that block's source.
+ */
+async function withTex(stream: MessageStream, first: StreamRewrite, env: StreamEnv): Promise<StreamRewrite> {
+  let text = first.text
+  const records = [...first.records]
+  let pending = first.pending
+  for (let round = 0; pending && pending.length > 0 && round < 64; round++) {
+    await Promise.all(pending.map(document => texBook.compile(document, TEX_STREAM_BUDGET_MS)))
+    // A document whose compile left no outcome (none ran) is shown as written: no stream waits twice.
+    for (const document of pending) if (!texBook.known(document)) texBook.remember(document, { ok: false, error: 'no TeX', lasting: false })
+    const next = stream.resume(env)
+    text += next.text
+    records.push(...next.records)
+    pending = next.pending
+  }
+  return { text, records }
+}
+
+/** Finds the local TeX with session.start's `$` and gives texBook its host (a compile may outlive the dispatch that asked for it). */
+async function setUpTex($: $): Promise<void> {
+  const host: TexHost = {
+    run: (argv, init) => $.process.run(argv, init),
+    write: (path, text) => $.fs.write(path, text),
+    // A missing file is no error (a cache miss): asked first, so the engine logs no failed read.
+    read: async path => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).catch(() => undefined) : undefined),
+  }
+  try {
+    const [tmpdir, cacheHome] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME')])
+    const home = processEnv.HOME
+    const cacheDir = texCacheDir({ XDG_CACHE_HOME: cacheHome, HOME: home })
+    const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}) })
+    if (!setup) return
+    texBook.host = host
+    texBook.setup = setup
+    // Blocks drawn before TeX was found (a resumed conversation's) are drawn again with it.
+    $.ui.invalidate('ui.render')
+  } catch {
+    // no TeX: diagrams stay code
+  }
+}
+
+/** kittex's instructions to the model: the math, and where TeX draws diagrams, how to ask for one. */
+async function instructions(env: KittexEnv | null, math: MathOptions): Promise<string> {
+  await texProbe
+  return env && texUse(env, math).tex?.block ? `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}` : MATH_INSTRUCTIONS
+}
+
+/** A landed block's plan asked for documents TeX hasn't drawn (texBook.ask): read from the disk cache; true when any was there (the plan is made again). */
+async function loadAsked(documents: readonly TexDocument[]): Promise<boolean> {
+  const found = await Promise.all(documents.map(document => texBook.load(document)))
+  return found.some(outcome => outcome !== undefined)
+}
+
+/** Compiles what is still missing in the background, and redraws every block once they are done. */
+function compileAsked(documents: readonly TexDocument[]): void {
+  const missing = documents.filter(document => {
+    const known = texBook.known(document)
+    return !known || (!known.ok && !known.lasting)
+  })
+  if (missing.length === 0) return
+  void Promise.all(missing.map(document => texBook.compile(document, TEX_BACKGROUND_MS))).then(() => redraw?.(), () => undefined)
+}
+
+/** A diagram's image `rows` tall (its own when not given), for the landing: as TexBook has it, or null / { error } (see PlanOptions.diagram). */
+function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number): RenderedImage | { error: string } | null {
+  const job = diagramJob(source, kind)
+  if (!job) return null
+  if ('refused' in job) return { error: job.refused }
+  const outcome = texBook.known(job.document)
+  if (!outcome || (!outcome.ok && !outcome.lasting)) {
+    texBook.ask(job.document)
+    return null
+  }
+  if (!outcome.ok) return { error: outcome.error }
+  try {
+    return cachedImage(`p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`, () => renderPicture(outcome.picture, env, rows))
+  } catch (error) {
+    if (error instanceof TexError) return { error: error.message }
+    throw error
+  }
+}
+
+/** A formula MathJax refused, as TeX drew it (TexBook), or undefined: then wanted for the next draw. */
+function texDrawn(tex: string, display: boolean): ReturnType<typeof texResult> | undefined {
+  const document = mathJob(tex, display)
+  if (!document) return undefined
+  const outcome = texBook.known(document)
+  if (outcome?.ok) return texResult(outcome.picture)
+  if (!outcome || !outcome.lasting) texBook.ask(document)
+  return undefined
+}
+
+/** TeX's own error for a formula MathJax refused and TeX failed on for good (the note shows it, as the stream did). */
+function texRefusal(tex: string, display: boolean): TexError | undefined {
+  const document = mathJob(tex, display)
+  const outcome = document ? texBook.known(document) : undefined
+  return outcome && !outcome.ok && outcome.lasting ? new TexError(outcome.error) : undefined
 }

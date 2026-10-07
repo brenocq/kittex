@@ -35,6 +35,13 @@
       "options": ["image", "unicode", "raw"],
       "default": "image"
     },
+    "latex": {
+      "type": "string",
+      "title": "Local LaTeX",
+      "description": "Draw diagrams and math MathJax can't render with your TeX install",
+      "options": ["auto", "off"],
+      "default": "auto"
+    },
     "cache": {
       "type": "boolean",
       "title": "Cache equation images",

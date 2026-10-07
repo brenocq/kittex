@@ -13,6 +13,8 @@ export interface FenceOpen {
   len: number
   /** A ```math fence (its body is display math). */
   math: boolean
+  /** A fence a diagram may be in: ```latex and ```tex (`latex`), ```tikz (`tikz`). */
+  diagram?: 'latex' | 'tikz'
 }
 
 const FENCE = /^(`{3,}|~{3,})(.*)$/
@@ -25,7 +27,8 @@ export function fenceOpen(body: string): FenceOpen | null {
   const info = m[2]!
   if (run[0] === '`' && info.includes('`')) return null
   const lang = info.trim().split(/\s+/, 1)[0]!.toLowerCase()
-  return { ch: run[0] as '`' | '~', len: run.length, math: lang === 'math' }
+  const diagram = lang === 'latex' || lang === 'tex' ? 'latex' : lang === 'tikz' ? 'tikz' : undefined
+  return { ch: run[0] as '`' | '~', len: run.length, math: lang === 'math', ...(diagram ? { diagram } : {}) }
 }
 
 /** Whether a body (indentation removed) closes a fence of `ch` at least `len` long. */
@@ -59,6 +62,9 @@ const ENVS = new Set([
 ])
 const BEGIN = /^\\begin\{([A-Za-z]+)(\*?)\}/
 
+/** The environments whose bare `\begin{…}` at the start of a line is a diagram for TeX (LineScannerOptions.diagrams). */
+export const DIAGRAM_ENVS: ReadonlySet<string> = new Set(['tikzpicture', 'tikzcd', 'circuitikz'])
+
 /**
  * The kind of a display block: `$$`, `\[`, or an environment name (`align*`).
  * A block of a kind is closed by that kind's delimiter.
@@ -78,7 +84,7 @@ export interface DisplayOpen {
  * A display-math opener at the start of a line's body (indentation removed), or
  * null. A line whose closing delimiter is followed by more text is not one.
  */
-export function displayOpen(body: string): DisplayOpen | null {
+export function displayOpen(body: string, diagrams = false): DisplayOpen | null {
   let kind: DisplayKind
   let delimiter: DisplayOpen['delimiter']
   let from: number
@@ -91,7 +97,7 @@ export function displayOpen(body: string): DisplayOpen | null {
     from = 2
   } else {
     const m = BEGIN.exec(body)
-    if (!m || !ENVS.has(m[1]!)) return null
+    if (!m || !(ENVS.has(m[1]!) || (diagrams && DIAGRAM_ENVS.has(m[1]!)))) return null
     kind = m[1]! + m[2]!
     delimiter = 'env'
     from = m[0].length

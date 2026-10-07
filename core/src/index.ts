@@ -1,11 +1,37 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng, strokeWeight } from './raster/index.js'
+import { adaptColor, assumedBackground, texPicture } from './diagram/index.js'
+import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset, typesetLoaded } from './typeset/index.js'
-import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
+import type { CellBox, Picture, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
+export {
+  adaptColor,
+  assumedBackground,
+  bwrapProbe,
+  confined,
+  DIAGRAM_ENVS,
+  diagramDocument,
+  diagramFence,
+  drawsPicture,
+  dvisvgmArgv,
+  isJobDir,
+  JOB_NAME,
+  jobDirTemplate,
+  LATEX_ARGV,
+  mathDocument,
+  MAX_TEX_SOURCE,
+  PREAMBLE_VERSION,
+  SvgError,
+  texEnvironment,
+  texError,
+  texPicture,
+  unsafeTex,
+  XmlError,
+} from './diagram/index.js'
+export type { Adapted, Confinement, DiagramLang, PaperColors, TexDocument } from './diagram/index.js'
 export {
   cellProbe,
   cellProbes,
@@ -227,6 +253,11 @@ export function measureInline(tex: string, env: InlineEnv, columns = 255): CellB
     if (error instanceof TexError) return null
     throw error
   }
+  return measureInlineResult(result, env, columns)
+}
+
+/** measureInline for a formula typeset some other way (TeX's, see texFormula). */
+export function measureInlineResult(result: TypesetResult, env: InlineEnv, columns = 255): CellBox | null {
   const options = inlineOptions(env, columns, 'left')
   const box = measure(result, options)
   if (box.scale < MIN_INLINE_SCALE) return null
@@ -286,14 +317,22 @@ export function renderInline(tex: string, env: InlineEnv, columns: number, place
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.weight ?? '', env.baselinePx, columns, place, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
-    const result = typesetInline(tex)
-    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
-    const raster = rasterize(result, options)
-    const png = encodePng(raster, env.ink, env.inkOver)
-    if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png })
+    const drawn = drawInline(typesetInline(tex), env, columns, place)
+    if (drawn.png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
+    image = store(imageCache, key, drawn)
   }
   return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
+}
+
+/** renderInline for a formula typeset some other way (TeX's, see texFormula); not cached. */
+export function renderInlineResult(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
+  return drawInline(result, env, columns, place)
+}
+
+function drawInline(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace): RenderedImage {
+  const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
+  const raster = rasterize(result, options)
+  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) }
 }
 
 export interface InlinePreviewOptions {
@@ -408,4 +447,84 @@ function store<V>(cache: Map<string, V>, key: string, value: V): V {
   cache.set(key, value)
   if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!)
   return value
+}
+
+// ─── TeX's own drawings (diagram/) ───────────────────────────────────────────
+
+/** Where a TeX picture is drawn: as display math is, with the terminal's background when known. */
+export interface PictureEnv extends RenderEnv {
+  /** The terminal's background, which TeX's white becomes and its colours are kept legible on (assumed from the ink when absent). */
+  background?: RGB
+  /** Rows a picture may take before it is shrunk (MAX_PICTURE_ROWS by default). */
+  maxRows?: number
+}
+
+/** Rows a picture may take: a taller one is shrunk to them. */
+export const MAX_PICTURE_ROWS = 30
+
+/** Pictures that would have to shrink below this to fit are refused (TexError): their text would be unreadable. */
+export const MIN_PICTURE_SCALE = 0.3
+
+/** The largest PNG an Image takes (2 MiB). */
+export const MAX_PNG_BYTES = 2 * 1024 * 1024
+
+function pictureOptions(env: PictureEnv, minRows?: number) {
+  const paper = { ink: env.ink, background: env.background ?? assumedBackground(env.ink) }
+  return {
+    emPx: env.emPx,
+    cellWidth: env.cellWidth,
+    cellHeight: env.cellHeight,
+    maxColumns: Math.max(1, Math.min(255, env.maxColumns)),
+    maxRows: Math.max(1, Math.min(255, env.maxRows ?? MAX_PICTURE_ROWS)),
+    ...(minRows !== undefined ? { minRows } : {}),
+    ...(env.weight !== undefined ? { weight: env.weight } : {}),
+    ...(env.inkOver ? { over: env.inkOver } : {}),
+    color: (color: RGB, line: boolean) => adaptColor(color, paper, line),
+  }
+}
+
+/**
+ * The cells a TeX picture takes (its streaming placeholder's and its
+ * image's): the width of the column at most, MAX_PICTURE_ROWS tall at most,
+ * shrunk to fit and never grown past its own size (its em is the math's).
+ * Throws TexError when it would be drawn below MIN_PICTURE_SCALE.
+ */
+export function measurePicture(picture: Picture, env: PictureEnv): CellBox {
+  const box = pictureCells(picture, pictureOptions(env))
+  if (box.scale < MIN_PICTURE_SCALE) throw new TexError(`picture too large to draw legibly (it would be drawn at ${Math.round(box.scale * 100)}% size)`)
+  return box
+}
+
+/** Draws a TeX picture in its colours (adaptColor), at least `minRows` tall. Throws TexError. */
+export function renderPicture(picture: Picture, env: PictureEnv, minRows?: number): RenderedImage {
+  const options = pictureOptions(env, minRows)
+  const box = pictureCells(picture, options)
+  if (box.scale < MIN_PICTURE_SCALE) throw new TexError(`picture too large to draw legibly (it would be drawn at ${Math.round(box.scale * 100)}% size)`)
+  if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('picture too large to draw')
+  const raster = rasterizePicture(picture, options)
+  const png = encodePicturePng(raster)
+  if (png.length > MAX_PNG_BYTES) throw new TexError('picture too large to send to the terminal')
+  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
+}
+
+/** A formula TeX drew (MathJax refused it) as one ink's draw ops, laid out, sized and coloured as MathJax's are. */
+export function texFormula(picture: Picture): TypesetResult {
+  return pictureOutlines(picture)
+}
+
+/** measureDisplay for a formula TeX drew (texFormula): its image's cells. Throws TexError below MIN_DISPLAY_SCALE. */
+export function measureDisplayResult(result: TypesetResult, env: RenderEnv): CellBox {
+  const box = measure(result, rasterOptions(env))
+  if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
+  return box
+}
+
+/** renderDisplay for a formula TeX drew (texFormula), at least `minRows` tall. Throws TexError. */
+export function renderDisplayResult(result: TypesetResult, env: RenderEnv, minRows?: number): RenderedImage {
+  const options = rasterOptions(env, minRows)
+  const box = measure(result, options)
+  if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
+  if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
+  const raster = rasterize(result, options)
+  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) }
 }

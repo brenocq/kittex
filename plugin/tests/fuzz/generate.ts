@@ -66,6 +66,13 @@ export interface GenOptions {
   display?: readonly string[]
   /** Allow huge formulas and replies (a hook's time budget). */
   huge?: boolean
+  /**
+   * Add diagrams for the local TeX (```latex, ```tex and ```tikz blocks,
+   * bare tikzpicture environments; drawings, LaTeX that draws nothing,
+   * refused sources), from a source of their own: the rest of the reply is
+   * the one the seed gives without them.
+   */
+  diagrams?: boolean
 }
 
 export function generateReply(seed: number, options: GenOptions = {}): Reply {
@@ -83,7 +90,35 @@ export function generateReply(seed: number, options: GenOptions = {}): Reply {
     blocks.push(`$$\n${rng.pick(GIANT)}\n$$`)
     joins.push('\n\n')
   }
-  return { blocks, joins, crlf: rng.chance(0.02 * g.exotic), trailingNewline: rng.chance(0.6) }
+  const reply = { blocks, joins, crlf: rng.chance(0.02 * g.exotic), trailingNewline: rng.chance(0.6) }
+  if (options.diagrams) addDiagrams(reply, seed)
+  return reply
+}
+
+/** Diagrams as Claude writes them for the local TeX, and what must stay code. */
+const DIAGRAMS: readonly (readonly [number, (r: Rng) => string])[] = [
+  [8, r => '```latex\n\\begin{tikzpicture}\n' + `\\draw[->, ${r.pick(['red', 'blue', 'thick', 'dashed'])}] (0,0) -- (${r.int(1, 9)},${r.int(1, 5)}) node[right] {$x_${r.int(1, 9)}$};\n` + '\\end{tikzpicture}\n```'],
+  [4, r => '```tikz\n' + `\\draw (0,0) circle (${r.int(1, 4)});\n\\node at (0,0) {A};` + '\n```'],
+  [4, r => '```tex\n' + `\\chemfig{${r.pick(['*6(-=-=-=)', 'H-C(-[2]H)(-[6]H)-H', 'A-B=C'])}}` + '\n```'],
+  [3, r => `\\begin{tikzpicture}\n\\fill[${r.pick(['blue!20', 'red', 'black'])}] (0,0) rectangle (${r.int(1, 6)},${r.int(1, 3)});\n\\end{tikzpicture}`],
+  [2, () => '\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}'],
+  [3, () => '```latex\n\\frac{a}{b} + \\sqrt{c}\n```'],
+  [2, () => '```latex\n\\begin{tikzpicture}\\immediate\\write18{ls}\\end{tikzpicture}\n```'],
+  [1, r => '```latex\n\\begin{tikzpicture}\n' + Array.from({ length: r.int(30, 60) }, (_, i) => `\\draw (0,${i}) -- (1,${i});`).join('\n') + '\n\\end{tikzpicture}\n```'],
+  [1, () => '> ```latex\n> \\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\n> ```'],
+  [1, () => '- An item:\n\n  ```latex\n  \\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\n  ```'],
+]
+
+/** Puts one to three diagrams between a reply's blocks (a source of their own, so the reply is otherwise as before). */
+function addDiagrams(reply: Reply, seed: number): void {
+  const r = new Rng(seed ^ 0xd1a6)
+  for (let n = r.int(1, 3); n > 0; n--) {
+    const at = r.int(0, reply.blocks.length)
+    const diagram = r.weighted(DIAGRAMS)(r)
+    reply.blocks.splice(at, 0, diagram)
+    reply.joins.splice(at, 0, at === 0 ? '' : r.weighted([[8, '\n\n'], [2, '\n']]))
+    if (at === 0 && reply.joins.length > 1) reply.joins[1] = reply.joins[1] || '\n\n'
+  }
 }
 
 class Gen {
