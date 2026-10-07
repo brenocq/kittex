@@ -230,7 +230,7 @@ function viewBox(root: XmlElement): { x: number; y: number; width: number; heigh
   const width = length(root.attrs.width)
   const height = length(root.attrs.height)
   if (width && height && width > 0 && height > 0) return { x: 0, y: 0, width, height }
-  throw new SvgError('the SVG has no size')
+  throw new SvgError('the picture is empty')
 }
 
 /** A length attribute in user units (unit suffixes dropped: dvisvgm writes user units). */
