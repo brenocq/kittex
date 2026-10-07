@@ -51,6 +51,7 @@ function planned(text: string, records: readonly PreviewRecord[], shape: Shape):
   const plan = planLanded(text, records, {
     streamed: {},
     mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
+    columns: shape.columns,
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows, maxColumns) => {
       const at = maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }

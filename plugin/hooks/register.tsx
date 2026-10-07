@@ -327,6 +327,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     const plan = planLanded(e.props.text, records, {
       ...(streamed ? { streamed: found.block?.raw === undefined ? {} : { raw: found.block.raw } } : {}),
       mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
+      columns,
       maxColumns: renderEnv.maxColumns,
       draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
       width: proseWidthFor(env, columns),

@@ -153,6 +153,7 @@ export function land(text: string, block: readonly PreviewRecord[] | undefined, 
   const plan = planLanded(text, records, {
     ...(streamed ? { streamed: {} } : {}),
     mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
+    columns,
     maxColumns: renderEnv.maxColumns,
     draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
     width: proseWidthFor(env, columns),

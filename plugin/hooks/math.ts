@@ -1386,6 +1386,8 @@ export interface PlanOptions {
    * on or off (`inline` gives them too); unknown when absent.
    */
   mode?: LinkMode
+  /** The terminal's width (tables are laid out in it), inline images on or off; `inline`'s, else the reply column and two cells. */
+  columns?: number
   /**
    * The text is a block kittex streamed (its rewrite, as the engine shows
    * it): what lies outside its recorded previews is never scanned for LaTeX
@@ -1548,7 +1550,7 @@ interface InlineMark {
  * How many times a plan is drawn: math read back as LaTeX that got no image
  * takes its next form each time (padded, unpadded, plain: see planLanded).
  */
-const PLAN_PASSES = 3
+const PLAN_PASSES = 4
 
 /** What may hold LaTeX as written: math delimiters, a bare environment, a ```math fence. */
 const LATEX_HINT = new RegExp(String.raw`\$|\\[([]|\\begin\{|${MATH_FENCE}`)
@@ -2046,7 +2048,7 @@ function previewParagraph(block: string, part: BlockPart, width: number, sequenc
 
 /** The terminal's width a plan is drawn in: given, or the reply column and the bullet's two cells. */
 function maxColumnsOf(options: PlanOptions): number {
-  return options.inline?.columns ?? options.maxColumns + REPLY_INDENT
+  return options.columns ?? options.inline?.columns ?? options.maxColumns + REPLY_INDENT
 }
 
 /** How the engine draws links and the terminal emoji sequences, for the replays: `inline`'s, else `mode`. */

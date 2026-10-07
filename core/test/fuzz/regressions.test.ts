@@ -338,6 +338,16 @@ describe('fuzz regressions', () => {
     for (const flushSeed of [1, 2, 3]) expect(failures(md, { inline: false, flushSeed }, ['resumed', 'moved'])).toEqual([])
   })
 
+  // fix/landing-map's fuzz run: with inline images off the plan knew no terminal width (only `inline` had it),
+  // so a table above a display was laid out in the prose width (its list form) and the image landed rows low;
+  // and math read back as LaTeX in a table cell kept the unpadded form where the plain one was its last chance.
+  test('the plan lays tables out in the terminal width, and gives resumed math its last form', () => {
+    const md = '[value](https://github.com/owner/repo/issues/42) | $D_{KL}(p \\sum_x p(x) \\log | | |\n- | - | - | -------- \n$\\min_i x_i$ \n\\mid B)$ | | `\\frac{a}{b}` \n$$\n\\ointctrclockwise_C \n$$\n\n- norm.\n'
+    expect(failures(md, { inline: false, maxProseWidth: 49 }, ['overPreview', 'moved'])).toEqual([])
+    const table = 'likelihood | $\\hbar$ | | averyveryveryveryveryveryveryveryveryveryverylongidentifierwithoutanybreaks \n| - | :--- | :--- | :--- \n$\\beta_1$ \nupdate | holds $\\arg\\max_x f(x)$ space \n\n'
+    expect(failures(table, {}, ['resumed'])).toEqual([])
+  })
+
   // FUZZ-14. remember() kept the newest RECORD_LIMIT (512) previews for the
   // whole session: once a session had streamed more distinct previews, an
   // earlier block that redraws (a resize, a theme change, scrolling in the
