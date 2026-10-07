@@ -32,9 +32,10 @@ export { inkAlpha, recolorPng }
  * - Inline placement (`baselinePx`): the image is exactly `minRows` rows (one
  *   by default) and the baseline sits at the given pixel row, the terminal
  *   font's own; scale < 1 also when the formula's height above the baseline or
- *   depth below it, plus the dilation, would leave the image (rows never grow).
- *   Before shrinking, the baseline may move by up to BASELINE_SHIFT of the cell
- *   height (a pixel at 26 px) towards the side with room.
+ *   depth below it, plus the dilation, would leave the image or come within
+ *   INK_EDGE of its top (rows never grow). Before shrinking, the baseline may
+ *   move by up to BASELINE_SHIFT of the cell height (a pixel at 26 px) towards
+ *   the side with room.
  */
 
 /**
@@ -55,6 +56,16 @@ export const DEFAULT_WEIGHT = 15
 
 /** How far an inline formula's baseline may move from the font's, as a fraction of the cell height (at least a pixel). */
 export const BASELINE_SHIFT = 0.04
+
+/**
+ * Pixels an inline formula's ink (stroke weight included) stays clear of its
+ * row's top edge, so its highest stroke (the bar of a superscript T)
+ * anti-aliases into the row like a glyph's instead of ending flat on the edge,
+ * where it reads as cut off. A formula held to it below `minScale` may touch
+ * the edge instead, and one that only fits by running past it (minScale,
+ * overflowPx) is drawn as before.
+ */
+export const INK_EDGE = 0.5
 
 interface Layout extends CellBox {
   widthPx: number
@@ -99,19 +110,28 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     // The baseline may move a pixel or so (towards the side with room) rather
     // than shrink the formula: a subscript with a descender (a_{ij}) fits.
     const shift = Math.max(1, Math.round(cellHeight * BASELINE_SHIFT))
-    const fit = (at: number) => Math.min(scale, above > 0 ? at / above : Infinity, below > 0 ? (heightPx - at) / below : Infinity)
-    let best = baseline
-    for (let d = 1; d <= shift; d++) {
-      for (const at of [baseline - d, baseline + d]) {
-        if (at >= 0 && at <= heightPx && fit(at) > fit(best) + 1e-9) best = at
+    // The ink keeps INK_EDGE clear of the row's top: a capital's superscript
+    // flush with it (Vᵀ) reads as cut off. Descenders may reach the bottom, as
+    // text's do. One that would then need less than the floor may touch the top.
+    const floor = options.minScale ?? 0
+    const fitAt = (edge: number) => (at: number) =>
+      Math.min(scale, above > 0 ? Math.max(0, at - edge) / above : Infinity, below > 0 ? (heightPx - at) / below : Infinity)
+    const place = (fit: (at: number) => number) => {
+      let best = baseline
+      for (let d = 1; d <= shift; d++) {
+        for (const at of [baseline - d, baseline + d]) {
+          if (at >= 0 && at <= heightPx && fit(at) > fit(best) + 1e-9) best = at
+        }
       }
+      return { at: best, scale: fit(best) }
     }
-    inlineBaseline = best
-    scale = fit(best)
+    let placed = place(fitAt(INK_EDGE))
+    if (placed.scale < floor) placed = place(fitAt(0))
+    inlineBaseline = placed.at
+    scale = placed.scale
     // A formula that fits only below the floor (a bar in a subscript reaches
     // 0.35 em down) is drawn at the floor if its ink then passes the cell by no
     // more than overflowPx: the clipped pixel or two is the tip of a thin stroke.
-    const floor = options.minScale ?? 0
     const slack = Math.max(0, options.overflowPx ?? 0)
     if (scale < floor && slack > 0) {
       const fitWith = (at: number) => Math.min(above > 0 ? (at + slack) / above : Infinity, below > 0 ? (heightPx - at + slack) / below : Infinity)

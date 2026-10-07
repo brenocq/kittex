@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { DEFAULT_WEIGHT, measure, rasterize } from '../../src/raster/index.js'
+import { DEFAULT_WEIGHT, INK_EDGE, measure, rasterize } from '../../src/raster/index.js'
 import type { DrawOp, Raster, RasterOptions, TypesetResult } from '../../src/types.js'
 
 const FIXTURES = join(import.meta.dirname, 'fixtures')
@@ -266,8 +266,12 @@ describe('inline placement (baselinePx)', () => {
     const r = rasterize(box(1, 1.2, 0), inline)
     expect(r.rows).toBe(1)
     expect(r.baselinePx).toBe(22)
-    expect(r.scale).toBeCloseTo(22 / 30, 6)
+    // Half a pixel clear of the top (INK_EDGE): the top row half covered, not cut flat.
+    expect(r.scale).toBeCloseTo((22 - INK_EDGE) / 30, 6)
     expect(inkBox(r)).toMatchObject({ y0: 0, y1: 22 })
+    const top = r.alpha.subarray(0, r.widthPx).reduce((m, a) => Math.max(m, a), 0)
+    expect(top).toBeGreaterThan(100)
+    expect(top).toBeLessThan(160)
   })
 
   test('the depth below the baseline is fitted to the rows under it, the baseline a pixel higher at most', () => {

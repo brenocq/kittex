@@ -1,5 +1,5 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, inkAlpha, measure, rasterize, recolorPng } from './raster/index.js'
+import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
@@ -203,17 +203,19 @@ const CLIPPED_RUN_PX = 2.5
 /**
  * Whether the rows an inline image cuts off hold only thin strokes: draws the
  * formula as placed, then again at the same size and baseline in a row
- * `overflowPx` taller at each end, and checks that no row outside the image
- * has a run of ink wider than CLIPPED_RUN_PX.
+ * `overflowPx` taller at each end (and INK_EDGE more at the top), and checks
+ * that no row outside the image has a run of ink wider than CLIPPED_RUN_PX.
  */
 function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolean {
   const slack = Math.max(0, Math.ceil(options.overflowPx ?? 0))
+  // A pixel more above, for the room the raster keeps clear of the top (INK_EDGE).
+  const top = slack + Math.ceil(INK_EDGE)
   const placed = rasterize(result, options)
   const tall = rasterize(result, {
     ...options,
     emPx: options.emPx * placed.scale,
-    cellHeight: options.cellHeight + 2 * slack,
-    baselinePx: placed.baselinePx + slack,
+    cellHeight: options.cellHeight + top + slack,
+    baselinePx: placed.baselinePx + top,
     minColumns: placed.columns,
     minScale: 0,
     overflowPx: 0,
@@ -221,7 +223,7 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
   if (Math.abs(tall.scale - 1) > 1e-6) return false
   const { alpha, widthPx, heightPx } = tall
   for (let y = 0; y < heightPx; y++) {
-    if (y >= slack && y < heightPx - slack) continue
+    if (y >= top && y < heightPx - slack) continue
     let run = 0
     for (let x = 0; x < widthPx; x++) {
       run = alpha[y * widthPx + x]! >= 64 ? run + 1 : 0
