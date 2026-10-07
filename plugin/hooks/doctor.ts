@@ -513,6 +513,12 @@ export interface TerminalFacts {
   ink?: string
   background?: string
   colors: 'terminal' | 'theme'
+  /**
+   * Claude Code's own decision on drawing pictures (its probe of the
+   * terminal), as a blit to one of kittex's Images read it: `unknown` before
+   * kittex drew one, `pending` while Claude Code hasn't asked the terminal.
+   */
+  claude?: { state: 'unknown' | 'pending' | 'yes' | 'no'; source?: string }
 }
 
 export interface StreamingFacts {
@@ -603,6 +609,13 @@ export function formatDoctor(facts: DoctorFacts): string {
     const where = [program ? plain(program) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
     if (t.images) {
       line(OK, `${name}${where ? ` (${where})` : ''}: kitty graphics with Unicode placeholders`)
+      const c = t.claude
+      const said = c?.source ? ` (${plain(c.source)})` : ''
+      if (c?.state === 'yes') line(OK, 'Claude Code draws the pictures: kitty answered its graphics query')
+      else if (c?.state === 'no') {
+        line(NO, `Claude Code draws no pictures here${said}, so kittex shows math as Unicode text. Where this terminal does show kitty graphics and only answered late (ssh, a busy machine), start Claude Code with ${code('CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1')} to skip its check.`)
+      } else if (c?.state === 'pending') line(INFO, `Claude Code hasn't asked the terminal about pictures yet${said}: run this again in a moment`)
+      else if (c) line(INFO, "Claude Code's own check on pictures: known once kittex has drawn an image (run this again after a reply with math)")
     } else {
       const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
       line(NO, `${name}${where ? ` (${where})` : ''}: ${why}. kittex shows math as Unicode text instead; images work in kitty (0.28 or newer) and Ghostty${t.multiplexer ? `, outside ${t.multiplexer}` : ''}.`)
