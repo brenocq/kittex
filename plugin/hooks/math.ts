@@ -1195,16 +1195,21 @@ function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv,
     choice.options = inlineOptions(choice.segment.tex, inlineEnv, width - QUOTE_INDENT * quotesOpening(line))
   }
   const live = () => [...choices.values()].filter(choice => choice.choice < choice.options.length)
-  let parts: BlockPart[] | null = null
+  let parts: BlockPart[] = []
+  /** Where the run as written ends in `source` (a display formula's stand-in after it is not written yet). */
+  let written = 0
   for (let layouts = 0; ; layouts++) {
     source = build()
+    written = source.length
     if (display) source += blockOpening(source).before + 'x'
     // At a piece's start, the blank lines the landing drops from it (piecesOf): read without them.
     const skip = plan.anchor === plan.piece ? (/^(?:[ \t]*\r?\n)+/.exec(source)?.[0].length ?? 0) : 0
-    parts = skip === 0 ? blockParts(source) : (blockParts(source.slice(skip))?.map(part => ({ ...part, start: part.start + skip, end: part.end + skip, block: (part.block ?? part.start) + skip })) ?? null)
+    // Read as the landing reads a piece (partsOf): where marked's tokens don't account for all of it, the parts of
+    // its longest start that ends at a blank line, then the rest as a part whose rows aren't known.
+    parts = skip === 0 ? partsOf(source) : partsOf(source.slice(skip)).map(part => ({ ...part, start: part.start + skip, end: part.end + skip, block: (part.block ?? part.start) + skip }))
     const open = live().filter(choice => !choice.done)
     if (open.length === 0) break
-    if (!parts || layouts > MAX_RELAYOUTS) {
+    if (parts.length === 0 || layouts > MAX_RELAYOUTS) {
       for (const choice of open) choice.choice = choice.options.length
       break
     }
@@ -1222,10 +1227,14 @@ function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv,
         changed = true
       }
     }
+    // The engine reads the whole text as markdown or as written: a paragraph with no markdown of its own in a text
+    // that reads as markdown is laid out as markdown, as the landing lays it out (layOut: a hard line break).
+    const markdown = readAsMarkdown(writer.recent().slice(0, plan.anchor) + source.slice(0, written))
     for (const [part, inside] of inPart) {
       if (inside.every(choice => choice.done)) continue
       const spans = inside.map(choice => ({ start: choice.start - part.start, end: choice.end - part.start, width: choice.options[choice.choice]!.columns }))
-      const layout = layoutPart(part, source.slice(part.start, part.end), spans, width, env.columns, mode)
+      const block = source.slice(part.start, part.end)
+      const layout = layoutPart(part, part.paragraph && markdown && !readAsMarkdown(block) ? block + '\n\nx' : block, spans, width, env.columns, mode)
       for (const [i, choice] of inside.entries()) {
         if (layout?.places[i]) {
           // A table's columns follow every cell: its formulas are asked again until none moves.
@@ -1244,8 +1253,10 @@ function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv,
     }
     if (!changed) break
   }
-  // The text read again from the start of its last block: what comes before it is laid out for good.
-  const last = parts?.at(-1)
+  // The text read again from the start of its last block: what comes before it is laid out for good. Not a
+  // display formula's stand-in's: its block may not start where the stand-in does (a diagram TeX doesn't draw is
+  // written as it came, in a quote after the line's `>`s).
+  const last = parts.findLast(part => part.start < written)
   if (last) plan.anchor += last.block ?? last.start
 }
 
@@ -1397,7 +1408,8 @@ export function holdFrom(text: string, segments: readonly Segment[]): number | u
   const first = segments[0]?.start ?? 0
   // The table the last line is in: a header with a `|`, its delimiter row (the first: a row may look like
   // one), then rows up to the last line that start no other block.
-  const ended = lines.findLastIndex(line => ENDS_TABLE.test(line.text))
+  // (A delimiter row may start as a list item does: `- | :--- | -`.)
+  const ended = lines.findLastIndex((line, k) => ENDS_TABLE.test(line.text) && !(k > 0 && DELIMITER_ROW.test(line.text) && /[|:]/.test(line.text) && lines[k - 1]!.text.includes('|')))
   let top: number | undefined
   for (let d = Math.max(1, ended + 2); d < lines.length; d++) {
     if (DELIMITER_ROW.test(lines[d]!.text) && /[|:]/.test(lines[d]!.text) && lines[d - 1]!.text.includes('|')) {
@@ -1507,8 +1519,17 @@ export class MessageStream {
         const document = segment.kind === 'math' && !(segment.diagram !== undefined && quoted(segment)) ? texDocument(segment, env) : undefined
         if (document && !texBook.known(document) && !pending.some(one => one.text === document.text)) pending.push(document)
       }
-      this.held = [...segments.slice(wait), ...this.held]
-      segments = segments.slice(0, wait)
+      // Held from the start of its line: what is written now ends at a line's end, as a flush does, so the
+      // formulas before it are decided on whole lines, as the landing reads them (a line cut short may read as
+      // no part at all: `- Holds ` before `$x^{2$`).
+      let line = this.pushed.lastIndexOf('\n', segments[wait]!.start - 1) + 1
+      // In a table holding inline math, from where it is held (holdFrom), as when a flush ends in it: its rows
+      // written now would be laid out without the rows TeX holds back.
+      const table = env.inline && env.images ? holdFrom(this.pushed.slice(0, line), splitAt(segments.slice(0, wait), line)[0]) : undefined
+      if (table !== undefined) line = Math.min(line, table)
+      const [now, held] = splitAt(segments.slice(0, wait), line)
+      this.held = [...held, ...segments.slice(wait), ...this.held]
+      segments = now
     }
     const waiting = pending.length > 0 ? { pending } : {}
     if (segments.length === 0) return { text: HELD_DISPLAY, records: [], ...waiting }
@@ -1804,10 +1825,28 @@ interface InlineMark {
 }
 
 /**
- * How many times a plan is drawn: math read back as LaTeX that got no image
- * takes its next form each time (padded, unpadded, plain: see planLanded).
+ * How many times a plan may be drawn: math read back as LaTeX that got no
+ * image takes its next form (padded, unpadded, plain: see planLanded), one
+ * formula a part at a time, as streaming decides them (MAX_RELAYOUTS).
  */
-const PLAN_PASSES = 4
+const PLAN_PASSES = MAX_RELAYOUTS + 2
+
+/**
+ * Math read back as LaTeX that a plan's pass gave no image (by InlineMark id),
+ * as streaming moves it on (decideInline): the first such formula of each part
+ * the replay follows up to it takes its next form (`next`); those of a part it
+ * doesn't follow up to them, or of no part it lays out, are plain at once (`plain`).
+ */
+interface Unplaced {
+  next: number[]
+  plain: number[]
+}
+
+/** What a plan's passes work out alike (display formulas measured and previewed), kept across them. */
+interface PlanMemo {
+  rows: Map<string, number | TexError>
+  lines: Map<string, string[] | null>
+}
 
 /** What may hold LaTeX as written: math delimiters, a bare environment, a ```math fence. */
 const LATEX_HINT = new RegExp(String.raw`\$|\\[([]|\\begin\{|${MATH_FENCE}`)
@@ -1852,13 +1891,17 @@ export function planLanded(text: string, records: readonly PreviewRecord[], opti
   // formula padded for an image that its part's layout then didn't place
   // (its row too narrow) takes its next form, as streaming tries them
   // (padded, then unpadded where its image fits its Unicode's cells, then
-  // plain), and the plan is drawn again.
+  // plain), and the plan is drawn again. One formula a part at a time, as
+  // streaming moves them on: in a table each form changes the columns, so
+  // moving them all at once can settle on other forms than the live landing's.
   let forms = new Map<number, number>()
+  const memo: PlanMemo = { rows: new Map(), lines: new Map() }
   for (let pass = 1; ; pass++) {
-    const { plan, unplaced } = planOnce(text, records, options, forms)
-    if (unplaced.length === 0 || pass === PLAN_PASSES) return plan
+    const { plan, unplaced } = planOnce(text, records, options, forms, memo)
+    if ((unplaced.next.length === 0 && unplaced.plain.length === 0) || pass === PLAN_PASSES) return plan
     forms = new Map(forms)
-    for (const id of unplaced) forms.set(id, (forms.get(id) ?? 0) + 1)
+    for (const id of unplaced.next) forms.set(id, (forms.get(id) ?? 0) + 1)
+    for (const id of unplaced.plain) forms.set(id, 2)
   }
 }
 
@@ -1889,7 +1932,7 @@ function nestedAt(text: string, at: number): boolean {
  * `forms` gives it (by InlineMark id: 0 padded, 1 unpadded, 2 plain); and
  * those written padded or unpadded that got no image.
  */
-function planOnce(text: string, records: readonly PreviewRecord[], options: PlanOptions, forms: ReadonlyMap<number, number>): { plan: LandedPlan; unplaced: number[] } {
+function planOnce(text: string, records: readonly PreviewRecord[], options: PlanOptions, forms: ReadonlyMap<number, number>, memo: PlanMemo): { plan: LandedPlan; unplaced: Unplaced } {
   let inlineId = 0
   const writer = new MarkdownWriter()
   const items: Item[] = []
@@ -1900,7 +1943,7 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
   const positional = records.some(record => record.at !== undefined)
   // The rows a display formula's image takes: measured, or drawn where only a drawing is given.
   const { draw } = options
-  const measure =
+  const measureOnce =
     options.measure ??
     (draw
       ? (tex: string, columns: number) => {
@@ -1914,6 +1957,30 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
           }
         }
       : undefined)
+  // Kept across passes: a pass differs from the one before only in the forms of some inline math.
+  const measure = measureOnce
+    ? (tex: string, columns: number): number => {
+        const key = `${columns}\n${tex}`
+        let rows = memo.rows.get(key)
+        if (rows === undefined) {
+          try {
+            rows = measureOnce(tex, columns)
+          } catch (error) {
+            if (!(error instanceof TexError)) throw error
+            rows = error
+          }
+          memo.rows.set(key, rows)
+        }
+        if (rows instanceof TexError) throw rows
+        return rows
+      }
+    : undefined
+  const previewLines = (tex: string, columns: number, rows?: number): string[] | null => {
+    const key = `${columns}\n${rows ?? ''}\n${tex}`
+    let lines = memo.lines.get(key)
+    if (lines === undefined) memo.lines.set(key, (lines = displayPreviewLines(tex, columns, rows)))
+    return lines && [...lines]
+  }
   let changed = false
 
   const put = (item: Item): string => {
@@ -1955,7 +2022,7 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       refused(tex, reasonOf(error), nested)
       return true
     }
-    const lines = displayPreviewLines(tex, columns, rows)
+    const lines = previewLines(tex, columns, rows)
     if (!lines) return false
     markBlock(lines, { tex, columns, rows, ...(quote !== undefined ? { quote } : {}) })
     return true
@@ -1985,9 +2052,10 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       if (!(error instanceof TexError)) throw error
       return refused(tex, reasonOf(error), nested)
     }
-    const lines = displayPreviewLines(tex, columns, rows)
+    const lines = previewLines(tex, columns, rows)
     if (lines) return void writer.block(lines)
-    const reason = refusal(tex)
+    // Unmeasured, streaming asks MathJax alone (no TeX: no image could be placed there).
+    const reason = measured ? refusal(tex) : texErrorOf(tex, { cellWidth: 10, cellHeight: 20, emPx: 16, maxColumns, ink: { r: 0, g: 0, b: 0 } })
     if (reason) refused(tex, reason, nested)
     else writer.block(sourceMarkdownLines(tex))
   }
@@ -2033,8 +2101,11 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
         const id = inlineId++
         const form = forms.get(id) ?? 0
         const env = options.inline?.env
-        const preview = !env || form > 1 ? null : form === 0 ? (inlinePreview(segment.tex, env, options.inline!.width) ?? texInlinePreview(segment.tex, env, options.inline!.width)) : narrowPreview(segment.tex, env)
-        const padded = preview && preview.columns <= options.inline!.width ? preview : null
+        // In a quote the formula's row is the quote's text, two cells in per quote, as streaming measures it.
+        const row = env ? options.inline!.width - QUOTE_INDENT * quotesOpening(unmarked(writer.recent())) : 0
+        // Its forms as streaming has them (padded, then unpadded), worked out once for every pass.
+        const preview = !env || form > 1 ? null : (inlineOptions(segment.tex, env, row)[form] ?? null)
+        const padded = preview && preview.columns <= row ? preview : null
         if (padded) {
           mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: fallback, id })
           continue
@@ -2120,7 +2191,7 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     at = span.end
   }
   prose(text.slice(at), at)
-  const unplaced: number[] = []
+  const unplaced: Unplaced = { next: [], plain: [] }
   const planned = writer.take()
   let pieces = placeOverlays(piecesOf(planned, items), marks, options, readAsMarkdown(unmarked(planned)), unplaced)
   if (pieces.length > 1 && readAsMarkdown(unmarked(planned))) {
@@ -2147,6 +2218,8 @@ type MarkedSpan = SourceSpan & { mark: InlineMark }
 interface LaidOut {
   images: [MarkedSpan, InlineImage][]
   rows: number | null
+  /** Where in the part the replay stops following it (its layout's `stop`); null where it lays none of it out. */
+  stop?: number | null
 }
 
 /**
@@ -2167,7 +2240,7 @@ interface LaidOut {
  * read back as LaTeX, its plain Unicode where that moves no image.
  * `markdown`: the whole planned text is one the engine reads as markdown.
  */
-function placeOverlays(pieces: readonly Piece[], marks: readonly InlineMark[], options: PlanOptions, markdown: boolean, unplaced: number[] = []): Piece[] {
+function placeOverlays(pieces: readonly Piece[], marks: readonly InlineMark[], options: PlanOptions, markdown: boolean, unplaced: Unplaced = { next: [], plain: [] }): Piece[] {
   const out: Piece[] = []
   for (const piece of pieces) {
     if (piece.kind !== 'prose' || !piece.text.includes(MARK_OPEN)) {
@@ -2192,6 +2265,8 @@ function placeOverlays(pieces: readonly Piece[], marks: readonly InlineMark[], o
     const inside = parts.map(part => spans.filter(span => span.start >= part.start && span.end <= part.end))
     const lastMarked = inside.findLastIndex(list => list.length > 0)
     const placed = new Set<MarkedSpan>()
+    /** The spans of the parts laid out. */
+    const seen = new Set<MarkedSpan>()
     /** Runs of parts drawn as one piece: where each starts, its gap, its images, and the end of the last part that has one. */
     const runs: { start: number; gap: boolean; images: InlineImage[]; drawnTo: number }[] = []
     /** The current run's rows so far, to the end of its last part; null where they aren't known. */
@@ -2215,8 +2290,14 @@ function placeOverlays(pieces: readonly Piece[], marks: readonly InlineMark[], o
         run.drawnTo = part.end
       }
       rows = laid.rows === null ? null : offset + laid.rows
+      // Math read back as LaTeX left without an image here moves on as streaming moves it (see Unplaced).
+      const missing = own.filter(span => span.mark.id !== undefined && !placed.has(span))
+      const first = missing[0]
+      if (first && laid.stop !== null && (laid.stop === undefined || first.end - part.start <= laid.stop)) unplaced.next.push(first.mark.id!)
+      else for (const span of missing) unplaced.plain.push(span.mark.id!)
+      for (const span of own) seen.add(span)
     }
-    for (const span of spans) if (span.mark.id !== undefined && !placed.has(span)) unplaced.push(span.mark.id)
+    for (const span of spans) if (span.mark.id !== undefined && !seen.has(span)) unplaced.plain.push(span.mark.id)
 
     // Text with math read back as LaTeX that got no image in its plain form, where that moves no image (after a run's last one).
     const plainFrom = (from: number, to: number, after: number) => {
@@ -2314,13 +2395,13 @@ function layOut(block: string, part: BlockPart, spans: readonly MarkedSpan[], op
   // A rule is drawn as its `---`, one row of the prose run (blocks.ts).
   if (part.type === 'hr') return { images: [], rows: 1 }
   if (part.quote) return placeQuote(block, spans, part.start, options)
-  if (!(part.paragraph || part.list || part.heading || part.table)) return { images: [], rows: null }
+  if (!(part.paragraph || part.list || part.heading || part.table)) return { images: [], rows: null, stop: null }
   // A paragraph with no markdown of its own in a text the engine reads as markdown is laid out as markdown.
   const asMarkdown = part.paragraph && markdown && !readAsMarkdown(block)
   const layout = layoutOf(part, options)
   const laid = placeImages(asMarkdown ? block + '\n\nx' : block, spans, part.start, options, layout)
   const known = laid.layout && laid.layout.stop === undefined ? laid.layout.rows - (asMarkdown ? 2 : 0) : null
-  return { images: laid.images, rows: known }
+  return { images: laid.images, rows: known, stop: laid.layout ? laid.layout.stop : null }
 }
 
 /**
@@ -2417,6 +2498,8 @@ function bodyOf(block: string, span: SourceSpan): SourceSpan | null {
  * whose pad went to another row (a table cell narrower than it: its row
  * grows, while streaming as once landed) is drawn over its Unicode alone, at
  * `bodies`' cells (`bodyPlaces`), where its image fits them (measureInline).
+ * Not math read back as LaTeX: streaming never leaves a pad on another row,
+ * it writes the formula unpadded, and so does the plan's next pass.
  */
 function inlineImages(
   spans: readonly MarkedSpan[],
@@ -2433,7 +2516,7 @@ function inlineImages(
     let place = whole && whole.columns === mark.columns ? whole : null
     let columns = mark.columns
     const body = bodyPlaces[k]
-    if (!place && body && body.columns === bodies[k]!.width && measureInline(mark.tex, inline.env, body.columns)?.columns === body.columns) {
+    if (!place && mark.plain === undefined && body && body.columns === bodies[k]!.width && measureInline(mark.tex, inline.env, body.columns)?.columns === body.columns) {
       place = body
       columns = body.columns
     }
@@ -2471,7 +2554,7 @@ function placeQuote(quote: string, spans: readonly MarkedSpan[], offset: number,
     ...inline.map(span => ({ start: span.start - offset, end: span.end - offset, width: span.width })),
     ...quoted.map(firstLine),
   ], modeOf(options), true)
-  if (!layout) return { images: placeQuoted(quote, quoted.filter(span => (span.mark.quote ?? 1) === 1), offset, options), rows: null }
+  if (!layout) return { images: placeQuoted(quote, quoted.filter(span => (span.mark.quote ?? 1) === 1), offset, options), rows: null, stop: null }
   const images = options.inline ? inlineImages(inline, layout.places.slice(0, inline.length), options.inline, layout.lines) : []
   for (const [k, span] of quoted.entries()) {
     const place = layout.places[inline.length + k]
@@ -2483,7 +2566,7 @@ function placeQuote(quote: string, spans: readonly MarkedSpan[], offset: number,
       if (!(error instanceof TexError)) throw error
     }
   }
-  return { images, rows: layout.stop === undefined ? layout.rows : null }
+  return { images, rows: layout.stop === undefined ? layout.rows : null, stop: layout.stop }
 }
 
 /**
@@ -2727,7 +2810,9 @@ export function relaxedUnicode(tex: string): string | null {
 function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
   const kind = segment.diagram!
   const drawn = env.images && env.tex?.block && env.math?.block !== 'unicode' && writer.quoteDepth() === 0
-  const nested = drawn && itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) !== undefined
+  // In a list item, followed or not, as the landing finds it (nestedAt): it draws no picture there.
+  const head = writer.recent().slice(plan.anchor)
+  const nested = drawn && (nestedAt(head, head.length) || itemIndent(head, proseWidthFor(env), linkModeOf(env)) !== undefined)
   const job = drawn && !nested ? diagramJob(segment.tex, kind) : undefined
   if (!job) return writer.text(segment.raw)
   const { maxColumns } = renderEnvFor(env)

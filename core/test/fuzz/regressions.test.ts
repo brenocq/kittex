@@ -369,6 +369,106 @@ describe('fuzz regressions', () => {
     expect(failures(table, {}, ['resumed'])).toEqual([])
   })
 
+  // FUZZ-16, the stream's part (fix/resume-parity): a formula the stream waits
+  // on TeX for (one MathJax refuses) cut what it wrote there, mid-line, so the
+  // formulas before it were decided on a line cut short (`- Holds ` read as no
+  // part at all) and streamed plain, where resumed, the line whole, drew them;
+  // in a table the rows written before the wait were laid out without the rows
+  // it held. Fixed: what TeX holds is held from its line's start, or from where
+  // a table holding inline math is held (holdFrom).
+  test('FUZZ-16: formulas before one TeX holds are decided on whole lines, live as resumed', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['$\\star$ \n- Holds $x^{2$ \n', { flushSeed: 307125138, tex: true }],
+      ['$P(A B)$ | | | |\n--- | ---: | :--- | --------\n$\\undefinedmacro$ \nthat | where diverges ', { columns: 40, tex: true }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
+  })
+
+  // FUZZ-16, the stream's part: the stream laid each part out alone, so a
+  // paragraph with no markdown of its own was read as written (a hard line
+  // break's two spaces not followed) where the landing, the whole text read
+  // as markdown, laid it out as markdown and placed the formula after the
+  // break; it read the text after a diagram TeX doesn't draw (written as it
+  // came, no blank line before it) from a cell too far, a fence's first
+  // backtick lost, or in a quote from after the line's `>`s (the fence read
+  // as code to the end); and a text marked can't read whole as no part at all where
+  // the landing reads its start (partsOf). Fixed: the stream reads parts as
+  // the landing does.
+  test('FUZZ-16: the stream reads parts as the landing reads them', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['$\\sigma^2$:  \n$\\sin\\theta$ \n\n$$', {}],
+      ['$\\langle\\phi|\\psi\\rangle$ \n```latex\n\\sqrt{c}\n```\n$\\langle \\rangle$ ', { tex: true }],
+      ['$\\mathbbm{1}$ \n\n> * = \n ', { flushSeed: 911639543 }],
+      ['$\\operatorname{Var}(X)$ \n> >  ~~~latex\n> > 2)\n> > ~~~\n\n$\\|v\\|_2$ ', { tex: true }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
+  })
+
+  // FUZZ-16, the landing's part: math read back as LaTeX in a quote was
+  // padded for a row as wide as the prose, where streaming measures it
+  // against the quote's text (two cells in per quote): a formula too wide
+  // for that streamed plain and resumed drew an image.
+  test('FUZZ-16: resumed math in a quote is measured against the quote\'s text', () => {
+    const md = '> > $f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5 + a_6 x^6$ \n'
+    expect(failures(md, { columns: 46 }, ['resumed', 'inlineImage', 'padVisible'])).toEqual([])
+  })
+
+  // FUZZ-16 and the unknown resumed/rows (seeds 2607, 7887, 8293): math read
+  // back as LaTeX that a pass left without an image all took its next form
+  // at once, where streaming moves one formula a part at a time and lays the
+  // part out again (in a table each form changes the columns): resumed
+  // tables settled on other forms, other column widths and other rows; and a
+  // padded formula whose pad went to the next row of its cell was drawn over
+  // its Unicode, the pad left on that row, where streaming writes it
+  // unpadded. Fixed: planLanded moves them on as decideInline does, and math
+  // read back as LaTeX is never drawn over its Unicode alone.
+  test('FUZZ-16: resumed tables settle on the forms the live landing drew', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['$\\mathfrak{g}$ | | |\n--- | - | -------- \n|\nvariance | $\\sum_{i=1}^{n} x_i^2 x_1^2 x_n^2$ | $P(A \\mid B)$ \n', { columns: 40 }],
+      ['or | $a < b > c$ \n:---: | :---: \n1]$ | $x_{k+1} - f(x_k)$ \n$a_1 + a_2 + a_5 + a_6 + a_7 + a_8 + a_9 + a_{10} + a_{11} + a_{12} + a_{13} + a_{14} + a_{15}$ | operator \n', { columns: 60 }],
+      ['as | | |\n- | :---: | :--- \ndeterminant \nfor | | because \nvariance | $\\Pr[X = 1]$ ', { columns: 40, cellWidth: 10, cellHeight: 20, terminal: 'ghostty' }],
+      ['$|x|$ | | | $P(A \n--- | - | :---: | ---: \ngives | [limit](https://github.com/owner/repo/issues/42) \n|\noperator | | $A^{-1}$ \n\nconverges', { columns: 62, terminal: 'ghostty', links: 'text' }],
+      ['B)$ | | converges \n---: | :--- | --- \nthat | $x_1 * y_2$ \n| | determinant \nsample \n', { columns: 28 }],
+      ['$|a| + |b|$ | operator | | | bound | note \n:---: | - | --- | --- | - | -\n$A^{-1}$ | | | therefore \n1` | \n', { columns: 52 }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
+  })
+
+  // FUZZ-3 and FUZZ-4, the stream's part: a formula streamed padded, then
+  // something later in its part made the landing lose it, its pad left: a
+  // code fence still open at the end of a flush, lexed without its newline,
+  // read as a lazy line of the quote before it (the part not split, so the
+  // stream wrote the formula plain where the landing placed it); a lazy line
+  // after a quote, which marked ends with a newline the text doesn't have
+  // (blockParts null: no part); a table whose delimiter row starts as a list
+  // item does (`- | :--- | -`), not held while its rows came, its layout
+  // changed by a later row. Fixed: guards.
+  test('FUZZ-3/4: an open fence, a lazy line or a delimiter row like an item keep the part streamed', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['not.\n> 2) $a b$ state.\n```python\n```\n', {}],
+      ['> * $\\theta$ with.\neach:', {}],
+      ['$|x|$ | | |\n- | :--- | -\nposterior \n|', { columns: 25, terminal: 'ghostty' }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
+  })
+
+  // FUZZ-3 resumed/structure and FUZZ-9: a display formula MathJax refuses
+  // in a quote the replay doesn't follow streamed its source and MathJax's
+  // note (no TeX asked: no image could be placed there), where resumed asked
+  // the local TeX, which drew it, and wrote the source alone; and a diagram
+  // in a list item the replay doesn't follow streamed as its placeholder,
+  // which the landing (nestedAt) never draws over (a blank box live, the
+  // source resumed). Fixed: resumed asks MathJax alone where it doesn't
+  // measure, and the stream writes such a diagram as it came.
+  test('FUZZ-3/9: a refused display in a quote, or a diagram in an item, the replay does not follow land as resumed', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['> Vector to sample.  \n>\n> $$\n> \\hfill \n> $$\n', { columns: 20, tex: true }],
+      ['> 数学 \n> > $$\n> > \\foo{x} \n> > $$', { terminal: 'ghostty', tex: true }],
+      ['- $x<y$ \n\n  \\begin{tikzpicture}\\draw (1,1);\\end{tikzpicture}', { inline: 'raw', tex: true }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'displayImage']) }).toEqual({ md, failures: [] })
+  })
+
   // FUZZ-14. remember() kept the newest RECORD_LIMIT (512) previews for the
   // whole session: once a session had streamed more distinct previews, an
   // earlier block that redraws (a resize, a theme change, scrolling in the

@@ -43,16 +43,19 @@ export const KNOWN: readonly Known[] = [
       /^padVisible\/pad:opaque-/,
       /^padVisible\/pad:[\w-]+-refused-/,
       /^inlineImage\/inline-missing:as-written-refused-/,
-      /^resumed\/(pads-left-live|structure)$/,
+      // (resumed/structure is fixed, fix/resume-parity: a refused display in a quote the replay doesn't follow, a
+      // diagram in such a list item.) What is left: the live landing's pads where the resumed one has none.
+      /^resumed\/pads-left-live$/,
     ],
   },
   {
-    // The header-row case is fixed (fix/stream-plan: a table with inline math is held until it ends).
+    // The header-row case is fixed (fix/stream-plan: a table with inline math is held until it ends), and so are
+    // tables (fix/resume-parity: held across a wait for TeX, and when their delimiter row starts `- |`).
     id: 'FUZZ-4',
     title: 'an inline preview wider than its table cell or list item text, or than the row with punctuation glued to it, is padded, wraps, and never gets its image',
     keys: [
-      /^inlineImage\/inline-missing:(table|list|heading|blockquote|paragraph)-laid-out$/,
-      /^padVisible\/pad:(table|list|blockquote|paragraph)$/,
+      /^inlineImage\/inline-missing:(list|heading|blockquote|paragraph)-laid-out$/,
+      /^padVisible\/pad:(list|blockquote|paragraph)$/,
       // The formula after such a wrapped preview, misplaced by a cell (the replay's hard wrap puts its zero-width mark on the next row).
       /^predicted\/inline$/,
       /^overPreview\/inline:list>list$/,
@@ -94,9 +97,10 @@ export const KNOWN: readonly Known[] = [
     // Also without a long list: a display in an item nested under a lazy line (seed 7952).
   },
   {
-    // Mostly fixed (fix/stream-plan: the stream reads parts as the landing does); what is left is the landing's:
-    // no link mode without inline images, the resumed plan's passes (padded, then plain), refused display math
-    // in quotes, rescanned dollars.
+    // Mostly fixed (fix/stream-plan, fix/resume-parity: the stream reads parts as the landing does, and the
+    // resumed plan moves its formulas on one a part at a time, as the stream does). What is left is the stream's
+    // reading of a text not finished: written as it came (no markdown yet: a whitespace-only line, a hard line
+    // break's spaces) where the whole reads as markdown, or a paragraph a later `===` makes a heading.
     id: 'FUZZ-16',
     title: 'resumed lands images where the live landing keeps Unicode: streaming refuses a part (its block so far) that the landing lays out alone',
     keys: [/^resumed\/(resumed|live)-only-[diq]+$/, /^resumed\/images-differ$/],
