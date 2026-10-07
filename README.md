@@ -28,6 +28,69 @@ Then ask Claude something with math in it:
 Derive the quadratic formula step by step
 ```
 
+Diagrams (TikZ, pgfplots, tikz-cd, circuitikz, chemfig) are drawn by your own TeX, so they need a TeX install:
+
+<details>
+<summary><b>Arch Linux</b></summary>
+<br>
+
+```
+sudo pacman -S --needed texlive-basic texlive-latex texlive-latexrecommended texlive-latexextra texlive-pictures texlive-mathscience texlive-plaingeneric dvisvgm bubblewrap
+```
+
+</details>
+
+<details>
+<summary><b>Debian, Ubuntu</b></summary>
+<br>
+
+```
+sudo apt install texlive-latex-extra texlive-pictures texlive-science texlive-plain-generic preview-latex-style dvisvgm bubblewrap
+```
+
+</details>
+
+<details>
+<summary><b>Fedora</b></summary>
+<br>
+
+```
+sudo dnf install texlive-latex texlive-dvisvgm texlive-standalone texlive-amsmath texlive-amsfonts texlive-pgf texlive-pgfplots texlive-tikz-cd texlive-circuitikz texlive-chemfig texlive-simplekv texlive-siunitx texlive-dvips texlive-mathtools texlive-preview texlive-mylatexformat bubblewrap
+```
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+<br>
+
+```
+brew install --cask basictex
+sudo /Library/TeX/texbin/tlmgr update --self
+sudo /Library/TeX/texbin/tlmgr install dvisvgm standalone amsmath amsfonts pgf pgfplots tikz-cd circuitikz chemfig simplekv siunitx dvips mathtools preview mylatexformat
+```
+
+Or the full MacTeX, everything included (about 6 GB): `brew install --cask mactex-no-gui`.
+macOS has no bubblewrap, so TeX runs unconfined there (see [Local LaTeX](#config)).
+
+</details>
+
+<details>
+<summary><b>Other (TeX Live)</b></summary>
+<br>
+
+Install [TeX Live](https://tug.org/texlive/) (its basic scheme is enough), then:
+
+```
+tlmgr install dvisvgm standalone amsmath amsfonts pgf pgfplots tikz-cd circuitikz chemfig simplekv siunitx dvips mathtools preview mylatexformat
+```
+
+On Linux, also install `bubblewrap` from your distribution.
+
+</details>
+
+Then restart Claude Code and run `/kittex-doctor` to check.
+
 > [!NOTE]
 > **On Team and Enterprise plans**, Claude Code doesn't let plugins change a
 > reply while it streams, so you'll see Claude's raw LaTeX until each part is
@@ -77,8 +140,13 @@ Change these in `/config`.
 <summary><b>Local LaTeX</b>: diagrams and math MathJax can't render, with your TeX install</summary>
 <br>
 
-- `auto` (default): TikZ, pgfplots, chemfig and circuitikz diagrams, and math MathJax can't render, drawn with your TeX when `latex` and `dvisvgm` are on your PATH.
+- `auto` (default): TikZ, pgfplots, tikz-cd, chemfig and circuitikz diagrams, and math MathJax can't render, drawn with your TeX once it is [installed](#install).
 - `off`: never runs TeX; diagrams stay code blocks.
+
+TeX runs with its shell escape off and a time limit, and kittex refuses any diagram that reads a file by its path.
+On Linux, bubblewrap also hides your home folder and the network from it, and prlimit caps its CPU time and file sizes.
+macOS has neither, so there TeX can read the files you can: choose `off` if that matters to you.
+`/kittex-doctor` shows which of these apply on your machine.
 
 </details>
 
@@ -128,6 +196,17 @@ kittex sends the same note along with your first message instead, and again
 after `/clear` or a compaction. Either way Claude writes LaTeX without being
 asked, and nothing is added to your CLAUDE.md. Setting both Block math and
 Inline math to `raw` stops the note too.
+
+</details>
+
+<details>
+<summary><b>Something isn't rendering. How do I check?</b></summary>
+<br>
+
+Run `/kittex-doctor` in Claude Code. It checks your terminal (images, cell
+size, font, colours), whether replies reach kittex while they stream, your
+options, and the TeX behind diagrams (commands, packages, confinement and a
+test picture), and prints the install command for anything missing.
 
 </details>
 
