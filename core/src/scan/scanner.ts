@@ -20,6 +20,7 @@
 import type { MathDelimiter, Segment } from '../types.js'
 import {
   closesFence,
+  DIAGRAM_ENVS,
   delimitsTable,
   type DisplayKind,
   endsTable,
@@ -54,6 +55,8 @@ interface Fence {
 
 interface MathFence {
   t: 'mathfence'
+  /** A diagram's fence (LineScannerOptions.diagrams), held as a ```math fence is. */
+  diagram?: 'latex' | 'tikz'
   ch: string
   len: number
   indent: number
@@ -79,6 +82,9 @@ interface Released {
   kind: DisplayKind
   depth: number
 }
+
+/** What kind of diagram a held block is (the math segment's `diagram`). */
+type Diagram = 'latex' | 'tikz' | 'env'
 
 type State = { t: 'normal' } | Fence | MathFence | Display | Released
 
@@ -157,7 +163,18 @@ export class Scanner {
   private table: { depth: number } | null = null
   private readonly isRow = (line: Line): boolean => this.rows.has(line.start)
 
-  constructor(private readonly maxHeldLines: number) {}
+  constructor(
+    private readonly maxHeldLines: number,
+    /** Hold diagrams for TeX too (LineScannerOptions.diagrams), up to maxDiagramLines lines. */
+    private readonly diagrams = false,
+    private readonly maxDiagramLines = 400,
+  ) {}
+
+  /** Lines a held block may hold before it is released as text. */
+  private holdLimit(st: Display | MathFence): number {
+    const diagram = st.t === 'mathfence' ? st.diagram !== undefined : DIAGRAM_ENVS.has(st.kind)
+    return diagram ? this.maxDiagramLines : this.maxHeldLines
+  }
 
   push(delta: string, final: boolean): Segment[] {
     const text = this.partial + delta
@@ -196,10 +213,10 @@ export class Scanner {
   /** End of a streaming batch: return what is settled, release what was held too long. */
   private settle(): void {
     const st = this.state
-    if (st.t === 'display' && st.lines.length > this.maxHeldLines) {
+    if (st.t === 'display' && st.lines.length > this.holdLimit(st)) {
       this.out.lines(st.lines)
       this.state = { t: 'released', kind: st.kind, depth: st.depth }
-    } else if (st.t === 'mathfence' && st.lines.length > this.maxHeldLines) {
+    } else if (st.t === 'mathfence' && st.lines.length > this.holdLimit(st)) {
       this.out.lines(st.lines)
       this.state = { t: 'fence', ch: st.ch, len: st.len, indent: st.indent, depth: st.depth }
     }
@@ -306,8 +323,8 @@ export class Scanner {
       if (fence) {
         this.endParagraph()
         const common = { ch: fence.ch, len: fence.len, indent: line.indent, depth: line.depth }
-        if (fence.math) {
-          this.state = { t: 'mathfence', ...common, lines: [line] }
+        if (fence.math || (this.diagrams && fence.diagram)) {
+          this.state = { t: 'mathfence', ...common, lines: [line], ...(fence.math ? {} : { diagram: fence.diagram }) }
         } else {
           this.state = { t: 'fence', ...common }
           this.out.line(line)
@@ -315,14 +332,14 @@ export class Scanner {
         this.after(line)
         return
       }
-      const open = displayOpen(line.body)
+      const open = displayOpen(line.body, this.diagrams)
       if (open && line.start >= (this.ignore.get(open.kind) ?? -1)) {
         this.endParagraph()
         if (open.oneLine) {
           const start = line.start + line.bodyStart
           const end = start + open.oneLine.end
           this.out.text(line.raw.slice(0, line.bodyStart), line.start)
-          this.math(open.delimiter, open.oneLine.tex, line.raw.slice(line.bodyStart, line.bodyStart + open.oneLine.end), start, end)
+          this.math(open.delimiter, open.oneLine.tex, line.raw.slice(line.bodyStart, line.bodyStart + open.oneLine.end), start, end, this.diagrams && DIAGRAM_ENVS.has(open.kind) ? 'env' : undefined)
           this.out.text(line.raw.slice(line.bodyStart + open.oneLine.end), end)
           this.after(line)
         } else {
@@ -404,7 +421,7 @@ export class Scanner {
     const start = first.start + first.bodyStart
     const lastRest = restAt(last, st.depth)
     const end = last.start + (last.prefixEnds[st.depth] ?? 0) + trimEndLength(lastRest)
-    this.emitBlock(lines, start, end, 'fence', tex)
+    this.emitBlock(lines, start, end, 'fence', tex, st.diagram)
   }
 
   private closeDisplay(st: Display, line: Line, closePos: number, closeEnd: number): void {
@@ -423,23 +440,24 @@ export class Scanner {
     this.state = NORMAL
     const start = first.start + first.bodyStart
     const end = line.start + (line.prefixEnds[st.depth] ?? 0) + closeEnd
-    this.emitBlock(lines, start, end, st.delimiter, tex)
+    this.emitBlock(lines, start, end, st.delimiter, tex, this.diagrams && DIAGRAM_ENVS.has(st.kind) ? 'env' : undefined)
     this.after(line)
   }
 
   /** Emits a closed block: the text before its opening delimiter, the math, the rest of its last line. */
-  private emitBlock(lines: readonly Line[], start: number, end: number, delimiter: MathDelimiter, tex: string): void {
+  private emitBlock(lines: readonly Line[], start: number, end: number, delimiter: MathDelimiter, tex: string, diagram?: Diagram): void {
     const first = lines[0]!
     const last = lines[lines.length - 1]!
     const source = lines.map(l => l.raw).join('')
     this.out.text(source.slice(0, start - first.start), first.start)
-    this.math(delimiter, tex, source.slice(start - first.start, end - first.start), start, end)
+    this.math(delimiter, tex, source.slice(start - first.start, end - first.start), start, end, diagram)
     this.out.text(last.raw.slice(end - last.start), end)
   }
 
-  private math(delimiter: MathDelimiter, tex: string, raw: string, start: number, end: number): void {
-    this.out.segment({ kind: 'math', display: true, tex, raw, delimiter, start, end })
+  private math(delimiter: MathDelimiter, tex: string, raw: string, start: number, end: number, diagram?: Diagram): void {
+    this.out.segment({ kind: 'math', display: true, tex, raw, delimiter, start, end, ...(diagram ? { diagram } : {}) })
   }
+
 
   /**
    * A display block that was not one: its lines (and `more`) are processed again

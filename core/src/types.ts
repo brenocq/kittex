@@ -37,11 +37,29 @@ export type Segment =
       delimiter: MathDelimiter
       start: number
       end: number
+      /**
+       * Set only with LineScannerOptions.diagrams: the block is a drawing for
+       * TeX, not math: a ```latex or ```tex fence (`latex`), a ```tikz fence
+       * (`tikz`), or a bare tikzpicture, tikzcd or circuitikz environment
+       * (`env`). `tex` is the fence's content (the environment whole), `raw`
+       * the block as written.
+       */
+      diagram?: 'latex' | 'tikz' | 'env'
     }
 
 export interface LineScannerOptions {
   /** Lines an open display block may hold before it is released as text. Default 40. */
   maxHeldLines?: number
+  /**
+   * Also hold diagrams for TeX (see the math segment's `diagram`): ```latex,
+   * ```tex and ```tikz fences and bare tikzpicture, tikzcd and circuitikz
+   * environments, each held until it closes (released as text past
+   * maxDiagramLines) and returned as a display segment marked `diagram`.
+   * Off by default: they are code and prose as before.
+   */
+  diagrams?: boolean
+  /** Lines an open diagram may hold before it is released as text. Default 400. */
+  maxDiagramLines?: number
 }
 
 /** Scans a reply as it streams in, in batches of whole lines (MessageDisplay deltas). */
