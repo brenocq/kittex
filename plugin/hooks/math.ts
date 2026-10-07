@@ -2240,7 +2240,11 @@ function layOut(block: string, part: BlockPart, spans: readonly MarkedSpan[], op
       if (span.mark.diagram !== undefined) {
         // A diagram's picture, its copy button copying its source.
         const drawn = options.diagram?.(span.mark.tex, span.mark.diagram, span.mark.rows) ?? null
-        if (drawn !== null && 'png' in drawn) images.push([span, { tex: span.mark.tex, image: drawn, row, col: 0, display: true, copy: span.mark.tex }])
+        // As wide as the picture: centred across the placeholder, as its label is.
+        if (drawn !== null && 'png' in drawn) {
+          const col = Math.max(0, Math.floor((span.mark.columns - drawn.columns) / 2))
+          images.push([span, { tex: span.mark.tex, image: drawn, row, col, display: true, copy: span.mark.tex }])
+        }
         continue
       }
       try {

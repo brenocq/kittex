@@ -81,9 +81,9 @@ import {
   streamEnvFor,
   withoutTextOverride,
 } from './math.ts'
-import { altText, fallbackLines, overBudget } from './budget.ts'
+import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import type { InlineSlot, KittexEnv, MathOptions, Piece, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 
 type $ = EngineInterface
@@ -400,8 +400,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // column, a blank row above them where a blank line was. A block that
     // opens with a formula gets the bullet beside the image's first row,
     // where the preview's first line had it.
-    const { pieces } = plan
     // One answer holds at most 2 MiB of Image source: past it, the rest keep their Unicode (budget.ts).
+    // Pictures drawn at fewer pixels first (same cells), so they fit rather than stay placeholders.
+    const pieces = fitPictures(plan.pieces, (image, density) => pictureRedraws.get(image)?.(density))
     const left = overBudget(pieces)
     if (images) cells?.poll()
     const { Box, Button, Image, Text } = $.ui.resolve(e as Extract<LandedEvent, { surface: 'terminal' }>)
@@ -1131,6 +1132,8 @@ async function setUpTex($: $): Promise<void> {
     texBook.setup = setup
     // Blocks drawn before TeX was found (a resumed conversation's) are drawn again with it.
     $.ui.invalidate('ui.render')
+    // The fragment format, dumped once into the cache directory (about a second, in the background).
+    void prepareFormat(host, setup).catch(() => undefined)
   } catch {
     // no TeX: diagrams stay code
   }
@@ -1158,6 +1161,9 @@ function compileAsked(documents: readonly TexDocument[]): void {
   void Promise.all(missing.map(document => texBook.compile(document, TEX_BACKGROUND_MS))).then(() => redraw?.(), () => undefined)
 }
 
+/** How each picture's image is drawn again at fewer pixels (fitPictures). */
+const pictureRedraws = new WeakMap<RenderedImage, (density: number) => RenderedImage>()
+
 /** A diagram's image `rows` tall (its own when not given), for the landing: as TexBook has it, or null / { error } (see PlanOptions.diagram). */
 function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number): RenderedImage | { error: string } | null {
   const job = diagramJob(source, kind)
@@ -1170,7 +1176,10 @@ function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?:
   }
   if (!outcome.ok) return { error: outcome.error }
   try {
-    return cachedImage(`p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`, () => renderPicture(outcome.picture, env, rows))
+    const key = `p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`
+    const image = cachedImage(key, () => renderPicture(outcome.picture, env, rows))
+    if (!pictureRedraws.has(image)) pictureRedraws.set(image, density => cachedImage(`${key}\n${density}`, () => renderPicture(outcome.picture, env, image.rows, density)))
+    return image
   } catch (error) {
     if (error instanceof TexError) return { error: error.message }
     throw error

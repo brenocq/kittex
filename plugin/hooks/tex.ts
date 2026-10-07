@@ -15,7 +15,11 @@ import {
   diagramDocument,
   drawsPicture,
   dvisvgmArgv,
+  FORMAT_SOURCE,
+  formatArgv,
+  formatName,
   isJobDir,
+  latexArgv,
   JOB_NAME,
   jobDirTemplate,
   LATEX_ARGV,
@@ -53,6 +57,8 @@ export interface TexSetup {
   tmpdir: string | undefined
   /** Where outcomes are cached across sessions; absent: not cached on disk. */
   cacheDir?: string
+  /** The dumped fragment format (prepareFormat), once it is there: its name and the directory holding `<name>.fmt`. */
+  format?: { name: string; dir: string }
 }
 
 /** How long a probe command may run. */
@@ -226,12 +232,15 @@ export class TexBook {
       const deadline = Date.now() + timeoutMs
       if (this.active >= MAX_COMPILES) await new Promise<void>(resolve => this.waiting.push(resolve))
       this.active++
-      const outcome = await compileOnce(host, setup, document, deadline, timeoutMs)
-        .catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
-        .finally(() => {
-          this.active--
-          this.waiting.shift()?.()
-        })
+      const once = (doc: TexDocument) => compileOnce(host, setup, doc, deadline, timeoutMs).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
+      let outcome = await once(document)
+      // pgfplots' interpolated shading needs PostScript or PDF: drawn flat instead (same colours per facet).
+      if (!outcome.ok && outcome.lasting && /shader=interp/.test(outcome.error) && INTERP.test(document.text)) {
+        const flat = await once({ ...document, text: document.text.replace(new RegExp(INTERP.source, 'g'), 'shader=flat') })
+        if (flat.ok) outcome = flat
+      }
+      this.active--
+      this.waiting.shift()?.()
       // A passing failure is remembered too (the stream reads it and shows the source), but compiled again when asked.
       this.remember(document, outcome)
       if ((outcome.ok || outcome.lasting) && setup.cacheDir) await store(host, setup, document, outcome)
@@ -240,6 +249,47 @@ export class TexBook {
     this.running.set(document.text, job)
     void job.finally(() => this.running.delete(document.text))
     return job
+  }
+}
+
+/** pgfplots' `shader=interp`, which the SVG driver can't draw (see compile). */
+const INTERP = /shader\s*=\s*interp\b/
+
+/** How long dumping the format may take. */
+const FORMAT_MS = 60_000
+
+/**
+ * Makes the fragment format available (setup.format): the one dumped
+ * earlier into the cache directory, else dumped now from FORMAT_SOURCE (no
+ * source of the model's in it), confined as every job is, and copied there.
+ * Without a cache directory, or where mylatexformat is missing, there is no
+ * format and fragments load their packages each time.
+ */
+export async function prepareFormat(host: TexHost, setup: TexSetup): Promise<void> {
+  if (!setup.cacheDir) return
+  const name = formatName(setup.versions)
+  const dir = `${setup.cacheDir}/fmt`
+  const path = `${dir}/${name}.fmt`
+  const run = (argv: readonly string[], init: { cwd?: string; env?: Record<string, string>; timeoutMs: number }) => host.run(argv, init).catch(() => ({ exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false }))
+  if ((await run(['test', '-s', path], { timeoutMs: PROBE_MS })).exitCode === 0) {
+    setup.format = { name, dir }
+    return
+  }
+  const made = await run(['mktemp', '-d', jobDirTemplate(setup.tmpdir)], { timeoutMs: PROBE_MS })
+  const job = made.stdout.trim()
+  if (made.exitCode !== 0 || !isJobDir(job)) return
+  try {
+    await host.write(`${job}/${name}.tex`, FORMAT_SOURCE)
+    const dumped = await run(confined(formatArgv(name), job, setup.confinement), { cwd: job, env: texEnvironment(job), timeoutMs: FORMAT_MS })
+    if (dumped.exitCode !== 0) return
+    if ((await run(['mkdir', '-p', '--', dir], { timeoutMs: PROBE_MS })).exitCode !== 0) return
+    // Copied under a name of its own, then renamed: a session starting meanwhile never reads half a format.
+    const part = `${path}.${job.slice(-10)}`
+    if ((await run(['cp', '--', `${job}/${name}.fmt`, part], { timeoutMs: PROBE_MS })).exitCode !== 0) return
+    if ((await run(['mv', '-f', '--', part, path], { timeoutMs: PROBE_MS })).exitCode !== 0) return
+    setup.format = { name, dir }
+  } finally {
+    await run(['rm', '-rf', '--', job], { timeoutMs: PROBE_MS })
   }
 }
 
@@ -282,8 +332,16 @@ async function compileOnce(host: TexHost, setup: TexSetup, document: TexDocument
     await host.write(`${dir}/${JOB_NAME}.tex`, document.text)
     const env = texEnvironment(dir)
     let latex
+    // A fragment starts from the dumped format, read where the namespace hides the cache directory.
+    const format = document.format ? setup.format : undefined
     try {
-      latex = await host.run(confined(LATEX_ARGV, dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+      latex = format
+        ? await host.run(confined(latexArgv(format.name), dir, setup.confinement, [format.dir]), { cwd: dir, env: { ...env, TEXFORMATS: `${format.dir}:` }, timeoutMs: Math.max(1, left()) })
+        : await host.run(confined(LATEX_ARGV, dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+      // A format TeX can't read (a stale or broken file): the same job without it.
+      if (format && latex.exitCode !== 0 && /format file|\.fmt\b/i.test(latex.stdout)) {
+        latex = await host.run(confined(LATEX_ARGV, dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+      }
     } catch {
       return late
     }
