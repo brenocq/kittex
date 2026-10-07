@@ -88,18 +88,43 @@ describe('fuzz regressions', () => {
     expect(failures(md, { maxProseWidth: 55 }, ['moved'])).toEqual([])
   })
 
-  // FUZZ-3. placeable decides on the part written so far; something later in
-  // the same part makes the replay refuse it at landing, and the formulas
-  // padded before it keep their pads (gaps) and no image. Known for emoji
-  // sequences (fix/emoji-sequences); these are other triggers: a code fence
-  // opened in the list item, a whitespace-only line in a text with no other
-  // markdown (drawn as written), and something refused more than WRITER_TAIL
-  // (2 KB) earlier in a long list, which placeable no longer sees.
-  test.skip('FUZZ-3: a formula padded before what refuses its part gets its image or no pads', () => {
+  // FUZZ-3. The stream decided on the part written so far (a 2 KB tail of
+  // it); something later in the same part made the replay refuse the whole
+  // part at landing, and the formulas padded before it kept their pads (gaps)
+  // and no image: a code fence later in a list item or a quote, a tab, HTML,
+  // a link with no link mode known on a later line, a whitespace-only line in
+  // a text with no other markdown, and anything the replay refuses more than
+  // 2 KB back in a long list. Fixed: the stream reads the whole part, and the
+  // replays lay a part out up to the line (or the block) they can't follow
+  // instead of refusing it, so what was placed while streaming is placed
+  // landed: guards.
+  test('FUZZ-3: a formula padded before what refuses its part gets its image or no pads', () => {
     expect(failures('- $a c$\n  ```python\n  x = 1\n  ```\n', {}, ['inlineImage', 'padVisible'])).toEqual([])
     expect(failures('$a_1 a_{15}$\n  \n$\\exists y$\n', {}, ['inlineImage', 'padVisible'])).toEqual([])
     const items = ['- item zero with <b>html</b> in it', ...Array.from({ length: 69 }, (_, i) => `- item ${i + 1} with words and more words${i + 1 > 50 ? ` $a_{${i + 1}}$` : ''} there`)]
     expect(failures(items.join('\n') + '\n', {}, ['inlineImage'])).toEqual([])
+  })
+
+  test('FUZZ-3: a tab, HTML, a code fence or an unknown link after the formula in its part', () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['1. $f g$ covariance\nhence\tfilter\n', {}],
+      ['+ $a*b$ or\nbound <b>bold</b>\n', {}],
+      ['$\\sim$\n<b>bold</b>\n', {}],
+      ['> $A^*$\n~~~\n', {}],
+      ['> $\\sum_{i=1}^{n} x_n^2$\nupdate\tstep\n', {}],
+      ['> 1) $\\mathbf{x}$ which?\n> ```\n', {}],
+      ['> $x_i$ `**not\n[$n!$](http://arxiv.org/abs/1706.03762)\n', { links: 'unknown' }],
+      ['> $y_w$\nposterior](https://example.com) $p\n>\n', { links: 'unknown' }],
+      ['$\\sum_{i=1}^n x_i$\nthis](https://github.com/owner/repo/issues/42)\n\n$x_i$\nsample\tto\n', { links: 'unknown' }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
+  })
+
+  test('FUZZ-3: a table whose later row the replay refuses streams its formulas unpadded', () => {
+    expect(failures('$\\bar{x}$ | | |\n:---: | - | ---:\n\uff46\uff55\uff4c\uff4c\n', {}, ['inlineImage', 'padVisible'])).toEqual([])
+    expect(failures('from | | $n$ | | | [not](http://arxiv.org/abs/1706.03762)\n:---: | ---: | :---: | - | --- | --------\n', { links: 'unknown' }, ['inlineImage', 'padVisible'])).toEqual([])
+    const md = '$5 | | $\\|x\\|$\n-------- | --- | ---\n$a_1 a_{15}$ |\n| -\nof | | [follows](https://github.com/owner/repo/issues/42) | in\n\n'
+    for (const flushSeed of [1, 1000531432]) expect(failures(md, { flushSeed }, ['inlineImage', 'padVisible'])).toEqual([])
   })
 
   // FUZZ-4 (live). inlinePreview checks a preview against the prose width
@@ -115,13 +140,18 @@ describe('fuzz regressions', () => {
     expect(failures(quote, { maxProseWidth: 67 }, ['padVisible', 'inlineImage'])).toEqual([])
   })
 
-  // FUZZ-4, what main left: a table's header row is padded as a paragraph
-  // until its delimiter row arrives, so in a narrow column its preview wraps
-  // inside the cell; the landing draws the part left on the row (6 columns
-  // for a 7-column slot) and the pad stays on the next row.
-  test.skip('FUZZ-4: a formula in a narrow header cell is not padded', () => {
+  // FUZZ-4, what main left: a table's header row was padded as a paragraph
+  // until its delimiter row arrived, so in a narrow column its preview wrapped
+  // inside the cell; the landing drew the part left on the row (6 columns for
+  // a 7-column slot) and the pad stayed on the next row. Fixed: a line that
+  // may be a table's header waits for the next line, and a table holding
+  // inline math is held until it ends, so its formulas are decided on the
+  // whole table: a guard.
+  test('FUZZ-4: a formula in a narrow header cell is not padded', () => {
     const md = '[note](https://en.wikipedia.org/wiki/Kalman_filter) | | $\\cos^2 + 1$\n--- | ---: | :---:\n\\frac{\\rho}{\\varepsilon_0}$ | [derivative](https://en.wikipedia.org/wiki/Kalman_filter)\n'
     expect(failures(md, { columns: 100, links: 'text' }, ['imageShape', 'overPreview', 'padVisible'])).toEqual([])
+    const narrow = 'entropy | | | $\\gg$ | | | | | |\n-------- | -------- | :--- | --- | ---: | -------- | --- | :---: | --------\n$\\beta_1$ | distribution | `a b` | $\\nabla f$ | `np.linalg.inv(A)`\n'
+    expect(failures(narrow, {}, ['imageShape', 'overPreview', 'padVisible', 'resumed'])).toEqual([])
   })
 
   // FUZZ-5. A display preview in a list item is centred in the reply column
@@ -166,18 +196,42 @@ describe('fuzz regressions', () => {
     expect(failures('> > > \\begin{aligned}\n> > > \\pmod{p}\n> > > \\end{aligned}\n', {}, ['rawLatex'])).toEqual([])
   })
 
-  // FUZZ-10. For each inline formula, rewriteSegments calls placeable on all
-  // the writer holds (its 2 KB tail and the whole flush so far): blockParts
-  // and a layout of the block, so a flush costs formulas × flush length. One
-  // flush carrying a 40-item list (14 KB, 800 formulas) takes ~1.5 s, an
-  // 80-item one (29 KB) ~5.7 s of the hook's 10 s; prose about 15 times less.
-  test.skip('FUZZ-10: one flush of a long list stays well under the budget', () => {
+  // FUZZ-10. For each inline formula, rewriteSegments called placeable on all
+  // the writer held (its 2 KB tail and the whole flush so far): blockParts
+  // and a layout of the block, so a flush cost formulas × flush length. One
+  // flush carrying a 40-item list (14 KB, 800 formulas) took ~1.5 s, an
+  // 80-item one (29 KB) ~5.7 s of the hook's 10 s. Fixed: a flush lays each
+  // part out once with all its formulas (again only for one that didn't fit),
+  // from the start of the block it ends in, and a formula's forms are worked
+  // out once per terminal: guards.
+  test('FUZZ-10: one flush of a long list stays well under the budget', () => {
     const item = Array.from({ length: 10 }, (_, k) => `word $x_{${k}}$ and $\\alpha^{${k}}$ more`).join(' ')
     const list = Array.from({ length: 40 }, (_, i) => `- item ${i} ${item}`).join('\n') + '\n'
     const env = { ...envFor(BASE), inline: true }
     const start = performance.now()
     new MessageStream().push(list, true, env)
     expect(performance.now() - start).toBeLessThan(300)
+  })
+
+  test('FUZZ-10: every flush of a 200-item list takes less than 100 ms, whole or line by line', () => {
+    const item = Array.from({ length: 10 }, (_, k) => `word $x_{${k}}$ and $\\alpha^{${k}}$ more`).join(' ')
+    const lines = Array.from({ length: 200 }, (_, i) => `- item ${i} ${item}\n`)
+    const env = { ...envFor(BASE), inline: true }
+    new MessageStream().push(lines.slice(0, 2).join(''), true, env) // its formulas worked out once
+    const whole = Math.min(...[0, 1, 2].map(() => {
+      const start = performance.now()
+      new MessageStream().push(lines.join(''), true, env)
+      return performance.now() - start
+    }))
+    expect(whole).toBeLessThan(100)
+    const stream = new MessageStream()
+    let slowest = 0
+    for (const [k, line] of lines.entries()) {
+      const start = performance.now()
+      stream.push(line, k === lines.length - 1, env)
+      slowest = Math.max(slowest, performance.now() - start)
+    }
+    expect(slowest).toBeLessThan(100)
   })
 
   // FUZZ-11 (live). A prose piece cut out at an image is drawn by the engine
@@ -209,15 +263,44 @@ describe('fuzz regressions', () => {
     expect(previewInline('\\sqrt{\\frac{a-b}{c}}')).toBe('√((a−b)/c)')
   })
 
-  // FUZZ-15. MarkdownWriter keeps only WRITER_TAIL (2 KB) of what it wrote:
-  // in a list longer than that, a display formula in a nested item is sized
-  // from a tail that no longer holds the outer item (displayColumns), so its
-  // image is two cells too wide for the item and passes the window's right
-  // edge (resumed, with the whole list, it fits).
-  test.skip('FUZZ-15: a display in a nested item of a long list fits the window', () => {
+  // FUZZ-15. MarkdownWriter kept only a 2 KB tail of what it wrote: in a
+  // list longer than that, a display formula in a nested item was sized from
+  // a tail that no longer held the outer item (displayColumns), so its image
+  // was two cells too wide for the item and passed the window's right edge
+  // (resumed, with the whole list, it fit). Fixed: the writer keeps it all,
+  // and the item is read from where its list starts: a guard.
+  test('FUZZ-15: a display in a nested item of a long list fits the window', () => {
     const items = Array.from({ length: 30 }, (_, i) => `  - nested item ${i} with a sentence of ordinary words to make it long enough`)
     const md = ['- Outer item', ...items, '  - last one:', '', '    $$', '    \\gcd(a, b) = \\gcd(b, a \\bmod b), \\qquad x \\equiv 3 \\mod 7', '    $$', ''].join('\n')
     expect(failures(md, { columns: 118, cellWidth: 10, cellHeight: 20 }, ['overlap', 'resumed'])).toEqual([])
+  })
+
+  // FUZZ-16. Live kept Unicode where resumed drew images: the stream judged
+  // a formula's part with what came before it (the landing lays the text after
+  // a display image out as a piece of its own), read a table's header row as
+  // a paragraph, put a display after a list item's line in the item (its
+  // block is written after a blank line, at the reply's edge), and read a
+  // list's links in a mode the landing doesn't know. Fixed: guards.
+  test('FUZZ-16: live lands the images resumed lands', () => {
+    const cases: [string, Partial<Shape>][] = [
+      // After a display image, a list laid out on its own (a link the replay doesn't follow before it).
+      ['- https://example.com/a/very/long/path/that/keeps/going/and/going/index.html?query=1&other=2\n  \\begin{array}{c||c} \\end{array}\n- $\\emptyset$ step\n', { links: 'unknown' }],
+      // An unclosed fence before an image does not reach the piece after it.
+      ['+\n    ```text\n```\n\\begin{align}\ne\n\\end{align}\n$\\hat{x}_{k|k} \\hat{x}_{k|k-1})$\n', {}],
+      // A table's header row, its delimiter row in the next flush.
+      ['|  | | | $|a| |b|$\n-------- | ---: | :--- | ---\n', {}],
+      // A display right after a list item's line is no part of the item.
+      ['- in](https://example.com)\n$$\\comm{\\hat{L}_i}{\\hat{L}_j} i\\hbar\\,\\epsilon_{ijk}\\hat{L}_k$$\n', { inline: false }],
+      ['2. rank](https://github.com/owner/repo/issues/42)\n   \\[\nN(d_2)\n\\]\n   $\\frac{n(n+1)}{2}$\n', { inline: false }],
+      // A quote's formula, a display in the quote after it.
+      ['> > $\\vec{v}$?\n>\n> $$\n> \\begin{equation}\n> \\end{equation}\n$$\n', { flushSeed: 618747191 }],
+    ]
+    for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'displayImage']) }).toEqual({ md, failures: [] })
+  })
+
+  test('FUZZ-16: a quote goes on after a display block as the landing writes it, whatever the flushes', () => {
+    const md = '> > > $$\n> > > \\Gamma^\\rho_{\\nu\\sigma}\n> > > $$\n> > >\ncovariance\n'
+    for (const flushSeed of [1, 2, 3]) expect(failures(md, { inline: false, flushSeed }, ['resumed', 'moved'])).toEqual([])
   })
 
   // FUZZ-14. remember() keeps the newest RECORD_LIMIT (512) previews for the
