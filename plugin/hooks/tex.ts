@@ -494,6 +494,8 @@ export async function prepareFormat(host: TexHost, setup: TexSetup): Promise<voi
     if ((await run(['cp', '--', `${job}/${name}.fmt`, part], { timeoutMs: PROBE_MS })).exitCode !== 0) return
     if ((await run(['mv', '-f', '--', part, path], { timeoutMs: PROBE_MS })).exitCode !== 0) return
     setup.format = { name, dir }
+    // The formats of an earlier TeX (or kittex preamble) are superseded: removed, about 11 MB each.
+    await run(['find', dir, '-maxdepth', '1', '-type', 'f', '-name', 'kittex-*.fmt', '!', '-name', `${name}.fmt`, '-delete'], { timeoutMs: PROBE_MS })
   } finally {
     await run(['rm', '-rf', '--', job], { timeoutMs: PROBE_MS })
   }

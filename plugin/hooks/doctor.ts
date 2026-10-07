@@ -12,6 +12,7 @@
 
 import { diagramDocument, formatName } from './core.js'
 import { compileTrial, probeSandbox, runsPostScript, takesLibgs, texCacheDir } from './tex.ts'
+import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
 
 /** The command's name: typed as `/kittex-doctor`. */
@@ -355,6 +356,15 @@ export interface CacheFacts {
   dir?: string
   bytes?: number
   files?: number
+  /** Its parts: the images of resumed replies (`v<n>/`), what TeX drew (`tex/`), the TeX format (`tex/fmt/`). */
+  images?: CachePart
+  tex?: CachePart
+  format?: CachePart
+}
+
+export interface CachePart {
+  bytes?: number
+  files: number
 }
 
 /** What the probes start from. */
@@ -477,22 +487,42 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
   return facts
 }
 
-/** The cache directory's size and file count (du, find), or just its path when it isn't there. */
+/**
+ * The cache directory's size and file count (du, find), or just its path
+ * when it isn't there, with its parts apart: the images (pruned past 50 MB),
+ * what TeX drew (past 20 MB) and the TeX format (never pruned, replaced for
+ * a new TeX).
+ */
 export async function probeCache(host: DoctorHost, env: ProbeInput['env']): Promise<CacheFacts> {
   const tex = texCacheDir(env)
   if (!tex) return {}
   const dir = tex.replace(/\/tex$/, '')
   if (!(await host.exists(dir).catch(() => false))) return { dir }
   const [du, find] = await Promise.all([
-    host.run(['du', '-sk', dir], { timeoutMs: DOCTOR_PROBE_MS }).catch(() => undefined),
+    host.run(['du', '-sk', dir, `${dir}/tex`, `${dir}/tex/fmt`], { timeoutMs: DOCTOR_PROBE_MS }).catch(() => undefined),
     host.run(['find', dir, '-type', 'f'], { timeoutMs: DOCTOR_PROBE_MS }).catch(() => undefined),
   ])
-  const kb = du?.exitCode === 0 ? Number(du.stdout.trim().split(/\s+/)[0]) : NaN
-  return {
-    dir,
-    ...(Number.isFinite(kb) ? { bytes: kb * 1024 } : {}),
-    ...(find?.exitCode === 0 ? { files: find.stdout.split('\n').filter(line => line.trim() !== '').length } : {}),
+  // du prints a line per path it could read (a missing one only on stderr): kB, a tab, the path.
+  const kb = new Map<string, number>()
+  for (const line of du?.stdout.split('\n') ?? []) {
+    const match = /^(\d+)\s+(.+)$/.exec(line.trim())
+    if (match) kb.set(match[2]!.replace(/\/+$/, ''), Number(match[1]) * 1024)
   }
+  const files = find?.exitCode === 0 || (find && find.stdout.trim() !== '') ? find.stdout.split('\n').filter(line => line.trim() !== '') : undefined
+  const all = kb.get(dir)
+  const texAll = kb.get(`${dir}/tex`)
+  const fmt = kb.get(`${dir}/tex/fmt`)
+  const facts: CacheFacts = { dir, ...(all !== undefined ? { bytes: all } : {}), ...(files ? { files: files.length } : {}) }
+  if (files) {
+    const formats = files.filter(path => path.startsWith(`${dir}/tex/fmt/`)).length
+    const drawn = files.filter(path => path.startsWith(`${dir}/tex/`)).length - formats
+    const images = files.length - formats - drawn
+    const texOnly = texAll !== undefined ? texAll - (fmt ?? 0) : undefined
+    facts.images = { files: images, ...(all !== undefined && texAll !== undefined ? { bytes: all - texAll } : {}) }
+    facts.tex = { files: drawn, ...(texOnly !== undefined ? { bytes: texOnly } : {}) }
+    facts.format = { files: formats, ...(fmt !== undefined ? { bytes: fmt } : {}) }
+  }
+  return facts
 }
 
 // ─── The report ──────────────────────────────────────────────────────────────
@@ -513,6 +543,12 @@ export interface TerminalFacts {
   ink?: string
   background?: string
   colors: 'terminal' | 'theme'
+  /**
+   * Claude Code's own decision on drawing pictures (its probe of the
+   * terminal), as a blit to one of kittex's Images read it: `unknown` before
+   * kittex drew one, `pending` while Claude Code hasn't asked the terminal.
+   */
+  claude?: { state: 'unknown' | 'pending' | 'yes' | 'no'; source?: string }
 }
 
 export interface StreamingFacts {
@@ -603,6 +639,13 @@ export function formatDoctor(facts: DoctorFacts): string {
     const where = [program ? plain(program) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
     if (t.images) {
       line(OK, `${name}${where ? ` (${where})` : ''}: kitty graphics with Unicode placeholders`)
+      const c = t.claude
+      const said = c?.source ? ` (${plain(c.source)})` : ''
+      if (c?.state === 'yes') line(OK, 'Claude Code draws the pictures: kitty answered its graphics query')
+      else if (c?.state === 'no') {
+        line(NO, `Claude Code draws no pictures here${said}, so kittex shows math as Unicode text. Where this terminal does show kitty graphics and only answered late (ssh, a busy machine), start Claude Code with ${code('CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1')} to skip its check.`)
+      } else if (c?.state === 'pending') line(INFO, `Claude Code hasn't asked the terminal about pictures yet${said}: run this again in a moment`)
+      else if (c) line(INFO, "Claude Code's own check on pictures: known once kittex has drawn an image (run this again after a reply with math)")
     } else {
       const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
       line(NO, `${name}${where ? ` (${where})` : ''}: ${why}. kittex shows math as Unicode text instead; images work in kitty (0.28 or newer) and Ghostty${t.multiplexer ? `, outside ${t.multiplexer}` : ''}.`)
@@ -715,7 +758,13 @@ export function formatDoctor(facts: DoctorFacts): string {
   const c = facts.cache
   if (!c.dir) line(INFO, 'no cache directory (neither XDG_CACHE_HOME nor HOME is set)')
   else if (c.bytes === undefined && c.files === undefined) line(INFO, `${path(c.dir)}: empty`)
-  else line(INFO, `${path(c.dir)}: ${c.bytes !== undefined ? bytes(c.bytes) : 'size unknown'}${c.files !== undefined ? ` in ${c.files} ${c.files === 1 ? 'file' : 'files'}` : ''}`)
+  else {
+    line(INFO, `${path(c.dir)}: ${c.bytes !== undefined ? bytes(c.bytes) : 'size unknown'}${c.files !== undefined ? ` in ${c.files} ${c.files === 1 ? 'file' : 'files'}` : ''}`)
+    const part = (p: CachePart) => `${p.bytes !== undefined ? bytes(p.bytes) : 'size unknown'} in ${p.files} ${p.files === 1 ? 'file' : 'files'}`
+    if (c.images) line(INFO, `images of resumed replies: ${c.images.files === 0 ? 'none' : part(c.images)} (the oldest go past ${CACHE_LIMIT_BYTES / 2 ** 20} MiB)`)
+    if (c.tex) line(INFO, `pictures TeX drew: ${c.tex.files === 0 ? 'none' : part(c.tex)} (the oldest go past ${TEX_CACHE_LIMIT_BYTES / 2 ** 20} MiB)`)
+    if (c.format) line(INFO, `TeX format: ${c.format.files === 0 ? 'none' : part(c.format)} (kept; replaced when TeX changes)`)
+  }
 
   // What to install
   const missing = [

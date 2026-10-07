@@ -177,12 +177,66 @@ describe('the cache through the engine', () => {
     expect(disk.files.has(`${FOLDER}/keep.txt`)).toBe(true)
   })
 
-  test('with the option off nothing is read, written or pruned', { options: { cache: false } }, async ($, on) => {
+  test('with the option off nothing is read, written or pruned', { options: { cache: 'off' } }, async ($, on) => {
     const disk = fakeDisk(on)
     await startSession($, on, ENV)
     const drawn = images(await (await resumedMount($, 'Off: $x_1 + x_2$ now.\n')).drawn())
     expect(drawn).toHaveLength(1)
     expect(disk.reads.filter(path => path.startsWith('/cache'))).toEqual([])
     expect(disk.writes.filter(path => path.startsWith('/cache'))).toEqual([])
+  })
+
+  test("0.1.0's boolean false still turns the cache off, and is written again as off", async ($, on) => {
+    const disk = fakeDisk(on)
+    // The settings as stored: the old boolean, which the picker reads as its default, on.
+    on('settings.read', () => ({ value: { pluginConfigs: { 'kittex@kittex': { options: { cache: false } } } } }) as never)
+    const set: unknown[] = []
+    on('config.set', ($, e) => {
+      set.push({ key: e.key, value: e.value })
+      return { value: e.value }
+    })
+    await startSession($, on, ENV)
+    expect(set).toEqual([{ key: 'kittex.cache', value: 'off' }])
+    await (await resumedMount($, 'Old: $x_1 + x_2$ now.\n')).drawn()
+    expect(disk.writes.filter(path => path.startsWith('/cache'))).toEqual([])
+  })
+
+  test('a stored true, or no setting, leaves the cache on and nothing written', async ($, on) => {
+    fakeDisk(on)
+    on('settings.read', () => ({ value: { pluginConfigs: { 'kittex@kittex': { options: { cache: true } } } } }) as never)
+    const set: unknown[] = []
+    on('config.set', ($, e) => {
+      set.push(e.key)
+      return { value: e.value }
+    })
+    await startSession($, on, ENV)
+    expect(set).toEqual([])
+  })
+
+  test("what TeX drew is pruned on its own cap; the TeX format is never counted or removed", async ($, on) => {
+    const disk = fakeDisk(on)
+    const clock = mock.clock(on)
+    const removed: string[][] = []
+    const big = 'x'.repeat(1024 * 1024)
+    const TEX = '/cache/kittex/tex'
+    for (let i = 0; i < 30; i++) disk.files.set(`${TEX}/${String(i).padStart(64, 'a')}.json`, { text: big, mtimeMs: i })
+    // The format: older than every outcome, and as big as eleven of them.
+    disk.files.set(`${TEX}/fmt/kittex-0123abcd.fmt`, { text: 'x'.repeat(11 * 1024 * 1024), mtimeMs: -1 })
+    // The images: well under their own cap, so none goes.
+    for (let i = 0; i < 5; i++) disk.files.set(`${FOLDER}/${String(i).padStart(26, '0')}.json`, { text: big, mtimeMs: -2 })
+    await startSession($, on, ENV, 'dark', CELL, argv => {
+      if (argv[0] !== 'rm') return undefined
+      removed.push([...argv])
+      for (const path of argv.slice(3)) disk.files.delete(path)
+      return { exitCode: 0, stdout: '' }
+    })
+    for (let k = 0; k < 10 && removed.length === 0; k++) await clock.advance(0)
+    for (let k = 0; k < 5; k++) await clock.advance(0)
+    const gone = removed.flatMap(argv => argv.slice(3))
+    // 30 MiB against 20: down to 16, the 14 oldest.
+    expect(gone).toHaveLength(14)
+    expect(gone.every(path => /^\/cache\/kittex\/tex\/a+\d+\.json$/.test(path))).toBe(true)
+    expect(disk.files.has(`${TEX}/fmt/kittex-0123abcd.fmt`)).toBe(true)
+    expect([...disk.files.keys()].filter(path => path.startsWith(FOLDER))).toHaveLength(5)
   })
 })

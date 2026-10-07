@@ -14,11 +14,16 @@
 
 ## Install
 
-Type this in Claude Code (2.1.290 or newer), answer `y` to add the marketplace, and that's it:
+Type this in Claude Code (2.1.290 or newer):
 
 ```
 /plugin install kittex --marketplace brenocq/kittex
 ```
+
+Claude Code then asks to add the marketplace: press `y`. On the plugin's page,
+keep **Install for you (user scope)** and press Enter, then choose
+**Save configuration** (the defaults are fine; every option can be changed
+later in `/config`).
 
 No TeX, no Python, nothing to configure. kittex typesets inside Claude Code
 itself, and tells Claude to write its math as LaTeX, so you never have to ask.
@@ -106,7 +111,7 @@ Then restart Claude Code and run `/kittex-doctor` to check.
 
 ## Config
 
-Change these in `/config`.
+Change these in `/config`: type `kittex` in its search box to list all four.
 
 <details>
 <summary><b>Block math</b>: equations on their own line (<code>$$…$$</code>)</summary>
@@ -146,8 +151,10 @@ macOS has neither, so there TeX can read the files you can: choose `off` if that
 <summary><b>Cache equation images</b>: keep rendered equations on disk for instant resumes</summary>
 <br>
 
-- `on` (default): resumed sessions draw their equations from the cache, in `${XDG_CACHE_HOME:-~/.cache}/kittex` (at most 50 MB, oldest removed first).
+- `on` (default): resumed sessions draw their equations from the cache, in `~/.cache/kittex` (or `$XDG_CACHE_HOME/kittex`), at most 50 MiB, the oldest removed first.
 - `off`: every equation is typeset again on each resume; nothing is written.
+
+With your TeX, the same folder also keeps the pictures it drew (at most 20 MiB) and its format (about 11 MB, replaced when TeX is updated).
 
 </details>
 
@@ -199,6 +206,28 @@ Run `/kittex-doctor` in Claude Code. It checks your terminal (images, cell
 size, font, colours), whether replies reach kittex while they stream, your
 options, and the TeX behind diagrams (commands, packages, confinement and a
 test picture), and prints the install command for anything missing.
+
+</details>
+
+<details>
+<summary><b>How do I uninstall?</b></summary>
+<br>
+
+In Claude Code:
+
+```
+/plugin uninstall kittex
+/plugin marketplace remove kittex
+```
+
+Then delete the cache, which holds the equation images of resumed sessions and,
+if you have TeX, its pictures and format:
+
+```sh
+rm -rf ~/.cache/kittex
+```
+
+(or `$XDG_CACHE_HOME/kittex` if you set `XDG_CACHE_HOME`).
 
 </details>
 

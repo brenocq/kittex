@@ -38,15 +38,16 @@
     "latex": {
       "type": "string",
       "title": "Local LaTeX",
-      "description": "Draw diagrams and math MathJax can't render with your TeX install",
+      "description": "Diagrams (TikZ, pgfplots, chemfig…) and math MathJax can't render: auto (drawn with your TeX install where one is found) or off (TeX never runs; diagrams stay code blocks).",
       "options": ["auto", "off"],
       "default": "auto"
     },
     "cache": {
-      "type": "boolean",
+      "type": "string",
       "title": "Cache equation images",
-      "description": "Keep rendered equations on disk (~/.cache/kittex) so resumed sessions draw them instantly.",
-      "default": true
+      "description": "Keep rendered equations on disk (~/.cache/kittex by default) so resumed sessions draw them instantly: on or off.",
+      "options": ["on", "off"],
+      "default": "on"
     }
   }
 }

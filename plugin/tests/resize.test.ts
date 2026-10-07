@@ -6,7 +6,7 @@ import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
 import { init } from '../hooks/core.js'
-import { CELL_POLL_MS, REPLY_INDENT, replyColumns, RESIZE_SETTLE_MS } from '../hooks/math.ts'
+import { CELL_IDLE_MS, CELL_REFRESH_MS, REPLY_INDENT, replyColumns, RESIZE_SETTLE_MS } from '../hooks/math.ts'
 import { CELL, COLUMNS, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
@@ -115,23 +115,46 @@ describe('new cells at the same width', () => {
   test('nothing probes before an image is drawn', async ($, on) => {
     const clock = mock.clock(on)
     const session = await startSession($, on)
-    await clock.advance(3 * CELL_POLL_MS)
+    await clock.advance(3 * CELL_IDLE_MS)
     expect(session.cellProbes()).toBe(1)
   })
 
-  test('once an image is drawn, the periodic probe finds new cells and the formula is drawn for them, as a new element', async ($, on) => {
+  test('a drawing with images probes when the last probe is old; idle, one probe a minute (not one every 2.5 s)', async ($, on) => {
+    const clock = mock.clock(on)
+    const session = await startSession($, on)
+    await init()
+    // Right after setup's own probe: none.
+    await mountAt($, COLUMNS)
+    await clock.advance(0)
+    expect(session.cellProbes()).toBe(1)
+    // Later, a drawing probes.
+    await clock.advance(CELL_REFRESH_MS)
+    await mountAt($, COLUMNS)
+    await clock.advance(0)
+    expect(session.cellProbes()).toBe(2)
+    // Another drawing soon after: no probe.
+    await mountAt($, COLUMNS)
+    await clock.advance(CELL_REFRESH_MS / 2)
+    expect(session.cellProbes()).toBe(2)
+    // Idle for five minutes: one probe a minute.
+    const idle = session.cellProbes()
+    await clock.advance(5 * CELL_IDLE_MS)
+    expect(session.cellProbes() - idle).toBe(5)
+  })
+
+  test('a monitor of another scale: the next drawing, or the idle probe, finds the new cells and the formula is drawn for them, as a new element', async ($, on) => {
     const clock = mock.clock(on)
     const session = await startSession($, on)
     await init()
     const ui = await mountAt($, COLUMNS)
     const before = await ui.find({ type: 'Image' })
     expect(imageOf(before)).toMatchObject({ width: replyColumns(COLUMNS) * CELL.cellWidth })
-    await clock.advance(CELL_POLL_MS)
-    expect(session.cellProbes()).toBe(2)
+    await clock.advance(0)
+    expect(session.cellProbes()).toBe(1)
     expect(await storedEnv($)).toEqual({ columns: COLUMNS, ...CELL })
-    // A move to a monitor of another scale: the same columns, other pixels.
+    // A move to a monitor of another scale: the same columns, other pixels; the idle probe finds it.
     Object.assign(session.screen, { cellWidth: 9, cellHeight: 18 })
-    await clock.advance(CELL_POLL_MS)
+    await clock.advance(CELL_IDLE_MS)
     expect(await storedEnv($)).toEqual({ columns: COLUMNS, cellWidth: 9, cellHeight: 18 })
     const after = await ui.find({ type: 'Image' })
     expect(imageOf(after)).toMatchObject({ columns: replyColumns(COLUMNS), width: replyColumns(COLUMNS) * 9 })
@@ -140,9 +163,13 @@ describe('new cells at the same width', () => {
     // transmission sent again under the same id.
     const keys = async () => formulaKeys(await ui.drawn())
     expect(await keys()).toEqual([expect.stringMatching(/^kittex-formula-0-/)])
+    // Back, and a reply lands a while later: that drawing finds it.
     Object.assign(session.screen, { cellWidth: 13, cellHeight: 20 })
     const changed = await keys()
-    await clock.advance(CELL_POLL_MS)
+    await clock.advance(CELL_REFRESH_MS)
+    await mountAt($, COLUMNS)
+    await clock.advance(0)
+    expect(await storedEnv($)).toEqual({ columns: COLUMNS, ...CELL })
     expect(await keys()).not.toBe(changed)
   })
 })
@@ -169,7 +196,7 @@ describe('inline formulas', () => {
     await clock.advance(RESIZE_SETTLE_MS)
     // A move to a monitor of another scale at the same width.
     Object.assign(session.screen, { cellWidth: 9, cellHeight: 18 })
-    await clock.advance(CELL_POLL_MS)
+    await clock.advance(CELL_IDLE_MS)
     const after = await wide.image()
     expect(after).toMatchObject({ rows: 1, height: 18, width: after.columns * 9 })
   })

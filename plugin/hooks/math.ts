@@ -252,11 +252,14 @@ export const PROBE_TIMEOUT_MS = 2000
  */
 export const RESIZE_SETTLE_MS = 400
 /**
- * How often the cell size is probed once an image has been drawn: a move to a
- * monitor of another scale changes the cells' pixels and may keep the width,
- * so no render says so. A probe is one short process.
+ * A drawing with images probes the cell size when the last probe is older
+ * than this: a move to a monitor of another scale changes the cells' pixels
+ * and may keep the width, so no render says so, but the next reply does. (A
+ * font zoom changes the width in cells, which every render sees.)
  */
-export const CELL_POLL_MS = 2500
+export const CELL_REFRESH_MS = 10_000
+/** How often the cell size is probed while images are on screen and nothing draws (one short process): a monitor move with no reply after it. */
+export const CELL_IDLE_MS = 60_000
 /** Formula images kept drawn, by formula and geometry (a long reply holds hundreds, inline ones included). */
 export const IMAGE_LIMIT = 1024
 /**
@@ -2876,3 +2879,52 @@ export function diagramPlaceholder(label: string, rows: number, maxColumns: numb
 
 /** Cells in a diagram placeholder's tag: 2^16 tags, as wide as the shortest reply column leaves room for. */
 const PLACEHOLDER_TAG = 16
+
+// ─── Claude Code's own decision on images ────────────────────────────────────
+
+/**
+ * What an Image draws where Claude Code draws no picture: its `alt`, as one
+ * dim line from its box's first cell (a newline in it fails the drawing).
+ * kittex's images lie over their previews, so the alt is the text already in
+ * those cells: a display formula's (or a diagram's) preview line opens with a
+ * blank cell, so a single space there; an inline formula's, the Unicode its
+ * preview shows, padded to the image's columns. The previews then stay as
+ * they streamed whatever Claude Code decides, and whenever it decides it.
+ */
+export const BLANK_ALT = ' '
+
+/** The alt of an inline formula's image `columns` wide: its preview's text as drawn (see BLANK_ALT). */
+export function inlineAlt(tex: string, env: InlineEnv, columns: number): string {
+  const preview = inlinePreview(tex, env)
+  let text = preview
+    ? preview.markdown.replace(/\\(.)/g, '$1').replaceAll(INLINE_MARK, '').replaceAll(INLINE_JOIN, ' ').replaceAll(INLINE_PAD, ' ')
+    : oneLine(relaxedUnicode(tex)?.trim() ?? tex, columns)
+  // eslint-disable-next-line no-control-regex
+  text = text.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+$/, '')
+  while (text !== '' && cellsOf(text) > columns) text = [...text].slice(0, -1).join('')
+  return text === '' ? BLANK_ALT : text + ' '.repeat(Math.max(0, columns - cellsOf(text)))
+}
+
+/** Claude Code's decision on kitty graphics as kittex last read it (graphicsFromBlit). */
+export interface EngineGraphics {
+  /** `unknown`: not asked (no image of kittex's on screen yet); `pending`: Claude Code hasn't asked the terminal yet. */
+  state: 'unknown' | 'pending' | 'yes' | 'no'
+  /** Claude Code's own words for where its decision came from (`probe: no answer`, `env: inside tmux or screen`). */
+  source?: string
+}
+
+/**
+ * Claude Code's decision as a `$.ui.blit` to one of kittex's mounted Images
+ * tells it (the only place the engine spells it out to a mod): taken, it
+ * draws pictures; denied because the Image "draws its alt here", it doesn't
+ * (or hasn't asked the terminal yet). Undefined for any other denial (the
+ * Image is no longer mounted, another size): nothing learned.
+ */
+export function graphicsFromBlit(deny: string | undefined): EngineGraphics | undefined {
+  if (deny === undefined) return { state: 'yes' }
+  const reason = /draws its alt here: (.*)$/s.exec(deny)?.[1]
+  if (reason === undefined) return undefined
+  const source = /\(([^()]*)\)\s*$/.exec(reason)?.[1] ?? reason.trim()
+  // Pending reads `env: terminal=kitty, not asked yet`; settled without an answer, the same with `, no answer` after it.
+  return { state: /not asked yet$/.test(source) ? 'pending' : 'no', source }
+}

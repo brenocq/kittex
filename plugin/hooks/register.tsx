@@ -48,16 +48,20 @@ import {
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
 import {
+  BLANK_ALT,
   BLOCK_LIMIT,
   blockMatches,
   BULLET,
   bulletFor,
-  CELL_POLL_MS,
+  CELL_IDLE_MS,
+  CELL_REFRESH_MS,
   cellOrFallback,
   COPY_LABEL,
   copiedFormula,
   DIAGRAM_INSTRUCTIONS,
   FALLBACK_COLUMNS,
+  graphicsFromBlit,
+  inlineAlt,
   INK_PREFER,
   IMAGE_LIMIT,
   inlineEnvFor,
@@ -88,15 +92,24 @@ import {
   withoutTextOverride,
 } from './math.ts'
 import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
-import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
+import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
-import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
+import type { EngineGraphics, InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
 import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 
 type $ = EngineInterface
+
+/**
+ * A matcher for a render's `onScreen` once the engine reports it: a range,
+ * or null for a block laid out off screen; not a render that has none. A
+ * RegExp tests the value as a string, so a range reads `[object Object]`;
+ * an object matcher (`[{}, null]`) did the same but made the engine warn,
+ * on every render it didn't select, that `{}` can never match a null.
+ */
+const ON_SCREEN_REPORTED = /^(?:\[object Object\]|null)$/
 
 const ENV = { plugin: 'kittex', key: 'env' } as const
 const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
@@ -209,7 +222,7 @@ export const register: Register = (on, options) => {
   const math = mathOptions(options)
   // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model) but its doctor.
   const off = math.block === 'raw' && math.inline === 'raw'
-  cacheOn = options.cache !== false
+  cacheOn = options.cache !== 'off' && options.cache !== false
   /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
   const latex = options.latex === 'off' ? 'off' : 'auto'
   texAllowed = !off && latex === 'auto' && math.block !== 'unicode'
@@ -221,6 +234,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await startDoctor($, e.surface, await next(e))
+    await migrateCacheOption($)
     if (off) return started
     if (e.surface !== 'terminal') {
       // A -p run or the SDK (Claude Code for VS Code, the desktop app): no
@@ -236,6 +250,9 @@ export const register: Register = (on, options) => {
     cells?.stop()
     cells = cellsFor($)
     later = laterFor($)
+    graphicsSoon = ms => void $.clock.after(ms, () => void checkGraphics($).catch(() => undefined))
+    // A drawing before session.start (a resume's) put Images on screen: asked now.
+    askSoon(GRAPHICS_ASK_MS)
     writeFile = (path, text) => $.fs.write(path, text)
     sessions += 1
     let settled = false
@@ -388,7 +405,7 @@ export const register: Register = (on, options) => {
   // holds as markdown (and math) its own way, where a formula's Unicode laid
   // out in rows would run together on one line.
   const landed = { component: 'AssistantMessage' } as const
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
 }
@@ -556,7 +573,16 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     const over = overBudget(pieces)
     /** An image not drawn: past the budget, or only its rows reserved (off screen). */
     const left = { has: (image: RenderedImage) => image.png.length === 0 || over.has(image) }
-    if (images) cells?.poll()
+    if (images) cells?.watch()
+    // Each Image's alt: its formula for a screen reader where Claude Code draws the pictures (or hasn't
+    // said); where it doesn't, the text already under it, so the preview stays as it streamed (BLANK_ALT).
+    const shownAlt = graphics.state === 'yes' || graphics.state === 'unknown'
+    // The smallest Image drawn here, to ask Claude Code by whether it draws pictures (checkGraphics).
+    let smallest: { key: string; image: RenderedImage } | undefined
+    const drawnImage = (key: string, image: RenderedImage) => {
+      if (!smallest || image.png.length < smallest.image.png.length) smallest = { key, image }
+      return key
+    }
     const { Box, Button, Image, Text } = $.ui.resolve(e as Extract<LandedEvent, { surface: 'terminal' }>)
     const indentOf = (isFirstOfReply: boolean) => (isFirstOfReply ? REPLY_INDENT : 0)
     const first = e.props.isFirstOfReply
@@ -576,7 +602,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         </Box>
       ) : piece.kind === 'image' ? (
         <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
-          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={altText(piece.tex)} />
+          <Image key={drawnImage(`kittex-image-${i}`, piece.image)} source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={shownAlt ? altText(piece.tex) : BLANK_ALT} />
           <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
             <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex, piece.copy)} />
           </Box>
@@ -596,7 +622,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // drawing, and takes no room (nothing moves). The drawing's wrapper grows
     // to the width instead of naming one: the engine refuses its own drawing
     // under a Box with a size, a position or an overflow.
-    const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
+    const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean, at: number) => {
       const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       const inline = piece.inline?.filter(one => !left.has(one.image))
       if (!inline?.length) return text
@@ -615,7 +641,13 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
                 height={inline.image.rows}
                 flexShrink={0}
               >
-                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={altText(inline.tex)} />
+                <Image
+                  key={drawnImage(`kittex-image-${at}-${k}`, inline.image)}
+                  source={{ png: base64Of(inline.image.png) }}
+                  columns={inline.image.columns}
+                  rows={inline.image.rows}
+                  alt={shownAlt ? altText(inline.tex) : inline.display ? BLANK_ALT : inlineAlt(inline.tex, inlineEnv, inline.image.columns)}
+                />
                 {inline.display ? (
                   <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
                     <Button key={`kittex-copy-${k}`} label={COPY_LABEL} plain dimColor onPress={copy(inline.tex, inline.copy)} />
@@ -628,7 +660,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       )
     }
     // The prose pieces are drawn by the engine at once: each is a round trip, and a block may hold several.
-    const texts = await Promise.all(pieces.map((piece, i) => (piece.kind === 'prose' ? prose(piece, i === 0 ? first : false) : null)))
+    const texts = await Promise.all(pieces.map((piece, i) => (piece.kind === 'prose' ? prose(piece, i === 0 ? first : false, i) : null)))
     const drawn = []
     for (const [i, piece] of pieces.entries()) {
       if (i === 0) {
@@ -666,6 +698,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         )
       }
     }
+    if (smallest) askGraphics({ requestId: e.requestId, key: smallest.key, source: { png: base64Of(smallest.image.png) }, columns: smallest.image.columns, rows: smallest.image.rows })
     return <Box flexDirection="column">{drawn}</Box>
   } catch {
     return next(e)
@@ -697,7 +730,8 @@ async function setUp($: $, surface: string | null): Promise<void> {
   const kittyAdjust = terminalColors?.kittyAdjust
   const env: KittexEnv = {
     kind: terminal.kind,
-    images: terminal.images,
+    // Off where Claude Code said it draws no pictures (checkGraphics), whatever the terminal is.
+    images: terminal.images && graphics.state !== 'no',
     ...cellEnv(cell, { kind: terminal.kind, cellAdjust, kittyAdjust }),
     ...(cellAdjust ? { cellAdjust } : {}),
     ...(kittyAdjust ? { kittyAdjust } : {}),
@@ -956,8 +990,10 @@ async function refreshInk($: $, setting: string): Promise<void> {
 }
 
 /**
- * The cell probes after setup: for a render that sees a new width, once a
- * resize settles, and periodically. Each measures the terminal's own
+ * The cell probes after setup: for a render that sees a new width (a font
+ * zoom changes the width in cells too), once a resize settles, for a drawing
+ * with images when the last probe is a while old, and rarely while idle (a
+ * move to a monitor of another scale may keep the width). Each measures the terminal's own
  * TIOCGWINSZ (its columns and pixels); the timers store what they find in
  * kittex.env when it changed, which redraws every block that read it.
  */
@@ -970,8 +1006,13 @@ interface Cells {
    * render saw, kept when the probe can't tell the columns.
    */
   settle(seen?: number): void
-  /** Starts the periodic probe (once): a change of the cells' pixels alone draws nothing by itself. */
-  poll(): void
+  /**
+   * A drawing with images: probes (on the clock, not holding the drawing up)
+   * when the last probe is older than CELL_REFRESH_MS, and starts the idle
+   * probe every CELL_IDLE_MS (once): a change of the cells' pixels alone
+   * draws nothing by itself.
+   */
+  watch(): void
   stop(): void
 }
 
@@ -986,8 +1027,23 @@ function cellsFor($: $): Cells {
   let stores: Promise<void> = Promise.resolve()
   let settleTimer: Timer | undefined
   let pollTimer: Timer | undefined
+  /** When the last probe that stores ran, on the clock ($.clock.now): setup's, made as these are (session.start). */
+  let probed = -Infinity
+  void $.clock.now().then(
+    now => (probed = Math.max(probed, now)),
+    () => undefined,
+  )
   const store = (seen?: number) => {
-    stores = stores.then(async () => storeCells($, await probeCell($), seen)).catch(() => undefined)
+    stores = stores
+      .then(async () => {
+        probed = await $.clock.now().catch(() => probed)
+        await storeCells($, await probeCell($), seen)
+      })
+      .catch(() => undefined)
+  }
+  const refresh = async () => {
+    const now = await $.clock.now()
+    if (now - probed >= CELL_REFRESH_MS) store()
   }
   return {
     probe() {
@@ -1006,12 +1062,15 @@ function cellsFor($: $): Cells {
         settleTimer = undefined
       }
     },
-    poll() {
+    watch() {
+      try {
+        $.clock.after(0, () => void refresh().catch(() => undefined))
+      } catch {
+        // no clock: the width change and the idle probe still measure
+      }
       if (pollTimer) return
       try {
-        pollTimer = $.clock.every(CELL_POLL_MS, () => {
-          store()
-        })
+        pollTimer = $.clock.every(CELL_IDLE_MS, () => void refresh().catch(() => undefined))
       } catch {
         pollTimer = undefined
       }
@@ -1325,6 +1384,73 @@ function base64Of(png: Uint8Array): string {
   return base64
 }
 
+// ─── Claude Code's own decision on images ────────────────────────────────────
+
+/**
+ * Whether Claude Code draws pictures here: its own probe of the terminal
+ * decides (kitty answering its graphics query in time), whatever kittex reads
+ * from TERM and KITTY_WINDOW_ID. A mod reads it only from a blit to an Image
+ * it has on screen (graphicsFromBlit), so kittex asks shortly after a drawing
+ * with Images. While Claude Code draws none (its probe pending, or a no)
+ * every Image's alt is the text already under it (BLANK_ALT, inlineAlt), so a
+ * refused picture leaves its preview as it streamed; on a no, kittex.env's
+ * `images` goes off and every block is drawn in Unicode. Before the first
+ * answer the alts are the formulas (a screen reader's), as once it says yes.
+ */
+let graphics: EngineGraphics = { state: 'unknown' }
+/** An Image of kittex's on screen to ask by: the smallest of the last drawing that had one. */
+let graphicsTarget: Parameters<$['ui']['blit']>[0] | undefined
+/** Asks after `ms` on session.start's clock (session.start sets it). */
+let graphicsSoon: ((ms: number) => void) | undefined
+let graphicsAsking = false
+/** Asks made while Claude Code hadn't asked the terminal yet, or before the Image was mounted. */
+let graphicsTries = 0
+/** How long after a drawing kittex asks (its Images must be mounted), and between asks while no answer is final. */
+const GRAPHICS_ASK_MS = 100
+const GRAPHICS_RETRY_MS = 1000
+const GRAPHICS_TRIES = 60
+
+/** A drawing put Images on screen: ask Claude Code about them unless it has answered for good. */
+function askGraphics(target: NonNullable<typeof graphicsTarget>): void {
+  graphicsTarget = target
+  askSoon(GRAPHICS_ASK_MS)
+}
+
+function askSoon(ms: number): void {
+  if (graphics.state === 'yes' || graphics.state === 'no' || graphicsAsking || !graphicsSoon || !graphicsTarget) return
+  graphicsAsking = true
+  try {
+    graphicsSoon(ms)
+  } catch {
+    graphicsAsking = false
+  }
+}
+
+/** Asks by a blit (it sends the same picture again where it is drawn); redraws when the answer changes the drawing. */
+async function checkGraphics($: $): Promise<EngineGraphics> {
+  graphicsAsking = false
+  const target = graphicsTarget
+  if (!target || graphics.state === 'yes' || graphics.state === 'no') return graphics
+  let deny: string | undefined
+  try {
+    deny = (await $.ui.blit(target)).deny
+  } catch {
+    return graphics
+  }
+  const read = graphicsFromBlit(deny)
+  const before = graphics.state
+  if (read) graphics = read
+  if (graphics.state === 'no') {
+    const env = await readEnv($)
+    if (env?.images) await $.state.set(ENV, { ...env, images: false })
+  }
+  // The alts follow the answer (and with a no, every block goes Unicode).
+  if (graphics.state !== before && (before === 'pending' || graphics.state !== 'yes')) $.ui.invalidate('ui.render')
+  // Not final (pending, or the Image not mounted yet): asked again a while later.
+  if (graphics.state !== 'yes' && graphics.state !== 'no' && graphicsTries++ < GRAPHICS_TRIES) askSoon(GRAPHICS_RETRY_MS)
+  return graphics
+}
+
 // ─── Resume: the order, the waits, the rows of off-screen blocks ─────────────
 
 /** Landed blocks to typeset, newest first (schedule.ts), each in a dispatch of its own. */
@@ -1492,9 +1618,17 @@ function soon(fn: () => void): void {
 /** How many entries one `rm` removes. */
 const PRUNE_BATCH = 200
 
-/** Holds the cache folder under its cap: the oldest entries go (cache.ts's pruneList), by `rm` (the sandbox's fs removes nothing). */
+/**
+ * Holds the caches under their caps: the oldest images of resumed replies
+ * (cache.ts's pruneList) and the oldest of what TeX drew, by `rm` (the
+ * sandbox's fs removes nothing). The TeX format is never among them.
+ */
 async function pruneCache($: $): Promise<void> {
-  const folder = cacheFolder
+  await pruneFolder($, cacheFolder, CACHE_LIMIT_BYTES, ENTRY_NAME)
+  await pruneFolder($, texCacheDir(processEnv), TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME)
+}
+
+async function pruneFolder($: $, folder: string | undefined, limit: number, name: RegExp): Promise<void> {
   if (!folder) return
   let files: Awaited<ReturnType<typeof $.fs.list>>
   try {
@@ -1502,9 +1636,9 @@ async function pruneCache($: $): Promise<void> {
   } catch {
     return // no folder yet
   }
-  const names = pruneList(files).filter(name => ENTRY_NAME.test(name))
+  const names = pruneList(files, limit, name).filter(one => name.test(one))
   for (let i = 0; i < names.length; i += PRUNE_BATCH) {
-    const paths = names.slice(i, i + PRUNE_BATCH).map(name => `${folder}/${name}`)
+    const paths = names.slice(i, i + PRUNE_BATCH).map(one => `${folder}/${one}`)
     await $.process.run(['rm', '-f', '--', ...paths], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => undefined)
   }
 }
@@ -1639,6 +1773,27 @@ function texRefusal(tex: string, display: boolean): TexError | undefined {
 /** The surface session.start reported, for the doctor (null: a -p run or the SDK; undefined: not seen). */
 let doctorSurface: string | null | undefined
 
+/**
+ * The `cache` option was a boolean (0.1.0), which /config doesn't list; it is
+ * an `on`/`off` picker now. A stored `false` no longer fits it, so the engine
+ * hands the default `on`: read as stored, it turns the cache off, and is
+ * written again as `off` (as the person would in /config), once.
+ */
+async function migrateCacheOption($: $): Promise<void> {
+  try {
+    const configs = (await $.settings.read()).pluginConfigs
+    if (typeof configs !== 'object' || configs === null) return
+    const old = Object.entries(configs as Record<string, { options?: { cache?: unknown } } | null>).some(
+      ([key, config]) => (key === 'kittex' || key.startsWith('kittex@')) && config?.options?.cache === false,
+    )
+    if (!old) return
+    cacheOn = false
+    await $.config.set({ key: 'kittex.cache', value: 'off' })
+  } catch {
+    // left as it reads
+  }
+}
+
 /** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
 async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {
   doctorSurface = surface
@@ -1696,6 +1851,8 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
     probeCache(host, env2),
     doctorFont($, env),
   ])
+  // Claude Code's decision on pictures: asked now when it isn't known yet and an Image of kittex's is on screen.
+  const claude = graphics.state === 'yes' || graphics.state === 'no' ? graphics : await checkGraphics($).catch(() => graphics)
   const hex = (c: { r: number; g: number; b: number } | undefined) => (c ? `#${[c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}` : undefined)
   const program = [variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION].filter(Boolean).join(' ')
   const terminalFacts: TerminalFacts = {
@@ -1710,6 +1867,7 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
     ...(env ? { ink: hex(env.ink) } : {}),
     ...(env?.background ? { background: hex(env.background) } : {}),
     colors: terminalColors?.foreground ? 'terminal' : 'theme',
+    ...(info.images ? { claude: { ...claude } } : {}),
   }
   const pluginVersion = typeof manifest === 'string' ? (JSON.parse(manifest) as { version?: unknown }).version : undefined
   const optionText = (value: unknown, fallback: string) => (value === undefined ? fallback : typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value))
