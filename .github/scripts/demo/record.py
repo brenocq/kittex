@@ -20,7 +20,9 @@ directory they ran in (--cwd).
 
 Claude Code runs in a pty that poses as kitty: TERM=xterm-kitty, answers to
 the queries kitty answers (device attributes, XTVERSION, DECRQM, the cell and
-window size in pixels, OSC 10/11 colours, kitty graphics a=q), and a window
+window size in pixels, OSC 10/11 colours, kitty graphics a=q), each in the
+order it came as kitty does (Claude Code's own probe then decides that kitty
+draws pictures, so no CLAUDE_CODE_FORCE_TERMINAL_IMAGES), and a window
 size set in cells and pixels (TIOCSWINSZ), so kittex's cell probe sees real
 pixels and rasterizes its formulas for them. The prompt is typed one character
 at a time with human jitter. Every byte Claude Code writes is kept with its
@@ -88,7 +90,16 @@ NO_TOOLS = ['--tools', '', '--strict-mcp-config', '--disallowedTools',
 SYSTEM = 'This session has no tools: answer in the reply itself, never with a tool call.'
 
 TRUST = r'trust\s*(the\s*files|this\s*folder)|Yes,\s*I\s*trust'
-APC = re.compile(rb'\x1b_(.*?)\x1b\\', re.S)
+# The queries kitty answers, matched in one pass so each is answered in the order it came.
+QUERY = re.compile(
+    rb'\x1b\[(?P<da>>?)\d*c'
+    rb'|(?P<xtversion>\x1b\[>0?q)'
+    rb'|\x1b\[\?(?P<decrqm>\d+)\$p'
+    rb'|\x1b\[(?P<window>\d+)t'
+    rb'|\x1b\](?P<osc>1[01]);\?(?:\x07|\x1b\\)'
+    rb'|\x1b_(?P<apc>.*?)\x1b\\',
+    re.S,
+)
 ESCAPES = re.compile(r'\x1b\[\d*[CG]|\x1b\[[0-9;:?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[P_^X].*?\x1b\\|\x1b.', re.S)
 
 
@@ -138,35 +149,39 @@ class Session:
         os.write(self.fd, data)
 
     def answer(self, b):
-        """The answers kitty gives to the queries Claude Code makes at startup.
-        The kitty keyboard query (CSI ? u) stays unanswered, so keys are sent
-        as plain bytes."""
-        for m in re.finditer(rb'\x1b\[(>?)(\d*)c', b):
-            self.reply(b'\x1b[>1;4000;29c' if m.group(1) else b'\x1b[?62;22;52c')
-        for _ in re.finditer(rb'\x1b\[>0?q', b):
-            self.reply(b'\x1bP>|kitty(0.39.1)\x1b\\')
-        for m in re.finditer(rb'\x1b\[\?(\d+)\$p', b):
-            self.reply(b'\x1b[?' + m.group(1) + b';2$y')
-        for m in re.finditer(rb'\x1b\[(\d+)t', b):
-            n = m.group(1)
-            if n == b'14':
-                self.reply(f'\x1b[4;{self.rows * self.ch};{self.cols * self.cw}t'.encode())
-            elif n == b'16':
-                self.reply(f'\x1b[6;{self.ch};{self.cw}t'.encode())
-            elif n == b'18':
-                self.reply(f'\x1b[8;{self.rows};{self.cols}t'.encode())
-        for m in re.finditer(rb'\x1b\](1[01]);\?(\x07|\x1b\\)', b):
-            col = self.fg if m.group(1) == b'10' else self.bg
-            self.reply(b'\x1b]' + m.group(1) + b';' + hex16(col).encode() + b'\x1b\\')
-        for m in APC.finditer(b):
-            body = m.group(1)
-            if not body.startswith(b'G'):
-                continue
-            keys = dict(kv.split(b'=', 1) for kv in body[1:].split(b';', 1)[0].split(b',') if b'=' in kv)
-            if keys.get(b'a') == b'q':
-                self.reply(b'\x1b_Gi=' + keys.get(b'i', b'0') + b';OK\x1b\\')
-            elif keys.get(b'a') in (b'T', b't'):  # the first chunk of an image
-                self.images += 1
+        """The answers kitty gives to the queries Claude Code makes at startup,
+        each as it arrives, in order, as kitty does: Claude Code sends its
+        primary device attributes query (DA1) last and reads its answer as the
+        end of the probe, so a graphics reply sent after it counts as none and
+        Claude Code draws no picture. The kitty keyboard query (CSI ? u) stays
+        unanswered, so keys are sent as plain bytes."""
+        for m in QUERY.finditer(b):
+            if m.group('da') is not None:
+                self.reply(b'\x1b[>1;4000;29c' if m.group('da') else b'\x1b[?62;22;52c')
+            elif m.group('xtversion') is not None:
+                self.reply(b'\x1bP>|kitty(0.39.1)\x1b\\')
+            elif m.group('decrqm') is not None:
+                self.reply(b'\x1b[?' + m.group('decrqm') + b';2$y')
+            elif m.group('window') is not None:
+                n = m.group('window')
+                if n == b'14':
+                    self.reply(f'\x1b[4;{self.rows * self.ch};{self.cols * self.cw}t'.encode())
+                elif n == b'16':
+                    self.reply(f'\x1b[6;{self.ch};{self.cw}t'.encode())
+                elif n == b'18':
+                    self.reply(f'\x1b[8;{self.rows};{self.cols}t'.encode())
+            elif m.group('osc') is not None:
+                col = self.fg if m.group('osc') == b'10' else self.bg
+                self.reply(b'\x1b]' + m.group('osc') + b';' + hex16(col).encode() + b'\x1b\\')
+            elif m.group('apc') is not None:
+                body = m.group('apc')
+                if not body.startswith(b'G'):
+                    continue
+                keys = dict(kv.split(b'=', 1) for kv in body[1:].split(b';', 1)[0].split(b',') if b'=' in kv)
+                if keys.get(b'a') == b'q':
+                    self.reply(b'\x1b_Gi=' + keys.get(b'i', b'0') + b';OK\x1b\\')
+                elif keys.get(b'a') in (b'T', b't'):  # the first chunk of an image
+                    self.images += 1
 
     def pump(self, dt):
         end = time.time() + dt
@@ -257,7 +272,7 @@ def main():
     env = {k: v for k, v in os.environ.items() if k not in UNSET}
     env.update({
         'TERM': 'xterm-kitty', 'TERM_PROGRAM': 'kitty', 'KITTY_WINDOW_ID': '1', 'COLORTERM': 'truecolor',
-        'CLAUDE_CODE_FORCE_TERMINAL_IMAGES': '1', 'DISABLE_AUTOUPDATER': '1', 'ENABLE_CLAUDEAI_MCP_SERVERS': 'false',
+        'DISABLE_AUTOUPDATER': '1', 'ENABLE_CLAUDEAI_MCP_SERVERS': 'false',
         'CLAUDE_CODE_HIDE_CWD': '1',
     })
     cwd = args.cwd or os.path.join(tempfile.gettempdir(), 'kittex-demo', 'kittex')
