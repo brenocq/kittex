@@ -90,6 +90,20 @@ prismantis is already installed, reinstall it after kittex.
 
 </details>
 
+<details>
+<summary><b>Do I need to change my CLAUDE.md?</b></summary>
+<br>
+
+No. kittex adds a short note to Claude's system prompt asking it to write math
+as LaTeX: `$…$` inside a sentence and `$$…$$` on a line of its own. Where Claude
+Code doesn't let plugins change the system prompt (Team and Enterprise plans),
+kittex sends the same note along with your first message instead, and again
+after `/clear` or a compaction. Either way Claude writes LaTeX without being
+asked, and nothing is added to your CLAUDE.md. Setting both options to `raw`
+stops the note too.
+
+</details>
+
 ## License
 
 [MIT](LICENSE). Bundled libraries keep their own licenses: see the [third-party notices](plugin/THIRD-PARTY-NOTICES).
