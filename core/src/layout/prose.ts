@@ -345,7 +345,9 @@ export function proseBlocks(markdown: string): ProseBlock[] | null {
     block = undefined
   }
   let at = 0
-  for (const token of tokens) {
+  for (const [k, token] of tokens.entries()) {
+    // marked ends a blockquote with a lazy line after it (`> a` then `b`) with a newline the text may not have.
+    if (k === tokens.length - 1 && token.raw === markdown.slice(at) + '\n') token.raw = markdown.slice(at)
     if (!markdown.startsWith(token.raw, at)) return null
     if (token.type === 'space' && /\n[ \t]*\n/.test(markdown.slice(Math.max(0, at - 1), at + token.raw.length))) {
       close()

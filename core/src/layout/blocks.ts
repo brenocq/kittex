@@ -78,7 +78,9 @@ export function blockParts(markdown: string): BlockPart[] | null {
 
 /** The parts of one block (no blank line in it), or null when it can't be split. */
 function splitBlock(markdown: string, start: number, end: number): BlockPart[] | null {
-  const source = markdown.slice(start, end)
+  // Lexed with the line break that ends it: a code fence still open at the end of a streamed text (```python
+  // and its newline) cut off its newline would read as text, a lazy line of a quote or a paragraph before it.
+  const source = markdown.slice(start, /^\r?\n/.test(markdown.slice(end)) ? markdown.indexOf('\n', end) + 1 : end)
   let tokens: Token[]
   try {
     tokens = marked.lexer(source)
