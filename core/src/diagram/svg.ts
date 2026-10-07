@@ -30,6 +30,19 @@ export interface SvgReadOptions {
 
 /** Shapes one picture may paint, at most. */
 export const MAX_PICTURE_OPS = 60_000
+/**
+ * The longest path data one shape may have, in characters. dvisvgm's longest
+ * for real pictures: about 18 000 for a 1000-sample pgfplots plot, 145 000
+ * for 8000 samples (near where TeX's main memory runs out, in 20 s of TeX).
+ */
+export const MAX_PATH_DATA = 1_000_000
+/**
+ * The numbers (coordinates and arc parameters) one picture's path data may
+ * hold in all, each shape counted as often as it is painted or clips (a glyph
+ * per use): what the rasterizer flattens. Real pictures hold up to about
+ * 57 000 (a 60 × 60 pgfplots surface), 40 000 for a picture of 40 formulas.
+ */
+export const MAX_PICTURE_NUMBERS = 2_000_000
 /** Elements one picture's walk may visit, at most (a `use` of a group visits it again). */
 const MAX_VISITS = 400_000
 /** How deep `use` may reference (a cycle is refused). */
@@ -103,8 +116,23 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
   const clips: PictureClip[] = []
   const clipIds = new Map<string, number>()
 
+  // Numbers per path data, counted once each (a glyph's outline is painted many times).
+  const counted = new Map<string, number>()
+  let numbers = 0
+  const account = (d: string) => {
+    if (d.length > MAX_PATH_DATA) throw new SvgError(`picture too complex (a path of ${d.length} characters)`)
+    let n = counted.get(d)
+    if (n === undefined) {
+      n = countNumbers(d)
+      counted.set(d, n)
+    }
+    numbers += n
+    if (numbers > MAX_PICTURE_NUMBERS) throw new SvgError(`picture too complex (more than ${MAX_PICTURE_NUMBERS} path coordinates)`)
+  }
+
   const push = (op: PictureOp) => {
     if (ops.length >= MAX_PICTURE_OPS) throw new SvgError('picture too complex')
+    account(op.d)
     ops.push(op)
   }
 
@@ -153,6 +181,7 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
       }
       const d = shapePath(node)
       if (d !== undefined) {
+        account(d)
         paths.push({ d, transform: multiply(toEm, local), rule })
         return
       }
@@ -219,6 +248,40 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
   const height = (baselineY - box.y) * s
   const depth = (box.y + box.height - baselineY) * s
   return { width: box.width * s, height: Math.max(0, height), depth: Math.max(0, depth), ops, clips }
+}
+
+/** How many numbers path data holds, as SVG reads them (`0.5.5` is two, `1e-5` one). */
+export function countNumbers(d: string): number {
+  let n = 0
+  let inNumber = false
+  let dot = false
+  let exponent = false
+  for (let i = 0; i < d.length; i++) {
+    const c = d.charCodeAt(i)
+    if (c >= 48 && c <= 57) {
+      if (!inNumber) {
+        n++
+        inNumber = true
+        dot = false
+        exponent = false
+      }
+    } else if (c === 46) {
+      // A point after a number's own point or its exponent starts the next number.
+      if (!inNumber || dot || exponent) {
+        n++
+        inNumber = true
+        exponent = false
+      }
+      dot = true
+    } else if ((c === 101 || c === 69) && inNumber && !exponent) {
+      exponent = true
+    } else if ((c === 43 || c === 45) && inNumber && exponent && (d.charCodeAt(i - 1) === 101 || d.charCodeAt(i - 1) === 69)) {
+      // The exponent's sign.
+    } else {
+      inNumber = false
+    }
+  }
+  return n
 }
 
 function viewBox(root: XmlElement): { x: number; y: number; width: number; height: number } {

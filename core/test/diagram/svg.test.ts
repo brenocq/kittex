@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { adaptColor, assumedBackground, readSvg, SvgError, texPicture, XmlError } from '../../src/diagram/index.ts'
+import { adaptColor, assumedBackground, countNumbers, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, readSvg, SvgError, texPicture, XmlError } from '../../src/diagram/index.ts'
 import { parseXml } from '../../src/diagram/xml.ts'
 import type { Picture, PictureOp } from '../../src/types.ts'
 
@@ -156,5 +156,45 @@ describe('colours on the terminal', () => {
   test('the background assumed is opposite the ink', () => {
     expect(assumedBackground({ r: 230, g: 230, b: 230 }).r).toBeLessThan(60)
     expect(assumedBackground({ r: 20, g: 20, b: 20 }).r).toBe(255)
+  })
+})
+
+describe('limits on path data (security review: a picture the rasterizer would take minutes over)', () => {
+  test('numbers are counted as SVG reads them', () => {
+    expect(countNumbers('M0 0L10.5,-2.25')).toBe(4)
+    expect(countNumbers('M0.5.5l1e-5-2E+3 .1')).toBe(5)
+    expect(countNumbers('M1-2-3')).toBe(3)
+    expect(countNumbers('Z')).toBe(0)
+  })
+
+  test("dvisvgm's real pictures are far inside both limits", () => {
+    for (const name of ['cd', 'chem', 'circ', 'plot', 'si', 'tikz']) {
+      const picture = texPicture(fixture(name), { baseline: 'bottom', fontSize: 10 })
+      expect(Math.max(...picture.ops.map(op => op.d.length)), name).toBeLessThan(MAX_PATH_DATA / 100)
+      expect(picture.ops.reduce((sum, op) => sum + countNumbers(op.d), 0), name).toBeLessThan(MAX_PICTURE_NUMBERS / 100)
+    }
+  })
+
+  test('one path longer than MAX_PATH_DATA refuses the picture', () => {
+    const d = `M0 0${'L1 1'.repeat(MAX_PATH_DATA / 4)}`
+    expect(() => read(`<path d='${d}'/>`)).toThrow(/picture too complex \(a path of \d+ characters\)/)
+    expect(() => read(`<path d='${d.slice(0, MAX_PATH_DATA)}'/>`)).not.toThrow()
+  })
+
+  test('a glyph painted again and again counts each time, until the picture holds too many coordinates', () => {
+    // 1000 numbers in one outline, painted by `use` 3000 times: 3 000 000 coordinates.
+    const glyph = `<defs><path id='g0-1' d='M0 0${' L1 1'.repeat(499)}'/></defs>`
+    const uses = (n: number) => `<use xlink:href='#g0-1' x='1' y='1'/>`.repeat(n)
+    expect(() => read(glyph + uses(3000))).toThrow(SvgError)
+    expect(() => read(glyph + uses(3000))).toThrow(/more than 2000000 path coordinates/)
+    expect(read(glyph + uses(100)).ops).toHaveLength(100)
+  })
+
+  test('clip paths count too, once per place they clip', () => {
+    // About 499 000 numbers in one clip path, under MAX_PATH_DATA characters; clipping in five places passes the limit.
+    const clip = `<clipPath id='c'><path d='M0 0${' 1'.repeat(499_000)}'/></clipPath>`
+    const clipped = (n: number) => Array.from({ length: n }, (_, k) => `<g clip-path='url(#c)' transform='translate(${k} 0)'><rect width='1' height='1'/></g>`).join('')
+    expect(() => read(clip + clipped(5))).toThrow(/path coordinates/)
+    expect(read(clip + clipped(2)).ops).toHaveLength(2)
   })
 })
