@@ -155,8 +155,9 @@ describe('landing in the fullscreen layout', () => {
     const shown = await stream($, 'Let $x$ be:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n', 'f3')
     const mixed = `${shown}\nThen $y$ too.\n`
     const ui = await mountFullscreen($, mixed, ON_SCREEN)
-    // Once: the preview's image, x's and y's, none drawn twice over a drawing of kittex's own.
-    expect(sources(await ui.drawn())).toHaveLength(3)
+    // Once: the preview's image and x's, none drawn twice over a drawing of kittex's own. A streamed block's text
+    // outside its previews is never read as LaTeX again (fuzz FUZZ-12): `$y$` stays as written.
+    expect(sources(await ui.drawn())).toHaveLength(2)
   })
 
   test('the main screen reports no onScreen: a streamed block is drawn by kittex from its first render', async ($, on) => {

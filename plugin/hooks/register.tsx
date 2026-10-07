@@ -34,6 +34,8 @@ import {
 } from './core.js'
 import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
 import {
+  BLOCK_LIMIT,
+  blockMatches,
   BULLET,
   bulletFor,
   CELL_POLL_MS,
@@ -51,13 +53,15 @@ import {
   SOURCE_PATTERN,
   STREAMED_PATTERN,
   linkEnv,
+  locatePreviews,
   MessageStream,
   MATH_INSTRUCTIONS,
   planLanded,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
   displayColumns,
-  RECORD_LIMIT,
+  PENDING_ROWS,
+  RECENT_BLOCKS,
   renderEnvFor,
   REPLY_INDENT,
   RESIZE_SETTLE_MS,
@@ -65,17 +69,40 @@ import {
   STREAM_LIMIT,
   withoutTextOverride,
 } from './math.ts'
-import type { InlineSlot, KittexEnv, Piece, PreviewRecord } from './math.ts'
+import type { InlineSlot, KittexEnv, Piece, PreviewRecord, StreamedBlock } from './math.ts'
 
 type $ = EngineInterface
 
 const ENV = { plugin: 'kittex', key: 'env' } as const
-const RECORDS = { plugin: 'kittex', key: 'records' } as const
+const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
+const REQUESTS = { plugin: 'kittex', key: 'requests' } as const
+const RECENT = { plugin: 'kittex', key: 'recent' } as const
 
 // Module state that drawing never reads (a hot reload resets it, and
 // session.start runs again then).
-/** Messages streaming through MessageDisplay; null for one kittex gave up on (it passes as written). */
-const streams = new Map<string, MessageStream | null>()
+
+/** A message streaming through MessageDisplay (one text block), as kittex follows it. */
+interface Streaming {
+  /** Its stream; null once kittex gave up on it (the rest passes as written). */
+  stream: MessageStream | null
+  /** The model's text so far, every delta as it came: what the block's transcript row holds. */
+  source: string
+  /** How much of it the engine shows (every flush's text joined): where the next flush's previews start. */
+  shown: number
+  /** Its block is in kittex.blocks. */
+  stored: boolean
+  /** A row's uuid links it (kittex.requests). */
+  linked: boolean
+  /** Its final flush came. */
+  done: boolean
+}
+
+/** Messages streaming through MessageDisplay, and the last ones that did (their rows may be appended after their final flush). */
+const streams = new Map<string, Streaming>()
+/** The message_ids of the blocks stored, oldest first: past BLOCK_LIMIT the oldest is dropped. */
+const storedBlocks: string[] = []
+/** Response rows appended before any flush of their block (a one-line reply): linked once its stream shows up. */
+const pendingRows: { uuid: string; text: string }[] = []
 /** Claude Code's environment as the terminal helpers read it. */
 let processEnv: Record<string, string | undefined> = {}
 let terminal: TerminalInfo | undefined
@@ -173,36 +200,72 @@ export const register: Register = (on, options) => {
   on('classic.MessageDisplay', async ($, e, next) => {
     const below = await next(e)
     const delta = below.displayContent ?? e.delta
-    let stream: MessageStream | undefined
+    let entry: Streaming | undefined
+    let before = 0
     try {
       const env = await readEnv($)
       if (!env) return below
-      const known = streams.get(e.message_id)
-      if (known === null) {
-        if (e.final) streams.delete(e.message_id)
+      entry = streams.get(e.message_id)
+      if (entry?.done) entry = undefined
+      if (entry?.stream === null) {
+        entry.source += e.delta
+        entry.shown += delta.length
+        if (e.final) entry.done = true
         return below
       }
-      stream = known
-      if (!stream) {
+      if (!entry) {
         if (delta === '' && e.final) return below
-        stream = new MessageStream()
-        streams.set(e.message_id, stream)
+        entry = { stream: new MessageStream(), source: '', shown: 0, stored: false, linked: false, done: false }
+        streams.delete(e.message_id)
+        streams.set(e.message_id, entry)
         for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
       }
-      const rewrite = stream.push(delta, e.final, { ...env, inline: inlineImages && env.images })
-      if (e.final) streams.delete(e.message_id)
-      if (rewrite.records.length > 0) {
-        await remember($, rewrite.records)
-        if (env.images) drawSoon(rewrite.records, env)
-      }
+      before = entry.shown
+      entry.source += e.delta
+      const rewrite = entry.stream!.push(delta, e.final, { ...env, inline: inlineImages && env.images })
+      // Each preview where the engine will show it: a landed block maps its previews back by place, not by content.
+      const records = locatePreviews(rewrite.text, rewrite.records, before)
+      entry.shown = before + rewrite.text.length
+      if (e.final) entry.done = true
+      if (records.length > 0 || (!entry.stored && rewrite.text !== delta)) await storeBlock($, e.message_id, entry, records)
+      if (!entry.linked) await linkPending($, e.message_id, entry)
+      if (records.length > 0 && env.images) drawSoon(records, env)
       return rewrite.text === delta ? below : { ...below, displayContent: rewrite.text }
     } catch {
       // Show whatever was held back, as written, and leave the rest of the message alone.
-      if (e.final) streams.delete(e.message_id)
-      else streams.set(e.message_id, null)
-      const unshown = stream?.unshown() ?? delta
+      const unshown = entry?.stream?.unshown() ?? delta
+      if (entry) {
+        entry.stream = null
+        entry.shown = before + unshown.length
+        if (e.final) entry.done = true
+        // From here on the text is the model's as written: the landing may read its LaTeX.
+        await storeBlock($, e.message_id, entry, [], before).catch(() => undefined)
+      }
       return unshown === delta ? below : { ...below, displayContent: unshown }
     }
+  }).catch(($, e, next) => next(e))
+
+  // A landed block is told from the others by its transcript row: the row a
+  // text block is appended as holds the model's text, which the block's
+  // stream started (MessageDisplay's message_id and AssistantMessage's
+  // requestId, the row's uuid, are unrelated ids). The link is what a landed
+  // block's drawing reads its previews by (fuzz FUZZ-7, FUZZ-14).
+  on('session.append', { door: 'response' }, async ($, e, next) => {
+    try {
+      const text = e.message.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
+      if (text.trim() !== '') {
+        const id = streamOf(text)
+        if (id !== undefined) {
+          await linkRow($, e.uuid, id)
+        } else {
+          pendingRows.push({ uuid: e.uuid, text })
+          pendingRows.splice(0, Math.max(0, pendingRows.length - PENDING_ROWS))
+        }
+      }
+    } catch {
+      // drawn by its text
+    }
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // ─── Landed replies ────────────────────────────────────────────────────────
@@ -253,11 +316,16 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     const columns = e.viewport?.columns ?? env.columns
     const images = e.surface === 'terminal' && env.images
     // The text may lack the block's last flush (or be empty) on the first
-    // render: nothing here is final, and the render runs again when it lands.
-    const records = images && /&nbsp;|```|\u00a0|\u2800|\u034f/.test(e.props.text) ? ((await $.state.get(RECORDS)).value ?? []) : []
+    // render: nothing here is final, and the render runs again when it lands
+    // (and when its block's previews or its row's link are stored: read here).
+    const found = e.surface === 'terminal' ? await landedBlock($, e) : { streamed: false }
+    const streamed = found.streamed || STREAMED_PATTERN.test(e.props.text)
+    const records = images ? (found.block?.records ?? []) : []
     const renderEnv = renderEnvFor(env, columns)
     const inlineEnv = inlineEnvFor(env, columns)
     const plan = planLanded(e.props.text, records, {
+      ...(streamed ? { streamed: found.block?.raw === undefined ? {} : { raw: found.block.raw } } : {}),
+      mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
       maxColumns: renderEnv.maxColumns,
       draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
       width: proseWidthFor(env, columns),
@@ -302,17 +370,18 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       ) : (
         <Text dimColor>{piece.text}</Text>
       )
-    // A prose piece is the engine's own drawing; its inline formulas' images
+    // A prose piece is the engine's own drawing; the images of its formulas
     // lie over their previews, each at the cell its preview starts in: a row
     // under the piece's top margin, the column after the bullet's where the
-    // piece draws one. Not absolute: the engine puts an absolute box that
-    // falls above the screen on its first row (fullscreen, a reply scrolled
-    // past the top), so the images go in the flow of an overlay column, as
-    // wide as nothing and as tall as the piece, beside the drawing in a
-    // row-reverse Box: it starts at the piece's top-left cell, is painted
-    // after the drawing, and takes no room (nothing moves). The drawing's
-    // wrapper grows to the width instead of naming one: the engine refuses
-    // its own drawing under a Box with a size, a position or an overflow.
+    // piece draws one (a display formula's over its preview's rows, with its
+    // copy button). Not absolute: the engine puts an absolute box that falls
+    // above the screen on its first row (fullscreen, a reply scrolled past
+    // the top), so the images go in the flow of an overlay column, as wide as
+    // nothing and as tall as the piece, beside the drawing in a row-reverse
+    // Box: it starts at the piece's top-left cell, is painted after the
+    // drawing, and takes no room (nothing moves). The drawing's wrapper grows
+    // to the width instead of naming one: the engine refuses its own drawing
+    // under a Box with a size, a position or an overflow.
     const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
       const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       if (!piece.inline?.length) return text
@@ -325,7 +394,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
           <Box flexDirection="column" width={0} flexShrink={0} alignItems="flex-start">
             {inlineFlow(piece.inline, left).map(({ inline, marginTop, marginLeft }: InlineSlot, k: number) => (
               <Box
-                key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`}
+                key={`kittex-${inline.display ? 'formula' : 'inline'}-${k}-${signatureOf(inline.image.png)}`}
                 marginTop={marginTop}
                 marginLeft={marginLeft}
                 width={inline.image.columns}
@@ -333,17 +402,24 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
                 flexShrink={0}
               >
                 <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
+                {inline.display ? (
+                  <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+                    <Button key={`kittex-copy-${k}`} label={COPY_LABEL} plain dimColor onPress={copy(inline.tex)} />
+                  </Box>
+                ) : null}
               </Box>
             ))}
           </Box>
         </Box>
       )
     }
+    // The prose pieces are drawn by the engine at once: each is a round trip, and a block may hold several.
+    const texts = await Promise.all(pieces.map((piece, i) => (piece.kind === 'prose' ? prose(piece, i === 0 ? first : false) : null)))
     const drawn = []
     for (const [i, piece] of pieces.entries()) {
       if (i === 0) {
         if (piece.kind === 'prose') {
-          drawn.push(await prose(piece, first))
+          drawn.push(texts[i])
         } else {
           drawn.push(
             <Box flexDirection="row" marginTop={1}>
@@ -359,7 +435,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       } else if (piece.kind === 'prose') {
         drawn.push(
           <Box paddingLeft={indent} marginTop={piece.gap ? 0 : -1}>
-            {await prose(piece, false)}
+            {texts[i]}
           </Box>,
         )
       } else if (piece.kind === 'image') {
@@ -721,10 +797,73 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
   if (!same) $.ui.invalidate('ui.render')
 }
 
-async function remember($: $, records: readonly PreviewRecord[]): Promise<void> {
-  // A preview recorded again replaces the older record (inline previews repeat).
-  const fresh = new Set(records.map(record => record.preview))
-  await update($, RECORDS, list => [...(list ?? []).filter(record => !fresh.has(record.preview)), ...records].slice(-RECORD_LIMIT))
+/**
+ * Stores a flush's previews (with `at`) in its block, and `raw` where its
+ * stream gave up. A block new to the store is one of the recent ones; past
+ * BLOCK_LIMIT the oldest is dropped (drawn as it streamed if it redraws).
+ */
+async function storeBlock($: $, id: string, entry: Streaming, records: readonly PreviewRecord[], raw?: number): Promise<void> {
+  await update($, { ...BLOCKS, id }, block => {
+    const kept: StreamedBlock = { records: [...(block?.records ?? []), ...records] }
+    const at = raw ?? block?.raw
+    return at === undefined ? kept : { ...kept, raw: at }
+  })
+  if (entry.stored) return
+  entry.stored = true
+  storedBlocks.push(id)
+  await update($, RECENT, list => [...(list ?? []).filter(one => one !== id), id].slice(-RECENT_BLOCKS))
+  while (storedBlocks.length > BLOCK_LIMIT) await $.state.set({ ...BLOCKS, id: storedBlocks.shift()! }, null)
+}
+
+/** The message whose stream a row's text starts with (the longest such, so the newest of two that begin alike). */
+function streamOf(text: string): string | undefined {
+  let best: string | undefined
+  let length = 0
+  for (const [id, entry] of streams) {
+    const source = entry.source.trimEnd()
+    if (source !== '' && source.length >= length && text.startsWith(source)) {
+      best = id
+      length = source.length
+    }
+  }
+  return best
+}
+
+async function linkRow($: $, uuid: string, id: string): Promise<void> {
+  await $.state.set({ ...REQUESTS, id: uuid }, id)
+  const entry = streams.get(id)
+  if (entry) entry.linked = true
+}
+
+/** Links a stream to a row appended before its first flush, once its text shows whose row that is. */
+async function linkPending($: $, id: string, entry: Streaming): Promise<void> {
+  const source = entry.source.trimEnd()
+  if (source === '') return
+  const k = pendingRows.findIndex(row => row.text.startsWith(source))
+  if (k < 0) return
+  const [row] = pendingRows.splice(k, 1)
+  await linkRow($, row!.uuid, id)
+}
+
+/**
+ * The streamed block a landed one is: the one its row links (`streamed`
+ * even with no previews stored: its text holds no LaTeX to read again), else,
+ * for a text holding preview marks, the newest block whose previews it holds
+ * where they were written (no link after a hot reload). A render only reads.
+ */
+async function landedBlock($: $, e: LandedEvent): Promise<{ streamed: boolean; block?: StreamedBlock }> {
+  const id = (await $.state.get({ ...REQUESTS, id: e.requestId })).value
+  if (id !== undefined) {
+    const block = (await $.state.get({ ...BLOCKS, id })).value
+    return block ? { streamed: true, block } : { streamed: true }
+  }
+  if (!STREAMED_PATTERN.test(e.props.text)) return { streamed: false }
+  const recent = (await $.state.get(RECENT)).value ?? []
+  for (const one of [...recent].reverse()) {
+    const block = (await $.state.get({ ...BLOCKS, id: one })).value
+    if (block && blockMatches(e.props.text, block.records)) return { streamed: true, block }
+  }
+  return { streamed: false }
 }
 
 // ─── Images (stress report F9: the landing render only composes) ─────────────
