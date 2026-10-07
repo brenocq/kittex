@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
-"""Records one real Claude Code turn with kittex loaded, for the README demo.
+"""Records a real Claude Code session with kittex loaded, for the README demo.
 
 Usage (from the repository root, after `npm ci && npm run build`):
 
-    npm run readme:demo:record   # one Opus turn -> .github/assets/demo.rec.gz
+    npm run readme:demo:record   # the two demo turns (PROMPTS), Opus -> .github/assets/demo.rec.gz
     npm run readme:demo          # renders it (render.mjs)
 
-    python3 .github/scripts/demo/record.py [--model M] [--prompt P] [--out F]
+    python3 .github/scripts/demo/record.py [--model M] [--prompt P [--prompt P2 ...]] [--out F]
+        [--resume ID [--rewind]]       # go on in a recorded session (forked)
         [--no-submit --debug-file F]   # type but never send: no model turn
+
+Each --prompt is one turn of the same session, typed once the reply before it
+has landed. --resume continues a recorded session (its id is in that take's
+last screen) instead of starting one; with --rewind its last turn is taken
+again (/rewind, before anything is shown), so a good first turn can be kept
+while the next is retaken: render.mjs joins such a recording onto the one it
+continues (demo.rec.gz, then demo-2.rec.gz). Sessions are resumed from the
+directory they ran in (--cwd).
 
 Claude Code runs in a pty that poses as kitty: TERM=xterm-kitty, answers to
 the queries kitty answers (device attributes, XTVERSION, DECRQM, the cell and
@@ -17,15 +26,19 @@ pixels and rasterizes its formulas for them. The prompt is typed one character
 at a time with human jitter. Every byte Claude Code writes is kept with its
 time; nothing is emulated here (render.mjs does that offline).
 
-All tools are off (--tools '' and --disallowedTools), kittex is loaded only
-with --plugin-dir, and the session runs in a neutral directory (a `kittex`
-folder under the temporary directory) with CLAUDE_CODE_HIDE_CWD set; its trust
-dialog is accepted (IS_DEMO would skip it, but then no plugin hooks load). Don't
-pass --debug-file to a take: Claude Code then prints the log's path in its header.
+All tools are off (--tools '' and --disallowedTools), and the model is told so
+(SYSTEM): asked for a figure, it otherwise writes tool calls out as text.
+kittex is loaded only with --plugin-dir, its options at their defaults
+(SETTINGS: the diagrams need `latex` and `dvisvgm` on the PATH), and the
+session runs in a neutral directory (a `kittex` folder under the temporary
+directory) with CLAUDE_CODE_HIDE_CWD set; its trust dialog is accepted
+(IS_DEMO would skip it, but then no plugin hooks load). Don't pass
+--debug-file to a take: Claude Code then prints the log's path in its header.
 Standard library only.
 
 The recording is gzipped JSON lines: a header, then {"t", "o": base64 output},
-{"t", "i": input} and {"t", "mark": ready|submit|done} records, t in seconds.
+{"t", "i": input} and {"t", "mark": ready|submit|done} records (one of each per
+turn), t in seconds.
 """
 import argparse
 import base64
@@ -44,9 +57,16 @@ import tempfile
 import termios
 import time
 
-PROMPT = 'Show one key equation each for pretraining, RLHF and DPO, with one short sentence each.'
-# Claude Code's fullscreen layout (alternate screen), where kittex lands its images without a blank frame.
-SETTINGS = '{"tui": "fullscreen"}'
+# The demo's turns: equations first, then diagrams drawn with the local TeX.
+PROMPTS = [
+    'Show one key equation each for pretraining, RLHF and DPO, with one short sentence each.',
+    'Now draw the RLHF pipeline in one row and plot the DPO loss.',
+]
+# Claude Code's fullscreen layout (alternate screen), where kittex lands its
+# images without a blank frame, and kittex's options at their defaults (the
+# user's own settings may pin others).
+SETTINGS = json.dumps({'tui': 'fullscreen', 'promptSuggestionEnabled': False, 'pluginConfigs': {'kittex@inline': {
+    'options': {'block': 'image', 'inline': 'image', 'latex': 'auto'}}}})
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 DEFAULT_CLAUDE = os.path.expanduser('~/.local/share/claude/versions/2.1.291')
 
@@ -62,6 +82,10 @@ UNSET = ('CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CLAUDE_COD
 NO_TOOLS = ['--tools', '', '--strict-mcp-config', '--disallowedTools',
             'Artifact,ArtifactComments,ArtifactData,Skill,Agent,Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,'
             'mcp__claude_ai_Claude_Docs,mcp__claude_ai_Improved,mcp__claude_ai_Google_Drive']
+
+# With every tool off, a model asked for a figure may still reach for one and
+# write the call out as text: it is told there are none (it is not shown).
+SYSTEM = 'This session has no tools: answer in the reply itself, never with a tool call.'
 
 TRUST = r'trust\s*(the\s*files|this\s*folder)|Yes,\s*I\s*trust'
 APC = re.compile(rb'\x1b_(.*?)\x1b\\', re.S)
@@ -206,7 +230,10 @@ class Session:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--prompt', default=PROMPT)
+    ap.add_argument('--prompt', action='append', default=[], help='a prompt to send; repeat it for later turns of the same session')
+    ap.add_argument('--resume', default='', help='a session id to resume (forked: the original is left as it was) before the prompts')
+    ap.add_argument('--rewind', action='store_true', help="with --resume: first rewind the conversation to before its last prompt (/rewind), to take that turn again")
+    ap.add_argument('--quiet', type=float, default=6, help='seconds of quiet after new images that end a turn')
     ap.add_argument('--model', default='claude-opus-5-5')
     ap.add_argument('--out', default=os.path.join(ROOT, '.github', 'assets', 'demo.rec.gz'))
     ap.add_argument('--claude', default=DEFAULT_CLAUDE)
@@ -221,9 +248,11 @@ def main():
     ap.add_argument('--debug-file', default='', help="Claude Code's --debug-file")
     ap.add_argument('--no-submit', action='store_true', help='type the prompt but never send it (no model turn)')
     ap.add_argument('--env', action='append', default=[], help='extra KEY=VALUE for Claude Code')
+    ap.add_argument('--arg', action='append', default=[], help='an extra argument for Claude Code (repeat it)')
     ap.add_argument('--cwd', default='', help='a neutral directory named kittex to run in (default: <tmp>/kittex-demo/kittex)')
     args = ap.parse_args()
     cw, ch = (int(n) for n in args.cell.split('x'))
+    prompts = args.prompt or PROMPTS
 
     env = {k: v for k, v in os.environ.items() if k not in UNSET}
     env.update({
@@ -233,18 +262,23 @@ def main():
     })
     cwd = args.cwd or os.path.join(tempfile.gettempdir(), 'kittex-demo', 'kittex')
     os.makedirs(cwd, exist_ok=True)
-    argv = [args.claude, '--model', args.model, *NO_TOOLS, '--plugin-dir', os.path.join(ROOT, 'plugin')]
+    argv = [args.claude, '--model', args.model, *NO_TOOLS, '--append-system-prompt', SYSTEM,
+            '--plugin-dir', os.path.join(ROOT, 'plugin')]
+    if args.resume:
+        argv += ['--resume', args.resume, '--fork-session']
     if args.settings:
         argv += ['--settings', args.settings]
     if args.debug_file:
         argv += ['--debug-file', args.debug_file]
+    argv += args.arg
     env.update(kv.split('=', 1) for kv in args.env)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with gzip.open(args.out, 'wt') as log:
         log.write(json.dumps({
-            'kind': 'kittex-demo-recording', 'version': 1, 'cols': args.cols, 'rows': args.rows,
-            'cellWidth': cw, 'cellHeight': ch, 'model': args.model, 'prompt': args.prompt,
+            'kind': 'kittex-demo-recording', 'version': 2, 'cols': args.cols, 'rows': args.rows,
+            'cellWidth': cw, 'cellHeight': ch, 'model': args.model, 'prompt': prompts[0], 'prompts': prompts,
+            **({'resume': args.resume} if args.resume else {}), **({'rewind': True} if args.rewind else {}),
             'claude': os.path.basename(args.claude), 'recorded': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
         }) + '\n')
         s = Session(argv, cwd, env, args.cols, args.rows, cw, ch, args.fg, args.bg, log)
@@ -260,37 +294,45 @@ def main():
             s.send('\r')
             if not s.wait_for(ready, 30):
                 sys.exit('no prompt after the trust dialog')
-        s.pump(2.5)  # let the startup settle (mods load, the prompt box draws)
-        s.mark('ready')
-        s.pump(0.8)
-        s.type(args.prompt, random.Random(args.seed))
-        s.pump(0.45)
-        if args.no_submit:
+        s.pump(4.0 if args.resume else 2.5)  # let the startup settle (mods load, the prompt box draws, a resumed reply lands)
+        if args.rewind:
+            # /rewind, the last prompt, "Restore conversation"; the prompt it puts
+            # back in the box is cleared (a space typed and erased hides the hint
+            # to paste it back). All before `ready`: never shown.
+            for key in ('/rewind', '\r', '\x1b[A', '\r', '\r', '\x15', ' ', '\x7f'):
+                s.send(key)
+                s.pump(1.2)
             s.pump(2)
-            s.send('\x03')
-            s.pump(0.5)
-            s.send('\x03')
-            s.pump(1.5)
-            s.close()
-            return
-        s.mark('submit')
-        s.send('\r')
-        # Done when the output has been quiet for a while after kittex's images
-        # went out (or for longer without any).
-        end = time.time() + args.timeout
-        while s.alive and time.time() < end:
-            s.pump(0.25)
-            quiet = time.time() - s.last_output
-            if (s.images and quiet > 5) or quiet > 20:
+        rng = random.Random(args.seed)
+        for n, prompt in enumerate(prompts):
+            # Each turn: ready, the prompt typed, submit, done (render.mjs cuts on these).
+            s.mark('ready')
+            s.pump(0.8 if n == 0 else 1.5)
+            s.type(prompt, rng)
+            s.pump(0.45)
+            if args.no_submit:
+                s.pump(2)
                 break
-        s.mark('done')
-        s.pump(1)
+            s.mark('submit')
+            images = s.images
+            s.send('\r')
+            # Done when the output has been quiet for a while after kittex's
+            # images went out (or for longer without any): diagrams compile
+            # with TeX after their block closes, so the wait is a little longer.
+            end = time.time() + args.timeout
+            while s.alive and time.time() < end:
+                s.pump(0.25)
+                quiet = time.time() - s.last_output
+                if (s.images > images and quiet > args.quiet) or quiet > 20:
+                    break
+            s.mark('done')
+            s.pump(1)
         s.send('\x03')
         s.pump(0.5)
         s.send('\x03')
         s.pump(1.5)
         s.close()
-    print(f'{args.out}: {s.images} images, {s.t():.1f} s', file=sys.stderr)
+    print(f'{args.out}: {len(prompts)} prompts, {s.images} images, {s.t():.1f} s', file=sys.stderr)
 
 
 if __name__ == '__main__':

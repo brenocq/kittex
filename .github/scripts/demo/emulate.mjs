@@ -117,7 +117,9 @@ class GraphicsFilter {
 }
 
 /**
- * Replays the recording; returns { screens, images, marks, title }. A screen is
+ * Replays the recording; returns { screens, images, marks, turns }: `marks`
+ * holds each mark's first time, `turns` each turn's { ready, submit, done }
+ * (a recording of several prompts has one per prompt). A screen is
  * { t, rows: [[cell...]], cursor: {x, y, visible}, title, key }, a cell
  * { ch, w, fg, bg, bold, italic, underline, strike, img?: {id, row, col} }
  * with colours resolved against the theme (inverse and dim applied).
@@ -137,6 +139,7 @@ export async function emulate({ header, records }, theme) {
 
   const screens = []
   const marks = {}
+  const turns = []
   let lastKey = ''
 
   const color = (mode, value, fallback) => {
@@ -194,7 +197,12 @@ export async function emulate({ header, records }, theme) {
   }
 
   for (const r of records) {
-    if (r.mark) { marks[r.mark] ??= r.t; continue }
+    if (r.mark) {
+      marks[r.mark] ??= r.t
+      if (r.mark === 'ready') turns.push({ ready: r.t })
+      else if (turns.length) turns.at(-1)[r.mark] = r.t
+      continue
+    }
     if (!r.o) continue
     const text = graphics.filter(decoder.decode(Buffer.from(r.o, 'base64'), { stream: true }), r.t)
     // Paint only where kitty would: at the end of each synchronized update, and
@@ -209,7 +217,7 @@ export async function emulate({ header, records }, theme) {
     }
   }
   term.dispose()
-  return { screens, images: graphics.images, marks }
+  return { screens, images: graphics.images, marks, turns }
 }
 
 /** A screen as plain text (placeholders as ▒), for checks and logs. */

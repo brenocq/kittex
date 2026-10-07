@@ -1,15 +1,20 @@
 // Generates the README's feature cards, one theme-adaptive animated SVG each:
 //
-//   npm run readme:features          # writes .github/assets/feature-{live,tex,inline,copy}.svg and terminals.svg
+//   npm run readme:features          # writes .github/assets/feature-{live,diagrams,tex,inline,reflow,copy}.svg and terminals.svg
 //   npm run readme:features:preview  # also renders a contact sheet and the preview page
 //
 // Run `npm ci` first. Math is New Computer Modern from kittex's own
-// typesetter, terminal text is Roboto Mono (see ../banner/glyphs.mjs), and the
-// Unicode preview is kittex's own. Titles and descriptions are <text> in
-// GitHub's system fonts; each card moves on its own loop, and
-// prefers-reduced-motion shows its final frame.
+// typesetter (the Reflow card's line breaks are its own, at the window's
+// widths), terminal text is Roboto Mono (see ../banner/glyphs.mjs), and the
+// Unicode preview is kittex's own. The Diagrams card's pictures (a plot, a
+// circuit, a molecule) are compiled by your local TeX the way kittex compiles
+// one (picture.mjs), so this needs `latex` and `dvisvgm` with pgfplots,
+// circuitikz and chemfig (TeX Live). Titles and
+// descriptions are <text> in GitHub's system fonts; each card moves on its own
+// loop, and prefers-reduced-motion shows a still frame.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { loadCore, loadMono } from '../banner/glyphs.mjs'
+import { compilePicture, pictureMarkup } from './picture.mjs'
 import { terminals } from './terminals.mjs'
 import { ACCENT, CONTENT_TOP, Defs, PANEL, TERM, card, cellWidth, drawOps, keyframes, monoText, panel, placeMath, r } from './lib.mjs'
 
@@ -17,7 +22,7 @@ const OUT_DIR = '.github/assets'
 
 const core = await loadCore()
 const mono = loadMono()
-const display = tex => core.typeset(tex, { display: true })
+const display = (tex, lineWidth) => core.typeset(tex, { display: true, ...(lineWidth ? { lineWidth } : {}) })
 const inline = tex => core.typeset(tex, { display: false })
 
 /** The panel's content box: below the window dots, inside the panel. */
@@ -342,8 +347,190 @@ function copy() {
   })
 }
 
+// ─── 5. Diagrams ──────────────────────────────────────────────────────────
+
+/** The card's diagrams, as Claude would write them in ```latex blocks: each compiled by the local TeX. */
+const PLOT = [
+  '\\begin{tikzpicture}',
+  '\\begin{axis}[axis lines=middle, width=11cm, height=4.4cm,',
+  '    domain=0:20, samples=200, ticks=none, xlabel=$t$, ylabel=$x$]',
+  '  \\addplot[blue, very thick] {exp(-x/6)*cos(deg(2*x))};',
+  '  \\addplot[red, dashed] {exp(-x/6)};',
+  '  \\addplot[red, dashed] {-exp(-x/6)};',
+  '\\end{axis}',
+  '\\end{tikzpicture}',
+]
+const CIRCUIT = [
+  '\\begin{circuitikz}',
+  '\\draw (0,0) node[op amp] (oa) {}',
+  '  (oa.-) to[R, l_=$R_1$, -o] ++(-2.5,0) node[left] {$v_i$}',
+  '  (oa.-) |- ++(0,1.5) coordinate (t) to[R, l=$R_f$] (t -| oa.out) -- (oa.out)',
+  '  (oa.+) -- ++(0,-0.6) node[ground] {}',
+  '  (oa.out) to[short, -o] ++(1,0) node[right] {$v_o$};',
+  '\\end{circuitikz}',
+]
+const MOLECULE = ['\\chemfig{*6(-=-(-O-[::-60](=[::-60]O)-[::60]CH_3)=(-COOH)-=)}']
+
+function diagrams() {
+  const LOOP = 15
+  const defs = new Defs()
+  const css = []
+  const size = 8.6
+  const line = 12.4
+  const top = BOX.y0 + 10
+  const paper = { ink: TERM.fg, background: TERM.bg }
+  const mid = (BOX.y0 + BOX.y1) / 2
+  const origin = `transform-origin:${r(CX)}px ${r(mid)}px`
+
+  // A picture compiled from its source, as large as the panel holds, centred in it.
+  const place = (source, prefix, group) => {
+    const picture = compilePicture(core, source.join('\n'))
+    const room = { w: BOX.x1 - BOX.x0 + 8, h: BOX.y1 - BOX.y0 - 10 }
+    const scale = Math.min(room.w / picture.width, room.h / (picture.height + picture.depth))
+    const w = picture.width * scale, h = (picture.height + picture.depth) * scale
+    const drawn = pictureMarkup(core, picture, { x: CX - w / 2, y: mid - h / 2 + 1, scale, paper, group: (op, i) => group(op, i, picture), prefix })
+    defs.out.push(drawn.defs)
+    return drawn.markup
+  }
+
+  // The plot's code block streams in a line at a time, as Claude writes it.
+  const lineAt = k => 0.35 + k * 0.16
+  const source = PLOT.map((text, k) => {
+    css.push(`.dl${k}{animation-name:dl${k}}`, appear(`dl${k}`, lineAt(k), LOOP))
+    return `<g class="dl dl${k}">${monoText(defs, mono, text, BOX.x0 - 4, top + k * line, size)}</g>`
+  }).join('')
+
+  // When it lands it becomes the picture TeX drew: the axes settle in where
+  // the code was, then the curve and its envelope draw themselves.
+  let strokes = []
+  const plot = place(PLOT, 'p', (op, i, picture) => {
+    if (!strokes.length) strokes = picture.ops.filter(o => o.type === 'stroke' && o.clip !== undefined)
+    return op.type === 'stroke' && op.clip !== undefined ? `draw dpen${strokes.indexOf(op)}` : 'daxes'
+  })
+  const land = lineAt(PLOT.length - 1) + 0.9
+  css.push(
+    `.dsrc{opacity:0;animation-name:dsrc;${origin}}.daxes{animation-name:daxes;${origin}}`,
+    keyframes('dsrc', LOOP, [[0, SHOWN], [land, `${SHOWN};animation-timing-function:cubic-bezier(.5,0,.75,0)`], [land + 0.35, MORPH_OUT], [LOOP, 'opacity:0']]),
+    keyframes('daxes', LOOP, [[0, 'opacity:0'], [land + 0.15, `${MORPH_IN};animation-timing-function:cubic-bezier(.2,.7,.3,1)`], [land + 0.75, SHOWN], [LOOP, SHOWN]]),
+    `.draw path{stroke-dashoffset:0}`,
+  )
+  const drawIn = (name, t0, t1) => keyframes(name, LOOP, [[0, 'opacity:0'], [t0 - 0.001, 'opacity:0'], [t0, 'opacity:1;stroke-dasharray:1 1;stroke-dashoffset:1;animation-timing-function:cubic-bezier(.45,0,.4,1)'], [t1, 'opacity:1;stroke-dasharray:1 1;stroke-dashoffset:0'], [LOOP, 'opacity:1;stroke-dasharray:1 1;stroke-dashoffset:0']])
+  strokes.forEach((op, k) => {
+    // The curve first, then both halves of its envelope together.
+    const t0 = land + 0.55 + (k === 0 ? 0 : 1.25)
+    const t1 = t0 + (k === 0 ? 1.6 : 1.1)
+    css.push(
+      `.dpen${k}{animation-name:dpen${k}}`,
+      op.style.dash
+        ? keyframes(`dpen${k}`, LOOP, [[0, 'opacity:0'], [t0, 'opacity:0;clip-path:inset(0 100% 0 0)'], [t1, 'opacity:1;clip-path:inset(0 0 0 0)'], [LOOP, 'opacity:1']])
+        : drawIn(`dpen${k}`, t0, t1),
+    )
+  })
+
+  // Then a circuit and a molecule, each crossfading in and drawing its lines, its labels after.
+  const circuit = place(CIRCUIT, 'q', op => (op.type === 'stroke' ? 'draw dcs' : 'dcf'))
+  const molecule = place(MOLECULE, 'm', op => (op.type === 'stroke' ? 'draw dms' : 'dmf'))
+  const [plotOut, circuitOut] = [7.0, 10.8]
+  const visible = (name, t0, t1, base) => keyframes(name, LOOP, [[0, `opacity:${base}`], ...(t0 > 0 ? [[t0, 'opacity:0'], [t0 + 0.3, 'opacity:1']] : []), [t1, 'opacity:1'], [t1 + 0.4, 'opacity:0'], [LOOP - 0.001, 'opacity:0'], [LOOP, `opacity:${base}`]])
+  const fadeIn = (name, t0) => keyframes(name, LOOP, [[0, 'opacity:0'], [t0, 'opacity:0'], [t0 + 0.5, 'opacity:1'], [LOOP, 'opacity:1']])
+  css.push(
+    `.dplot{animation-name:dplot}`, visible('dplot', 0, plotOut, 1),
+    `.dckt{opacity:0;animation-name:dckt}`, visible('dckt', plotOut + 0.2, circuitOut, 0),
+    `.dcs path{animation-name:dcs}`, drawIn('dcs', plotOut + 0.3, plotOut + 1.6),
+    `.dcf{animation-name:dcf}`, fadeIn('dcf', plotOut + 1.2),
+    `.dmol{opacity:0;animation-name:dmol}`, visible('dmol', circuitOut + 0.2, LOOP - 0.9, 0),
+    `.dms path{animation-name:dms}`, drawIn('dms', circuitOut + 0.3, circuitOut + 1.5),
+    `.dmf{animation-name:dmf}`, fadeIn('dmf', circuitOut + 1.1),
+  )
+  css.push(looping(`.dl,.dsrc,.daxes,.dplot,.dckt,.dcs path,.dcf,.dmol,.dms path,.dmf,${strokes.map((_, k) => `.dpen${k}`).join(',')}`, LOOP))
+
+  const body = `${panel()}<g class="dsrc" fill="${TERM.dim}">${source}</g><g class="dplot">${plot}</g><g class="dckt">${circuit}</g><g class="dmol">${molecule}</g>`
+  return card({
+    title: 'Diagrams',
+    label: 'Diagrams: TikZ, plots, circuits and molecules, drawn by your own LaTeX',
+    lines: ['TikZ, plots, circuits and molecules,', 'drawn by your own LaTeX.'],
+    defs,
+    css: css.join(''),
+    body,
+  })
+}
+
+// ─── 6. Reflow ─────────────────────────────────────────────────────────────
+
+function reflow() {
+  const LOOP = 9
+  const defs = new Defs()
+  const css = []
+  const tex = '(a+b)^n = \\sum_{k=0}^{n} \\binom{n}{k} a^{n-k} b^{k} = a^n + n\\,a^{n-1} b + \\binom{n}{2} a^{n-2} b^2 + \\cdots + b^n'
+  const em = 12.8
+  const pad = 14
+  const cy = (CONTENT_TOP + PANEL.y + PANEL.h) / 2
+  // The window's widths, and the formula as kittex lays it out for each: its
+  // line width is the window's, so MathJax breaks it into one, two, three lines.
+  const states = [PANEL.w, 284, 197].map(width => {
+    const result = display(tex, (width - 2 * pad) / em)
+    return { width, result, lines: new Set(result.ops.map(op => (op.type === 'rect' ? op.y : op.transform[5]).toFixed(1))).size }
+  })
+  if (states.map(s => s.result.height + s.result.depth).some((h, i, all) => i > 0 && h <= all[i - 1])) throw new Error('expected each narrower window to break the formula into more lines')
+
+  // The window: a left cap, a middle that stretches, a right cap that moves.
+  const cap = 40
+  const at = width => `transform:translateX(${r(width - PANEL.w)}px)`
+  const stretch = width => `transform:scaleX(${r((width - cap) / (PANEL.w - cap), 4)})`
+  // Widths over the loop: wide, narrower, narrowest, wide again.
+  const [W1, W2, W3] = states.map(s => s.width)
+  const moves = [[0, W1], [1.6, W1], [2.3, W2], [4.0, W2], [4.7, W3], [6.4, W3], [7.3, W1], [LOOP, W1]]
+  const ease = 'animation-timing-function:cubic-bezier(.45,0,.25,1)'
+  css.push(
+    `.rfc{${at(W2)};animation-name:rfc}.rfm{${stretch(W2)};transform-origin:${PANEL.x + cap / 2}px 0;animation-name:rfm}`,
+    keyframes('rfc', LOOP, moves.map(([t, w]) => [t, `${at(w)};${ease}`])),
+    keyframes('rfm', LOOP, moves.map(([t, w]) => [t, `${stretch(w)};${ease}`])),
+  )
+  // The window's shape, drawn and again as the clip the formula is seen through.
+  const shape = [
+    `<rect x="${PANEL.x}" y="${PANEL.y}" width="${cap}" height="${PANEL.h}" rx="${PANEL.rx}"/>`,
+    `<rect class="rfm" x="${PANEL.x + cap / 2}" y="${PANEL.y}" width="${PANEL.w - cap}" height="${PANEL.h}"/>`,
+    `<rect class="rfc" x="${PANEL.x + PANEL.w - cap}" y="${PANEL.y}" width="${cap}" height="${PANEL.h}" rx="${PANEL.rx}"/>`,
+  ]
+  defs.out.push(`<clipPath id="rfwin">${shape.join('')}</clipPath>`)
+  const window = [
+    `<g fill="${TERM.bg}">${shape.join('')}</g>`,
+    // The resize pointer on the window's right edge.
+    `<g class="rfc"><g transform="translate(${r(PANEL.x + PANEL.w)} ${r(cy)})"><path d="M-9 0l4.5-4.5v2.6h9v-2.6L9 0l-4.5 4.5v-2.6h-9v2.6z" fill="#fff" stroke="#111" stroke-width="1" stroke-linejoin="round"/></g></g>`,
+    [0, 1, 2].map(i => `<circle cx="${PANEL.x + 13 + i * 11}" cy="${PANEL.y + 11}" r="3.2" fill="${TERM.faint}"/>`).join(''),
+  ].join('')
+
+  // Each layout stays while the window is dragged (cut off by its edge) and
+  // gives way to the next one's breaks, centred in the new width, when the drag ends.
+  const switches = [2.3, 4.7, 7.3]
+  const shown = [[[0, switches[0]], [switches[2], LOOP]], [[switches[0], switches[1]]], [[switches[1], switches[2]]]]
+  const FADE = 0.25
+  const formulas = states.map((state, k) => {
+    const math = placeMath(defs, state.result, { cx: PANEL.x + state.width / 2, cy, em })
+    const frames = [[0, k === 0 ? 'opacity:1' : 'opacity:0']]
+    for (const [t0, t1] of shown[k]) {
+      // The old breaks leave a little before the new ones arrive, so the two barely overlap.
+      if (t0 > 0) frames.push([t0 + 0.1, 'opacity:0'], [t0 + 0.1 + FADE, 'opacity:1'])
+      if (t1 < LOOP) frames.push([t1, 'opacity:1'], [t1 + FADE / 2, 'opacity:0'])
+    }
+    frames.push([LOOP, k === 0 ? 'opacity:1' : 'opacity:0'])
+    css.push(`.rf${k}{opacity:${k === 1 ? 1 : 0};animation-name:rf${k}}`, keyframes(`rf${k}`, LOOP, frames.sort((a, b) => a[0] - b[0])))
+    return `<g class="rf${k}">${math.markup}</g>`
+  })
+  css.push(looping('.rfc,.rfm,.rf0,.rf1,.rf2', LOOP))
+
+  return card({
+    title: 'Reflow',
+    label: 'Reflow: resize the window and equations break to fit it, then join back as it widens',
+    lines: ['Resize the window and equations break', 'to fit it, then join back as it widens.'],
+    defs,
+    css: css.join(''),
+    body: `${window}<g fill="${TERM.fg}" clip-path="url(#rfwin)">${formulas.join('')}</g>`,
+  })
+}
+
 mkdirSync(OUT_DIR, { recursive: true })
-for (const [name, make] of [['live', live], ['tex', realTex], ['inline', inlineToo], ['copy', copy]]) {
+for (const [name, make] of [['live', live], ['tex', realTex], ['inline', inlineToo], ['copy', copy], ['diagrams', diagrams], ['reflow', reflow]]) {
   const svg = make()
   const file = `${OUT_DIR}/feature-${name}.svg`
   writeFileSync(file, svg)

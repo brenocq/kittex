@@ -27,8 +27,10 @@ const scale = Number(args[args.indexOf('--scale') + 1] || 2)
 /** The cards and the moments of their loops the contact sheet shows. */
 const CARDS = [
   { file: 'feature-live.svg', times: [1.4, 2.1, 3.05, 5] },
+  { file: 'feature-diagrams.svg', times: [1.2, 3.3, 6.0, 9.0, 12.8] },
   { file: 'feature-tex.svg', times: [1.5, 3.9, 6.3, 8.7] },
   { file: 'feature-inline.svg', times: [1.2, 2.5, 4.3, 5.5] },
+  { file: 'feature-reflow.svg', times: [1.0, 2.0, 2.45, 3.5, 6.5] },
   { file: 'feature-copy.svg', times: [1.2, 2.6, 3.42, 4.6] },
 ]
 /** The wide terminals card, at the moments of its one-shot landing. */
@@ -68,10 +70,10 @@ for (const a of document.getAnimations()) { a.pause(); a.currentTime = Number(a.
   }
 }
 
-/** The README's layout: a 2×2 grid of images at 49% of a GitHub-width column, in both themes. */
+/** The README's layout: a 2×3 grid of images at 49% of a GitHub-width column, in both themes. */
 function previewPage() {
   const grid = () =>
-    [0, 2]
+    [0, 2, 4]
       .map(i => `<p align="center">${CARDS.slice(i, i + 2).map(c => `<span class="img">${inlined(c.file)}</span>`).join('\n')}</p>`)
       .join('') + `<h2>Terminals</h2><p align="center"><span class="img wide">${inlined(WIDE.file)}</span></p>`
   return `<!doctype html><meta charset="utf-8"><title>kittex feature cards</title><style>${THEME_CSS}

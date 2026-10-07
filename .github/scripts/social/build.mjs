@@ -3,12 +3,12 @@
 //
 //   npm run readme:social        # writes .github/assets/social.png
 //
-// Reads .github/assets/banner.svg (npm run readme:banner) and demo.png (npm
-// run readme:demo); renders in headless Chrome with the banner in its dark
+// Reads .github/assets/banner.svg (npm run readme:banner) and demo-social.png
+// (or demo.png; npm run readme:demo); renders in headless Chrome with the banner in its dark
 // theme and its still frame (reduced motion). GitHub takes the card by hand:
 // Settings → General → Social preview → Edit → Upload an image.
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -19,7 +19,9 @@ const H = 640
 const ASSETS = '.github/assets'
 
 const banner = readFileSync(join(ASSETS, 'banner.svg'), 'utf8').replace(/^<\?xml[^>]*>\s*/, '')
-const demo = `data:image/png;base64,${readFileSync(join(ASSETS, 'demo.png')).toString('base64')}`
+// The demo's still cropped to start at a clean row (render.mjs writes it), else its poster.
+const still = ['demo-social.png', 'demo.png'].map(f => join(ASSETS, f)).find(f => existsSync(f))
+const demo = `data:image/png;base64,${readFileSync(still).toString('base64')}`
 
 const page = `<!doctype html>
 <meta charset="utf-8">
@@ -76,12 +78,16 @@ const page = `<!doctype html>
     svg.style.top = -(y0 - box.top - pad) * k + 'px'
     crop.style.width = (x1 - x0 + 2 * pad) * k + 'px'
     crop.style.height = (y1 - y0 + 2 * pad) * k + 'px'
-    // demo.png: the window is 848×808 CSS px inside a 992-wide image (2×), centred.
+    // The still: the window is 848 CSS px wide inside a 992-wide image (2×),
+    // with 50 px of shadow margin above it and 94 below. A full-height window
+    // bleeds off the bottom edge; a shorter one (cropped rows) is centred.
     const img = document.querySelector('.demo')
+    await img.decode()
     const s = 600 / 848, margin = (992 - 848) / 2
+    const windowHeight = (img.naturalHeight / 2 - 50 - 94) * s
     img.style.width = 992 * s + 'px'
     img.style.left = ${W} - 52 - 600 - margin * s + 'px'
-    img.style.top = 64 - 40 * s + 'px'
+    img.style.top = (windowHeight > ${H} - 128 ? 64 - 40 * s : (${H} - windowHeight) / 2 - 50 * s) + 'px'
   }
 </script>
 `

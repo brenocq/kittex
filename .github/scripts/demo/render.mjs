@@ -1,24 +1,29 @@
 #!/usr/bin/env node
-// Renders the README demo from a recording made by record.py: the session
+// Renders the README demo from the recordings made by record.py: the session
 // replayed through a terminal emulator, each screen drawn like kitty in a
 // macOS-style window by headless Chrome, retimed, and encoded.
 //
-//   npm run readme:demo                       # .github/assets/demo.rec.gz -> demo.webp, demo.png, demo.mp4
-//   node .github/scripts/demo/render.mjs [--recording <file>] [--out <dir>] [--speed 1.5]
+//   npm run readme:demo                       # .github/assets/demo.rec.gz (+ demo-2.rec.gz) -> demo.webp, demo.png, demo.mp4,
+//                                             #   and demo-social.png (the social card's still)
+//   node .github/scripts/demo/render.mjs [--recording <file> ...] [--out <dir>] [--speed 1.5]
 //       [--webp lossless|<quality>] [--stills <dir> --at <s,s,...>]   # stills: PNGs at output times
+//
+// Several recordings play as one session: one made with record.py --resume
+// goes on from the one before (with --rewind, in place of its last turn).
 //
 // Needs Chrome (headless; CHROME=/path overrides), ffmpeg with libwebp_anim and
 // libx264, fc-match, and the fonts named in LOOK (the window title is set in
 // Inter from Google Fonts, Cantarell or another sans when offline).
 //
-// Retiming only (the content is never edited): the prompt's typing plays in
+// Retiming only (the content is never edited): each prompt's typing plays in
 // about two seconds, the time before typing, the wait for the first words and
-// every idle gap are capped at about a second,
-// the streamed reply plays up to `--speed` times faster, the landed screen is
-// held, then cross-fades to the first frame so the loop has no hard seam.
+// every idle gap are capped at about a second, each streamed reply plays up to
+// `--speed` times faster, a landed reply is held to be read before the next
+// prompt, the last one is held longer, then cross-fades to the first frame so
+// the loop has no hard seam.
 
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -62,14 +67,16 @@ const TIMING = {
   cap: 1.0, // longest idle gap
   thinkHead: 0.9, // the spinner shown after submitting...
   thinkTail: 0.5, // ...and just before the first words
-  hold: 4.0, // the landed screen
+  read: 5.0, // a landed reply, before the next prompt is typed
+  settle: 0.1, // longest idle redraw between a reply and the next prompt
+  hold: 6.0, // the last landed screen
   fade: 0.5, // cross-fade back to the first frame
 }
 
 function args() {
   const { values } = parseArgs({
     options: {
-      recording: { type: 'string', default: join(ROOT, '.github/assets/demo.rec.gz') },
+      recording: { type: 'string', multiple: true },
       out: { type: 'string', default: join(ROOT, '.github/assets') },
       speed: { type: 'string', default: '1.5' },
       webp: { type: 'string', default: 'lossless' },
@@ -87,34 +94,52 @@ function fontFile(pattern) {
 }
 
 /** Output frames: { start, dur, screen, next?, mix? } in seconds of the animation. */
-export function timeline(screens, marks, speed) {
+export function timeline(screens, turns, speed) {
   const T = TIMING
-  const first = lastAtOrBefore(screens, marks.ready)
-  const end = lastAtOrBefore(screens, marks.done)
-  const reply = screens.findIndex((s, i) => i > first && s.t > marks.submit && /^\s*[●⏺]/m.test(screenText(s)))
-  if (reply < 0) throw new Error('no reply in the recording')
-  const typed = screens.findIndex((s, i) => i > first && s.t > marks.ready)
-  const thinkStart = marks.submit, thinkEnd = screens[reply].t
-  // Typing plays faster, so the whole prompt takes about T.typing.
-  const typeStart = screens[typed].t
-  const typeSpeed = Math.max(1, (thinkStart - typeStart) / T.typing)
+  turns = turns.filter(u => u.submit !== undefined && u.done !== undefined)
+  if (!turns.length) throw new Error('no turn in the recording')
+  const first = lastAtOrBefore(screens, turns[0].ready)
+  const end = lastAtOrBefore(screens, turns.at(-1).done)
+  // A reply has begun when a bullet follows its prompt in the transcript
+  // (above the input box, the last two rules).
+  const replied = (s, prompt) => {
+    let lines = screenText(s).split('\n')
+    for (let k = 0; k < 2; k++) {
+      const rule = lines.findLastIndex(l => /^─{8}/.test(l))
+      if (rule >= 0) lines = lines.slice(0, rule)
+    }
+    const asked = lines.findLastIndex(l => /^❯\s/.test(l) && l.slice(1).trim().startsWith(prompt.slice(0, 40)))
+    return asked >= 0 && lines.slice(asked + 1).some(l => /^\s*[●⏺]/.test(l))
+  }
+  // Each turn's phases: the prompt typed, the wait for the first words, the reply streaming.
+  const phases = turns.map((u, k) => {
+    const typed = screens.findIndex(s => s.t > u.ready)
+    const reply = screens.findIndex(s => s.t > u.submit && replied(s, u.prompt))
+    if (typed < 0 || reply < 0) throw new Error(`no reply to prompt ${k + 1} in the recording`)
+    const typeStart = screens[typed].t
+    // Typing plays faster, so each prompt takes about T.typing.
+    return { ...u, typed, typeStart, thinkStart: u.submit, thinkEnd: screens[reply].t, typeSpeed: Math.max(1, (u.submit - typeStart) / T.typing) }
+  })
 
   // Warped time of each screen from `first` to `end`.
   const at = new Map([[first, 0]])
   let out = 0
   for (let i = first + 1; i <= end; i++) {
     const [a, b] = [screens[i - 1].t, screens[i].t]
+    const k = phases.findLastIndex(p => p.ready < b)
+    const p = phases[Math.max(0, k)]
     let dt
-    if (i === typed) dt = T.lead
-    else if (b <= thinkEnd && a >= thinkStart) {
+    if (i === p.typed) dt = k <= 0 ? T.lead : T.read // the empty prompt; then each landed reply, held to be read
+    else if (b <= p.thinkEnd && a >= p.thinkStart) {
       // The wait for the first words: its head and tail at real speed, the middle skipped.
-      const keep = (t0, t1) => Math.max(0, Math.min(t1, thinkStart + T.thinkHead) - Math.max(t0, thinkStart)) +
-        Math.max(0, Math.min(t1, thinkEnd) - Math.max(t0, thinkEnd - T.thinkTail))
+      const keep = (t0, t1) => Math.max(0, Math.min(t1, p.thinkStart + T.thinkHead) - Math.max(t0, p.thinkStart)) +
+        Math.max(0, Math.min(t1, p.thinkEnd) - Math.max(t0, p.thinkEnd - T.thinkTail))
       dt = Math.min(keep(a, b), b - a)
-    } else if (a >= thinkEnd) dt = (b - a) / speed
-    else if (a >= typeStart && b <= thinkStart) dt = (b - a) / typeSpeed
+    } else if (a >= p.thinkEnd && b <= p.done) dt = (b - a) / speed
+    else if (a >= p.typeStart && b <= p.thinkStart) dt = (b - a) / p.typeSpeed
+    else if (a >= p.done || (k > 0 && i < p.typed)) dt = Math.min(b - a, T.settle) // idle redraws between a reply and the next prompt
     else dt = b - a
-    out += Math.min(dt, T.cap)
+    out += i === p.typed ? dt : Math.min(dt, T.cap)
     at.set(i, out)
   }
 
@@ -144,10 +169,52 @@ export function timeline(screens, marks, speed) {
   return { frames: frames.filter(f => f.dur > 1e-6), landed: landed.screen, total: t }
 }
 
+/**
+ * Emulates each recording and joins them into one session: a recording that
+ * resumed the one before (record.py --resume) goes on from its first prompt,
+ * and one that also rewound it (--rewind) takes the place of its last turn.
+ */
+export async function replay(paths) {
+  let screens = [], turns = [], header
+  const images = new Map()
+  for (const path of paths) {
+    const rec = loadRecording(path)
+    const part = await emulate(rec, LOOK.theme)
+    const prompts = rec.header.prompts ?? [rec.header.prompt]
+    part.turns.forEach((u, k) => { u.prompt = prompts[k] })
+    for (const [id, image] of part.images) images.set(id, image)
+    if (!header) {
+      ({ header } = rec)
+      ;({ screens, turns } = part)
+      continue
+    }
+    if (rec.header.cols !== header.cols || rec.header.rows !== header.rows) throw new Error(`${path}: another window size`)
+    if (rec.header.rewind) turns = turns.slice(0, -1)
+    const cut = turns.at(-1).done
+    const from = lastAtOrBefore(part.screens, part.turns[0].ready)
+    const shift = cut + 0.5 - part.screens[from].t
+    screens = [...screens.filter(s => s.t <= cut), ...part.screens.slice(from).map(s => ({ ...s, t: s.t + shift }))]
+    turns = [...turns, ...part.turns.map(u => Object.fromEntries(Object.entries(u).map(([k, v]) => [k, typeof v === 'number' ? v + shift : v])))]
+  }
+  return { header, screens, turns, images }
+}
+
 function lastAtOrBefore(screens, t) {
   let k = 0
   screens.forEach((s, i) => { if (s.t <= t) k = i })
   return k
+}
+
+/**
+ * The first row worth starting a still at: past a picture cut off by the top
+ * edge (its first row is above the screen) and the blank rows after it.
+ */
+export function cleanTop(screen) {
+  let y = 0
+  while (y < screen.rows.length && screen.rows[y].some(c => c.img && c.img.row > y)) y++
+  if (y === 0) return 0
+  while (y < screen.rows.length && screen.rows[y].every(c => !c.img && !(c.ch ?? '').trim())) y++
+  return y
 }
 
 /** Drops the per-screen key and keeps what the page draws. */
@@ -157,11 +224,10 @@ function plain(screen) {
 
 async function main() {
   const opt = args()
-  const rec = loadRecording(opt.recording)
-  const { header } = rec
+  const recordings = opt.recording ?? ['demo.rec.gz', 'demo-2.rec.gz'].map(f => join(ROOT, '.github/assets', f)).filter(f => existsSync(f))
+  const { header, screens, images, turns } = await replay(recordings)
   if (header.cellWidth % 1 || header.cellHeight % 1) throw new Error('cells must be whole device pixels')
-  const { screens, images, marks } = await emulate(rec, LOOK.theme)
-  const { frames, landed, total } = timeline(screens, marks, Number(opt.speed))
+  const { frames, landed, total } = timeline(screens, turns, Number(opt.speed))
   console.error(`${screens.length} screens, ${images.size} images, ${frames.length} frames, ${total.toFixed(2)} s`)
 
   const work = opt.keep ? resolve(opt.keep) : mkdtempSync(join(tmpdir(), 'kittex-demo-'))
@@ -183,10 +249,10 @@ async function main() {
     await chrome.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } })
     const size = await chrome.evaluate(`setup(${JSON.stringify(config)})`)
     await chrome.send('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: LOOK.dpr, mobile: false })
-    const shoot = async (frame, file) => {
+    const shoot = async (frame, file, box = size) => {
       await chrome.evaluate(`show(${JSON.stringify({ screen: plain(frame.screen), next: plain(frame.next), mix: frame.mix })})`)
       const { data } = await chrome.send('Page.captureScreenshot', {
-        format: 'png', clip: { x: 0, y: 0, width: size.width, height: size.height, scale: 1 }, captureBeyondViewport: false,
+        format: 'png', clip: { x: 0, y: 0, width: box.width, height: box.height, scale: 1 }, captureBeyondViewport: false,
       })
       writeFileSync(file, Buffer.from(data, 'base64'))
     }
@@ -216,6 +282,15 @@ async function main() {
     list += `file '${join(dir, `${String(frames.length - 1).padStart(5, '0')}.png`)}'\n`
     writeFileSync(join(work, 'frames.txt'), list)
     await shoot({ screen: landed }, join(work, 'poster.png'))
+    // The social card's still: the landed screen in a window that starts at a
+    // clean row, the rows above (a picture cut by the top edge) left out.
+    const top = cleanTop(landed)
+    if (top > 0) {
+      const box = await chrome.evaluate(`setup(${JSON.stringify({ ...config, rows: header.rows - top })})`)
+      await chrome.send('Emulation.setDeviceMetricsOverride', { width: box.width, height: box.height, deviceScaleFactor: LOOK.dpr, mobile: false })
+      const cropped = { rows: landed.rows.slice(top), cursor: { ...landed.cursor, y: landed.cursor.y - top }, title: landed.title }
+      await shoot({ screen: cropped }, join(work, 'social.png'), box)
+    } else copyFileSync(join(work, 'poster.png'), join(work, 'social.png'))
   } finally {
     await chrome.close()
   }
@@ -229,6 +304,7 @@ async function main() {
   ffmpeg(['-f', 'concat', '-safe', '0', '-i', join(work, 'frames.txt'), '-fps_mode', 'passthrough',
     '-c:v', 'libwebp_anim', ...quality, '-loop', '0', webp])
   copyFileSync(join(work, 'poster.png'), png)
+  copyFileSync(join(work, 'social.png'), join(opt.out, 'demo-social.png'))
   if (!opt['no-mp4']) {
     ffmpeg(['-f', 'concat', '-safe', '0', '-i', join(work, 'frames.txt'),
       '-f', 'lavfi', '-i', `color=c=${LOOK.mp4Background}:s=16x16`,

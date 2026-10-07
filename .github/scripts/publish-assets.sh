@@ -13,7 +13,7 @@ set -eu
 
 root=$(git rev-parse --show-toplevel)
 dir="$root/.github/assets"
-files="banner.svg demo.webp demo.png demo.mp4 demo.rec.gz social.png feature-live.svg feature-tex.svg feature-inline.svg feature-copy.svg terminals.svg"
+files="banner.svg demo.webp demo.png demo.mp4 demo.rec.gz demo-2.rec.gz social.png feature-live.svg feature-diagrams.svg feature-tex.svg feature-inline.svg feature-reflow.svg feature-copy.svg terminals.svg"
 
 GIT_INDEX_FILE=$(mktemp -u "${TMPDIR:-/tmp}/kittex-assets-index.XXXXXX")
 export GIT_INDEX_FILE
