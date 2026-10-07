@@ -223,6 +223,17 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await startDoctor($, e.surface, await next(e))
     if (off) return started
+    if (e.surface !== 'terminal') {
+      // A -p run or the SDK (Claude Code for VS Code, the desktop app): no
+      // terminal draws here, and MessageDisplay's rewrite would become the
+      // reply's text in the SDK's output. Nothing is probed or rewritten.
+      cells?.stop()
+      cells = undefined
+      await $.state.set(ENV, null).catch(() => undefined)
+      envKnown = true
+      envSettled?.()
+      return started
+    }
     cells?.stop()
     cells = cellsFor($)
     later = laterFor($)
@@ -251,7 +262,7 @@ export const register: Register = (on, options) => {
     // The first session keeps what renders before it read from TeX's cache (a resume's diagrams).
     if (sessions > 1) texBook.reset()
     texProbe = undefined
-    if (latex === 'auto' && e.surface === 'terminal' && math.block !== 'unicode') {
+    if (latex === 'auto' && math.block !== 'unicode') {
       redraw = () => $.ui.invalidate('ui.render')
       // Not awaited: a few short commands (each with its time limit) that settle meanwhile.
       texProbe = setUpTex($)
