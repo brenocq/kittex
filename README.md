@@ -50,10 +50,20 @@ Derive the quadratic formula step by step
 
 ## Options
 
-Both are rows in `/config`, on by default.
+Two pickers in `/config`, one for each kind of math:
 
-- **Render LaTeX math.** Off: replies show Claude's raw LaTeX.
-- **Render inline math as images.** Off: inline math stays Unicode text.
+- **Block math**: equations on their own line (`$$…$$`).
+- **Inline math**: math inside a sentence (`$…$`).
+
+Each one is `image` (the default), `unicode` or `raw`:
+
+| Choice | You see |
+| --- | --- |
+| `image` | typeset equations, or Unicode math in terminals that can't show images |
+| `unicode` | Unicode math, never images |
+| `raw` | Claude's LaTeX, as written |
+
+Set both to `raw` to turn kittex off.
 
 <details>
 <summary><b>How it works</b></summary>
