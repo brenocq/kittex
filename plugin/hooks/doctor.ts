@@ -590,7 +590,7 @@ export function formatDoctor(facts: DoctorFacts): string {
   section('Terminal')
   const t = facts.terminal
   if (facts.surface && facts.surface !== 'terminal') {
-    line(INFO, `the ${facts.surface} surface: kittex writes math as Unicode text here (images need kitty or Ghostty).`)
+    line(INFO, `the ${facts.surface} surface: kittex leaves replies to its own drawing here (images need kitty or Ghostty, in a terminal).`)
   } else if (t) {
     const name = TERMINAL_NAMES[t.kind]
     const program = t.program && t.program.toLowerCase() !== name.toLowerCase() ? (t.program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? t.program.slice(name.length + 1) : t.program) : undefined

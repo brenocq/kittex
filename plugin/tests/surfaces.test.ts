@@ -85,6 +85,14 @@ describe('a -p run or the SDK', () => {
       expect(runs).toEqual([])
     })
   }
+
+  test('a resumed conversation drawn on a client before session.start is the engine drawing, at once', async ($, on) => {
+    world(on)
+    for (const remote of REMOTE) {
+      const ui = await mountOn($, remote, REPLY)
+      expect(await ui.drawn()).toEqual({ type: 'Text', children: [REPLY] })
+    }
+  })
 })
 
 describe('a terminal session with a client attached', () => {
@@ -94,5 +102,25 @@ describe('a terminal session with a client attached', () => {
     expect(composed.sections.map(one => one.id)).toEqual([INTRO.id, SECTION_ID])
     const ui = await mountOn($, 'terminal', REPLY)
     expect(await ui.find({ type: 'Image' })).toBeDefined()
+  })
+
+  test('a client draws the reply its own way: LaTeX as written, or a streamed text as shown', async ($, on) => {
+    await startSession($, on)
+    // As streamed in the terminal (previews in place of the formulas), should a client hold that text.
+    const lines = REPLY.split(/(?<=\n)/)
+    let shown = ''
+    for (const [index, delta] of lines.entries()) {
+      const result = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'm1', index, final: index === lines.length - 1, delta })
+      shown += result.displayContent ?? delta
+    }
+    expect(shown).not.toBe(REPLY)
+    for (const remote of REMOTE) {
+      for (const text of [REPLY, shown, 'Costs $5, or \\(x\\) and \\[y\\].']) {
+        const ui = await mountOn($, remote, text)
+        expect(await ui.drawn()).toEqual({ type: 'Text', children: [text] })
+      }
+    }
+    // The terminal's drawing of the same reply is kittex's.
+    expect(await (await mountOn($, 'terminal', REPLY)).find({ type: 'Image' })).toBeDefined()
   })
 })

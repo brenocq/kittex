@@ -65,7 +65,6 @@ import {
   INSTRUCT_WITHOUT_IMAGES,
   inlineFlow,
   joinProse,
-  LANDED_PATTERN,
   STREAMED_PATTERN,
   linkEnv,
   locatePreviews,
@@ -383,13 +382,15 @@ export const register: Register = (on, options) => {
   // streamed one whatever else it holds (a reply's `$100` stays as written in
   // it). LaTeX as written (after --resume) is hooked from the first render (its
   // own drawing would show the source), as is every block on the main screen,
-  // which reports no `onScreen`. The four matchers never select the same
-  // render, so kittex runs once per render.
+  // which reports no `onScreen`. The three matchers never select the same
+  // render, so kittex runs once per render. A remote surface (desktop, vscode,
+  // mobile) is not hooked: it has no kitty graphics and draws the text it
+  // holds as markdown (and math) its own way, where a formula's Unicode laid
+  // out in rows would run together on one line.
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
 }
 
 /** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
@@ -449,7 +450,7 @@ async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { me
  * `unicode` gets no image, one set to `raw` is left as written).
  */
 async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, math: MathOptions): Promise<RenderElement> {
-  if (e.props.isSummary) return next(e)
+  if (e.props.isSummary || e.surface !== 'terminal') return next(e)
   try {
     let env = await readEnv($)
     if (!env) {
