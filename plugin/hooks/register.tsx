@@ -101,6 +101,15 @@ import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 
 type $ = EngineInterface
 
+/**
+ * A matcher for a render's `onScreen` once the engine reports it: a range,
+ * or null for a block laid out off screen; not a render that has none. A
+ * RegExp tests the value as a string, so a range reads `[object Object]`;
+ * an object matcher (`[{}, null]`) did the same but made the engine warn,
+ * on every render it didn't select, that `{}` can never match a null.
+ */
+const ON_SCREEN_REPORTED = /^(?:\[object Object\]|null)$/
+
 const ENV = { plugin: 'kittex', key: 'env' } as const
 const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
 const REQUESTS = { plugin: 'kittex', key: 'requests' } as const
@@ -394,7 +403,7 @@ export const register: Register = (on, options) => {
   // holds as markdown (and math) its own way, where a formula's Unicode laid
   // out in rows would run together on one line.
   const landed = { component: 'AssistantMessage' } as const
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
 }
