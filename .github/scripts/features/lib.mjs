@@ -32,7 +32,7 @@ export function themeCss() {
   return [
     vars(PRIMER.light),
     `@media (prefers-color-scheme:dark){${vars(PRIMER.dark)}}`,
-    `.surface{fill:var(--surface);stroke:var(--border)}`,
+    `.surface{fill:var(--surface);stroke:var(--border)}.edge{fill:none;stroke:var(--border)}`,
     `.title{fill:var(--fg);font:600 16px ${FONT_STACK}}`,
     `.desc{fill:var(--muted);font:400 13px ${FONT_STACK}}`,
   ].join('')

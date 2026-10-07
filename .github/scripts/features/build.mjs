@@ -1,6 +1,6 @@
 // Generates the README's feature cards, one theme-adaptive animated SVG each:
 //
-//   npm run readme:features          # writes .github/assets/feature-{live,tex,inline,copy}.svg
+//   npm run readme:features          # writes .github/assets/feature-{live,tex,inline,copy}.svg and terminals.svg
 //   npm run readme:features:preview  # also renders a contact sheet and the preview page
 //
 // Run `npm ci` first. Math is New Computer Modern from kittex's own
@@ -10,6 +10,7 @@
 // prefers-reduced-motion shows its final frame.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { loadCore, loadMono } from '../banner/glyphs.mjs'
+import { terminals } from './terminals.mjs'
 import { ACCENT, CONTENT_TOP, Defs, PANEL, TERM, card, cellWidth, drawOps, keyframes, monoText, panel, placeMath, r } from './lib.mjs'
 
 const OUT_DIR = '.github/assets'
@@ -173,7 +174,7 @@ function realTex() {
   const dots = [0, 1, 2].map(i => `<circle cx="${PANEL.x + 13 + i * 11}" cy="${PANEL.y + 11}" r="3.2" opacity=".25"/>`).join('')
   const body = [
     `<rect class="tbg" x="${PANEL.x}" y="${PANEL.y}" width="${PANEL.w}" height="${PANEL.h}" rx="${PANEL.rx}"/>`,
-    `<rect x="${PANEL.x + 0.5}" y="${PANEL.y + 0.5}" width="${PANEL.w - 1}" height="${PANEL.h - 1}" rx="${PANEL.rx - 0.5}" fill="none" stroke="var(--border)" opacity=".7"/>`,
+    `<rect x="${PANEL.x + 0.5}" y="${PANEL.y + 0.5}" width="${PANEL.w - 1}" height="${PANEL.h - 1}" rx="${PANEL.rx - 0.5}" class="edge" opacity=".7"/>`,
     `<g class="tfg">${dots}${math.markup}${labels.join('')}</g>`,
   ].join('')
   return card({
@@ -348,3 +349,6 @@ for (const [name, make] of [['live', live], ['tex', realTex], ['inline', inlineT
   writeFileSync(file, svg)
   console.log(`${file}: ${(Buffer.byteLength(svg) / 1024).toFixed(1)} KiB`)
 }
+const svg = await terminals({ core, mono })
+writeFileSync(`${OUT_DIR}/terminals.svg`, svg)
+console.log(`${OUT_DIR}/terminals.svg: ${(Buffer.byteLength(svg) / 1024).toFixed(1)} KiB`)
