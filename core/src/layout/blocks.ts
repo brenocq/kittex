@@ -38,6 +38,8 @@ export interface BlockPart extends ProseBlock {
   type: string
   /** A blank row between it and the part before it (false for the first part). */
   gap: boolean
+  /** Where the block it is in starts (proseBlocks' block: blank lines part it from the one before). */
+  block?: number
 }
 
 /** Tokens the component draws as elements of their own with a blank row around them (its `block` kind). */
@@ -51,8 +53,11 @@ const SPLITTABLE = new Set(['paragraph', 'list', 'heading', 'code', 'table', 'bl
  * proseBlocks finds (a blank row above each but the first), each split into
  * its top-level tokens where no blank line parts them (consecutive lists kept
  * together, as one list part), with the engine's spacing between them. A
- * block whose tokens can't all be followed stays one part (`type: 'block'`).
- * Null when proseBlocks is.
+ * token whose rows aren't followed here (HTML, an empty code block) goes,
+ * with the rest of its block, into the part before it, which is laid out up
+ * to it (a part's drawing never depends on what comes after it); a block
+ * that opens with one stays one part (`type: 'block'`). Null when
+ * proseBlocks is.
  */
 export function blockParts(markdown: string): BlockPart[] | null {
   const blocks = proseBlocks(markdown)
@@ -62,10 +67,10 @@ export function blockParts(markdown: string): BlockPart[] | null {
     const gap = parts.length > 0
     const split = block.paragraph || block.quote ? null : splitBlock(markdown, block.start, block.end)
     if (split) {
-      parts.push(...split.map((part, k) => (k === 0 ? { ...part, gap } : part)))
+      parts.push(...split.map((part, k) => ({ ...part, ...(k === 0 ? { gap } : {}), block: block.start })))
     } else {
       const type = block.paragraph ? 'paragraph' : block.list ? 'list' : block.quote ? 'blockquote' : block.heading ? 'heading' : block.table ? 'table' : 'block'
-      parts.push({ ...block, type, gap })
+      parts.push({ ...block, type, gap, block: block.start })
     }
   }
   return parts
@@ -83,9 +88,15 @@ function splitBlock(markdown: string, start: number, end: number): BlockPart[] |
   const parts: BlockPart[] = []
   let at = 0
   for (const token of tokens) {
-    if (!source.startsWith(token.raw, at) || !SPLITTABLE.has(token.type)) return null
+    if (!source.startsWith(token.raw, at)) return null
     // A code block with no text is drawn as a bare newline: its rows aren't followed here.
-    if (token.type === 'code' && (token as { text?: string }).text === '') return null
+    if (!SPLITTABLE.has(token.type) || (token.type === 'code' && (token as { text?: string }).text === '')) {
+      // It and the rest of the block are drawn after the part before it, in its rows: that part is laid out up to it.
+      const last = parts.at(-1)
+      if (!last) return null
+      last.end = end
+      return parts
+    }
     const body = token.raw.replace(/(?:\r?\n[ \t]*)+$/, '')
     const last = parts.at(-1)
     if (token.type === 'list' && last?.type === 'list') {

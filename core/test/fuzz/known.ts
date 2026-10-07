@@ -37,6 +37,9 @@ export const KNOWN: readonly Known[] = [
     keys: [/^moved\/(rows|cells):list>/],
   },
   {
+    // Mostly fixed (fix/stream-plan: the stream reads the whole part, the replays stop at what they can't follow);
+    // what is left: marked reading a quote's lazy lines (or a later setext underline) otherwise than the lines
+    // before them, so the part streamed is not the part landed.
     id: 'FUZZ-3',
     title: 'an inline formula padded while streaming lands where the replay refuses its part (something later in it): its pads stay as gaps',
     keys: [
@@ -49,6 +52,7 @@ export const KNOWN: readonly Known[] = [
     ],
   },
   {
+    // The header-row case is fixed (fix/stream-plan: a table with inline math is held until it ends).
     id: 'FUZZ-4',
     title: 'an inline preview wider than its table cell or list item text, or than the row with punctuation glued to it, is padded, wraps, and never gets its image',
     keys: [
@@ -101,17 +105,22 @@ export const KNOWN: readonly Known[] = [
     keys: [/^unverified\/structure:/],
   },
   {
+    // The long list is fixed (fix/stream-plan: the writer keeps everything).
     id: 'FUZZ-15',
     title: 'in a list longer than the writer\'s 2 KB tail, a nested item\'s display image is sized for the wrong depth and passes the right edge',
     keys: [/^overlap\/edge-(quoted|display)$/],
     // Also without a long list: a display in an item nested under a lazy line (seed 7952).
   },
   {
+    // Mostly fixed (fix/stream-plan: the stream reads parts as the landing does); what is left is the landing's:
+    // no link mode without inline images, the resumed plan's passes (padded, then plain), refused display math
+    // in quotes, rescanned dollars.
     id: 'FUZZ-16',
     title: 'resumed lands images where the live landing keeps Unicode: streaming refuses a part (its block so far) that the landing lays out alone',
     keys: [/^resumed\/(resumed|live)-only-[diq]+$/, /^resumed\/images-differ$/],
   },
   {
+    // The stream is fixed (fix/stream-plan: a part laid out once per flush); what is left is the landing's.
     id: 'FUZZ-10',
     title: 'MessageDisplay re-lexes the block written so far for every inline formula: a flush of a long list takes seconds (and a huge resumed reply lands in ~2 s)',
     keys: [/^slow\/(push|land|resume)$/],

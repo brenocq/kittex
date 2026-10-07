@@ -28,6 +28,12 @@ Then ask Claude something with math in it:
 Derive the quadratic formula step by step
 ```
 
+> [!NOTE]
+> **On Team and Enterprise plans**, Claude Code doesn't let plugins change a
+> reply while it streams, so you'll see Claude's raw LaTeX until each part is
+> done, then the typeset equations. To get the live previews too, ask an admin
+> to deploy kittex for your organization through Claude Code's managed settings.
+
 ## What you get
 
 <table>

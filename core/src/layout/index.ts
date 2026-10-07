@@ -77,9 +77,6 @@ export function layoutProse(
   if (!visible) return null
   let { text, source } = visible
   let stop = visible.stop ?? Infinity
-  // Where each markdown offset was drawn: its visible index.
-  const drawnAt = new Map<number, number>()
-  for (let i = 0; i < source.length; i++) if (source[i]! >= 0) drawnAt.set(source[i]!, i)
   const rowOf = new Int32Array(text.length)
   const colOf = new Int32Array(text.length)
   const lines: string[] = []
@@ -108,7 +105,8 @@ export function layoutProse(
     lineStart += line.length + 1
   }
   const ends = stop < Infinity ? () => false : (i: number) => i === text.length - 1
-  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, source, rowOf, colOf, width, ends, mode)))
+  const drawn = drawnRange(source)
+  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, source, rowOf, colOf, width, ends, mode, drawn)))
   return stop < Infinity ? { rows, places, lines, stop } : { rows, places, lines }
 }
 
@@ -179,8 +177,30 @@ function layoutCanvas(
   const text = canvas.text.join('')
   const { stop } = canvas
   const at = stop < Infinity ? () => false : ends
-  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, at, mode)))
+  const drawn = drawnRange(canvas.source)
+  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, at, mode, drawn)))
   return stop < Infinity ? { rows: canvas.rows, places, lines: canvas.lines(), stop } : { rows: canvas.rows, places, lines: canvas.lines() }
+}
+
+/** For each markdown offset, the first and last index of the drawn text it was drawn at (-1: none). */
+interface DrawnRange {
+  first: Int32Array
+  last: Int32Array
+}
+
+/** Where each markdown offset was drawn in a drawn text (`source`: the offset of each of its units), so a span is found in its own cells alone. */
+function drawnRange(source: readonly number[]): DrawnRange {
+  let size = 0
+  for (const offset of source) if (offset >= size) size = offset + 1
+  const first = new Int32Array(size).fill(-1)
+  const last = new Int32Array(size).fill(-1)
+  for (let i = 0; i < source.length; i++) {
+    const offset = source[i]!
+    if (offset < 0) continue
+    if (first[offset]! < 0) first[offset] = i
+    last[offset] = i
+  }
+  return { first, last }
 }
 
 /**
@@ -197,14 +217,16 @@ function placeSpan(
   width: number,
   ends: (i: number) => boolean,
   mode: LinkMode,
+  drawn: DrawnRange,
 ): SpanPlace | null {
   const inside = (i: number) => source[i]! >= span.start && source[i]! < span.end
   let first = -1
   let last = -1
-  for (let i = 0; i < source.length; i++) {
-    if (!inside(i)) continue
-    if (first < 0) first = i
-    last = i
+  for (let offset = Math.max(0, span.start); offset < Math.min(span.end, drawn.first.length); offset++) {
+    const at = drawn.first[offset]!
+    if (at < 0) continue
+    if (first < 0 || at < first) first = at
+    if (drawn.last[offset]! > last) last = drawn.last[offset]!
   }
   if (first < 0) return null
   for (let i = first; i <= last; i++) if (!inside(i) || rowOf[i] !== rowOf[first]) return null

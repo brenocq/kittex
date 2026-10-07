@@ -1,5 +1,5 @@
-// Inline math in table cells: streamed padded (a table's first row while it
-// still reads as a paragraph included) and given images at landing, placed by
+// Inline math in table cells: streamed padded (decided once the table has
+// ended, its header row included) and given images at landing, placed by
 // the replay of the engine's table drawing (core/src/layout/table.ts, measured
 // live on Claude Code 2.1.291, research/lab runs TB-*).
 
@@ -73,6 +73,27 @@ describe('tables: streaming', () => {
     const { landed, records } = streamed(flushes)
     expect(records.map(record => record.tex)).toEqual(['x', 'x^2', '2', '4'])
     for (const record of records) expect(landed).toContain(record.preview)
+  })
+
+  test('a table holding inline math is held until it ends, its header row until the next line arrives', async () => {
+    await init()
+    const stream = new MessageStream()
+    const env = inlineOn()
+    // A line that may be a header waits for the next one.
+    expect(stream.push('| $x$ | $x^2$ |\n', false, env).text).toBe('')
+    // A table: held while its rows come, the header with them.
+    expect(stream.push('|---|---|\n', false, env).text).toBe('')
+    expect(stream.push('| $2$ | $4$ |\n', false, env).text).toBe('')
+    // A blank line ends it: all of it is written, each formula decided on the whole table.
+    const ended = stream.push('\nDone $y$.\n', false, env)
+    expect(ended.records.map(record => record.tex)).toEqual(['x', 'x^2', '2', '4', 'y'])
+    expect(ended.text.startsWith('| ')).toBe(true)
+    // A line with a bar that is no header goes out with the line after it.
+    const other = new MessageStream()
+    expect(other.push('Let $|x|$ be\n', false, env).text).toBe('')
+    expect(other.push('the norm.\n', false, env).text).toContain('the norm.')
+    // A table with no inline math is written as it comes.
+    expect(new MessageStream().push('| a | b |\n', false, env).text).toBe('| a | b |\n')
   })
 
   test('a row placeable while the table is followed, and not once a cell holds a link', () => {

@@ -352,6 +352,39 @@ describe('partial layouts', () => {
     expect(layoutList(task, 40, [at(task, 'x⠀'), at(task, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 6, columns: 2 }, null])
   })
 
+  test('a tab, a control character or a tag: laid out up to the line holding it (FUZZ-3)', () => {
+    const tab = 'See x⠀ here,\nthen\ty⠀ there.'
+    expect(layoutProse(tab, 40, [at(tab, 'x⠀')])).toBeNull()
+    const prose = layoutProse(tab, 40, [at(tab, 'x⠀'), at(tab, 'y⠀')], {}, true)!
+    expect(prose.places).toEqual([{ row: 0, col: 4, columns: 2 }, null])
+    expect(prose.stop).toBe(tab.indexOf('then'))
+    const html = 'See x⠀ here\n<b>bold</b> y⠀'
+    expect(layoutProse(html, 40, [at(html, 'x⠀'), at(html, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 4, columns: 2 }, null])
+    const list = '1. one x⠀ covariance\nhence\tfilter\n2. two y⠀'
+    expect(layoutList(list, 40, [at(list, 'x⠀'), at(list, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 7, columns: 2 }, null])
+    // On the formula's own line, nothing is placed.
+    const same = 'See x⠀ <b>here</b>'
+    expect(layoutProse(same, 40, [at(same, 'x⠀')], {}, true)?.places).toEqual([null])
+  })
+
+  test('a list item holding a code block is laid out up to it (FUZZ-3)', () => {
+    const markdown = '- one x⠀\n  ```python\n  x = 1\n  ```\n- two y⠀'
+    expect(layoutList(markdown, 40, [at(markdown, 'x⠀')])).toBeNull()
+    const layout = layoutList(markdown, 40, [at(markdown, 'x⠀'), at(markdown, 'y⠀')], {}, true)!
+    expect(layout.places).toEqual([{ row: 0, col: 6, columns: 2 }, null])
+    expect(layout.stop).toBe(markdown.indexOf('```'))
+    // An item's lines before it are drawn as they are without it.
+    const alone = '- one x⠀\n  more words'
+    const before = layoutList(`${alone}\n  \`\`\`\n  code\n  \`\`\``, 12, [at(alone, 'x⠀')], {}, true)!
+    expect(before.lines).toEqual(layoutList(alone, 12)!.lines)
+  })
+
+  test('a list followed in its part by a block the replay does not follow is laid out up to it', () => {
+    const markdown = '- one x⠀\n<div>\nhtml\n</div>'
+    expect(layoutList(markdown, 40, [at(markdown, 'x⠀')], {}, true)?.places).toEqual([{ row: 0, col: 6, columns: 2 }])
+    expect(layoutList(markdown, 40, [at(markdown, 'x⠀')])).toBeNull()
+  })
+
   test("a display preview's lines in a list item, led by pads, are drawn as written where they fit", () => {
     const markdown = '1. Roots:\n\n   &nbsp;&nbsp;&nbsp;x = 1\n   &nbsp;&nbsp;&nbsp;y = 2\n\n2. Next'
     expect(layoutList(markdown, 30)?.lines).toEqual(['1. Roots:', '', '      x = 1', '      y = 2', '2. Next'])
