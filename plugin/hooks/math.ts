@@ -1253,11 +1253,11 @@ function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv,
     }
     if (!changed) break
   }
-  // The text read again from the start of its last block: what comes before it is laid out for good. Never past
-  // what is written: a display formula's stand-in starts after a blank line its block may not have (a diagram
-  // TeX doesn't draw is written as it came).
-  const last = parts.at(-1)
-  if (last) plan.anchor += Math.min(last.block ?? last.start, written)
+  // The text read again from the start of its last block: what comes before it is laid out for good. Not a
+  // display formula's stand-in's: its block may not start where the stand-in does (a diagram TeX doesn't draw is
+  // written as it came, in a quote after the line's `>`s).
+  const last = parts.findLast(part => part.start < written)
+  if (last) plan.anchor += last.block ?? last.start
 }
 
 /** The forms of an inline formula already worked out, by formula, geometry and row width (a long list repeats its formulas). */

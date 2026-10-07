@@ -390,7 +390,8 @@ describe('fuzz regressions', () => {
   // as markdown, laid it out as markdown and placed the formula after the
   // break; it read the text after a diagram TeX doesn't draw (written as it
   // came, no blank line before it) from a cell too far, a fence's first
-  // backtick lost; and a text marked can't read whole as no part at all where
+  // backtick lost, or in a quote from after the line's `>`s (the fence read
+  // as code to the end); and a text marked can't read whole as no part at all where
   // the landing reads its start (partsOf). Fixed: the stream reads parts as
   // the landing does.
   test('FUZZ-16: the stream reads parts as the landing reads them', () => {
@@ -398,6 +399,7 @@ describe('fuzz regressions', () => {
       ['$\\sigma^2$:  \n$\\sin\\theta$ \n\n$$', {}],
       ['$\\langle\\phi|\\psi\\rangle$ \n```latex\n\\sqrt{c}\n```\n$\\langle \\rangle$ ', { tex: true }],
       ['$\\mathbbm{1}$ \n\n> * = \n ', { flushSeed: 911639543 }],
+      ['$\\operatorname{Var}(X)$ \n> >  ~~~latex\n> > 2)\n> > ~~~\n\n$\\|v\\|_2$ ', { tex: true }],
     ]
     for (const [md, shape] of cases) expect({ md, failures: failures(md, shape, ['resumed', 'inlineImage', 'padVisible']) }).toEqual({ md, failures: [] })
   })
