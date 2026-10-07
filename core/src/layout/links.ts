@@ -32,9 +32,15 @@ import type { VisibleText } from './prose.js'
  * holding ⧉ (the engine moves link urls around it), an image.
  */
 
-/** How the engine draws links: as OSC 8 hyperlinks or as text; undefined when unknown (links aren't followed). */
+/**
+ * How the engine and the terminal draw what the text alone doesn't tell:
+ * links as OSC 8 hyperlinks or as text (undefined when unknown: links aren't
+ * followed), and whether the terminal draws emoji sequences two cells wide,
+ * as the engine counts them (charAt; refused when not).
+ */
 export interface LinkMode {
   hyperlinks?: boolean | undefined
+  emojiSequences?: boolean | undefined
 }
 
 /** The mode inline drawing passes down: inside a link's text, and whether an OSC 8 link was drawn. */

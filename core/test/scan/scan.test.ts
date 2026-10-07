@@ -496,3 +496,28 @@ describe('mixed replies', () => {
     ])
   })
 })
+
+describe('pipes in table cells', () => {
+  // GFM reads `\|` in a table row as a pipe before anything else (the cell's
+  // math included): models write |x| in a cell as `$\|x\|$`.
+  test('math in a table row reads `\\|` as a pipe', () => {
+    const table = raw`| Concept | Formula |` + '\n|---|---|\n' + raw`| abs | $\|x\|$ |` + '\n' + raw`| cond | $P(A\|B)$ and $\|{-3}\| = 3$ |` + '\n'
+    expect(maths(table).map(m => [m.tex, m.raw])).toEqual([
+      ['|x|', raw`$\|x\|$`],
+      ['P(A|B)', raw`$P(A\|B)$`],
+      ['|{-3}| = 3', raw`$\|{-3}\| = 3$`],
+    ])
+  })
+
+  test('the header row is a table row too, and a table may interrupt a paragraph', () => {
+    const text = 'Some text above\n' + raw`| $\|v\|$ | b |` + '\n| :-- | --: |\n| 1 | 2 |\n'
+    expect(maths(text).map(m => m.tex)).toEqual(['|v|'])
+  })
+
+  test('in prose, and in a table-like line with no delimiter row, `\\|` stays a norm', () => {
+    expect(maths(raw`The norm $\|x\|_2$ of $x$.` + '\n').map(m => m.tex)).toEqual([raw`\|x\|_2`, 'x'])
+    expect(maths(raw`| a | $\|x\|$ |` + '\n| b | c |\n').map(m => m.tex)).toEqual([raw`\|x\|`])
+    // A delimiter row with another number of cells than the header makes no table (marked's rule).
+    expect(maths(raw`| a | $\|x\|$ |` + '\n|---|---|---|\n').map(m => m.tex)).toEqual([raw`\|x\|`])
+  })
+})

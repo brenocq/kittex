@@ -14,6 +14,7 @@ import {
   hcat,
   height,
   isBlank,
+  lines,
   pad,
   phantom,
   textBox,
@@ -274,8 +275,8 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
     const next = solidItems[k + 1]
     // After a function name (sin, log) parentheses read as its argument; after lim or ∑ a space does.
     const touches =
-      (prev !== undefined && !prev.unary && (prev.cls === 'ORD' || prev.cls === 'INNER' || prev.cls === 'CLOSE' || (prev.cls === 'OP' && prev.el.name === 'mi'))) ||
-      (next !== undefined && (next.cls === 'ORD' || next.cls === 'INNER' || next.cls === 'OPEN' || next.cls === 'OP'))
+      (prev !== undefined && !prev.unary && (prev.cls === 'ORD' || prev.cls === 'INNER' || prev.cls === 'CLOSE' || (prev.cls === 'OP' && (functionName(prev.el) || (tight && functionName(prev.el, true)))))) ||
+      (next !== undefined && (next.cls === 'ORD' || next.cls === 'INNER' || next.cls === 'OPEN' || next.cls === 'OP' || postfixMark(next)))
     if (touches) {
       item.box = item.wrapped
       item.kind = 'fence'
@@ -283,6 +284,18 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
   })
 
   const script = rowCtx.level > 0
+  // An atom ending in a bare script or radicand takes its grouped form where
+  // the next atom, with no space between, would read as part of it (x_(y)z, √2 x).
+  list.forEach((item, i) => {
+    const joined = JOINED.get(item.box)
+    if (!joined) return
+    let j = i + 1
+    while (j < list.length && list[j]!.box.width === 0) j++
+    const next = list[j]
+    if (!next || next.cls === 'NONE' || gap(item, next, script) > 0) return
+    const cell = next.box.rows[next.box.base]?.find(c => c !== '') ?? ''
+    item.box = joined(cell) ?? item.box
+  })
   const boxes: Box[] = []
   /** Where a line may break: before boxes[i]. */
   const breaks: number[] = []
@@ -326,7 +339,35 @@ function buildRow(flat: readonly Flat[], rowCtx: Ctx): Row {
     prev = item
   }
   flush(pending)
-  return { box: boxes.length ? hcat(boxes) : blank(0), items: list, spaced, parts: boxes, breaks }
+  const box = boxes.length ? hcat(boxes) : blank(0)
+  // A row ending in a bare script or radicand (a group {x_y}, an arrow's label) has its grouped form too.
+  const tail = list.findLast(item => item.box.width > 0)
+  const tailJoined = tail && boxes.at(-1) === tail.box ? JOINED.get(tail.box) : undefined
+  if (tailJoined) {
+    JOINED.set(box, cell => {
+      const last = tailJoined(cell)
+      return last && hcat([...boxes.slice(0, -1), last])
+    })
+  }
+  return { box, items: list, spaced, parts: boxes, breaks }
+}
+
+/** A factorial or prime after an atom (n!, f′), which would read as the denominator's alone (x/2!). */
+function postfixMark(item: Item): boolean {
+  return item.el.name === 'mo' && /^[!′″‴']+$/u.test(tokenText(item.el))
+}
+
+/**
+ * A function name (sin, log, \operatorname{Cov}), with scripts or not
+ * (log₁₀): parentheses after it hold its argument. With `words`, also an
+ * operator written as a word (lim, max), which only a space parts from what
+ * follows.
+ */
+function functionName(el: Element, words = false): boolean {
+  if (el.name === 'mi') return true
+  if (words && el.name === 'mo' && /^\p{L}{2,}$/u.test(tokenText(el))) return true
+  const base = SCRIPTED.has(el.name) ? elements(el)[0] : undefined
+  return base !== undefined && functionName(base, words)
 }
 
 /**
@@ -402,7 +443,7 @@ function gap(left: Item, right: Item, script: boolean): number {
   if (left.unary || right.cls === 'PUNCT') return 0
   if (left.cls === 'PUNCT') return 1
   // A function name takes its parenthesized argument without a space: sin(π/2).
-  if (left.cls === 'OP' && right.kind === 'fence') return left.el.name === 'mi' ? 0 : 1
+  if (left.cls === 'OP' && right.kind === 'fence') return functionName(left.el) ? 0 : 1
   if (left.cls === 'OP' || right.cls === 'OP') return 1
   if (left.kind === 'frac' || right.kind === 'frac') return 1
   return 0
@@ -745,7 +786,10 @@ function needsParens(row: Row, side: 'num' | 'den'): boolean {
     return only.el.name === 'mtext' && tokenText(only.el).includes(' ')
   }
   if (spaced) return true
-  if (side === 'num') return false
+  // Unspaced (in a script, a tight preview), a sum or a relation still binds
+  // looser than the slash: (p−1)/2, never p−1/2. A product (2x/3), a leading
+  // sign (−1/2) and a call (f(x)/2) read whole.
+  if (side === 'num') return looseAtTop(items)
   // A denominator is one unit only if it is a differential (dx, ∂x²), a call
   // with plain arguments (g(x), P(B), f(x, y), but not n(n + 1)), or n!.
   const [head, second] = items as [Item, Item]
@@ -759,6 +803,51 @@ function needsParens(row: Row, side: 'num' | 'den'): boolean {
   return true
 }
 
+/**
+ * Whether an atom of a row binds looser than a product, so that the row as a
+ * numerator, radicand or script needs grouping: a binary operator, a
+ * relation, punctuation, a large operator or function name (∑ᵢxᵢ, sin x),
+ * an explicitly spaced operator (\bmod), or a sign anywhere but first.
+ */
+function looser(item: Item, first: boolean, next?: Item): boolean {
+  if (item.unary) return !first
+  if (item.cls === 'NONE') return item.box.width > 0 && (item.lspace !== undefined || item.rspace !== undefined)
+  // Words of text stand apart: 13.6 eV over n² is (13.6 eV)/n².
+  if (item.el.name === 'mtext') return plainText(item).includes(' ')
+  // A call reads whole (Cov(X, Y)/σ); a function name before anything else doesn't (sin x).
+  if (item.cls === 'OP' && functionName(item.el) && next?.cls === 'OPEN') return false
+  return item.cls === 'BIN' || item.cls === 'REL' || item.cls === 'PUNCT' || item.cls === 'OP'
+}
+
+/** Whether some atom outside the row's own brackets binds looser than a product (see looser). */
+function looseAtTop(items: readonly Item[]): boolean {
+  let depth = 0
+  // Bars open where an operand starts (|a| + |b|) and close an open one; any other is a relation (k|k−1).
+  const bars: number[] = []
+  for (const [i, item] of items.entries()) {
+    const text = item.el.name === 'mo' ? tokenText(item.el) : ''
+    if (BARS.has(text)) {
+      const prev = items[i - 1]
+      if (bars.at(-1) === depth && (!prev || !['BIN', 'REL', 'OPEN', 'PUNCT'].includes(prev.cls))) {
+        bars.pop()
+        depth--
+      } else if (!prev || prev.unary || ['BIN', 'REL', 'OPEN', 'PUNCT', 'OP'].includes(prev.cls)) {
+        depth++
+        bars.push(depth)
+      } else if (depth === 0) {
+        return true
+      }
+      continue
+    }
+    if (item.cls === 'CLOSE') depth = Math.max(0, depth - 1)
+    else if (item.cls === 'OPEN') depth++
+    else if (depth === 0 && looser(item, i === 0, items[i + 1])) return true
+  }
+  return false
+}
+
+const BARS = new Set(['|', '‖', '∥', '∣'])
+
 function plainText(item: Item): string {
   return item.box.rows.length === 1 ? item.box.rows[0]!.join('') : ''
 }
@@ -771,7 +860,9 @@ function isAtom(row: Row): boolean {
   if (items.length !== 1) return false
   const only = items[0]!
   if (only.kind === 'fence') return true
-  return (only.el.name === 'mi' || only.el.name === 'mn' || only.el.name === 'mtext') && !plainText(only).includes(' ')
+  // A letter with a subscript written in subscript characters reads whole (√dₖ); a superscript doesn't (√x² could be (√x)²).
+  const scripted = only.el.name === 'msub' && ['mi', 'mn', 'mover', 'munder'].includes(elements(only.el)[0]?.name ?? '') && /^[^\s_^()]+$/u.test(plainText(only))
+  return scripted || ((only.el.name === 'mi' || only.el.name === 'mn' || only.el.name === 'mtext') && !plainText(only).includes(' '))
 }
 
 function root(radicand: Row, indexEl: Element | undefined, ctx: Ctx): Box {
@@ -787,9 +878,14 @@ function root(radicand: Row, indexEl: Element | undefined, ctx: Ctx): Box {
   const r = radicand.box
 
   if (height(r) === 1 && (isAtom(radicand) || !ctx.twoD)) {
-    const body = isAtom(radicand) ? r : parens(r, true)
+    const atom = isAtom(radicand)
+    const body = atom ? r : parens(r, true)
     const box = hcat([textBox(prefix + sign), body])
-    return index && mapped === undefined ? hangIndex(box, index, 0) : box
+    if (index && mapped === undefined) return hangIndex(box, index, 0)
+    // √2 then x reads √(2x): a cell between them where nothing else would put one.
+    const bare = atom && !atoms(radicand).items.some(item => item.kind === 'fence') && r.width > 0
+    if (bare) JOINED.set(box, cell => (JOINS_RADICAND.test(cell) ? hcat([box, blank(1)]) : undefined))
+    return box
   }
   if (height(r) === 1) {
     // √ with a bar over the radicand on the row above.
@@ -847,14 +943,37 @@ function compose(parts: readonly Placed[]): Box {
   return out
 }
 
-/** Script text written inline when it has no Unicode script form: x^2n becomes x^(2n). */
-function group(box: Box): string {
+/**
+ * Script text written inline when it has no Unicode script form: x^2n becomes
+ * x^(2n). With `word`, a lone word of letters and digits stays bare (π_ref,
+ * T_eff): a tight preview is as narrow as its image, and the word ends at the
+ * next space or symbol; the row spaces it off where a letter follows (see
+ * JOINED).
+ */
+function group(box: Box, word = false): string {
   const text = box.rows[0]!.join('')
   const cellsCount = box.rows[0]!.filter(c => c !== '').length
   if (cellsCount <= 1) return text
   if (/^\(.*\)$/.test(text) && balanced(text.slice(1, -1))) return text
+  if (word && WORD.test(text)) return text
   return `(${text})`
 }
+
+/** A bare script's text: letters and digits (their marks too), none of them a script character. */
+const WORD = /^(?:(?![\u00b2\u00b3\u00b9\u02b0-\u02ff\u1d2c-\u1dbf\u2070-\u209f\u2c7c\u2c7d])[\p{L}\p{N}]\p{M}*)+$/u
+
+/**
+ * One-line atoms whose text ends in a run the next atom would read as part
+ * of (a bare script, x_y or π_ref; a radicand without parentheses, √2), and
+ * the form to use instead before an atom starting with `cell`, if any: the
+ * atom with a space after it (√2 x, ∂_μ A_ν, D_KL (p‖q)).
+ */
+const JOINED = new WeakMap<Box, (cell: string) => Box | undefined>()
+
+/** What joins a bare script: a letter, digit or mark. */
+const JOINS_SCRIPT = /^[\p{L}\p{N}\p{M}]/u
+/** What joins a bare radicand: that, or a parenthesis (√2(x + 1)). */
+const JOINS_RADICAND = /^[\p{L}\p{N}\p{M}(]/u
 
 function balanced(text: string): boolean {
   let depth = 0
@@ -899,8 +1018,8 @@ function attach(baseEl: Element, subEl: Element | undefined, supEl: Element | un
       }
     }
   }
-  const base = baseScriptBox(baseEl, baseCtx)
-  if (!ctx.twoD) return hcat([base, textBox(scriptText(scripts))])
+  const base = groupedBase(baseEl, baseScriptBox(baseEl, baseCtx), scripts)
+  if (!ctx.twoD) return oneLineScripts(base, scripts)
   return compose([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, scripts, 'right', integral)])
 }
 
@@ -921,12 +1040,25 @@ function makeScripts(sub: Box | undefined, sup: Box | undefined): Scripts {
   }
 }
 
-/** Scripts on one row: Unicode script characters, or _(…) and ^(…). */
-function scriptText({ sub, sup, subMapped, supMapped }: Scripts): string {
+/**
+ * Scripts on one row: Unicode script characters, or _(…) and ^(…); in a
+ * tight layout a script that is one word stays bare (π_ref, Γ_μν^λ), but not
+ * before a superscript character (x_(ab)², where ² would read as the
+ * word's). `bare`: it ends in such a script, or in a lone letter (x_y), that
+ * a following letter would join (see JOINED); `word`: that script is a word,
+ * which a parenthesis would join too.
+ */
+function scriptText({ sub, sup, subMapped, supMapped }: Scripts): { text: string; bare: boolean; word?: boolean } {
   let text = ''
-  if (sub) text += subMapped ?? '_' + group(sub)
-  if (sup) text += supMapped ?? '^' + group(sup)
-  return text
+  if (sub) text += subMapped ?? '_' + group(sub, tight && (!sup || supMapped === undefined))
+  const head = text
+  if (sup) text += supMapped ?? '^' + group(sup, tight)
+  const last = sup ? (supMapped === undefined ? sup : undefined) : subMapped === undefined ? sub : undefined
+  if (!last) return { text, bare: false }
+  const written = group(last, tight)
+  if (written.startsWith('(') || !JOINS_SCRIPT.test([...written].at(-1) ?? '')) return { text, bare: false }
+  // A lone letter takes a parenthesis after it as its argument's (x_y(t)); a word could take it as its own (D_KL (p‖q)).
+  return { text, bare: true, word: last.rows[0]!.filter(c => c !== '').length > 1 }
 }
 
 /**
@@ -988,8 +1120,41 @@ function multiscripts(el: Element, ctx: Ctx): Box {
   const join = (boxes: Box[]) => (boxes.length ? hcat(boxes) : undefined)
   const [post, pre] = sides.map(s => makeScripts(join(s.sub), join(s.sup))) as [Scripts, Scripts]
   const base = layoutNode(kids[0]!, strip(ctx))
-  if (!ctx.twoD) return hcat([textBox(scriptText(pre)), base, textBox(scriptText(post))])
+  if (!ctx.twoD) return oneLineScripts(hcat([textBox(scriptText(pre).text), base]), post)
   return compose([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, post, 'right'), ...placeScripts(base, pre, 'left')])
+}
+
+/** A base and its scripts on one row, with the forms for a row where something that would join its bare last script follows (JOINED). */
+function oneLineScripts(base: Box, scripts: Scripts): Box {
+  const { text, bare, word } = scriptText(scripts)
+  const box = hcat([base, textBox(text)])
+  if (bare) {
+    JOINED.set(box, cell => (JOINS_SCRIPT.test(cell) || (cell === '(' && word) ? hcat([box, blank(1)]) : undefined))
+  }
+  return box
+}
+
+/**
+ * A one-line base in parentheses where its scripts would otherwise read as
+ * part of what it ends with: a root's radicand ((√x)², not √x²), or a base
+ * with scripts of its own on the same side ((xᵃ)ᵇ, not xᵃᵇ).
+ */
+function groupedBase(el: Element, base: Box, { sub, sup }: Scripts): Box {
+  let core = el
+  while (core.name === 'mrow' && elements(core).length === 1) core = elements(core)[0]!
+  const radical = core.name === 'msqrt' || core.name === 'mroot'
+  const above = sup !== undefined && (core.name === 'msup' || core.name === 'msubsup' || core.name === 'mover' || core.name === 'munderover')
+  const beneath = sub !== undefined && sup === undefined && (core.name === 'msub' || core.name === 'msubsup' || core.name === 'munder' || core.name === 'munderover')
+  if (!radical && !above && !beneath) return base
+  if (above && (core.name === 'mover' || core.name === 'munderover') && !scriptedLimits(core)) return base
+  return height(base) === 1 ? parens(base, true) : base
+}
+
+/** Whether an under/over element is written with scripts on one row (limits, \overset), not an accent. */
+function scriptedLimits(el: Element): boolean {
+  const kids = elements(el)
+  const mark = el.name === 'munder' ? kids[1] : kids.at(-1)
+  return !(mark?.name === 'mo' && (OVER_ACCENTS.has(tokenText(mark)) || UNDER_ACCENTS.has(tokenText(mark)) || braceRow(tokenText(mark), 1) !== undefined))
 }
 
 /** A script's base; a one-row fraction there goes in parentheses. */
@@ -1184,12 +1349,44 @@ function alignOf(value: string): Align {
   return fail(`columnalign ${value}`)
 }
 
+/**
+ * A table written on one line, where math may take only one (inline math, a
+ * display preview's one-line form): its rows parted by `; `, the cells of a
+ * row by `, `, or by nothing where the table puts no space between two
+ * columns (an alignment point, as in `aligned`): `(a, b; c, d)` for a
+ * pmatrix, `{x, x > 0; 0, otherwise` for cases, `a = b; c = d` for aligned.
+ */
+function oneLineTable(el: Element, rowEls: readonly Element[], ctx: Ctx): Box {
+  const cellCtx: Ctx = { twoD: false, display: false, level: ctx.level }
+  const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))
+  const rows: string[] = []
+  for (const rowEl of rowEls) {
+    if (rowEl.name !== 'mtr' && rowEl.name !== 'mlabeledtr') fail(`<${rowEl.name}> in mtable`)
+    const cellEls = elements(rowEl)
+    if (rowEl.name === 'mlabeledtr') cellEls.shift()
+    let row = ''
+    for (const [c, cellEl] of cellEls.entries()) {
+      if (cellEl.name !== 'mtd') fail(`<${cellEl.name}> in mtr`)
+      const box = layoutRow(elements(cellEl), cellCtx).box
+      if (height(box) !== 1) fail('tall cell in a one-line table')
+      const text = lines(box)[0]!.trim()
+      if (c > 0 && text !== '' && row !== '') {
+        // A cell the formula ends with a comma of its own needs no other.
+        row += pick(spacing, c - 1) > 0 ? (/[,;:]$/.test(row) ? ' ' : ', ') : /^[\p{L}\p{N}]/u.test(text) ? '' : ' '
+      }
+      row += text
+    }
+    if (row !== '') rows.push(row)
+  }
+  return textBox(rows.map((row, r) => (r < rows.length - 1 ? row.replace(/[,;]$/, '') : row)).join('; '))
+}
+
 function table(el: Element, ctx: Ctx): Box {
   const cellCtx: Ctx = ctx.compact
     ? { twoD: false, display: false, level: ctx.level, compact: true }
     : { twoD: ctx.twoD, display: el.attrs.displaystyle === 'true', level: ctx.level }
   const rowEls = elements(el)
-  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) fail('table in inline math')
+  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) return oneLineTable(el, rowEls, ctx)
   const tableAligns = list(el.attrs.columnalign, 'center')
   // A percentage (multline's) has no meaning in cells: no extra space.
   const spacing = list(el.attrs.columnspacing, '0.8em').map(v => (v.endsWith('%') ? 0 : cells(length(v))))

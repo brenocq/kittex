@@ -11,7 +11,7 @@ const compact = (tex: string) => toUnicode(mathml(tex, true), { display: true, c
 test('aligned rows take one line each, with the relations lined up', () => {
   expect(
     compact(String.raw`\begin{aligned} \hat{x}_{k|k-1} &= F_k \hat{x}_{k-1|k-1} + B_k u_k \\ P_{k|k-1} &= F_k P_{k-1|k-1} F_k^\top + Q_k \end{aligned}`),
-  ).toEqual(['x̂_(k|k−1) = Fₖx̂_(k−1|k−1) + Bₖuₖ', 'P_(k|k−1) = FₖP_(k−1|k−1)Fₖᵀ + Qₖ'])
+  ).toEqual(['x̂ₖ|ₖ₋₁ = Fₖx̂ₖ₋₁|ₖ₋₁ + Bₖuₖ', 'Pₖ|ₖ₋₁ = FₖPₖ₋₁|ₖ₋₁Fₖᵀ + Qₖ'])
 })
 
 test('fractions and limits are written on one line, with no blank lines between rows', () => {

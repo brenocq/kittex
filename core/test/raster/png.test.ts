@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { crc32, inflateSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { encodePng, rasterize, recolorPng } from '../../src/raster/index.js'
+import { encodePng, inkAlpha, rasterize, recolorPng } from '../../src/raster/index.js'
 import type { Raster, RGB, TypesetResult } from '../../src/types.js'
 
 interface Chunk {
@@ -96,5 +96,78 @@ describe('encodePng', () => {
     expect(Math.max(...changed)).toBeLessThan(33 + 12 + 768)
     expect(png).toEqual(encodePng(raster, ink)) // the input is untouched
     expect(() => recolorPng(new Uint8Array(100), ink)).toThrow()
+  })
+})
+
+// Ghostty 1.3.1's linear-corrected text blending (cell_text.f.glsl), written
+// out independently: luminances of the linear colours, blended gamma-encoded.
+const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+const enc = (v: number) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)
+const lum = (c: RGB) => 0.2126 * lin(c.r / 255) + 0.7152 * lin(c.g / 255) + 0.0722 * lin(c.b / 255)
+function ghosttyText(a: number, fg: RGB, bg: RGB): number {
+  const f = lum(fg)
+  const b = lum(bg)
+  return Math.abs(f - b) > 0.001 ? Math.min(1, Math.max(0, (lin(enc(f) * a + enc(b) * (1 - a)) - b) / (f - b))) : a
+}
+
+const black: RGB = { r: 0, g: 0, b: 0 }
+const white: RGB = { r: 255, g: 255, b: 255 }
+// The two gruvbox themes measured live: Ghostty's Gruvbox Light, and kitty's (and Ghostty's) Gruvbox Dark.
+const lightFg: RGB = { r: 0x3c, g: 0x38, b: 0x36 }
+const lightBg: RGB = { r: 0xfb, g: 0xf1, b: 0xc7 }
+const darkFg: RGB = { r: 0xeb, g: 0xdb, b: 0xb2 }
+const darkBg: RGB = { r: 0x28, g: 0x28, b: 0x28 }
+
+describe('inkAlpha (Ghostty linear-corrected text blending, for images)', () => {
+  test('black on white: the linear blend lands where the gamma blend would, 1 - lin(1 - a)', () => {
+    for (const a of [0.1, 0.25, 0.5, 0.75, 0.9]) expect(inkAlpha(a, black, white)).toBeCloseTo(1 - lin(1 - a), 12)
+    expect(inkAlpha(0.5, black, white)).toBeCloseTo(0.786, 3)
+  })
+
+  test('dark ink on a light background gains alpha, light ink on a dark one loses it; 0 and 1 stay', () => {
+    for (const a of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      expect(inkAlpha(a, lightFg, lightBg)).toBeGreaterThan(a)
+      expect(inkAlpha(a, darkFg, darkBg)).toBeLessThan(a)
+    }
+    for (const [fg, bg] of [[lightFg, lightBg], [darkFg, darkBg]] as const) {
+      expect(inkAlpha(0, fg, bg)).toBe(0)
+      expect(inkAlpha(1, fg, bg)).toBeCloseTo(1, 12)
+    }
+  })
+
+  test("matches Ghostty's text shader over the measured themes", () => {
+    for (const [fg, bg] of [[lightFg, lightBg], [darkFg, darkBg], [ink, darkBg], [white, black]] as const) {
+      for (let i = 0; i <= 255; i++) expect(inkAlpha(i / 255, fg, bg)).toBeCloseTo(ghosttyText(i / 255, fg, bg), 12)
+    }
+  })
+
+  test('ink and background within 0.001 of luminance: no correction', () => {
+    expect(inkAlpha(0.4, lightBg, lightBg)).toBe(0.4)
+    expect(inkAlpha(0.4, { r: 128, g: 128, b: 128 }, { r: 128, g: 128, b: 129 })).toBe(0.4)
+  })
+})
+
+describe('encodePng / recolorPng with a corrected alpha', () => {
+  test('tRNS holds each level corrected against `over`; pixels and palette are unchanged', () => {
+    const plain = decode(encodePng(raster, lightFg))
+    const corrected = decode(encodePng(raster, lightFg, lightBg))
+    expect(corrected.pixels).toEqual(plain.pixels)
+    expect(corrected.plte).toEqual(plain.plte)
+    const expected = Array.from({ length: 256 }, (_, i) => (i === 0 || i === 255 ? i : Math.round(255 * ghosttyText(i / 255, lightFg, lightBg))))
+    expect([...corrected.trns]).toEqual(expected)
+    // Monotonic, and darker at every partial level (dark ink on a light background).
+    for (let i = 1; i < 256; i++) expect(corrected.trns[i]!).toBeGreaterThanOrEqual(corrected.trns[i - 1]!)
+    expect(corrected.trns[128]).toBeGreaterThan(128 + 30)
+  })
+
+  test('recolorPng rewrites the correction with the colour, and back', () => {
+    const plain = encodePng(raster, ink)
+    const corrected = recolorPng(plain, lightFg, lightBg)
+    expect(corrected).toEqual(encodePng(raster, lightFg, lightBg))
+    expect(recolorPng(corrected, ink)).toEqual(plain)
+    const changed = [...plain].flatMap((b, i) => (b !== corrected[i] ? [i] : []))
+    // Only the PLTE and tRNS chunks (data and CRCs) differ.
+    expect(Math.min(...changed)).toBeGreaterThanOrEqual(33 + 8)
+    expect(Math.max(...changed)).toBeLessThan(33 + 12 + 768 + 12 + 256)
   })
 })

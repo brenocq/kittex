@@ -1,11 +1,23 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { colorProbes, detectTerminal, ghosttyEntries, parseGhosttyConfig, readGhosttyColors, readTerminalColors, toHex } from '../../src/terminal/index.js'
+import {
+  colorProbes,
+  detectTerminal,
+  drawsEmojiSequences,
+  ghosttyEntries,
+  imageInkBackground,
+  parseGhosttyConfig,
+  parseMetricAdjust,
+  readGhosttyColors,
+  readTerminalColors,
+  toHex,
+} from '../../src/terminal/index.js'
 import type { TerminalColors } from '../../src/types.js'
 
-// Ghostty isn't installed here: ghostty-show-config.txt is built from the
-// formatter in Ghostty's source (src/config/formatter.zig: `key = value`,
-// colours `#rrggbb`, `palette = N=#rrggbb` for all 256 entries).
+// ghostty-show-config.txt is built from the formatter in Ghostty's source
+// (src/config/formatter.zig: `key = value`, colours `#rrggbb`, `palette =
+// N=#rrggbb` for all 256 entries); ghostty-1.3.1-show-config.txt is the real
+// output of Ghostty 1.3.1 on Linux.
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
 const memFs = (files: Record<string, string>) => async (path: string) => files[path]
 const hex = (c: TerminalColors | undefined) => c && { foreground: toHex(c.foreground!), background: toHex(c.background!), palette: c.palette!.map(toHex) }
@@ -127,5 +139,86 @@ describe('readGhosttyColors', () => {
     expect(hex(await readTerminalColors(detectTerminal({ TERM: 'xterm-ghostty' }), memFs(files), { env }))).toMatchObject({ foreground: '#123456' })
     expect(await readTerminalColors(detectTerminal({ TERM: 'xterm-ghostty', SSH_TTY: '/dev/pts/1' }), memFs(files), { env })).toBeUndefined()
     expect(await readTerminalColors(detectTerminal({ TERM_PROGRAM: 'WezTerm' }), memFs(files), { env })).toBeUndefined()
+  })
+})
+
+describe('alpha-blending and the cell adjustments', () => {
+  test('Ghostty 1.3.1 on Linux, theme Gruvbox Light: linear-corrected by default, no adjustments', () => {
+    // Captured on this machine: `ghostty +show-config --changes-only=false` with a config of one line, theme = Gruvbox Light.
+    const colors = parseGhosttyConfig(fixture('ghostty-1.3.1-show-config.txt'))
+    expect(hex(colors)).toMatchObject({ foreground: '#3c3836', background: '#fbf1c7' })
+    expect(colors?.alphaBlending).toBe('linear-corrected')
+    expect(colors?.cellAdjust).toBeUndefined()
+  })
+
+  test('show-config prints the adjustments as Ghostty formats them', () => {
+    // Printed by Ghostty 1.3.1 for adjust-cell-width = 20%, adjust-cell-height = -2, adjust-font-baseline = 10%.
+    const out = 'foreground = #000000\nalpha-blending = native\nadjust-cell-width = 19.999999999999996%\nadjust-cell-height = -2\nadjust-font-baseline = 10.000000000000009%\n'
+    const colors = parseGhosttyConfig(out)
+    expect(colors?.alphaBlending).toBe('native')
+    expect(colors?.cellAdjust?.width).toEqual({ factor: expect.closeTo(1.2, 12) })
+    expect(colors?.cellAdjust?.height).toEqual({ px: -2 })
+    expect(colors?.cellAdjust?.baseline).toEqual({ factor: expect.closeTo(1.1, 12) })
+  })
+
+  test('parseMetricAdjust: percent as a factor (never below 0), integers as pixels, anything else unset', () => {
+    expect(parseMetricAdjust('20%')).toEqual({ factor: 1.2 })
+    expect(parseMetricAdjust('-25%')).toEqual({ factor: 0.75 })
+    expect(parseMetricAdjust('-150%')).toEqual({ factor: 0 })
+    expect(parseMetricAdjust('3')).toEqual({ px: 3 })
+    expect(parseMetricAdjust('-2')).toEqual({ px: -2 })
+    for (const bad of ['', '%', '1.5', 'abc', '2px']) expect(parseMetricAdjust(bad)).toBeUndefined()
+  })
+
+  test('config files: alpha-blending as set, else the platform default once the platform is known', async () => {
+    const env = { HOME: '/h' }
+    const set = { '/h/.config/ghostty/config': 'alpha-blending = linear\nadjust-cell-width = 10%\n' }
+    expect((await readGhosttyColors(memFs(set), { env }))?.alphaBlending).toBe('linear')
+    expect((await readGhosttyColors(memFs(set), { env }))?.cellAdjust).toEqual({ width: { factor: 1.1 } })
+    expect((await readGhosttyColors(memFs({}), { env, platform: 'linux' }))?.alphaBlending).toBe('linear-corrected')
+    expect((await readGhosttyColors(memFs({}), { env, platform: 'darwin' }))?.alphaBlending).toBe('native')
+    expect((await readGhosttyColors(memFs({}), { env }))?.alphaBlending).toBeUndefined()
+    const reset = { '/h/.config/ghostty/config': 'adjust-cell-width = 10%\nadjust-cell-width =\n' }
+    expect((await readGhosttyColors(memFs(reset), { env }))?.cellAdjust).toBeUndefined()
+  })
+
+  test('imageInkBackground: the background in Ghostty with linear-corrected blending only', () => {
+    const background = { r: 0xfb, g: 0xf1, b: 0xc7 }
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'linear-corrected' })).toEqual(background)
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'native' })).toBeUndefined()
+    expect(imageInkBackground('ghostty', { background, alphaBlending: 'linear' })).toBeUndefined()
+    expect(imageInkBackground('ghostty', { background })).toBeUndefined()
+    expect(imageInkBackground('ghostty', undefined)).toBeUndefined()
+    expect(imageInkBackground('kitty', { background, alphaBlending: 'linear-corrected' })).toBeUndefined()
+  })
+})
+
+describe('emoji sequences (grapheme-width-method)', () => {
+  const env = { HOME: '/h' }
+
+  test('read with the colours: +show-config prints it, a config file may set it; the last one counts', async () => {
+    const out = 'foreground = #000000\nbackground = #ffffff\ngrapheme-width-method = unicode\n'
+    expect(parseGhosttyConfig(out)?.graphemeWidth).toBe('unicode')
+    expect(parseGhosttyConfig(out + 'grapheme-width-method = legacy\n')?.graphemeWidth).toBe('legacy')
+    expect(parseGhosttyConfig(fixture('ghostty-show-config.txt'))?.graphemeWidth).toBeUndefined()
+    const files = { '/h/.config/ghostty/config': 'grapheme-width-method = legacy\nconfig-file = more\n', '/h/.config/ghostty/more': 'grapheme-width-method = unicode\n' }
+    expect((await readGhosttyColors(memFs(files), { env })).graphemeWidth).toBe('unicode')
+    expect((await readGhosttyColors(memFs({ '/h/.config/ghostty/config': 'grapheme-width-method = legacy\n' }), { env })).graphemeWidth).toBe('legacy')
+    expect((await readGhosttyColors(memFs({}), { env })).graphemeWidth).toBeUndefined()
+  })
+
+  test('drawn as the engine counts them in kitty and in Ghostty unless legacy; nowhere else, nor over ssh or in a multiplexer', () => {
+    const ghostty = detectTerminal({ TERM: 'xterm-ghostty' })
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty' }))).toBe(true)
+    expect(drawsEmojiSequences(ghostty)).toBe(true)
+    expect(drawsEmojiSequences(ghostty, { graphemeWidth: 'unicode' })).toBe(true)
+    expect(drawsEmojiSequences(ghostty, { graphemeWidth: 'legacy' })).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty', SSH_TTY: '/dev/pts/1' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-ghostty', SSH_CONNECTION: 'a b c d' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'tmux-256color', TMUX: '/tmp/t,1,0', KITTY_WINDOW_ID: '1' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM: 'xterm-kitty', ZELLIJ: '0' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM_PROGRAM: 'WezTerm' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({ TERM_PROGRAM: 'iTerm.app' }))).toBe(false)
+    expect(drawsEmojiSequences(detectTerminal({}))).toBe(false)
   })
 })

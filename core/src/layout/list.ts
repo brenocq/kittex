@@ -1,9 +1,9 @@
 import type { Token, Tokens } from 'marked'
 
 import type { InlineLinks, LinkMode } from './links.js'
-import { inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
+import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowableFrom } from './prose.js'
 import type { VisibleText } from './prose.js'
-import { codeWidth } from './width.js'
+import { codeWidth, textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
 /*
@@ -54,8 +54,24 @@ export class Canvas {
   readonly end: boolean[] = []
   private readonly cells: string[][] = []
   rows = 0
+  /**
+   * A partial drawing (`partial`): the markdown offset from which nothing is
+   * drawn, once something the replay doesn't follow was met (Infinity until
+   * then). Everything drawn before it is where the engine draws it.
+   */
+  stop = Infinity
 
-  constructor(readonly width: number) {}
+  /** `sequences`: emoji sequences are characters (charAt). `partial`: draw up to what can't be followed (see stop). */
+  constructor(
+    readonly width: number,
+    readonly sequences = false,
+    readonly partial = false,
+  ) {}
+
+  /** Stops the drawing at a markdown offset (a partial drawing; see stop). */
+  halt(offset: number): void {
+    this.stop = Math.min(this.stop, offset)
+  }
 
   /** Puts text that isn't from a span (a marker) at a cell. */
   put(text: string, row: number, col: number): void {
@@ -72,11 +88,18 @@ export class Canvas {
     let r = top
     let at = 0
     for (const line of visible.text.split('\n')) {
-      const wrapped = wrapLine(line, width)
+      const wrapped = wrapLine(line, width, true, this.sequences, this.partial)
       if (!wrapped) return false
       this.grow(r + wrapped.rows)
-      for (let i = 0; i < line.length; i++) {
-        this.unit(line[i]!, visible.source[at + i]!, r + wrapped.row[i]!, left + wrapped.col[i]!, !wrapped.hidden[i])
+      const known = wrapped.known ?? line.length
+      for (let i = 0; i < known; i++) {
+        this.unit(line[i]!, visible.source[at + i]!, r + wrapped.row[i]!, left + wrapped.col[i]!, !wrapped.hidden[i], wrapped.cells[i]!)
+      }
+      if (known < line.length) {
+        // A character of unknown width: nothing from its word on is followed.
+        for (let i = at + known; i < visible.source.length; i++) if (visible.source[i]! >= 0) this.halt(visible.source[i]!)
+        if (visible.stop !== undefined) this.halt(visible.stop)
+        return false
       }
       // The line break itself, as layoutProse counts it.
       this.text.push('\n')
@@ -93,6 +116,11 @@ export class Canvas {
     this.row.pop()
     this.col.pop()
     this.end.pop()
+    if (visible.stop !== undefined) {
+      // A partial text: what isn't followed starts right after it.
+      this.halt(visible.stop)
+      return false
+    }
     if (this.end.length > 0) this.end[this.end.length - 1] = true
     return true
   }
@@ -100,9 +128,11 @@ export class Canvas {
   /**
    * Puts one UTF-16 unit of drawn text at a cell (its column as wrapLine
    * gives it); `drawn: false` counts it without drawing it (a space the
-   * engine hides at a row's start).
+   * engine hides at a row's start). `cells`: the cells of the character the
+   * unit starts, as wrapLine gives them (-1: the unit continues the character
+   * before it, in its cell); by default, its code point's.
    */
-  unit(unit: string, source: number, row: number, col: number, drawn = true): void {
+  unit(unit: string, source: number, row: number, col: number, drawn = true, cells?: number): void {
     this.grow(row + 1)
     this.text.push(unit)
     this.source.push(source)
@@ -110,24 +140,24 @@ export class Canvas {
     this.col.push(col)
     this.end.push(false)
     if (!drawn) return
-    const cells = this.cells[row]!
+    const line = this.cells[row]!
     const code = unit.charCodeAt(0)
     let width: number
-    if (code >= 0xdc00 && code <= 0xdfff) {
-      // The low half of a pair joins its high half, in the same cell: the pair is one character.
-      cells[col] = (cells[col] ?? '') + unit
-      width = codeWidth(cells[col]!.codePointAt(0)!)
+    if (cells === undefined ? code >= 0xdc00 && code <= 0xdfff : cells < 0) {
+      // The rest of a character (a pair's low half, a combining mark, an emoji sequence) joins its cell.
+      line[col] = (line[col] ?? '') + unit
+      width = cells === undefined ? codeWidth(line[col]!.codePointAt(0)!) : 0
     } else if (code < 0xd800 && codeWidth(code) === 0) {
       // A combining mark joins the cell before it.
       const at = Math.max(0, col - 1)
-      cells[at] = (cells[at] ?? '') + unit
+      line[at] = (line[at] ?? '') + unit
       return
     } else {
-      cells[col] = unit
-      width = codeWidth(code)
+      line[col] = unit
+      width = cells ?? codeWidth(code)
     }
     // A wide character (an emoji) covers the cell after it too.
-    if (width === 2) cells[col + 1] = ''
+    if (width === 2) line[col + 1] = ''
   }
 
   lines(): string[] {
@@ -146,8 +176,16 @@ export class Canvas {
  * draws it in a column `width` cells wide. Null when anything in it isn't
  * followed (see above). `mode`: how the engine draws links.
  */
-export function drawList(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
-  if (unfollowable(markdown) || !(width >= 1)) return null
+export function drawList(markdown: string, width: number, mode: LinkMode = {}, partial = false): Canvas | null {
+  if (!(width >= 1)) return null
+  const cut = unfollowableFrom(markdown)
+  if (cut !== undefined) {
+    if (!partial || cut === 0) return null
+    // Partial: drawn up to the line holding what isn't followed (the lines above it are drawn the same whatever follows).
+    const canvas = drawList(markdown.slice(0, cut), width, mode, true)
+    canvas?.halt(cut)
+    return canvas
+  }
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
@@ -155,7 +193,9 @@ export function drawList(markdown: string, width: number, mode: LinkMode = {}): 
   } catch {
     return null
   }
-  const canvas = new Canvas(width)
+  const canvas = new Canvas(width, mode.emojiSequences === true, partial)
+  // Partial: what was drawn before something the replay doesn't follow.
+  const stopped = () => (partial && canvas.stop < Infinity && linksHold(markdown, links) ? canvas : null)
   let at = 0
   let listed = false
   let after = ''
@@ -165,14 +205,17 @@ export function drawList(markdown: string, width: number, mode: LinkMode = {}): 
     if (token.type === 'paragraph' && !listed && at === 0) {
       // The paragraph's prose, then the list right under it (no blank line between them in the markdown).
       const paragraph = token as Tokens.Paragraph
-      const visible = textOf([{ tokens: paragraph.tokens ?? [], text: paragraph.text, at: 0 }], mapped, false, links)
-      if (!visible || !canvas.draw(visible, 0, 0, width)) return null
+      const visible = textOf([{ tokens: paragraph.tokens ?? [], text: paragraph.text, at: 0 }], mapped, false, links, partial)
+      if (!visible || !fits(visible, width, partial) || !canvas.draw(visible, 0, 0, width)) return stopped()
     } else if (token.type === 'list' && (!listed || after === 'list')) {
       // Lists one after another (a new bullet character starts a new list) are stacked with no row between.
       listed = true
-      if (!drawItems(canvas, token as Tokens.List, mapped, 0, 0, links)) return null
+      if (!drawItems(canvas, token as Tokens.List, mapped, 0, 0, links)) return stopped()
     } else if (token.type !== 'space' || !listed) {
-      return null
+      // Partial: what follows the list in its part (a block the replay doesn't follow) is drawn under it.
+      if (!partial || !listed) return null
+      canvas.halt(at)
+      return stopped()
     }
     at += token.raw.length
     after = token.type
@@ -191,7 +234,11 @@ function drawItems(canvas: Canvas, list: Tokens.List, raw: Mapped, indent: numbe
     const marker = list.ordered ? markerOf(depth, first + u, first, last) : '-'
     const blank = u > 0 && endsInBlank(list.items[u - 1]!)
     const itemRaw: Mapped = { text: item.raw, map: raw.map.slice(at, at + item.raw.length) }
-    if (!drawItem(canvas, item, itemRaw, marker, indent, depth, blank, links)) return false
+    if (!drawItem(canvas, item, itemRaw, marker, indent, depth, blank, links)) {
+      // Partial: the items above are drawn as the engine draws them; this one, where its drawing stopped.
+      if (canvas.stop === Infinity) canvas.halt(itemRaw.map[0] ?? 0)
+      return false
+    }
     at += item.raw.length
   }
   // A nested list's raw may keep the newline its last item's lost.
@@ -219,6 +266,8 @@ function drawItem(
   type Part = { kind: 'inline'; runs: Run[]; newlines: string } | { kind: 'list'; list: Tokens.List; raw: Mapped }
   const parts: Part[] = []
   let at = 0
+  /** Where the item holds a block the replay doesn't follow (a code block, a quote): it is drawn up to there. */
+  let halt: number | undefined
   for (const token of item.tokens) {
     if (token.type === 'list') {
       const list = token as Tokens.List
@@ -240,7 +289,9 @@ function drawItem(
       part.runs.push({ tokens: run.tokens, text: run.text, at: start })
       at = start + run.text.length
     } else {
-      return false
+      const start = text.text.indexOf(token.raw.trimStart(), at)
+      halt = text.map[start < 0 ? at : start] ?? raw.map[0] ?? 0
+      break
     }
   }
   if (parts[0]?.kind !== 'inline') return false
@@ -257,20 +308,27 @@ function drawItem(
       gap = false
       continue
     }
-    const drawn = textOf(part.runs, text, true, links)
+    const drawn = textOf(part.runs, text, true, links, canvas.partial)
     if (!drawn) return false
     const opens = drawn.lead
-    if (drawn.text === '' && m > 0) {
+    if (drawn.text === '' && m > 0 && drawn.stop === undefined) {
       gap ||= drawn.newline
       continue
     }
-    if (drawn.text === '' || room < MIN_TEXT) return false
+    if (room < MIN_TEXT) return false
+    const shown = fits(drawn, room, canvas.partial)
+    if (!shown || (shown.text === '' && (m === 0 || shown.stop === undefined))) {
+      if (shown?.stop !== undefined) canvas.halt(shown.stop)
+      return false
+    }
     const top = canvas.rows + (gap || (m > 0 && opens) ? 1 : 0)
     if (m === 0) canvas.put(marker, top, indent)
-    if (!canvas.draw(drawn, top, left, room)) return false
+    if (!canvas.draw(shown, top, left, room)) return false
     gap = drawn.blankAfter
   }
-  return true
+  if (halt === undefined) return true
+  canvas.halt(halt)
+  return false
 }
 
 type Run = { space: true } | { space?: false; tokens: readonly Token[]; text: string; at: number }
@@ -287,6 +345,7 @@ function textOf(
   owner: Mapped,
   glue: boolean,
   links: InlineLinks,
+  partial = false,
 ): (VisibleText & { lead: boolean; blankAfter: boolean; newline: boolean }) | null {
   const out: VisibleText = { text: '', source: [] }
   for (const run of runs) {
@@ -296,23 +355,49 @@ function textOf(
       continue
     }
     const drawn: VisibleText = { text: '', source: [] }
-    if (!inline(drawn, run.tokens, run.text, run.at, glue, links)) return null
-    out.text += drawn.text + '\n'
+    const followed = inline(drawn, run.tokens, run.text, run.at, glue, links)
+    if (!followed && (!partial || drawn.stop === undefined)) return null
+    out.text += drawn.text + (followed ? '\n' : '')
     for (const offset of drawn.source) out.source.push(offset < 0 ? -1 : (owner.map[offset] ?? -1))
-    out.source.push(-1)
+    if (followed) {
+      out.source.push(-1)
+      continue
+    }
+    // Partial: what was drawn before the run's token the replay doesn't follow.
+    out.stop = owner.map[drawn.stop!] ?? owner.map.at(-1) ?? 0
+    break
   }
   const raw = out.text
   const lead = /^\n*/.exec(raw)![0].length
-  const kept = raw.slice(lead).trimEnd().length
+  const kept = out.stop === undefined ? raw.slice(lead).trimEnd().length : raw.length - lead
   const text = raw.slice(lead, lead + kept)
-  if (LEADING_SPACE.test(text)) return null
+  const source = out.source.slice(lead, lead + kept)
+  const shown = out.stop === undefined ? { text, source } : cutPartial({ text, source }, out.stop)
   return {
-    text,
-    source: out.source.slice(lead, lead + kept),
+    ...shown,
     lead: raw.startsWith('\n'),
-    blankAfter: /\n\s*\n$/.test(raw) && raw.endsWith('\n'),
+    blankAfter: out.stop === undefined && /\n\s*\n$/.test(raw) && raw.endsWith('\n'),
     newline: raw.includes('\n'),
   }
+}
+
+/**
+ * An item's (or a paragraph's) text where the engine's drawing of it is
+ * followed: a line that could put a space at the start of a row (a leading
+ * space, two spaces in a row) only where it fits its row, so it is drawn as
+ * written (a display preview's lines, led by pads). Null where one doesn't,
+ * or, with `partial`, the text up to the line that doesn't (see cutPartial).
+ */
+function fits<T extends VisibleText>(visible: T, width: number, partial: boolean): T | null {
+  let at = 0
+  for (const line of visible.text.split('\n')) {
+    if (LEADING_SPACE.test(line) && !(textWidth(line) >= 0 && textWidth(line) <= width)) {
+      if (!partial) return null
+      return { ...visible, ...cutPartial(visible, visible.stop ?? Infinity, at === 0 ? 0 : at) }
+    }
+    at += line.length + 1
+  }
+  return visible
 }
 
 /**

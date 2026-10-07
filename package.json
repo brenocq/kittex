@@ -7,6 +7,7 @@
   "description": "Typesets the LaTeX math in terminal replies as real TeX images (kitty graphics protocol), with a Claude Code mod",
   "scripts": {
     "test": "vitest run",
+    "fuzz": "sh scripts/fuzz.sh",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "build": "node scripts/build.mjs",
     "check:sandbox": "node scripts/sandbox-check.mjs",
@@ -14,7 +15,8 @@
     "readme:banner": "node .github/scripts/banner/build.mjs",
     "readme:banner:preview": "node .github/scripts/banner/build.mjs && node .github/scripts/banner/preview.mjs",
     "readme:demo": "node .github/scripts/demo/render.mjs",
-    "readme:demo:record": "python3 .github/scripts/demo/record.py"
+    "readme:demo:record": "python3 .github/scripts/demo/record.py",
+    "readme:social": "node .github/scripts/social/build.mjs"
   },
   "devDependencies": {
     "@mathjax/mathjax-newcm-font": "^4.1.3",

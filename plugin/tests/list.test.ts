@@ -31,7 +31,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
   return planLanded(text, records, {
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
-    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns) => renderInline(tex, inlineEnv, columns) },
+    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place) },
   })
 }
 
@@ -139,11 +139,11 @@ describe('list items: the landed plan', () => {
     expect(plan(text).pieces).toEqual(plan(landed, records).pieces)
   })
 
-  test('a list the replay does not follow keeps Unicode: a code block in an item', async () => {
+  test('a code block in an item: the list is laid out up to it (FUZZ-3), and keeps Unicode past it', async () => {
     await init()
-    const text = '- $x$ here\n\n  ```\n  code\n  ```\n- more'
+    const text = '- $x$ here\n\n  ```\n  code\n  ```\n- more $y$'
     const resumed = plan(text)
-    expect(places(resumed.pieces)).toEqual([])
-    expect(resumed.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain(`- ${previewInline('x')} here`)
+    expect(places(resumed.pieces).map(([tex]) => tex)).toEqual(['x'])
+    expect(resumed.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain(`- more ${previewInline('y')}`)
   })
 })

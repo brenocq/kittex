@@ -36,7 +36,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
     width: WIDTH,
-    inline: { env: inlineEnv, width: WIDTH, columns: env.columns, draw: (tex, columns) => renderInline(tex, inlineEnv, columns), hyperlinks: env.hyperlinks },
+    inline: { env: inlineEnv, width: WIDTH, columns: env.columns, draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place), hyperlinks: env.hyperlinks },
   })
 }
 
@@ -176,11 +176,12 @@ describe('links in headings, quotes and tables', () => {
   test('with the link mode unknown, the parts holding links keep their text', async () => {
     await init()
     const { landed, records } = streamed(reply)
-    // Streaming can't know a link is coming: what precedes a part's first link streams padded, nothing after it.
-    expect(records.map(record => record.tex)).toEqual(['x_k', 'P_k = A P_{k-1} A^T + Q', 'K_k', 'z_k = H x_k', '\\alpha', '\\alpha', 'u_k'])
-    // Landed, only the parts with no link get images; the others stay as they were shown.
+    // In a paragraph or a heading what precedes its first link is laid out exactly, so it streams padded; a
+    // quote or a table holding a link isn't padded (a table's columns follow every cell).
+    expect(records.map(record => record.tex)).toEqual(['x_k', 'P_k = A P_{k-1} A^T + Q', '\\alpha', 'u_k'])
+    // Landed, every formula streamed padded gets its image: no pad stays behind.
     const { pieces } = plan(landed, records)
-    expect(pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(image => image.tex) : []))).toEqual(['\\alpha', 'u_k'])
+    expect(pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(image => image.tex) : []))).toEqual(['x_k', 'P_k = A P_{k-1} A^T + Q', '\\alpha', 'u_k'])
     expect(pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('').replace(/\s+/g, '')).toBe(landed.replace(/\s+/g, ''))
     expect(placeable('## See [docs](https://example.com) for ', WIDTH, COLUMNS)).toBe(false)
     expect(placeable('## See [docs](https://example.com) for ', WIDTH, COLUMNS, { hyperlinks: true })).toBe(true)

@@ -15,6 +15,14 @@ export type KittexEnv = {
   emPx: number
   /** The formulas' colour. */
   ink: { r: number; g: number; b: number }
+  /** The background the ink's alpha is corrected against, as the terminal corrects its text (Ghostty's linear-corrected blending); absent where images and text blend alike. */
+  inkOver?: { r: number; g: number; b: number }
+  /** How the terminal set its cells off its font's (Ghostty's adjust-cell-width, adjust-cell-height, adjust-font-baseline); absent when none is set. */
+  cellAdjust?: {
+    width?: { factor: number } | { px: number }
+    height?: { factor: number } | { px: number }
+    baseline?: { factor: number } | { px: number }
+  }
   /** Whether the cell size was measured (false: the fallback cell). */
   measured: boolean
   /** The glyph the engine opens a reply with (`⏺` on macOS, `●` elsewhere); `●` when absent. */
@@ -23,6 +31,10 @@ export type KittexEnv = {
   maxProseWidth?: number
   /** Whether the engine draws links as OSC 8 hyperlinks (their text alone) or as text with the url beside it; absent when unknown (links aren't followed). */
   hyperlinks?: boolean
+  /** Whether the terminal draws emoji sequences (an emoji with U+FE0F or a skin tone, joiner chains, flags, keycaps) two cells wide, as the engine counts them; absent: they keep their paragraph's math Unicode. */
+  emojiSequences?: boolean
+  /** The stroke weight the math is drawn with, matched to the terminal font's weight (strokeWeight); absent when that weight isn't known (the default weight). */
+  weight?: number
 }
 
 /** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */
@@ -38,8 +50,20 @@ export type KittexPreview = {
   inline?: true
   /** Inline: the cells the preview and its image take. */
   columns?: number
+  /**
+   * Inline: where its ink goes in those cells, as the characters around it in
+   * the source suggest (an image drawn ahead of landing; the landed layout's
+   * rows decide).
+   */
+  place?: 'center' | 'start' | 'end'
   /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
   quote?: number
+  /**
+   * Display: written in a list item whose text is this many cells in from the
+   * reply column (its lines carry the item's indentation, its width the item's
+   * text width); its image lies over it in the item once landed.
+   */
+  indent?: number
 }
 
 declare module 'claude-code' {

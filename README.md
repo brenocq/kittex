@@ -22,17 +22,28 @@ Type this in Claude Code, answer `y` to add the marketplace, and that's it:
 
 No TeX, no Python, nothing to configure. kittex typesets inside Claude Code
 itself, and tells Claude to write its math as LaTeX, so you never have to ask.
+Then ask Claude something with math in it:
+
+```
+Derive the quadratic formula step by step
+```
+
+> [!NOTE]
+> **On Team and Enterprise plans**, Claude Code doesn't let plugins change a
+> reply while it streams, so you'll see Claude's raw LaTeX until each part is
+> done, then the typeset equations. To get the live previews too, ask an admin
+> to deploy kittex for your organization through Claude Code's managed settings.
 
 ## What you get
 
 <table>
   <tr>
-    <td width="50%"><b>Live.</b> Readable previews while Claude streams; real equations the moment each block lands, and not one line jumps.</td>
-    <td width="50%"><b>Real TeX.</b> MathJax 4 with New Computer Modern, the font of LaTeX papers, drawn in your terminal's own colours.</td>
+    <td width="50%"><b>Live.</b> Readable math while Claude writes, real equations the moment each part is done. Nothing jumps around.</td>
+    <td width="50%"><b>Real TeX.</b> Typeset like a LaTeX paper, in your terminal's own colours.</td>
   </tr>
   <tr>
-    <td><b>Inline too.</b> <code>$x_k$</code> in a sentence, a list, a heading, a quote or a table sits on the text's baseline, sized to the font around it.</td>
-    <td><b>Copy.</b> Hover an equation and click <code>⧉ copy LaTeX</code> to grab its source.</td>
+    <td><b>Inline too.</b> Math in the middle of a sentence sits right on the line, at the size of your text.</td>
+    <td><b>Copy.</b> Hover an equation to copy its LaTeX.</td>
   </tr>
 </table>
 

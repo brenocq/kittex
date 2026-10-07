@@ -1,9 +1,9 @@
 import type { CellBox, DrawOp, Matrix, Raster, RasterOptions, RGB, TypesetResult } from '../types.js'
 import { Coverage } from './fill.js'
 import { type Contour, flattenPath } from './path.js'
-import { encodeAlphaPng, recolorPng } from './png.js'
+import { encodeAlphaPng, inkAlpha, recolorPng } from './png.js'
 
-export { recolorPng }
+export { inkAlpha, recolorPng }
 
 /*
  * Draw ops (em) -> anti-aliased coverage over whole terminal cells.
@@ -32,9 +32,10 @@ export { recolorPng }
  * - Inline placement (`baselinePx`): the image is exactly `minRows` rows (one
  *   by default) and the baseline sits at the given pixel row, the terminal
  *   font's own; scale < 1 also when the formula's height above the baseline or
- *   depth below it, plus the dilation, would leave the image (rows never grow).
- *   Before shrinking, the baseline may move by up to BASELINE_SHIFT of the cell
- *   height (a pixel at 26 px) towards the side with room.
+ *   depth below it, plus the dilation, would leave the image or come within
+ *   INK_EDGE of its top (rows never grow). Before shrinking, the baseline may
+ *   move by up to BASELINE_SHIFT of the cell height (a pixel at 26 px) towards
+ *   the side with room.
  */
 
 /**
@@ -53,8 +54,54 @@ export { recolorPng }
  */
 export const DEFAULT_WEIGHT = 15
 
+/**
+ * Stroke weights that match terminal text of a CSS font weight: Light,
+ * Regular, Medium, SemiBold and Bold. Set by eye in the README demo's
+ * renderer at 13 × 26 px cells, math beside Roboto Mono of each weight (and
+ * Source Code Pro, DejaVu Sans Mono): Regular keeps DEFAULT_WEIGHT, which
+ * already reads as heavy as its text; Medium needs 20, where 24 reads bold.
+ * By the QA's stroke metric (2 × area / perimeter of the letters, ink over
+ * 110) Medium text measures 2.06 px and the math 1.75 px at 15, 1.88 px at
+ * 20: Computer Modern's thin hairlines keep its mean below a monoline font's
+ * at any weight that doesn't fill its counters.
+ */
+const WEIGHT_STEPS: readonly (readonly [fontWeight: number, weight: number])[] = [
+  [300, 12],
+  [400, DEFAULT_WEIGHT],
+  [500, 20],
+  [600, 23],
+  [700, 26],
+]
+
+/**
+ * The stroke weight (RasterOptions.weight) that matches text in a font of
+ * this CSS weight (TerminalColors.fontWeight), interpolated between the
+ * steps above and held at their ends; DEFAULT_WEIGHT when not known.
+ */
+export function strokeWeight(fontWeight: number | undefined): number {
+  if (fontWeight === undefined || !Number.isFinite(fontWeight)) return DEFAULT_WEIGHT
+  const first = WEIGHT_STEPS[0]!
+  const last = WEIGHT_STEPS.at(-1)!
+  if (fontWeight <= first[0]) return first[1]
+  if (fontWeight >= last[0]) return last[1]
+  const i = WEIGHT_STEPS.findIndex(([w]) => w >= fontWeight)
+  const [w0, s0] = WEIGHT_STEPS[i - 1]!
+  const [w1, s1] = WEIGHT_STEPS[i]!
+  return Math.round(s0 + ((s1 - s0) * (fontWeight - w0)) / (w1 - w0))
+}
+
 /** How far an inline formula's baseline may move from the font's, as a fraction of the cell height (at least a pixel). */
 export const BASELINE_SHIFT = 0.04
+
+/**
+ * Pixels an inline formula's ink (stroke weight included) stays clear of its
+ * row's top edge, so its highest stroke (the bar of a superscript T)
+ * anti-aliases into the row like a glyph's instead of ending flat on the edge,
+ * where it reads as cut off. A formula held to it below `minScale` may touch
+ * the edge instead, and one that only fits by running past it (minScale,
+ * overflowPx) is drawn as before.
+ */
+export const INK_EDGE = 0.5
 
 interface Layout extends CellBox {
   widthPx: number
@@ -79,12 +126,17 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
 
   const dilation0 = (weight / 1000) * emPx
   const pad = Math.ceil(dilation0 - 1e-9)
-  const availWidth = maxColumns * cellWidth - 2 * pad
+  // centerInk: the image is fitted to the drawn ink (which scales whole,
+  // dilation included), not to the advance width and a pad.
+  const span = options.align === 'left' && options.centerInk ? inkSpan(result, emPx, dilation0, pad) : undefined
+  const fullWidth = span ?? width * emPx
+  const availWidth = maxColumns * cellWidth - (span === undefined ? 2 * pad : 0)
   const availHeight = 255 * cellHeight - 2 * pad
   const inline = options.baselinePx !== undefined
   let scale = 1
   let inlineBaseline = 0
-  if (width * emPx > availWidth) scale = Math.max(0, availWidth) / (width * emPx)
+  // Scaled, the ink's pixel phase changes: a pixel is kept for it.
+  if (fullWidth > availWidth) scale = Math.max(0, availWidth - (span === undefined ? 0 : INK_MARGIN)) / fullWidth
   if (inline) {
     // The dilation scales with the formula, so the ink at scale s spans (height × emPx + dilation) × s above the baseline.
     const heightPx = Math.max(1, Math.round(minRows * cellHeight))
@@ -94,19 +146,28 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     // The baseline may move a pixel or so (towards the side with room) rather
     // than shrink the formula: a subscript with a descender (a_{ij}) fits.
     const shift = Math.max(1, Math.round(cellHeight * BASELINE_SHIFT))
-    const fit = (at: number) => Math.min(scale, above > 0 ? at / above : Infinity, below > 0 ? (heightPx - at) / below : Infinity)
-    let best = baseline
-    for (let d = 1; d <= shift; d++) {
-      for (const at of [baseline - d, baseline + d]) {
-        if (at >= 0 && at <= heightPx && fit(at) > fit(best) + 1e-9) best = at
+    // The ink keeps INK_EDGE clear of the row's top: a capital's superscript
+    // flush with it (Vᵀ) reads as cut off. Descenders may reach the bottom, as
+    // text's do. One that would then need less than the floor may touch the top.
+    const floor = options.minScale ?? 0
+    const fitAt = (edge: number) => (at: number) =>
+      Math.min(scale, above > 0 ? Math.max(0, at - edge) / above : Infinity, below > 0 ? (heightPx - at) / below : Infinity)
+    const place = (fit: (at: number) => number) => {
+      let best = baseline
+      for (let d = 1; d <= shift; d++) {
+        for (const at of [baseline - d, baseline + d]) {
+          if (at >= 0 && at <= heightPx && fit(at) > fit(best) + 1e-9) best = at
+        }
       }
+      return { at: best, scale: fit(best) }
     }
-    inlineBaseline = best
-    scale = fit(best)
+    let placed = place(fitAt(INK_EDGE))
+    if (placed.scale < floor) placed = place(fitAt(0))
+    inlineBaseline = placed.at
+    scale = placed.scale
     // A formula that fits only below the floor (a bar in a subscript reaches
     // 0.35 em down) is drawn at the floor if its ink then passes the cell by no
     // more than overflowPx: the clipped pixel or two is the tip of a thin stroke.
-    const floor = options.minScale ?? 0
     const slack = Math.max(0, options.overflowPx ?? 0)
     if (scale < floor && slack > 0) {
       const fitWith = (at: number) => Math.min(above > 0 ? (at + slack) / above : Infinity, below > 0 ? (heightPx - at + slack) / below : Infinity)
@@ -116,7 +177,7 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
           if (at >= 0 && at <= heightPx && fitWith(at) > fitWith(rescue) + 1e-9) rescue = at
         }
       }
-      if (fitWith(rescue) >= floor - 1e-9 && (width * emPx * floor <= availWidth || availWidth <= 0)) {
+      if (fitWith(rescue) >= floor - 1e-9 && (fullWidth * floor <= availWidth || availWidth <= 0)) {
         inlineBaseline = rescue
         scale = floor
       }
@@ -125,7 +186,7 @@ function layout(result: TypesetResult, options: RasterOptions): Layout {
     scale = Math.max(0, availHeight) / (boxHeight * emPx)
   }
   const k = emPx * scale
-  const inkWidth = width * k + 2 * pad
+  const inkWidth = span === undefined ? width * k + 2 * pad : scale === 1 ? span : span * scale + INK_MARGIN
   const inkHeight = boxHeight * k + 2 * pad
 
   const minColumns = Math.max(1, Math.floor(options.minColumns ?? 1))
@@ -157,7 +218,7 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
   const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
   const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, ruleMax) ?? [])
   // Centred by its ink, moved by whole pixels so glyphs land as they would at the left.
-  const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx) : 0
+  const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx, options.inkPlace ?? 'center') : 0
   for (const { contours, sign } of shapes) {
     for (const c of contours) {
       if (dx !== 0) for (let i = 0; i < c.length; i += 2) c[i] = c[i]! + dx
@@ -175,9 +236,13 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
   }
 }
 
-/** Encodes a raster as a PNG in one ink colour, transparent where there is no coverage. */
-export function encodePng(raster: Raster, ink: RGB): Uint8Array {
-  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink)
+/**
+ * Encodes a raster as a PNG in one ink colour, transparent where there is no
+ * coverage; with `over`, its alpha corrected as the terminal corrects text
+ * blended over that background (inkAlpha).
+ */
+export function encodePng(raster: Raster, ink: RGB, over?: RGB): Uint8Array {
+  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink, over)
 }
 
 /** An op's outlines in pixels, dilated and snapped, and the winding its ink fills with. */
@@ -186,12 +251,23 @@ interface Shape {
   sign: number
 }
 
+/** Pixels an image fitted to its ink (centerInk) keeps for it when the formula is scaled: its edges may then fall on another pixel. */
+const INK_MARGIN = 1
+
 /**
- * The whole pixels to move every outline by so the ink's horizontal extent is
- * centred in an image `widthPx` wide; 0 for no ink. Never moves ink that fits
- * past either edge.
+ * The pixel columns a formula's ink covers at `emPx`, its origin `originX`
+ * pixels in (outlines dilated by `dilation` pixels, rules snapped, as
+ * rasterize draws them; a whole-pixel shift keeps the count), or undefined
+ * when it draws nothing.
  */
-function inkShift(shapes: readonly Shape[], widthPx: number): number {
+function inkSpan(result: TypesetResult, emPx: number, dilation: number, originX: number): number | undefined {
+  const toPx: Matrix = [emPx, 0, 0, emPx, originX, 0]
+  const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, Math.max(RULE_MIN_SNAP, 0.15 * emPx)) ?? [])
+  const { x0, x1 } = extent(shapes)
+  return x1 > x0 ? Math.ceil(x1 - 1e-9) - Math.floor(x0 + 1e-9) : undefined
+}
+
+function extent(shapes: readonly Shape[]): { x0: number; x1: number } {
   let x0 = Infinity
   let x1 = -Infinity
   for (const { contours } of shapes) {
@@ -202,9 +278,20 @@ function inkShift(shapes: readonly Shape[], widthPx: number): number {
       }
     }
   }
-  if (!(x1 > x0)) return 0
-  const dx = Math.round((widthPx - (x1 - x0)) / 2 - x0)
-  if (x1 - x0 > widthPx) return 0
+  return { x0, x1 }
+}
+
+/**
+ * The whole pixels to move every outline by so the ink's horizontal extent
+ * sits where `place` says in an image `widthPx` wide: centred, or against its
+ * left (`start`) or right (`end`) edge; 0 for no ink. Never moves ink that
+ * fits past either edge.
+ */
+function inkShift(shapes: readonly Shape[], widthPx: number, place: 'center' | 'start' | 'end'): number {
+  const { x0, x1 } = extent(shapes)
+  if (!(x1 > x0) || x1 - x0 > widthPx) return 0
+  const slack = widthPx - (x1 - x0)
+  const dx = Math.round((place === 'start' ? 0 : place === 'end' ? slack : slack / 2) - x0)
   return Math.min(Math.max(dx, Math.ceil(-x0 - 1e-9)), Math.floor(widthPx - x1 + 1e-9))
 }
 

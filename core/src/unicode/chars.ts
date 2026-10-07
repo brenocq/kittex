@@ -8,7 +8,7 @@ export const SUPERSCRIPTS: ReadonlyMap<string, string> = pairs(
     'aᵃbᵇcᶜdᵈeᵉfᶠgᵍhʰiⁱjʲkᵏlˡmᵐnⁿoᵒpᵖrʳsˢtᵗuᵘvᵛwʷxˣyʸzᶻ' +
     'AᴬBᴮDᴰEᴱGᴳHᴴIᴵJᴶKᴷLᴸMᴹNᴺOᴼPᴾRᴿTᵀUᵁVⱽWᵂ' +
     'αᵅβᵝγᵞδᵟεᵋϵᵋθᶿιᶥφᵠϕᵠχᵡ' +
-    '′′″″‴‴⁗⁗∗***††‡‡⊤ᵀ∘°°°  ',
+    '′′″″‴‴⁗⁗∗***††‡‡⊤ᵀ⊺ᵀ∘°°°  ',
 )
 
 /** Subscript forms. */
@@ -27,16 +27,46 @@ function pairs(spec: string): Map<string, string> {
   return map
 }
 
-/** The text as Unicode sub/superscripts, or undefined when some character has no such form. */
+/**
+ * Characters a script may keep at full size between two script characters:
+ * a bar between indices reads as one (x̂ₖ|ₖ₋₁ for \hat{x}_{k|k-1}), written
+ * as the plain bar (∣ may be drawn two cells wide).
+ */
+const SCRIPT_BARS: ReadonlyMap<string, string> = new Map([
+  ['|', '|'],
+  ['∣', '|'],
+])
+
+/**
+ * The text as Unicode sub/superscripts, or undefined when some character has
+ * no such form. A bar between two characters that have one stays (see
+ * SCRIPT_BARS); sans-serif and monospace letters take their plain letter's
+ * form (𝖳 as ᵀ).
+ */
 export function mapScript(cells: readonly string[], table: ReadonlyMap<string, string>): string | undefined {
+  const chars = cells.filter(cell => cell !== '')
   let out = ''
-  for (const cell of cells) {
-    if (cell === '') continue
-    const mapped = table.get(cell)
-    if (mapped === undefined) return undefined
-    out += mapped
+  for (const [i, cell] of chars.entries()) {
+    const mapped = table.get(cell) ?? table.get(plainLetter(cell))
+    if (mapped !== undefined) {
+      out += mapped
+      continue
+    }
+    const bar = SCRIPT_BARS.get(cell)
+    const next = chars[i + 1]
+    if (bar === undefined || out === '' || next === undefined || (table.get(next) ?? table.get(plainLetter(next))) === undefined) return undefined
+    out += bar
   }
   return out
+}
+
+/** A sans-serif or monospace mathematical letter's plain letter; anything else as it is. */
+function plainLetter(ch: string): string {
+  const cp = ch.codePointAt(0)!
+  for (const start of [0x1d5a0, 0x1d670]) {
+    if (cp >= start && cp < start + 52) return String.fromCharCode((cp - start < 26 ? 0x41 : 0x61 - 26) + cp - start)
+  }
+  return ch
 }
 
 // ─── mathvariant ─────────────────────────────────────────────────────────────

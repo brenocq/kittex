@@ -11,6 +11,7 @@ import {
   INLINE_MARK,
   INLINE_PAD,
   inlineEnvFor,
+  inlineFlow,
   inlinePreview,
   inlineText,
   joinProse,
@@ -21,9 +22,11 @@ import {
   renderEnvFor,
   REPLY_INDENT,
   TEXT_BASELINE,
+  cellsBeside,
+  inkPlaceBeside,
   ungroupScripts,
 } from '../hooks/math.ts'
-import type { KittexEnv, PlanOptions, PreviewRecord, StreamEnv } from '../hooks/math.ts'
+import type { InlineImage, KittexEnv, PlanOptions, PreviewRecord, StreamEnv } from '../hooks/math.ts'
 import { CELL, COLUMNS, kittyEnv, startSession, test } from './support.ts'
 
 /** kitty's 13×26 px cells (the session tests' 13×20 cells leave little room above the baseline). */
@@ -50,7 +53,7 @@ function plan(text: string, records: readonly PreviewRecord[] = [], env: KittexE
   return planLanded(text, records, {
     maxColumns: renderEnv.maxColumns,
     draw: (tex, rows) => renderDisplay(tex, renderEnv, rows ?? measureDisplay(tex, renderEnv).rows),
-    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns) => renderInline(tex, inlineEnv, columns) },
+    inline: { env: inlineEnv, width: proseWidthFor(env), draw: (tex, columns, place) => renderInline(tex, inlineEnv, columns, place) },
     ...extra,
   })
 }
@@ -278,8 +281,47 @@ function mountReply($: Engine, text: string) {
   })
 }
 
+/** The PNG sources of every Image in a drawing. */
+function sources(node: unknown): string[] {
+  if (typeof node !== 'object' || node === null) return []
+  const element = node as { type?: unknown; props?: { source?: { png?: unknown } }; children?: unknown[] }
+  const own = element.type === 'Image' && typeof element.props?.source?.png === 'string' ? [element.props.source.png] : []
+  return [...own, ...(element.children ?? []).flatMap(sources)]
+}
+
+describe('inlineFlow', () => {
+  const at = (row: number, col: number, rows = 1): InlineImage => ({ tex: `${row},${col}`, row, col, image: { png: new Uint8Array(), columns: 3, rows } as InlineImage['image'] })
+  /** Where each slot lands in a column laid out by its margins: the top of each from the bottom of the one before. */
+  function placed(slots: ReturnType<typeof inlineFlow>) {
+    let bottom = 0
+    return slots.map(({ inline, marginTop, marginLeft }) => {
+      const top = bottom + marginTop
+      bottom = top + inline.image.rows
+      return { tex: inline.tex, top, left: marginLeft }
+    })
+  }
+
+  test('lays every image out at its preview cell, under the piece margin, in reading order', () => {
+    const slots = inlineFlow([at(3, 10), at(0, 4), at(3, 2), at(1, 0, 2), at(7, 5)], REPLY_INDENT)
+    expect(placed(slots)).toEqual([
+      { tex: '0,4', top: PIECE_TOP, left: REPLY_INDENT + 4 },
+      { tex: '1,0', top: PIECE_TOP + 1, left: REPLY_INDENT },
+      { tex: '3,2', top: PIECE_TOP + 3, left: REPLY_INDENT + 2 },
+      { tex: '3,10', top: PIECE_TOP + 3, left: REPLY_INDENT + 10 },
+      { tex: '7,5', top: PIECE_TOP + 7, left: REPLY_INDENT + 5 },
+    ])
+    // Two on one row: the second goes back up the row the first took.
+    expect(slots[3]!.marginTop).toBe(-1)
+  })
+
+  test('takes no more rows than the piece: the last slot ends on its image row', () => {
+    const slots = inlineFlow([at(4, 0)], 0)
+    expect(slots).toEqual([{ inline: expect.anything(), marginTop: PIECE_TOP + 4, marginLeft: 0 }])
+  })
+})
+
 describe('AssistantMessage', () => {
-  test('inline images lie over their previews, absolute, below the piece margin and beside the bullet', async ($, on) => {
+  test('inline images lie over their previews in an overlay beside the drawing, below the piece margin and beside the bullet', async ($, on) => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, 'Let $x$ be real.')
@@ -290,13 +332,19 @@ describe('AssistantMessage', () => {
       children: [
         {
           type: 'Box',
-          props: { flexDirection: 'column' },
+          props: { flexDirection: 'row-reverse' },
           children: [
-            { type: 'Text', children: [text] },
+            { type: 'Box', props: { flexDirection: 'column', flexGrow: 1 }, children: [{ type: 'Text', children: [text] }] },
             {
               type: 'Box',
-              props: { position: 'absolute', top: PIECE_TOP, left: REPLY_INDENT + 4 },
-              children: [{ type: 'Image', props: { columns: 2, rows: 1, alt: 'x', source: { png: expect.any(String) } } }],
+              props: { flexDirection: 'column', width: 0, flexShrink: 0, alignItems: 'flex-start' },
+              children: [
+                {
+                  type: 'Box',
+                  props: { marginTop: PIECE_TOP, marginLeft: REPLY_INDENT + 4, width: 2, height: 1, flexShrink: 0 },
+                  children: [{ type: 'Image', props: { columns: 2, rows: 1, alt: 'x', source: { png: expect.any(String) } } }],
+                },
+              ],
             },
           ],
         },
@@ -304,11 +352,43 @@ describe('AssistantMessage', () => {
     })
   })
 
-  test('the wrapper of the engine drawing carries no position (the engine refuses it)', async ($, on) => {
+  // The engine draws an absolute box whose top falls above the screen on the
+  // screen's first row (clamped, not clipped): in the fullscreen layout every
+  // inline image of a reply scrolled past the top piled up there (live QA,
+  // sheet-top-row-pileup.png). In the flow, an image scrolls and clips as text.
+  test('no inline image is an absolute box: each scrolls and clips with its row', async ($, on) => {
     await startSession($, on)
     await init()
-    const drawn = (await (await mountReply($, 'Let $x$ be real.')).drawn()) as { children: { props?: Record<string, unknown> }[] }
-    expect(drawn.children[0]!.props?.position).toBeUndefined()
+    const drawn = await (await mountReply($, 'Let $x$ be real, $y$ too, and\n$z$ on a line of its own.')).drawn()
+    const boxes: Record<string, unknown>[] = []
+    const walk = (node: unknown) => {
+      if (typeof node !== 'object' || node === null) return
+      const element = node as { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+      if (element.type === 'Box' && element.props) boxes.push(element.props)
+      for (const child of element.children ?? []) walk(child)
+    }
+    walk(drawn)
+    expect(sources(drawn)).toHaveLength(3)
+    expect(boxes.filter(props => props.position !== undefined || props.top !== undefined || props.left !== undefined)).toEqual([])
+  })
+
+  // The engine refuses its own drawing under a Box with a size, a position, an
+  // overflow or a display ("engine node under a Box with prop ..."), and draws its own.
+  test('no Box around the engine drawing carries a size, a position, an overflow or a display', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const drawn = await (await mountReply($, 'Let $x$ be real.')).drawn()
+    const concealing = ['display', 'overflow', 'position', 'width', 'height', 'minWidth', 'minHeight', 'top', 'left', 'right', 'bottom']
+    const around: string[] = []
+    const walk = (node: unknown, above: Record<string, unknown>[]) => {
+      if (typeof node !== 'object' || node === null) return
+      const element = node as { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+      if (element.type === 'Text') for (const props of above) around.push(...concealing.filter(key => key in props))
+      const next = element.type === 'Box' ? [...above, element.props ?? {}] : above
+      for (const child of element.children ?? []) walk(child, next)
+    }
+    walk(drawn, [])
+    expect(around).toEqual([])
   })
 
   test('inline: false draws inline math as Unicode text, as before', { options: { inline: false } }, async ($, on) => {
@@ -323,10 +403,10 @@ describe('AssistantMessage', () => {
     await startSession($, on)
     await init()
     const drawn = (await (await mountReply($, 'one two three four five six seven $x$ end.')).drawn()) as {
-      children: { children: { props?: { top?: number; left?: number } }[] }[]
+      children: { children: { children: { props?: { marginTop?: number; marginLeft?: number } }[] }[] }[]
     }
     // "one two three four five six " fills 28 of 30 cells: "seven" and the formula go on the next row.
-    expect(drawn.children[0]!.children[1]!.props).toMatchObject({ top: PIECE_TOP + 1, left: REPLY_INDENT + 'seven '.length })
+    expect(drawn.children[0]!.children[1]!.children[0]!.props).toMatchObject({ marginTop: PIECE_TOP + 1, marginLeft: REPLY_INDENT + 'seven '.length })
   })
 })
 
@@ -415,10 +495,70 @@ describe('narrow formulas next to punctuation', () => {
     expect(ungroupScripts('x_(ab)', 'x_{(ab)}')).toBe('x_(ab)')
     expect(ungroupScripts('y_(w,i)', 'y_{w,i}')).toBe('y_(w,i)')
     expect(ungroupScripts('x_(k|k−1)', 'x_{k|k-1}')).toBe('x_(k|k−1)')
+    expect(ungroupScripts('x^(xˣ)', 'x^{x^{x}}')).toBe('x^(xˣ)')
     // Streamed and landed alike.
     const { landed, records } = streamed(['under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.\n'])
     expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual(['\\pi_{\\text{ref}}', 'D_{KL}'])
     expect(plan('under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.').pieces).toEqual(plan(landed, records).pieces)
+  })
+})
+
+describe('where the blank of a wide slot goes', () => {
+  // A slot wider than its ink (π_ref streams in 5 cells, its ink takes 3.5)
+  // with the ink centred showed a gap before punctuation: "π_ref :". The blank
+  // goes where whitespace already is.
+  test('against the right edge between a space and punctuation, the left edge in the mirror case, else centred', () => {
+    expect(inkPlaceBeside(' ', ',')).toBe('end')
+    expect(inkPlaceBeside(' ', ':')).toBe('end')
+    expect(inkPlaceBeside(' ', ')')).toBe('end')
+    expect(inkPlaceBeside(' ', '-')).toBe('end')
+    expect(inkPlaceBeside('(', ' ')).toBe('start')
+    expect(inkPlaceBeside('-', ' ')).toBe('start')
+    expect(inkPlaceBeside('(', ')')).toBe('center')
+    expect(inkPlaceBeside(' ', ' ')).toBe('center')
+    expect(inkPlaceBeside(' ', 's')).toBe('center')
+    expect(inkPlaceBeside('a', ',')).toBe('center')
+  })
+
+  // A formula starting a row looked indented by its blank: "  x̂ₖ is".
+  test('flush with the text column at the start of a row, against the right edge at its end', () => {
+    expect(inkPlaceBeside(undefined, ' ')).toBe('start')
+    expect(inkPlaceBeside(undefined, '.')).toBe('start')
+    expect(inkPlaceBeside(undefined, undefined)).toBe('start')
+    expect(inkPlaceBeside(' ', undefined)).toBe('end')
+    expect(inkPlaceBeside('“', undefined)).toBe('start')
+  })
+
+  test('the cells beside a slot, wide characters and zero-width marks counted as drawn', () => {
+    expect(cellsBeside('ab xyz, c', 3, 3)).toEqual([' ', ','])
+    expect(cellsBeside('xyz, c', 0, 3)).toEqual([undefined, ','])
+    expect(cellsBeside('a (xy', 3, 2)).toEqual(['(', undefined])
+    expect(cellsBeside('漢 xy͏z!', 3, 3)).toEqual([' ', '!'])
+    // The text's ends: past a list marker, a quote bar or indentation, and before trailing blanks.
+    expect(cellsBeside('- xy is', 2, 2)).toEqual([undefined, ' '])
+    expect(cellsBeside('12. xy is', 4, 2)).toEqual([undefined, ' '])
+    expect(cellsBeside('▎ ▎ xy', 4, 2)).toEqual([undefined, undefined])
+    expect(cellsBeside('    xy, b', 4, 2)).toEqual([undefined, ','])
+    expect(cellsBeside('a xy   ', 2, 2)).toEqual([' ', undefined])
+  })
+
+  test('each lands with its ink placed by its row, the same cells streamed and landed', async () => {
+    await init()
+    const reply = 'Against the policy $\\pi_{\\text{ref}}$: the rejected $y_l$, and ($x$ alone) and ($y_w$).'
+    const { landed, records } = streamed([reply + '\n'])
+    const { pieces } = plan(landed, records)
+    const env = inlineEnvFor(kitty26())
+    const images = pieces.flatMap(piece => (piece.kind === 'prose' ? piece.inline ?? [] : []))
+    expect(images.map(image => image.tex)).toEqual(['\\pi_{\\text{ref}}', 'y_l', 'x', 'y_w'])
+    const want = ['end', 'end', 'start', 'center'] as const
+    const placed = images.map((image, k) =>
+      (['center', 'start', 'end'] as const).find(place => String(renderInline(image.tex, env, records[k]!.columns!, place).png) === String(image.image.png)),
+    )
+    expect(placed).toEqual([...want])
+    // Ahead of landing, the record's guess from the source drew the same.
+    expect(records.map(record => record.place ?? 'center')).toEqual([...want])
+    // After --resume the LaTeX lands the same.
+    expect(plan(reply).pieces).toEqual(pieces)
   })
 })
 

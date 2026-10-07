@@ -1,4 +1,4 @@
-import type { CellSize, Probe } from '../types.js'
+import type { CellAdjust, CellSize, MetricAdjust, Probe } from '../types.js'
 
 // The cell probes. A child of Claude Code has no controlling terminal (opening
 // /dev/tty fails with ENXIO), so each probe walks up from its parent to the
@@ -161,4 +161,46 @@ export const cellProbes: readonly Probe<CellSize>[] = [cellProbe, cellProbePytho
  */
 export function emPxForCell(cell: Pick<CellSize, 'cellWidth' | 'cellHeight'>, emScale = 1.15): number {
   return (cell.cellWidth / 0.6) * emScale
+}
+
+type CellPixels = Pick<CellSize, 'cellWidth' | 'cellHeight'>
+
+/**
+ * The cell the terminal's font alone gives, before the terminal set it off
+ * (Ghostty's adjust-cell-width and adjust-cell-height). Ghostty rounds the
+ * font's advance and line height to whole pixels and then applies each
+ * adjustment (round(n × factor), or n + px); this undoes that to the nearest
+ * pixel. The font's em is what emPxForCell needs: with adjust-cell-width =
+ * 20%, measuring the em from the adjusted cell drew the math 20% larger than
+ * the text.
+ */
+export function fontCell(cell: CellPixels, adjust?: CellAdjust): CellPixels {
+  return { cellWidth: unadjust(cell.cellWidth, adjust?.width), cellHeight: unadjust(cell.cellHeight, adjust?.height) }
+}
+
+function unadjust(n: number, adjust: MetricAdjust | undefined): number {
+  if (!adjust) return n
+  const font = 'factor' in adjust ? (adjust.factor > 0 ? n / adjust.factor : n) : n - adjust.px
+  return Number.isFinite(font) ? Math.max(1, Math.round(font)) : n
+}
+
+/**
+ * The text's baseline in a cell `cellHeight` pixels tall, in pixels from its
+ * top: `fraction` of the font's own cell height (fontCell), moved the way
+ * Ghostty (font/Metrics.zig) moves it when it adjusts the cell. Rows added to
+ * or taken from the cell's height are split between its top and bottom, so
+ * the text stays centred (an odd row goes where the face needs it; here, on
+ * top: a pixel either way), then adjust-font-baseline changes the baseline's
+ * distance from the cell's bottom. Without adjustments, round(cellHeight ×
+ * fraction).
+ */
+export function textBaseline(cellHeight: number, fraction: number, adjust?: CellAdjust): number {
+  const font = unadjust(cellHeight, adjust?.height)
+  let top = Math.round(font * fraction) + Math.ceil((cellHeight - font) / 2)
+  const shift = adjust?.baseline
+  if (shift) {
+    const fromBottom = cellHeight - top
+    top = cellHeight - ('factor' in shift ? Math.round(fromBottom * shift.factor) : fromBottom + shift.px)
+  }
+  return Math.min(cellHeight, Math.max(0, top))
 }

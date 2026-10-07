@@ -21,15 +21,19 @@ import {
   claudeThemeScheme,
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   emPxForCell,
+  fontCell,
+  imageInkBackground,
   init,
   measureDisplay,
   readTerminalColors,
   renderDisplay,
   renderInline,
+  strokeWeight,
   toBase64,
 } from './core.js'
-import type { CellSize, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
+import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
 import {
   BULLET,
   bulletFor,
@@ -42,6 +46,7 @@ import {
   IMAGE_LIMIT,
   inlineEnvFor,
   INSTRUCT_WITHOUT_IMAGES,
+  inlineFlow,
   joinProse,
   LANDED_PATTERN,
   SOURCE_PATTERN,
@@ -50,10 +55,9 @@ import {
   MessageStream,
   MATH_INSTRUCTIONS,
   planLanded,
-  PIECE_TOP,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
-  quoteColumns,
+  displayColumns,
   RECORD_LIMIT,
   renderEnvFor,
   REPLY_INDENT,
@@ -62,7 +66,7 @@ import {
   STREAM_LIMIT,
   withoutTextOverride,
 } from './math.ts'
-import type { InlineImage, KittexEnv, Piece, PreviewRecord } from './math.ts'
+import type { InlineSlot, KittexEnv, Piece, PreviewRecord } from './math.ts'
 
 type $ = EngineInterface
 
@@ -214,10 +218,12 @@ export const register: Register = (on, options) => {
   // `onScreen` is reported, which it never is on a block's first render: the
   // engine draws that one itself, and its drawing of a streamed text is the
   // streaming preview row for row, so the landing shows no blank, only the
-  // images arriving over their previews. LaTeX as written (after --resume) is
-  // hooked from the first render (its own drawing would show the source), as
-  // is every block on the main screen, which reports no `onScreen`. The four
-  // matchers never select the same render, so kittex runs once per render.
+  // images arriving over their previews. A block holding a preview mark is a
+  // streamed one whatever else it holds (a reply's `$100` stays as written in
+  // it). LaTeX as written (after --resume) is hooked from the first render (its
+  // own drawing would show the source), as is every block on the main screen,
+  // which reports no `onScreen`. The four matchers never select the same
+  // render, so kittex runs once per render.
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, inlineImages))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
@@ -242,7 +248,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       // out for cells that are gone, and once more when the resize settles.
       // A render may not write state, so the settle timer stores what it finds.
       const cell = await cells?.probe()
-      if (cell) env = { ...env, ...cellEnv(cell), columns: seen }
+      if (cell) env = { ...env, ...cellEnv(cell, env.cellAdjust), columns: seen }
       cells?.settle(seen)
     }
     const columns = e.viewport?.columns ?? env.columns
@@ -259,7 +265,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
       inline:
         images && inlineImages
-          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells) => inlineImage(tex, inlineEnv, cells), hyperlinks: env.hyperlinks }
+          ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
           : undefined,
     })
     if (!plan.changed) return next(e)
@@ -298,23 +304,39 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         <Text dimColor>{piece.text}</Text>
       )
     // A prose piece is the engine's own drawing; its inline formulas' images
-    // lie over their previews, absolute (nothing moves), each at the cell
-    // its preview starts in: a row under the piece's top margin, the column
-    // after the bullet's where the piece draws one. The wrapper carries no
-    // `position` (the engine refuses its own drawing under one); a Box is
-    // the frame of its absolute children all the same.
+    // lie over their previews, each at the cell its preview starts in: a row
+    // under the piece's top margin, the column after the bullet's where the
+    // piece draws one. Not absolute: the engine puts an absolute box that
+    // falls above the screen on its first row (fullscreen, a reply scrolled
+    // past the top), so the images go in the flow of an overlay column, as
+    // wide as nothing and as tall as the piece, beside the drawing in a
+    // row-reverse Box: it starts at the piece's top-left cell, is painted
+    // after the drawing, and takes no room (nothing moves). The drawing's
+    // wrapper grows to the width instead of naming one: the engine refuses
+    // its own drawing under a Box with a size, a position or an overflow.
     const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
       const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       if (!piece.inline?.length) return text
       const left = isFirstOfReply ? REPLY_INDENT : 0
       return (
-        <Box flexDirection="column">
-          {text}
-          {piece.inline.map((inline: InlineImage, k: number) => (
-            <Box key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`} position="absolute" top={PIECE_TOP + inline.row} left={left + inline.col}>
-              <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
-            </Box>
-          ))}
+        <Box flexDirection="row-reverse">
+          <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+            {text}
+          </Box>
+          <Box flexDirection="column" width={0} flexShrink={0} alignItems="flex-start">
+            {inlineFlow(piece.inline, left).map(({ inline, marginTop, marginLeft }: InlineSlot, k: number) => (
+              <Box
+                key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`}
+                marginTop={marginTop}
+                marginLeft={marginLeft}
+                width={inline.image.columns}
+                height={inline.image.rows}
+                flexShrink={0}
+              >
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
+              </Box>
+            ))}
+          </Box>
         </Box>
       )
     }
@@ -380,15 +402,21 @@ async function setUp($: $, surface: string | null): Promise<void> {
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
+  const cellAdjust = terminalColors?.cellAdjust
   const env: KittexEnv = {
     kind: terminal.kind,
     images: terminal.images,
-    ...cellEnv(cell),
+    ...cellEnv(cell, cellAdjust),
+    ...(cellAdjust ? { cellAdjust } : {}),
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     ink: inkNow(),
+    ...inkOverNow(),
     bullet: bulletFor(uname, processEnv.HOME),
     maxProseWidth: await readProseWidth($),
     ...linkEnv(processEnv),
+    emojiSequences: drawsEmojiSequences(terminal, terminalColors),
+    // Strokes as heavy as the terminal's text, when its font's weight is known.
+    ...(terminalColors?.fontWeight ? { weight: strokeWeight(terminalColors.fontWeight) } : {}),
   }
   await $.state.set(ENV, env)
 
@@ -571,6 +599,14 @@ function inkNow() {
   return chooseInk({ theme, customTheme: withoutTextOverride(customTheme), terminal: terminalColors, prefer: INK_PREFER })
 }
 
+/** The background the ink's alpha is corrected against (imageInkBackground), as kittex.env's `inkOver`: none where images blend as text does. */
+function inkOverNow(): Pick<KittexEnv, 'inkOver'> {
+  const over = terminal ? imageInkBackground(terminal.kind, terminalColors) : undefined
+  return over ? { inkOver: { r: over.r, g: over.g, b: over.b } } : {}
+}
+
+const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b || (!!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b)
+
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
 async function readProseWidth($: $): Promise<number | undefined> {
   try {
@@ -595,7 +631,10 @@ async function refreshInk($: $, setting: string): Promise<void> {
   const env = await readEnv($)
   if (!env) return
   const ink = inkNow()
-  if (ink.r !== env.ink.r || ink.g !== env.ink.g || ink.b !== env.ink.b) await $.state.set(ENV, { ...env, ink })
+  const over = inkOverNow()
+  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver)) return
+  const { inkOver: _, ...rest } = env
+  await $.state.set(ENV, { ...rest, ink, ...over })
 }
 
 /**
@@ -666,10 +705,10 @@ function cellsFor($: $): Cells {
   }
 }
 
-/** A measured cell as kittex.env holds it. */
-function cellEnv(cell: CellSize | undefined): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
+/** A measured cell as kittex.env holds it: the math's em from the font's own cell (fontCell), the terminal's adjustments undone. */
+function cellEnv(cell: CellSize | undefined, adjust: KittexEnv['cellAdjust']): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
   const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
-  return { cellWidth, cellHeight, measured, emPx: emPxForCell({ cellWidth, cellHeight }) }
+  return { cellWidth, cellHeight, measured, emPx: emPxForCell(fontCell({ cellWidth, cellHeight }, adjust)) }
 }
 
 /** Stores a probe's cells and columns in kittex.env when they changed (a failed probe changes only the columns, to `seen`). */
@@ -677,7 +716,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
   const env = await readEnv($)
   if (!env) return
   const columns = cell?.columns ?? seen ?? env.columns
-  const measured = cell ? cellEnv(cell) : undefined
+  const measured = cell ? cellEnv(cell, env.cellAdjust) : undefined
   const same = measured === undefined || (measured.cellWidth === env.cellWidth && measured.cellHeight === env.cellHeight)
   if (same && columns === env.columns) return
   await $.state.set(ENV, { ...env, ...measured, columns })
@@ -714,7 +753,8 @@ function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
 }
 
 function geometryKey(env: RenderEnv): string {
-  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b].join(',')
+  const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b] : []
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
 }
 
 /** A display formula's image, `rows` tall (measured when not given). Throws TexError. */
@@ -723,9 +763,9 @@ function displayImage(tex: string, env: RenderEnv, rows?: number): RenderedImage
   return cachedImage(`d\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
 }
 
-/** An inline formula's image, `columns` wide. Throws TexError. */
-function inlineImage(tex: string, env: InlineEnv, columns: number): RenderedImage {
-  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns}\n${tex}`, () => renderInline(tex, env, columns))
+/** An inline formula's image, `columns` wide, its ink where `place` says. Throws TexError. */
+function inlineImage(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
+  return cachedImage(`i\n${geometryKey(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
 }
 
 /** Formulas streaming wrote previews for, waiting to be drawn ahead of their landing. */
@@ -747,8 +787,8 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
     try {
       const renderEnv = renderEnvFor(env)
       const image = record.inline
-        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0)
-        : displayImage(record.tex, record.quote === undefined ? renderEnv : { ...renderEnv, maxColumns: quoteColumns(env, record.quote) }, record.rows)
+        ? inlineImage(record.tex, inlineEnvFor(env), record.columns ?? 0, record.place)
+        : displayImage(record.tex, { ...renderEnv, maxColumns: displayColumns(record, env) }, record.rows)
       base64Of(image.png)
       signatureOf(image.png)
     } catch {

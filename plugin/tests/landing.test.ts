@@ -99,6 +99,40 @@ describe('landing in the fullscreen layout', () => {
     expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
   })
 
+  // The README demo's reply blanked for 75 ms: its previews escape a `[` as
+  // `\[` (𝔼\[r(x, y)\]), which the LaTeX-source matcher took for `\[`
+  // math, so the block was hooked from its first render.
+  test('a preview holding a bracket (escaped as \\[) still leaves the first render to the engine', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const shown = await stream($, 'The objective:\n\n$$\n\\max_\\theta \\mathbb{E}[r(x, y)] - \\beta\n$$\n\nwith $\\mathbb{E}[x]$ inline.\n', 'f5')
+    expect(shown).toContain('\\[')
+    expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
+    expect(sources(await (await mountFullscreen($, shown, ON_SCREEN)).drawn()).length).toBeGreaterThan(0)
+  })
+
+  // Live QA (22 of 46 fullscreen runs): a reply's currency passed into the
+  // streamed text as written, the block was taken for LaTeX source, hooked on
+  // its first render and drawn as nothing until the hook answered.
+  test('a streamed block with a dollar amount, as written or escaped, still leaves the first render to the engine', async ($, on) => {
+    await startSession($, on)
+    await init()
+    for (const [k, reply] of ['You save \\$100 at a rate $r = 0.05$ a year.\n', 'You save $100 at a rate $r = 0.05$ a year.\n', 'It costs $25,000:\n\n$$\ne^{i\\pi} + 1 = 0\n$$\n'].entries()) {
+      const shown = await stream($, reply, `f-cur-${k}`)
+      expect(shown).toContain('$')
+      expect(await (await mountFullscreen($, shown)).drawn()).toEqual({ type: 'Text', children: [shown] })
+      expect(sources(await (await mountFullscreen($, shown, ON_SCREEN)).drawn()).length).toBeGreaterThan(0)
+    }
+  })
+
+  test('a block whose only dollars are currency is drawn by the engine alone', async ($, on) => {
+    await startSession($, on)
+    await init()
+    const text = 'Loan 1: $25,000 at 6.5% over 5 years, and $25,000 at 4.9% over 7 years: you save \\$206.\n'
+    expect(await (await mountFullscreen($, text)).drawn()).toEqual({ type: 'Text', children: [text] })
+    expect(await (await mount($, text)).drawn()).toEqual({ type: 'Text', children: [text] })
+  })
+
   test('once its rows on screen are reported, on screen or off, kittex draws its images', async ($, on) => {
     await startSession($, on)
     await init()

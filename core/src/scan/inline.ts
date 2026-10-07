@@ -13,6 +13,11 @@
  * - `\(` is closed by the next `\)`.
  * - `\$`, `\(` and `\)` follow backslash escaping (an odd run of backslashes).
  * - Math whose content is only whitespace is text.
+ * - In a GFM table row, `\|` is a pipe before anything else reads the line
+ *   (it is how a `|` stays inside a cell), so math there reads it as `|`: a
+ *   table cell's `$\|x\|$` is |x|, where in prose it is the norm ‖x‖. While
+ *   the paragraph may go on, a last line holding `\|` that could be a table's
+ *   header is held until the next line says whether a delimiter row follows.
  */
 import type { Segment } from '../types.js'
 import { type Line, isSpace, stripQuotes } from './lines.js'
@@ -45,8 +50,12 @@ export interface InlineResult {
   cut: number
 }
 
-/** Scans a paragraph's lines (all at the same blockquote depth) for inline math. */
-export function scanInline(lines: readonly Line[], open: boolean): InlineResult {
+/**
+ * Scans a paragraph's lines (all at the same blockquote depth) for inline
+ * math. `isRow`: whether a line is a row of a GFM table (its math reads `\|`
+ * as a pipe; see above).
+ */
+export function scanInline(lines: readonly Line[], open: boolean, isRow: (line: Line) => boolean = () => false): InlineResult {
   const first = lines[0]!
   const base = first.start
   const depth = first.depth
@@ -132,10 +141,14 @@ export function scanInline(lines: readonly Line[], open: boolean): InlineResult 
     spans.push({ start: t.pos, end: c.pos + c.len, math: tex === '' ? undefined : { tex, delimiter } })
   }
 
+  const starts = lineStarts(lines, base)
+  const rows = lines.map(isRow)
   let cut = s.length
-  if (pending < Infinity) {
-    const starts = lineStarts(lines, base)
-    cut = lineStartAt(starts, pending)
+  if (pending < Infinity) cut = lineStartAt(starts, pending)
+  // A last line that may be a table's header: whether its `\|` is a pipe depends on the next line.
+  const last = lines.length - 1
+  if (open && !rows[last] && lines[last]!.raw.includes('\\|')) cut = Math.min(cut, starts[last]!)
+  if (cut < s.length) {
     for (let j = spans.length - 1; j >= 0; j--) {
       const span = spans[j]!
       if (span.end <= cut) break
@@ -152,10 +165,11 @@ export function scanInline(lines: readonly Line[], open: boolean): InlineResult 
     if (span.start >= cut) break
     if (!span.math) continue
     text(span.start)
+    const row = rows[lineIndexAt(starts, span.start)]
     segments.push({
       kind: 'math',
       display: false,
-      tex: span.math.tex,
+      tex: row ? tablePipes(span.math.tex) : span.math.tex,
       raw: s.slice(span.start, span.end),
       delimiter: span.math.delimiter,
       start: base + span.start,
@@ -165,6 +179,15 @@ export function scanInline(lines: readonly Line[], open: boolean): InlineResult 
   }
   text(cut)
   return { segments, cut: base + cut }
+}
+
+/**
+ * Math in a table row as the reader sees it: each `\|` a pipe (GFM's escape),
+ * and `\\\|`, a backslash and a pipe both escaped (a model writing the norm
+ * `\|` in a cell), the `\|` the engine's drawing of the cell shows.
+ */
+function tablePipes(tex: string): string {
+  return tex.replace(/\\\\\\\||\\\|/g, match => (match.length === 4 ? '\\|' : '|'))
 }
 
 /** The TeX of a span's content: blockquote markers of its later lines removed, trimmed. */
@@ -227,6 +250,11 @@ function lineStarts(lines: readonly Line[], base: number): number[] {
 
 /** The start of the line holding position `pos`. */
 function lineStartAt(starts: readonly number[], pos: number): number {
+  return starts[lineIndexAt(starts, pos)]!
+}
+
+/** The index of the line holding position `pos`. */
+function lineIndexAt(starts: readonly number[], pos: number): number {
   let lo = 0
   let hi = starts.length - 1
   while (lo < hi) {
@@ -234,5 +262,5 @@ function lineStartAt(starts: readonly number[], pos: number): number {
     if (starts[mid]! <= pos) lo = mid
     else hi = mid - 1
   }
-  return starts[lo]!
+  return lo
 }

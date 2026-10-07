@@ -2,7 +2,7 @@ import type { Token, Tokens } from 'marked'
 
 import { Canvas } from './list.js'
 import type { InlineLinks, LinkMode } from './links.js'
-import { inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
+import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowableFrom } from './prose.js'
 import type { VisibleText } from './prose.js'
 
 /*
@@ -17,11 +17,11 @@ import type { VisibleText } from './prose.js'
  */
 
 /** A heading's visible text, laid out from the block's top-left cell. */
-export function drawHeading(markdown: string, width: number, mode: LinkMode = {}): Canvas | null {
-  const visible = visibleHeading(markdown, mode)
+export function drawHeading(markdown: string, width: number, mode: LinkMode = {}, partial = false): Canvas | null {
+  const visible = visibleHeading(markdown, mode, partial)
   if (!visible || !(width >= 1)) return null
-  const canvas = new Canvas(width)
-  return canvas.draw(visible, 0, 0, width) ? canvas : null
+  const canvas = new Canvas(width, mode.emojiSequences === true, partial)
+  return canvas.draw(visible, 0, 0, width) || canvas.stop < Infinity ? canvas : null
 }
 
 /**
@@ -29,8 +29,14 @@ export function drawHeading(markdown: string, width: number, mode: LinkMode = {}
  * with the markdown offset of each character. Null when the block is anything
  * else, or holds anything paragraphs can't hold (see visibleProse).
  */
-export function visibleHeading(markdown: string, mode: LinkMode = {}): VisibleText | null {
-  if (unfollowable(markdown)) return null
+export function visibleHeading(markdown: string, mode: LinkMode = {}, partial = false): VisibleText | null {
+  const cut = unfollowableFrom(markdown)
+  if (cut !== undefined) {
+    // Partial: drawn up to the line holding what isn't followed.
+    if (!partial || cut === 0) return null
+    const before = visibleHeading(markdown.slice(0, cut - 1), mode, true)
+    return before && { ...before, stop: Math.min(before.stop ?? Infinity, cut) }
+  }
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
@@ -39,17 +45,28 @@ export function visibleHeading(markdown: string, mode: LinkMode = {}): VisibleTe
     return null
   }
   const heading = tokens[0]
-  if (heading?.type !== 'heading' || tokens.slice(1).some(token => token.type !== 'space')) return null
+  if (heading?.type !== 'heading') return null
+  // Partial: what follows the heading in its part (a block the replay doesn't follow) is drawn under it.
+  const trailing = tokens.slice(1).some(token => token.type !== 'space')
+  if (trailing && !partial) return null
   const { text, raw } = heading as Tokens.Heading
   if (!markdown.startsWith(raw) || text === '') return null
   // ATX: the text after the opening hashes; setext: the lines above the underline.
   const at = /^ {0,3}(?:#{1,6}[ \t]+)?/.exec(raw)![0].length
   if (!raw.startsWith(text, at)) return null
   const out: VisibleText = { text: '', source: [] }
-  if (!inline(out, (heading as Tokens.Heading).tokens, text, at, false, links) || !linksHold(markdown, links)) return null
+  // Partial: drawn up to the token the replay doesn't follow (a link with no link mode known).
+  const followed = inline(out, (heading as Tokens.Heading).tokens, text, at, false, links)
+  if ((!followed && !(partial && out.stop !== undefined)) || !linksHold(markdown, links)) return null
   // The blank line the engine adds under a heading is trimmed off the end of the text.
-  const kept = out.text.trimEnd().length
-  const visible = { text: out.text.slice(0, kept), source: out.source.slice(0, kept) }
-  if (visible.text === '' || visible.text.startsWith('\n') || LEADING_SPACE.test(visible.text)) return null
-  return visible
+  const kept = followed ? out.text.trimEnd().length : out.text.length
+  let visible: VisibleText = { text: out.text.slice(0, kept), source: out.source.slice(0, kept) }
+  if (!followed) visible = cutPartial(visible, out.stop!)
+  if ((followed && visible.text === '') || visible.text.startsWith('\n')) return null
+  const space = LEADING_SPACE.exec(visible.text)
+  if (space) {
+    if (!partial) return null
+    visible = cutPartial(visible, visible.stop ?? Infinity, space.index + 1)
+  }
+  return trailing && visible.stop === undefined ? { ...visible, stop: raw.length } : visible
 }

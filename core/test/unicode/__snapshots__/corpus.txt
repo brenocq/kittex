@@ -88,18 +88,18 @@ $ det(A − λI) = 0
 $$ A = \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}
 > │A = ⎛a₁₁  a₁₂⎞│
   │    ⎝a₂₁  a₂₂⎠│
-$ (none)
+$ A = (a₁₁, a₁₂; a₂₁, a₂₂)
 
 $$ I_3 = \begin{bmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}
   │     ⎡1  0  0⎤│
 > │I₃ = ⎢0  1  0⎥│
   │     ⎣0  0  1⎦│
-$ (none)
+$ I₃ = [1, 0, 0; 0, 1, 0; 0, 0, 1]
 
 $$ \begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc
 > ││a  b│ = ad − bc│
   ││c  d│          │
-$ (none)
+$ |a, b; c, d| = ad − bc
 
 $$ A^{-1} = \frac{1}{\det A} \operatorname{adj}(A)
   │        1         │
@@ -127,7 +127,7 @@ $$ \mathbf{x} = \begin{pmatrix} x_1 \\ x_2 \\ \vdots \\ x_n \end{pmatrix}
 > │𝐱 = ⎜x₂⎟│
   │    ⎜⋮ ⎟│
   │    ⎝xₙ⎠│
-$ (none)
+$ 𝐱 = (x₁; x₂; ⋮; xₙ)
 
 $$ \operatorname{tr}(AB) = \operatorname{tr}(BA)
 > │tr(AB) = tr(BA)│
@@ -136,7 +136,7 @@ $ tr(AB) = tr(BA)
 $$ \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \begin{pmatrix} x \\ y \end{pmatrix}
 > │⎛cos θ  −sin θ⎞⎛x⎞│
   │⎝sin θ  cos θ ⎠⎝y⎠│
-$ (none)
+$ (cos θ, −sin θ; sin θ, cos θ)(x; y)
 
 $$ P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
   │           P(B ∣ A) P(A)│
@@ -214,7 +214,7 @@ $$ \begin{aligned} \nabla\cdot\mathbf{E} &= \frac{\rho}{\varepsilon_0} \\ \nabla
   │                   ∂𝐄│
   │∇ × 𝐁 = μ₀𝐉 + μ₀ε₀ ──│
   │                   ∂t│
-$ (none)
+$ ∇ ⋅ 𝐄 = ρ/ε₀; ∇ × 𝐁 = μ₀𝐉 + μ₀ε₀(∂𝐄/∂t)
 
 $$ \Delta x \, \Delta p \ge \frac{\hbar}{2}
   │        ℏ│
@@ -278,33 +278,33 @@ $ ¬(p ∧ q) ⟺ ¬p ∨ ¬q
 $$ f(x) = \begin{cases} x^2 & \text{if } x \ge 0 \\ -x & \text{if } x < 0 \end{cases}
 > │f(x) = ⎰x²  if x ≥ 0│
   │       ⎱−x  if x < 0│
-$ (none)
+$ f(x) = {x², if x ≥ 0; −x, if x < 0
 
 $$ |x| = \begin{cases} x, & x \geq 0, \\ -x, & x < 0. \end{cases}
 > │|x| = ⎰x,   x ≥ 0,│
   │      ⎱−x,  x < 0.│
-$ (none)
+$ |x| = {x, x ≥ 0; −x, x < 0.
 
 $$ \operatorname{sgn}(x) = \begin{cases} -1 & x < 0 \\ 0 & x = 0 \\ 1 & x > 0 \end{cases}
   │         ⎧−1  x < 0│
 > │sgn(x) = ⎨0   x = 0│
   │         ⎩1   x > 0│
-$ (none)
+$ sgn(x) = {−1, x < 0; 0, x = 0; 1, x > 0
 
 $$ H(x) = \begin{cases} \frac{1}{2} & x = 0 \\ 1 & x > 0 \end{cases}
 > │H(x) = ⎰½  x = 0│
   │       ⎱1  x > 0│
-$ (none)
+$ H(x) = {½, x = 0; 1, x > 0
 
 $$ \begin{aligned} (a+b)^2 &= (a+b)(a+b) \\ &= a^2 + 2ab + b^2 \end{aligned}
 > │(a + b)² = (a + b)(a + b)│
   │         = a² + 2ab + b² │
-$ (none)
+$ (a + b)² = (a + b)(a + b); = a² + 2ab + b²
 
 $$ \begin{aligned} \int x e^x\,dx &= x e^x - \int e^x\,dx \\ &= (x - 1) e^x + C \end{aligned}
 > │∫ xeˣ dx = xeˣ − ∫ eˣ dx│
   │         = (x − 1)eˣ + C│
-$ (none)
+$ ∫ xeˣ dx = xeˣ − ∫ eˣ dx; = (x − 1)eˣ + C
 
 $$ \begin{aligned} f(x) &= \frac{x^2 - 1}{x - 1} \\ &= x + 1 \end{aligned}
   │       x² − 1│
@@ -312,7 +312,7 @@ $$ \begin{aligned} f(x) &= \frac{x^2 - 1}{x - 1} \\ &= x + 1 \end{aligned}
 > │       x − 1 │
   │             │
   │     = x + 1 │
-$ (none)
+$ f(x) = (x² − 1)/(x − 1); = x + 1
 
 $$ \begin{aligned} x + y &= 5 & 2x - y &= 1 \end{aligned}
 > │x + y = 5    2x − y = 1│
@@ -378,7 +378,7 @@ $$ \sum_{\substack{0 \le i \le m \\ 0 < j < n}} P(i, j)
 > │  ∑   P(i, j)│
   │0≤i≤m        │
   │0<j<n        │
-$ (none)
+$ ∑_(0≤i≤m; 0<j<n) P(i, j)
 
 $$ \mathcal{O}, \mathfrak{g}, \mathsf{T}, \mathtt{x}, \mathbf{0}
 > │𝒪, 𝔤, 𝖳, 𝚡, 𝟎│
@@ -399,7 +399,7 @@ $ x̸y/x̸ = y
 $$ \left[\begin{array}{cc|c} 1 & 2 & 3 \\ 4 & 5 & 6 \end{array}\right]
 > │⎡1  2 │ 3⎤│
   │⎣4  5 │ 6⎦│
-$ (none)
+$ [1, 2, 3; 4, 5, 6]
 
 $$ x_{n+1} = x_n - \frac{f(x_n)}{f'(x_n)}
   │            f(xₙ) │
@@ -424,7 +424,7 @@ $ softmax(z)ᵢ = e^(zᵢ)/(∑ⱼ e^(zⱼ))
 $$ \theta \leftarrow \theta - \eta \nabla_\theta J(\theta)
 > │θ ← θ − η∇ J(θ)│
   │          θ    │
-$ θ ← θ − η∇_θJ(θ)
+$ θ ← θ − η∇_θ J(θ)
 
 $$ \alpha, \beta, \gamma \in \{1, 2, \ldots, n\}
 > │α, β, γ ∈ {1, 2, …, n}│

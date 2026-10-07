@@ -4,7 +4,7 @@ import type { InlineLinks, LinkMode } from './links.js'
 import { Canvas } from './list.js'
 import { inline, LEADING_SPACE, linksHold, marked, unfollowable, visibleProse } from './prose.js'
 import type { VisibleText } from './prose.js'
-import { codeWidth, textWidth } from './width.js'
+import { textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
 /*
@@ -84,7 +84,7 @@ function trim(of: Run): Run {
 
 /** One row of a wrapped text: its units, each at a column of the row, and the cells it takes. */
 interface Row {
-  units: { unit: string; source: number; col: number }[]
+  units: { unit: string; source: number; col: number; cells: number }[]
   width: number
 }
 
@@ -92,12 +92,12 @@ interface Row {
  * A text wrapped as the engine wraps a cell (`Bun.wrapAnsi` with no trim,
  * after a trimEnd, empty rows dropped): every row as the string Bun returns,
  * a space that opens a row after a full one included and drawn. Null when a
- * width is unknown.
+ * width is unknown. `sequences`: emoji sequences are characters (charAt).
  */
-function wrapCell(text: Run, width: number, hard: boolean): Row[] | null {
+function wrapCell(text: Run, width: number, hard: boolean, sequences: boolean): Row[] | null {
   const trimmed = slice(text, 0, text.text.trimEnd().length)
   if (trimmed.text === '') return [{ units: [], width: 0 }]
-  const wrapped = wrapLine(trimmed.text, width, hard)
+  const wrapped = wrapLine(trimmed.text, width, hard, sequences)
   if (!wrapped) return null
   const rows: Row[] = Array.from({ length: wrapped.rows }, () => ({ units: [], width: 0 }))
   const shifted = new Uint8Array(wrapped.rows)
@@ -105,9 +105,9 @@ function wrapCell(text: Run, width: number, hard: boolean): Row[] | null {
   for (let i = 0; i < trimmed.text.length; i++) {
     const row = rows[wrapped.row[i]!]!
     const col = wrapped.hidden[i] ? 0 : wrapped.col[i]! + shifted[wrapped.row[i]!]!
-    row.units.push({ unit: trimmed.text[i]!, source: trimmed.source[i]!, col })
-    const code = trimmed.text.charCodeAt(i)
-    if (code < 0xdc00 || code > 0xdfff) row.width += Math.max(0, codeWidth(trimmed.text.codePointAt(i)!))
+    const cells = wrapped.cells[i]!
+    row.units.push({ unit: trimmed.text[i]!, source: trimmed.source[i]!, col, cells })
+    row.width += Math.max(0, cells)
   }
   const kept = rows.filter(row => row.units.length > 0)
   return kept.length > 0 ? kept : [{ units: [], width: 0 }]
@@ -132,7 +132,8 @@ export function drawTable(markdown: string, columns: number, proseWidth = column
     return null
   }
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
-  const canvas = new Canvas(columns)
+  const sequences = mode.emojiSequences === true
+  const canvas = new Canvas(columns, sequences)
   let at = 0
   let table: Tokens.Table | undefined
   let top = 0
@@ -146,7 +147,7 @@ export function drawTable(markdown: string, columns: number, proseWidth = column
       top = rows + 1
     } else if (token.type === 'table' && !table) {
       table = token as Tokens.Table
-      if (!drawTableToken(canvas, table, markdown.slice(at, at + token.raw.length), at, top, columns, links)) return null
+      if (!drawTableToken(canvas, table, markdown.slice(at, at + token.raw.length), at, top, columns, links, sequences)) return null
     } else if (token.type !== 'space' || !table) {
       return null
     }
@@ -207,9 +208,9 @@ function splitCells(line: string, base: number, count?: number): SplitCell[] {
 }
 
 /**
- * The engine reads a table line with a `|` inside a code span otherwise (its
- * `me` escapes it first): such a line is not followed. True when the line is
- * read as marked reads it.
+ * The engine reads a table line with an unescaped `|` inside a code span
+ * otherwise (its `me` escapes it first): such a line is not followed. True
+ * when the line is read as marked reads it.
  */
 function codePipesAlike(line: string): boolean {
   if (!line.includes('`') || !line.includes('|')) return true
@@ -240,7 +241,9 @@ function codePipesAlike(line: string): boolean {
       p++
       continue
     }
-    if (line.slice(starts[p]! + lengths[p]!, starts[close]!).includes('|')) return false
+    // A pipe already escaped (after an odd run of backslashes) is left alone by both, and parts no cell.
+    const code = line.slice(starts[p]! + lengths[p]!, starts[close]!)
+    for (const pipe of code.matchAll(/(\\*)\|/g)) if (pipe[1]!.length % 2 === 0) return false
     p = close + 1
   }
   return true
@@ -269,6 +272,7 @@ function drawTableToken(
   top: number,
   columns: number,
   links: InlineLinks,
+  sequences: boolean,
 ): boolean {
   const lines = raw.split('\n')
   if (!lines.every(codePipesAlike)) return false
@@ -292,7 +296,7 @@ function drawTableToken(
     if (!split || split.text !== cell.text) return null
     const out: VisibleText = { text: '', source: [] }
     if (!inline(out, cell.tokens, cell.text, 0, false, links)) return null
-    if (textWidth(out.text) < 0 || /^\s|\s$/.test(out.text)) return null
+    if (textWidth(out.text, sequences) < 0 || /^\s|\s$/.test(out.text)) return null
     return { text: out.text, source: out.source.map(k => (k < 0 ? -1 : (split.map[k] ?? -1))) }
   }
   const headerSplit = splitCells(lines[0]!, starts[0]!)
@@ -318,9 +322,9 @@ function drawTableToken(
 
   const count = header.length
   const all = [header, ...body]
-  const widest = (text: string) => Math.max(MIN_COLUMN, ...text.split(/\s+/).filter(word => word.length > 0).map(textWidth))
+  const widest = (text: string) => Math.max(MIN_COLUMN, ...text.split(/\s+/).filter(word => word.length > 0).map(word => textWidth(word, sequences)))
   const least = header.map((_, c) => Math.max(...all.map(cells => widest(cells[c]!.text))))
-  const ideal = header.map((_, c) => Math.max(...all.map(cells => Math.max(textWidth(cells[c]!.text), MIN_COLUMN))))
+  const ideal = header.map((_, c) => Math.max(...all.map(cells => Math.max(textWidth(cells[c]!.text, sequences), MIN_COLUMN))))
   const room = Math.max(columns - (1 + count * 3) - TABLE_MARGIN, count * MIN_COLUMN)
   const sumLeast = least.reduce((a, b) => a + b, 0)
   const sumIdeal = ideal.reduce((a, b) => a + b, 0)
@@ -343,17 +347,17 @@ function drawTableToken(
   for (const cells of all) {
     const rows: Row[][] = []
     for (const [c, cell] of cells.entries()) {
-      const cellRows = wrapCell(cell, widths[c]!, hard)
+      const cellRows = wrapCell(cell, widths[c]!, hard, sequences)
       if (!cellRows) return false
       rows.push(cellRows)
     }
     wrapped.push(rows)
   }
   const tall = Math.max(1, ...wrapped.flatMap(rows => rows.map(cell => cell.length)))
-  if (tall > MAX_CELL_ROWS) return drawList(canvas, header, body, top, columns)
+  if (tall > MAX_CELL_ROWS) return drawList(canvas, header, body, top, columns, sequences)
 
   // The bordered form, line by line; any line wider than the room makes it a list.
-  type Line = { put: [string, number][]; units: { unit: string; source: number; col: number }[]; width: number }
+  type Line = { put: [string, number][]; units: { unit: string; source: number; col: number; cells: number }[]; width: number }
   const border = (left: string, joint: string, right: string): Line => {
     let text = left
     for (const [c, w] of widths.entries()) text += '─'.repeat(w + 2) + (c < count - 1 ? joint : right)
@@ -388,11 +392,11 @@ function drawTableToken(
     if (r < body.length - 1) drawnLines.push(border('├', '┼', '┤'))
   }
   drawnLines.push(border('└', '┴', '┘'))
-  if (Math.max(...drawnLines.map(line => line.width)) > columns - TABLE_MARGIN) return drawList(canvas, header, body, top, columns)
+  if (Math.max(...drawnLines.map(line => line.width)) > columns - TABLE_MARGIN) return drawList(canvas, header, body, top, columns, sequences)
   for (const [k, line] of drawnLines.entries()) {
     canvas.grow(top + k + 1)
     for (const [text, col] of line.put) canvas.put(text, top + k, col)
-    for (const one of line.units) canvas.unit(one.unit, one.source, top + k, one.col)
+    for (const one of line.units) canvas.unit(one.unit, one.source, top + k, one.col, true, one.cells)
   }
   return true
 }
@@ -403,7 +407,7 @@ function drawTableToken(
  * continuation lines under it, rows parted by a rule; then every line wraps
  * in the reply column (`columns - 2`) as prose does.
  */
-function drawList(canvas: Canvas, header: readonly Run[], body: readonly Run[][], top: number, columns: number): boolean {
+function drawList(canvas: Canvas, header: readonly Run[], body: readonly Run[][], top: number, columns: number, sequences: boolean): boolean {
   const heads = header.map(trim)
   const rule = run('─'.repeat(Math.max(0, Math.min(columns - 1, RULE_MAX))))
   const lines: Run[] = []
@@ -415,9 +419,9 @@ function drawList(canvas: Canvas, header: readonly Run[], body: readonly Run[][]
       if (/\s\s/.test(cell.text)) return false
       const text = trim({ text: cell.text.replace(/\s/g, ' '), source: cell.source })
       if (head.text === '' && text.text === '') continue
-      const first = head.text !== '' ? columns - textWidth(head.text) - 3 : columns - 1
+      const first = head.text !== '' ? columns - textWidth(head.text, sequences) - 3 : columns - 1
       const rest = columns - 3
-      const rows = wrapCell(text, Math.max(first, 10), false)
+      const rows = wrapCell(text, Math.max(first, 10), false, sequences)
       if (!rows) return false
       let parts: Run[] = rows.map(rowRun)
       if (parts.length > 1) {
@@ -426,7 +430,7 @@ function drawList(canvas: Canvas, header: readonly Run[], body: readonly Run[][]
           if (k > 0) joined.push(run(' '))
           joined.push(trim(part))
         }
-        const more = wrapCell(concat(...joined), rest, false)
+        const more = wrapCell(concat(...joined), rest, false, sequences)
         if (!more) return false
         parts = [parts[0]!, ...more.map(rowRun)]
       }
@@ -444,7 +448,7 @@ function drawList(canvas: Canvas, header: readonly Run[], body: readonly Run[][]
   const width = columns - REPLY_INDENT
   if (width < 1) return false
   for (const line of lines) {
-    if (LEADING_SPACE.test(line.text) && textWidth(line.text.trimEnd()) > width) return false
+    if (LEADING_SPACE.test(line.text) && textWidth(line.text.trimEnd(), sequences) > width) return false
   }
   const text = lines.map(line => line.text).join('\n')
   const rows = drawProse(canvas, { text, source: lines.flatMap((line, k) => (k > 0 ? [-1, ...line.source] : line.source)) }, width, top)

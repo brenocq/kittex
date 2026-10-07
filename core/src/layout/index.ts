@@ -5,7 +5,7 @@ import type { Canvas } from './list.js'
 import { visibleProse } from './prose.js'
 import { drawQuote } from './quote.js'
 import { drawTable } from './table.js'
-import { codeWidth } from './width.js'
+import { textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
 
 export { blockParts, gapBetween } from './blocks.js'
@@ -17,7 +17,8 @@ export { markerOf } from './list.js'
 export { QUOTE_BAR, QUOTE_TEXT } from './quote.js'
 export { proseBlocks, visibleProse } from './prose.js'
 export type { ProseBlock, VisibleText } from './prose.js'
-export { codeWidth, textWidth } from './width.js'
+export { charAt, charsOf, codeWidth, textWidth } from './width.js'
+export type { Char } from './width.js'
 export { wrapLine, wrapRows } from './wrap.js'
 export type { WrappedLine } from './wrap.js'
 
@@ -47,43 +48,66 @@ export interface ProseLayout {
   places: (SpanPlace | null)[]
   /** The rows as text (for checks against a screen). */
   lines: string[]
+  /**
+   * A partial layout only (asked for with `partial`): the markdown offset from
+   * which the drawing isn't followed (a character of unknown width, a token
+   * or an item the replay doesn't follow). What comes before it is laid out
+   * exactly, since the engine draws it the same whatever follows; `rows` and
+   * `lines` stop there, and no span reaching past it is placed.
+   */
+  stop?: number
 }
 
 /**
  * Lays out a run of markdown prose as the engine draws it `width` cells wide,
  * and finds where each span lands (spans should hold plain text: inside a
  * code span or rewritten by an escape they are not found). Null when the
- * prose can't be laid out exactly (see visibleProse and wrapLine). `mode`:
- * how the engine draws links (links are not followed when it isn't known).
+ * prose can't be laid out exactly (see visibleProse and wrapLine), or, with
+ * `partial`, laid out up to where it can't (ProseLayout.stop). `mode`: how the
+ * engine draws links (links are not followed when it isn't known).
  */
-export function layoutProse(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  const visible = visibleProse(markdown, mode)
+export function layoutProse(
+  markdown: string,
+  width: number,
+  spans: readonly SourceSpan[] = [],
+  mode: LinkMode = {},
+  partial = false,
+): ProseLayout | null {
+  const visible = visibleProse(markdown, mode, partial)
   if (!visible) return null
-  const { text, source } = visible
-  // Where each markdown offset was drawn: its visible index.
-  const drawnAt = new Map<number, number>()
-  for (let i = 0; i < source.length; i++) if (source[i]! >= 0) drawnAt.set(source[i]!, i)
+  let { text, source } = visible
+  let stop = visible.stop ?? Infinity
   const rowOf = new Int32Array(text.length)
   const colOf = new Int32Array(text.length)
   const lines: string[] = []
   let rows = 0
   let lineStart = 0
   for (const line of text.split('\n')) {
-    const wrapped = wrapLine(line, width)
+    const wrapped = wrapLine(line, width, true, mode.emojiSequences === true, partial)
     if (!wrapped) return null
+    const known = wrapped.known ?? line.length
     const first = lines.length
     for (let r = 0; r < wrapped.rows; r++) lines.push('')
-    for (let i = 0; i < line.length; i++) {
+    for (let i = 0; i < known; i++) {
       rowOf[lineStart + i] = rows + wrapped.row[i]!
       colOf[lineStart + i] = wrapped.col[i]!
       const at = first + wrapped.row[i]!
       if (!wrapped.hidden[i]) lines[at] = lines[at]! + line[i]!
     }
     rows += wrapped.rows
+    if (known < line.length) {
+      // A character of unknown width: nothing from its word on is followed.
+      for (let i = lineStart + known; i < text.length; i++) if (source[i]! >= 0) stop = Math.min(stop, source[i]!)
+      text = text.slice(0, lineStart + known)
+      source = source.slice(0, lineStart + known)
+      break
+    }
     lineStart += line.length + 1
   }
-  const places = spans.map(span => placeSpan(markdown, span, text, source, rowOf, colOf, width, i => i === text.length - 1))
-  return { rows, places, lines }
+  const ends = stop < Infinity ? () => false : (i: number) => i === text.length - 1
+  const drawn = drawnRange(source)
+  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, source, rowOf, colOf, width, ends, mode, drawn)))
+  return stop < Infinity ? { rows, places, lines, stop } : { rows, places, lines }
 }
 
 /**
@@ -92,8 +116,8 @@ export function layoutProse(markdown: string, width: number, spans: readonly Sou
  * finds where each span lands, as layoutProse does. Null when the list holds
  * anything its replay doesn't follow (see drawList). `mode`: as layoutProse.
  */
-export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawList(markdown, width, mode), width, spans)
+export function layoutList(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}, partial = false): ProseLayout | null {
+  return layoutCanvas(markdown, drawList(markdown, width, mode, partial), width, spans, mode)
 }
 
 /**
@@ -102,8 +126,8 @@ export function layoutList(markdown: string, width: number, spans: readonly Sour
  * prose. Spans are found as layoutProse finds them. Null when the heading
  * holds anything prose can't (see visibleHeading). `mode`: as layoutProse.
  */
-export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawHeading(markdown, width, mode), width, spans)
+export function layoutHeading(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}, partial = false): ProseLayout | null {
+  return layoutCanvas(markdown, drawHeading(markdown, width, mode, partial), width, spans, mode)
 }
 
 /**
@@ -114,8 +138,8 @@ export function layoutHeading(markdown: string, width: number, spans: readonly S
  * holds anything its replay doesn't follow (see drawQuote). `mode`: as
  * layoutProse.
  */
-export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}): ProseLayout | null {
-  return layoutCanvas(markdown, drawQuote(markdown, width, mode), width, spans)
+export function layoutQuote(markdown: string, width: number, spans: readonly SourceSpan[] = [], mode: LinkMode = {}, partial = false): ProseLayout | null {
+  return layoutCanvas(markdown, drawQuote(markdown, width, mode, partial), width, spans, mode)
 }
 
 /**
@@ -133,7 +157,7 @@ export function layoutTable(
   proseWidth = columns - 2,
   mode: LinkMode = {},
 ): ProseLayout | null {
-  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, () => false)
+  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, mode, () => false)
 }
 
 /**
@@ -146,12 +170,37 @@ function layoutCanvas(
   canvas: Canvas | null,
   width: number,
   spans: readonly SourceSpan[],
+  mode: LinkMode,
   ends = (i: number) => canvas?.end[i] === true,
 ): ProseLayout | null {
   if (!canvas) return null
   const text = canvas.text.join('')
-  const places = spans.map(span => placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, ends))
-  return { rows: canvas.rows, places, lines: canvas.lines() }
+  const { stop } = canvas
+  const at = stop < Infinity ? () => false : ends
+  const drawn = drawnRange(canvas.source)
+  const places = spans.map(span => (span.end > stop ? null : placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, at, mode, drawn)))
+  return stop < Infinity ? { rows: canvas.rows, places, lines: canvas.lines(), stop } : { rows: canvas.rows, places, lines: canvas.lines() }
+}
+
+/** For each markdown offset, the first and last index of the drawn text it was drawn at (-1: none). */
+interface DrawnRange {
+  first: Int32Array
+  last: Int32Array
+}
+
+/** Where each markdown offset was drawn in a drawn text (`source`: the offset of each of its units), so a span is found in its own cells alone. */
+function drawnRange(source: readonly number[]): DrawnRange {
+  let size = 0
+  for (const offset of source) if (offset >= size) size = offset + 1
+  const first = new Int32Array(size).fill(-1)
+  const last = new Int32Array(size).fill(-1)
+  for (let i = 0; i < source.length; i++) {
+    const offset = source[i]!
+    if (offset < 0) continue
+    if (first[offset]! < 0) first[offset] = i
+    last[offset] = i
+  }
+  return { first, last }
 }
 
 /**
@@ -167,19 +216,21 @@ function placeSpan(
   colOf: ArrayLike<number>,
   width: number,
   ends: (i: number) => boolean,
+  mode: LinkMode,
+  drawn: DrawnRange,
 ): SpanPlace | null {
   const inside = (i: number) => source[i]! >= span.start && source[i]! < span.end
   let first = -1
   let last = -1
-  for (let i = 0; i < source.length; i++) {
-    if (!inside(i)) continue
-    if (first < 0) first = i
-    last = i
+  for (let offset = Math.max(0, span.start); offset < Math.min(span.end, drawn.first.length); offset++) {
+    const at = drawn.first[offset]!
+    if (at < 0) continue
+    if (first < 0 || at < first) first = at
+    if (drawn.last[offset]! > last) last = drawn.last[offset]!
   }
   if (first < 0) return null
   for (let i = first; i <= last; i++) if (!inside(i) || rowOf[i] !== rowOf[first]) return null
-  let columns = 0
-  for (const char of text.slice(first, last + 1)) columns += Math.max(0, codeWidth(char.codePointAt(0)!))
+  let columns = Math.max(0, textWidth(text.slice(first, last + 1), mode.emojiSequences === true))
   if (span.width !== undefined && span.width !== columns) {
     // Only blanks the engine trimmed off the end of the prose may be missing.
     const rest = markdown.slice(source[last]! + 1, span.end)

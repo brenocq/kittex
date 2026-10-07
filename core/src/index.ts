@@ -1,5 +1,5 @@
-import { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, measure, rasterize, recolorPng } from './raster/index.js'
+import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
+import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
@@ -15,14 +15,18 @@ export {
   claudeThemeScheme,
   colorProbes,
   detectTerminal,
+  drawsEmojiSequences,
   emPxForCell,
+  fontCell,
+  imageInkBackground,
   readTerminalColors,
+  textBaseline,
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, GlyphError, initTypeset, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
-export { blockParts, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
-export type { BlockPart, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
+export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset }
+export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
+export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
 /** Where a display formula is drawn. */
 export interface RenderEnv {
@@ -35,6 +39,17 @@ export interface RenderEnv {
   emPx: number
   /** The colour to draw in. */
   ink: RGB
+  /**
+   * The background to correct the ink's alpha against, as the terminal
+   * corrects its text's (imageInkBackground): absent where images and text
+   * blend alike.
+   */
+  inkOver?: RGB
+  /**
+   * The stroke weight to draw with (RasterOptions.weight), to match the
+   * terminal font's (strokeWeight); absent for the default.
+   */
+  weight?: number
 }
 
 /** Where an inline formula is drawn: one text row. */
@@ -57,6 +72,9 @@ export const MIN_INLINE_SCALE = 0.85
  * below the baseline and would otherwise need about 0.8 and stay Unicode.
  */
 export const INLINE_OVERFLOW = 0.06
+
+/** Where an inline formula's ink goes in a slot wider than it (RasterOptions.inkPlace). */
+export type InkPlace = NonNullable<RasterOptions['inkPlace']>
 
 /** A display formula ready for an Image element. */
 export interface RenderedImage extends CellBox {
@@ -130,7 +148,7 @@ function tooSmall(scale: number): string {
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
 export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): RenderedImage {
   // Cached without its colour: a palette PNG changes colour by rewriting its palette alone.
-  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, minRows ?? 0, tex].join('\n')
+  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', minRows ?? 0, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetDisplay(tex, env)
@@ -139,9 +157,9 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 /**
@@ -161,11 +179,12 @@ export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, 
 
 /**
  * The cells an inline formula's image takes: one row, the formula on the
- * terminal font's baseline, scaled down to fit the row when it must (`scale`).
- * Null when it would need less than MIN_INLINE_SCALE, or MathJax refuses it:
- * the formula then stays Unicode.
+ * terminal font's baseline, scaled down to fit the row when it must (`scale`),
+ * and to fit `columns` when given (a slot narrower than the formula). Null
+ * when it would need less than MIN_INLINE_SCALE, or MathJax refuses it: the
+ * formula then stays Unicode.
  */
-export function measureInline(tex: string, env: InlineEnv): CellBox | null {
+export function measureInline(tex: string, env: InlineEnv, columns = 255): CellBox | null {
   let result: TypesetResult
   try {
     result = typesetInline(tex)
@@ -173,7 +192,7 @@ export function measureInline(tex: string, env: InlineEnv): CellBox | null {
     if (error instanceof TexError) return null
     throw error
   }
-  const options = inlineOptions(env, 255, 'left')
+  const options = inlineOptions(env, columns, 'left')
   const box = measure(result, options)
   if (box.scale < MIN_INLINE_SCALE) return null
   // Drawn at the floor only because its ink may pass the row: allowed when what
@@ -189,17 +208,19 @@ const CLIPPED_RUN_PX = 2.5
 /**
  * Whether the rows an inline image cuts off hold only thin strokes: draws the
  * formula as placed, then again at the same size and baseline in a row
- * `overflowPx` taller at each end, and checks that no row outside the image
- * has a run of ink wider than CLIPPED_RUN_PX.
+ * `overflowPx` taller at each end (and INK_EDGE more at the top), and checks
+ * that no row outside the image has a run of ink wider than CLIPPED_RUN_PX.
  */
 function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolean {
   const slack = Math.max(0, Math.ceil(options.overflowPx ?? 0))
+  // A pixel more above, for the room the raster keeps clear of the top (INK_EDGE).
+  const top = slack + Math.ceil(INK_EDGE)
   const placed = rasterize(result, options)
   const tall = rasterize(result, {
     ...options,
     emPx: options.emPx * placed.scale,
-    cellHeight: options.cellHeight + 2 * slack,
-    baselinePx: placed.baselinePx + slack,
+    cellHeight: options.cellHeight + top + slack,
+    baselinePx: placed.baselinePx + top,
     minColumns: placed.columns,
     minScale: 0,
     overflowPx: 0,
@@ -207,7 +228,7 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
   if (Math.abs(tall.scale - 1) > 1e-6) return false
   const { alpha, widthPx, heightPx } = tall
   for (let y = 0; y < heightPx; y++) {
-    if (y >= slack && y < heightPx - slack) continue
+    if (y >= top && y < heightPx - slack) continue
     let run = 0
     for (let x = 0; x < widthPx; x++) {
       run = alpha[y * widthPx + x]! >= 64 ? run + 1 : 0
@@ -219,21 +240,23 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
 
 /**
  * Draws an inline formula `columns` wide (its slot: measureInline's columns,
- * or its preview's when that is wider), on the terminal font's baseline, its
- * ink centred across the slot: the part of a cell its whole cells leave over
- * is split between both sides instead of all falling after it, where it would
- * read as a space before the next character (`(y_w)`).
+ * or its preview's when that is wider), on the terminal font's baseline. The
+ * blank its whole cells leave over the ink goes where `place` says: split
+ * between both sides (`center`, the default) instead of all falling after it,
+ * where it would read as a space before the next character (`(y_w)`), or all
+ * on one side (`end`: the ink against the slot's right edge, the blank before
+ * it; `start`: after it), to join a space the slot already has there.
  */
-export function renderInline(tex: string, env: InlineEnv, columns: number): RenderedImage {
-  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, tex].join('\n')
+export function renderInline(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
+  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.weight ?? '', env.baselinePx, columns, place, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetInline(tex)
-    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, centerInk: true }
+    const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
 
 export interface InlinePreviewOptions {
@@ -315,8 +338,11 @@ function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'
     align,
     minRows: 1,
     baselinePx: env.baselinePx,
+    // Fitted to its ink, which renderInline places in its slot.
+    centerInk: align === 'left',
     minScale: MIN_INLINE_SCALE,
     overflowPx: Math.max(1, Math.round(env.cellHeight * INLINE_OVERFLOW)),
+    ...(env.weight !== undefined ? { weight: env.weight } : {}),
   }
 }
 
@@ -328,6 +354,7 @@ function rasterOptions(env: RenderEnv, minRows?: number): RasterOptions {
     maxColumns: Math.max(1, Math.min(255, env.maxColumns)),
     align: 'center',
     minRows,
+    ...(env.weight !== undefined ? { weight: env.weight } : {}),
   }
 }
 

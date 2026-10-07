@@ -97,6 +97,35 @@ describe('renderInline', () => {
     }
   })
 
+  test('an image is as narrow as its drawn ink needs, not its advance width', async () => {
+    await init()
+    const at = { ...env, baselinePx: 20 }
+    // x_k's and x²'s advance (subscript space, italic correction) is past two cells; their ink is not.
+    expect(measureInline('x_k', at)!.columns).toBe(2)
+    expect(measureInline('x^2', at)!.columns).toBe(2)
+    for (const tex of ['x', 'y_w', 'y_l', 'x_k', 'x^2', 'E = mc^2', 'a^2 + b^2 = c^2', '\\beta', 'a_{ij}', 'f(x)']) {
+      const box = measureInline(tex, at)!
+      const { width, left, right } = margins(renderInline(tex, at, box.columns).png)
+      // Never cut: the ink fits.
+      expect({ tex, fits: left >= 0 && right >= 0, width }).toEqual({ tex, fits: true, width: box.columns * 13 })
+      // And never a whole cell to spare (a pixel more where the formula is scaled to fit the row).
+      expect({ tex, spare: left + right < (box.scale < 1 ? 15 : 13) }).toEqual({ tex, spare: true })
+    }
+  })
+
+  test('the ink goes against the right edge (end) or the left one (start) when asked', async () => {
+    await init()
+    for (const [tex, columns] of [['y_l', 2], ['\\pi_{\\text{ref}}', 5], ['x', 3]] as const) {
+      const centre = margins(renderInline(tex, env, columns).png)
+      const end = margins(renderInline(tex, env, columns, 'end').png)
+      const start = margins(renderInline(tex, env, columns, 'start').png)
+      expect({ tex, end: end.right <= 1, start: start.left <= 1 }).toEqual({ tex, end: true, start: true })
+      // The same ink, moved: its blank all on one side.
+      expect(end.left + end.right).toBe(centre.left + centre.right)
+      expect(start.left + start.right).toBe(centre.left + centre.right)
+    }
+  })
+
   test('a slot set by a wider preview has the formula in its middle', async () => {
     await init()
     // π_θ(y_w|x) streams as 10 cells of Unicode; its image needs 7.
@@ -161,5 +190,15 @@ describe('ink past the row', () => {
   test('a cut through a letter is refused: a stacked fraction stays text at 13×26', async () => {
     await init()
     expect(measureInline('\\frac{a}{b}', at(13, 26))).toBeNull()
+  })
+})
+
+describe('the stroke weight', () => {
+  test('an env weight (strokeWeight of the terminal font) draws the same formula heavier, cached apart', async () => {
+    await init()
+    const plain = renderInline('x_i', env, 2)
+    const medium = renderInline('x_i', { ...env, weight: 20 }, 2)
+    expect(medium.png).not.toEqual(plain.png)
+    expect(renderInline('x_i', env, 2).png).toEqual(plain.png)
   })
 })
