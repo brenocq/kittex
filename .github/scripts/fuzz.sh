@@ -21,7 +21,7 @@ out=${2:-${KITTEX_FUZZ_OUT:-}}
 jobs=${KITTEX_FUZZ_JOBS:-8}
 mem=${KITTEX_FUZZ_MEM:-12G}
 lock=${KITTEX_FUZZ_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/kittex-fuzz.lock}
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$(dirname "$0")/../.." && pwd)
 
 scope=
 if systemd-run --user --scope -q true 2>/dev/null; then
@@ -39,7 +39,7 @@ fi
 
 # Each shard runs every seed s with s % count == its index; KITTEX_FUZZ is the
 # whole run's case count.
-shards='i=0; while [ "$i" -lt "$3" ]; do echo "$i"; i=$((i + 1)); done | xargs -P "$0" -I{} env KITTEX_FUZZ="$1" KITTEX_FUZZ_SHARD="{}/$3" KITTEX_FUZZ_OUT="$2" NODE_OPTIONS=--max-old-space-size=2048 npx vitest run core/test/fuzz/fuzz.test.ts'
+shards='i=0; while [ "$i" -lt "$3" ]; do echo "$i"; i=$((i + 1)); done | xargs -P "$0" -I{} env KITTEX_FUZZ="$1" KITTEX_FUZZ_SHARD="{}/$3" KITTEX_FUZZ_OUT="$2" NODE_OPTIONS=--max-old-space-size=2048 npx vitest run --config core/vitest.config.ts core/test/fuzz/fuzz.test.ts'
 
 cd "$root"
 echo "fuzz: $cases cases in $count shards, $jobs at a time${scope:+, at most $mem}; lock $lock" >&2

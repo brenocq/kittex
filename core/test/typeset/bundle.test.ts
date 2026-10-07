@@ -1,6 +1,6 @@
 // The bundled core must load in the mod sandbox: no dynamic import() anywhere
 // (the engine refuses the module), no eval or new Function. Mirrors the static
-// scan in scripts/sandbox-check.mjs, which also runs the bundle.
+// scan in .github/scripts/sandbox-check.mjs, which also runs the bundle.
 import { build } from 'esbuild'
 import { expect, test } from 'vitest'
 
