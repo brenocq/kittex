@@ -1,9 +1,9 @@
-import type { CellBox, DrawOp, Matrix, Raster, RasterOptions, RGB, TypesetResult } from '../types.js'
+import type { CellBox, DrawOp, Matrix, Raster, RasterOptions, RGB, TextCurve, TypesetResult } from '../types.js'
 import { Coverage } from './fill.js'
 import { type Contour, flattenPath } from './path.js'
-import { encodeAlphaPng, inkAlpha, recolorPng } from './png.js'
+import { curvedAlpha, encodeAlphaPng, inkAlpha, recolorPng } from './png.js'
 
-export { inkAlpha, recolorPng }
+export { curvedAlpha, inkAlpha, recolorPng }
 
 /*
  * Draw ops (em) -> anti-aliased coverage over whole terminal cells.
@@ -239,10 +239,10 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
 /**
  * Encodes a raster as a PNG in one ink colour, transparent where there is no
  * coverage; with `over`, its alpha corrected as the terminal corrects text
- * blended over that background (inkAlpha).
+ * blended over that background (inkAlpha, or kitty's `curve`: curvedAlpha).
  */
-export function encodePng(raster: Raster, ink: RGB, over?: RGB): Uint8Array {
-  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink, over)
+export function encodePng(raster: Raster, ink: RGB, over?: RGB, curve?: TextCurve): Uint8Array {
+  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink, over, curve)
 }
 
 /** An op's outlines in pixels, dilated and snapped, and the winding its ink fills with. */

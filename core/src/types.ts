@@ -233,6 +233,13 @@ export interface TerminalColors {
   fontWeight?: number
 }
 
+/** kitty's text alpha curve (text_composition_strategy `gamma contrast`). */
+export interface TextCurve {
+  gamma: number
+  /** Percent, 0 to 100. */
+  contrast: number
+}
+
 /** A change to one cell metric: a factor (Ghostty's `20%` is 1.2) or whole pixels added. */
 export type MetricAdjust = { factor: number } | { px: number }
 
