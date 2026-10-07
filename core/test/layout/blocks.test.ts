@@ -90,9 +90,9 @@ describe('blockParts', () => {
 
   test('blocks set apart by blank lines get a blank row above them, single ones keep proseBlocks flags', () => {
     expect(blockParts('One.\n\n- a\n- b\n\n> q')).toEqual([
-      { start: 0, end: 4, paragraph: true, type: 'paragraph', gap: false },
-      { start: 6, end: 13, paragraph: false, list: true, type: 'list', gap: true },
-      { start: 15, end: 18, paragraph: false, quote: true, type: 'blockquote', gap: true },
+      { start: 0, end: 4, paragraph: true, type: 'paragraph', gap: false, block: 0 },
+      { start: 6, end: 13, paragraph: false, list: true, type: 'list', gap: true, block: 6 },
+      { start: 15, end: 18, paragraph: false, quote: true, type: 'blockquote', gap: true, block: 15 },
     ])
   })
 
@@ -100,8 +100,25 @@ describe('blockParts', () => {
     expect(shape('- a X\nmore text')).toEqual([['- a X\nmore text', 'list', false]])
   })
 
-  test('a block holding a token whose rows are not followed stays one part', () => {
-    expect(shape('Text\n<div>\nhtml\n</div>')).toEqual([['Text\n<div>\nhtml\n</div>', 'block', false]])
+  test('a token whose rows are not followed goes, with the rest of its block, into the part before it', () => {
+    // The part is laid out up to it (its drawing never depends on what follows), and cut out at the blank lines around the block.
+    expect(shape('Text\n<div>\nhtml\n</div>')).toEqual([['Text\n<div>\nhtml\n</div>', 'paragraph', false]])
+    expect(shape('## Title\nText $x$\n<div>\nhtml\n</div>\n- item')).toEqual([
+      ['## Title', 'heading', false],
+      ['Text $x$\n<div>\nhtml\n</div>\n- item', 'paragraph', true],
+    ])
+    expect(shape('> quote\n```\n```')).toEqual([['> quote\n```\n```', 'blockquote', false]])
+    // A block that opens with one stays one part.
+    expect(shape('<div>\nhtml\n</div>\nText')).toEqual([['<div>\nhtml\n</div>\nText', 'block', false]])
+  })
+
+  test('each part knows where its block starts', () => {
+    expect(blockParts('One.\n\n## Title\nText\n- item')?.map(part => [part.start, part.block])).toEqual([
+      [0, 0],
+      [6, 6],
+      [15, 6],
+      [20, 6],
+    ])
   })
 
   test('the gap rule: after a heading, and around a table or a quote', () => {

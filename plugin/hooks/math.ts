@@ -688,8 +688,22 @@ function reasonOf(error: TexError): string {
 /** A line's start that only opens blockquotes (`> `, `>> `, `> > `). */
 const QUOTE_LEAD = /^[ \t]{0,3}(?:>[ \t]?)+$/
 
-/** How much of what a writer took it keeps for reading the block being written (a long list included). */
-const WRITER_TAIL = 2048
+/**
+ * Where MarkdownWriter.block puts a block written after `written`: what it
+ * writes before the block's first line (a blank line, or in a quote a `>`
+ * line, unless one is there; a paragraph break after text), and the
+ * indentation (or blockquote prefix, `quote`) of its other lines. `started`:
+ * something other than whitespace was written.
+ */
+export function blockOpening(written: string, started = /\S/.test(written)): { before: string; indent: string; quote: string } {
+  const start = written.lastIndexOf('\n') + 1
+  const lead = written.slice(start)
+  const above = written.slice(0, start)
+  if (/^[ \t]*$/.test(lead)) return { before: started && !/\n[ \t]*\n$/.test(above) ? '\n' + lead : '', indent: lead, quote: '' }
+  // A paragraph of its own inside the quote: a `>` line above it unless one is there.
+  if (QUOTE_LEAD.test(lead)) return { before: started && !/(?:^|\n)[ \t]*(?:>[ \t]*)+\n$/.test(above) ? '\n' + lead : '', indent: lead, quote: lead }
+  return { before: '\n\n', indent: '', quote: '' }
+}
 
 /**
  * Builds markdown out of source text and blocks. A block is a paragraph of its
@@ -699,7 +713,10 @@ const WRITER_TAIL = 2048
  */
 export class MarkdownWriter {
   out = ''
-  /** The end of what earlier takes wrote (enough to see the last lines). */
+  /**
+   * What earlier takes wrote, all of it: the part being written is read from
+   * where it starts (a long list's outer items included), as the landing reads it.
+   */
   private tail = ''
   /** Something other than whitespace was written. */
   private started = false
@@ -710,16 +727,26 @@ export class MarkdownWriter {
 
   text(text: string): void {
     if (text === '') return
-    if (this.afterBlock && this.quote !== '') {
-      // In a quote the blank line after a block is a `>` line: a bare one would end the quote.
-      if (/^[ \t]*\r?\n[ \t]*(?:>[ \t]*)+\r?\n/.test(text)) text = text.replace(/^[ \t]*\r?\n/, '')
-      else this.out += this.quote.trimEnd() + (/^[ \t]*\r?\n/.test(text) ? '' : '\n')
-    } else if (this.afterBlock && !/^[ \t]*\r?\n/.test(text)) {
-      this.out += '\n'
-    }
+    const written = this.prepare(text)
     this.afterBlock = false
     if (/\S/.test(text)) this.started = true
-    this.out += text
+    this.out += written
+  }
+
+  /**
+   * What text() writes for `text`: the text, after the blank line (in a quote,
+   * the `>` line) a block right before it needs. Only its start may differ.
+   */
+  prepare(text: string): string {
+    if (text === '' || !this.afterBlock) return text
+    if (this.quote !== '') {
+      // In a quote the blank line after a block is a `>` line: a bare one would end the quote.
+      if (/^[ \t]*\r?\n[ \t]*(?:>[ \t]*)+\r?\n/.test(text)) return text.replace(/^[ \t]*\r?\n/, '')
+      // One that opens with such a line already has it (a flush starting right after the block's closing line).
+      if (/^[ \t]*(?:>[ \t]*)+\r?\n/.test(text)) return text
+      return this.quote.trimEnd() + (/^[ \t]*\r?\n/.test(text) ? '' : '\n') + text
+    }
+    return /^[ \t]*\r?\n/.test(text) ? text : '\n' + text
   }
 
   /**
@@ -727,26 +754,10 @@ export class MarkdownWriter {
    * or under the blockquote prefix the line it starts on opens with).
    */
   block(lines: readonly string[]): string {
-    const written = this.tail + this.out
-    const start = written.lastIndexOf('\n') + 1
-    const lead = written.slice(start)
-    let indent = ''
-    this.quote = ''
-    if (/^[ \t]*$/.test(lead)) {
-      indent = lead
-      const above = written.slice(0, start)
-      if (this.started && !/\n[ \t]*\n$/.test(above)) this.out += '\n' + indent
-    } else if (QUOTE_LEAD.test(lead)) {
-      // A paragraph of its own inside the quote: a `>` line above it unless one is there.
-      indent = lead
-      this.quote = lead
-      const above = written.slice(0, start)
-      if (this.started && !/(?:^|\n)[ \t]*(?:>[ \t]*)+\n$/.test(above)) this.out += '\n' + indent
-    } else {
-      this.out += '\n\n'
-    }
-    const block = lines.join('\n' + indent)
-    this.out += block + '\n'
+    const opening = blockOpening(this.tail + this.out, this.started)
+    this.quote = opening.quote
+    const block = lines.join('\n' + opening.indent)
+    this.out += opening.before + block + '\n'
     this.started = true
     this.afterBlock = true
     return block
@@ -759,7 +770,7 @@ export class MarkdownWriter {
     return QUOTE_LEAD.test(lead) ? (lead.match(/>/g) ?? []).length : 0
   }
 
-  /** The end of everything written so far, earlier takes included: enough to see the block being written. */
+  /** Everything written so far, earlier takes included. */
   recent(): string {
     return this.tail + this.out
   }
@@ -767,7 +778,7 @@ export class MarkdownWriter {
   /** Takes the text written so far (one flush, or one prose piece). */
   take(): string {
     const out = this.out
-    this.tail = (this.tail + out).slice(-WRITER_TAIL)
+    this.tail += out
     this.out = ''
     return out
   }
@@ -781,170 +792,314 @@ export interface StreamRewrite {
 }
 
 /**
+ * Where the landing will cut what is being streamed (planLanded): it draws a
+ * display image, or a refused formula's note, as an item of its own, and lays
+ * the text after it out as a piece of its own, part by part (blockParts). So
+ * the stream reads the part a formula is in as the landing reads it: from
+ * where its piece starts, all of it however long (a long list's outer items
+ * included). Offsets index everything the writer wrote.
+ */
+export class StreamPlan {
+  /** Where the piece being written starts: right after the last image's or note's block. */
+  piece = 0
+  /**
+   * Where the last block read in it so far starts (proseBlocks' block: what
+   * comes before it can't join a later part). blockParts reads the piece again
+   * from there, so a flush costs about as much as the block it ends in, not
+   * the whole reply.
+   */
+  anchor = 0
+
+  /** A new piece starts at `at`. */
+  cut(at: number): void {
+    this.piece = at
+    this.anchor = at
+  }
+}
+
+/**
  * Rewrites the segments one flush completed: inline math as one line of
  * Unicode (padded to its image's width, with a record, when inline images are
- * on and the formula gets one), a display formula as its preview (exactly the rows its image will
- * take when the terminal draws images), a formula MathJax refuses as its
- * source and a `not rendered` line. `writer` carries the line state across the
- * message's flushes.
+ * on and the landing will place its image: see writeProse), a display formula
+ * as its preview (exactly the rows its image will take when the terminal draws
+ * images), a formula MathJax refuses as its source and a `not rendered` line.
+ * `writer` carries the line state across the message's flushes, `plan` where
+ * the landing cuts it.
  */
-export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, writer: MarkdownWriter): StreamRewrite {
-  const renderEnv = renderEnvFor(env)
-  const { maxColumns } = renderEnv
+export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, writer: MarkdownWriter, plan = new StreamPlan()): StreamRewrite {
   const records: PreviewRecord[] = []
-  for (const [k, segment] of segments.entries()) {
-    if (segment.kind === 'text') {
-      writer.text(segment.text)
-    } else if (!segment.display) {
-      const written = writer.recent()
-      const width = proseWidthFor(env)
-      const mode: LinkMode = { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
-      let inline: InlinePreview | null = null
-      if (env.inline && env.images) {
-        // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
-        const inlineEnv = inlineEnvFor(env)
-        const padded = inlinePreview(segment.tex, inlineEnv, width - QUOTE_INDENT * quotesOpening(written))
-        // Padded only where the part laid out so far, with the rest of the line, puts it whole on a row
-        // (else, unpadded where its image fits the Unicode's cells): the landed layout places it there.
-        const rest = padded ? lineAfter(segments, k) : ''
-        for (const preview of padded ? [padded, narrowPreview(segment.tex, inlineEnv)] : []) {
-          if (preview && previewPlaced(written, preview, rest, width, env.columns, mode)) {
-            inline = preview
-            break
-          }
-        }
-      }
-      if (inline) {
-        writer.text(inline.markdown)
-        // Where its ink will go, as the source around it says (the landed rows decide; this draws it ahead).
-        const next = segments[k + 1]
-        const after = next === undefined ? undefined : next.kind === 'text' ? [...next.text][0] : next.raw[0]
-        const place = inkPlaceBeside([...written].at(-1)?.replace('\n', ' '), after)
-        records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns, ...(place === 'center' ? {} : { place }) })
-      } else {
-        writer.text(inlineFallback(segment))
-      }
-    } else {
-      // In a blockquote the preview stays inside it, as wide as the quote's text; one quote deep its image lies over it once landed.
-      // In a list item likewise: as wide as the item's text, its image over it in the item once landed.
-      const quote = writer.quoteDepth()
-      const indent = quote === 0 && env.images ? itemIndent(writer.recent(), proseWidthFor(env), { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }) : undefined
-      const width = quote > 0 ? quoteColumns(env, quote) : indent !== undefined ? Math.max(1, proseWidthFor(env) - indent) : maxColumns
-      // In a quote at any depth (fuzz FUZZ-9), where the quote so far is one the landing can lay out (else its image could never be placed).
-      const drawn = env.images && (quote === 0 || placeable(writer.recent(), proseWidthFor(env), env.columns, { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }))
-      let rows: number | undefined
-      try {
-        rows = drawn ? measureDisplay(segment.tex, { ...renderEnv, maxColumns: width }).rows : undefined
-      } catch (error) {
-        if (!(error instanceof TexError)) throw error
-        const preview = writer.block(refusedMarkdownLines(segment.tex, reasonOf(error), maxColumns))
-        if (env.images) records.push({ preview, tex: segment.tex, rows: 0, error: reasonOf(error) })
-        continue
-      }
-      const lines = displayPreviewLines(segment.tex, width, rows)
-      if (lines) {
-        const preview = writer.block(lines)
-        if (rows !== undefined) records.push({ preview, tex: segment.tex, rows, ...(quote > 0 ? { quote } : {}), ...(indent !== undefined ? { indent } : {}) })
-        continue
-      }
-      const refused = texErrorOf(segment.tex, renderEnv)
-      writer.block(refused ? refusedMarkdownLines(segment.tex, refused, maxColumns) : sourceMarkdownLines(segment.tex))
+  for (let k = 0; k < segments.length; ) {
+    const segment = segments[k]!
+    if (segment.kind === 'math' && segment.display) {
+      writeDisplay(segment, env, writer, plan, records)
+      k++
+      continue
     }
+    let end = k + 1
+    while (end < segments.length && !isDisplayMath(segments[end]!)) end++
+    writeProse(segments.slice(k, end), segments[end], env, writer, plan, records)
+    k = end
   }
   return { text: writer.take(), records }
 }
 
+type MathSegment = Extract<Segment, { kind: 'math' }>
+
+function isDisplayMath(segment: Segment): boolean {
+  return segment.kind === 'math' && segment.display
+}
+
+/** How the engine draws links and the terminal emoji sequences, as the replays take it. */
+function linkModeOf(env: KittexEnv): LinkMode {
+  return { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
+}
+
 /**
- * Whether inline math written next, after `written`, lands in a part whose
- * inline previews get images at landing (blockParts, the rule the landed
- * drawing uses): a paragraph, a heading, a list, a blockquote or a table the
- * replay follows so far (`width`: the width prose wraps at; `columns`: the
- * terminal's width, which tables are laid out in; `mode`: how the engine
- * draws links and the terminal emoji sequences), whether or not a blank line
- * sets it apart from the part before it. A part's drawing never depends on
- * what comes after it, so once the part written so far can't be laid out (a
- * character of unknown width, an image) it never will be. A table's first row
- * reads as a paragraph until its delimiter row arrives, and is padded as one.
- * Anywhere else (a code block, a part the replay doesn't follow) the formula
- * is drawn as plain Unicode, so streaming writes it unpadded: padding there
- * would stay behind as gaps. The stream itself asks previewPlaced, which also
- * sees the rest of the formula's line and where in its row the preview lands;
- * what comes later in the part can't take its image (the landed plan lays a
- * part out up to what it can't follow).
+ * Writes a display formula's preview. In a blockquote it stays inside it, as
+ * wide as the quote's text (one quote deep, its image lies over it once
+ * landed); in a list item likewise, as wide as the item's text, its image over
+ * it in the item; anywhere else it is as wide as the reply column and lands as
+ * an image of its own, after which a new piece starts (as after a refused
+ * formula's note).
+ */
+function writeDisplay(segment: MathSegment, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
+  const renderEnv = renderEnvFor(env)
+  const { maxColumns } = renderEnv
+  const quote = writer.quoteDepth()
+  // The item's text is laid out from where its list starts, however far back that is.
+  const indent = quote === 0 && env.images ? itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) : undefined
+  const width = quote > 0 ? quoteColumns(env, quote) : indent !== undefined ? Math.max(1, proseWidthFor(env) - indent) : maxColumns
+  // In a quote at any depth (fuzz FUZZ-9), where the quote so far is one the landing lays out (else its image could never be placed).
+  const drawn = env.images && (quote === 0 || placeable(writer.recent().slice(plan.anchor), proseWidthFor(env), env.columns, linkModeOf(env)))
+  // The landing cuts its text only at a refused formula's note in the reply column (in a list item or a quote the
+  // note stays in it: planLanded's nestedAt); a display formula's image lies over its preview in the text.
+  const head = writer.recent().slice(plan.anchor)
+  const nested = quote > 0 || nestedAt(head, head.length)
+  let rows: number | undefined
+  try {
+    rows = drawn ? measureDisplay(segment.tex, { ...renderEnv, maxColumns: width }).rows : undefined
+  } catch (error) {
+    if (!(error instanceof TexError)) throw error
+    const preview = writer.block(refusedMarkdownLines(segment.tex, reasonOf(error), maxColumns))
+    if (env.images) {
+      records.push({ preview, tex: segment.tex, rows: 0, error: reasonOf(error) })
+      if (!nested) plan.cut(writer.recent().length)
+    }
+    return
+  }
+  const lines = displayPreviewLines(segment.tex, width, rows)
+  if (lines) {
+    const preview = writer.block(lines)
+    if (rows === undefined) return
+    records.push({ preview, tex: segment.tex, rows, ...(quote > 0 ? { quote } : {}), ...(indent !== undefined ? { indent } : {}) })
+    return
+  }
+  const refused = texErrorOf(segment.tex, renderEnv)
+  writer.block(refused ? refusedMarkdownLines(segment.tex, refused, maxColumns) : sourceMarkdownLines(segment.tex))
+}
+
+/** Layouts of one run of prose a flush may take beyond the first before what is still undecided in it is written plain. */
+const MAX_RELAYOUTS = 32
+
+/** An inline formula of a run being written: the forms it may take, padded first, and the one it has (`options.length`: plain Unicode). */
+interface InlineChoice {
+  segment: MathSegment
+  options: InlinePreview[]
+  choice: number
+  /** Placed for good: a part's drawing up to a formula never depends on what comes after it (a table's does). */
+  done: boolean
+  /** Where it is in the text being laid out, as the forms chosen so far put it. */
+  start: number
+  end: number
+}
+
+/**
+ * Writes a run of prose (its text and inline math, up to a display formula).
+ * Inline math is written padded to its image's width only where the landing
+ * will draw the image over it: where its part, read as the landing reads it
+ * (blockParts from where its piece starts) with the whole run in it, is laid
+ * out with the preview whole on one row (the rule placeInline places images
+ * by); else unpadded, its image in those cells, where that is placed
+ * (narrowPreview); else as plain Unicode. Each part is laid out with all its
+ * formulas at once; where one isn't placed it takes its next form and the
+ * part is laid out again (its drawing up to a formula doesn't depend on what
+ * follows, so those before it stay placed); past where the replay follows the
+ * part, every formula is plain at once. `next`: the segment after the run.
+ */
+function writeProse(run: readonly Segment[], next: Segment | undefined, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
+  const choices = new Map<number, InlineChoice>()
+  if (env.inline && env.images && run.some(segment => segment.kind === 'math')) decideInline(run, next !== undefined && isDisplayMath(next), env, writer, plan, choices)
+  let before = lastChar(writer.recent())
+  for (const [at, segment] of run.entries()) {
+    const choice = choices.get(at)
+    const inline = choice?.options[choice.choice]
+    const text = segment.kind === 'text' ? segment.text : inline ? inline.markdown : inlineFallback(segment)
+    if (text === '') continue
+    const written = writer.prepare(text)
+    if (inline && segment.kind === 'math') {
+      // Where its ink will go, as the source around it says (the landed rows decide; this draws it ahead).
+      const after = run[at + 1] ?? next
+      const first = after === undefined ? undefined : after.kind === 'text' ? [...after.text][0] : after.raw[0]
+      const place = inkPlaceBeside((written.length > text.length ? lastChar(written.slice(0, -text.length)) : before)?.replace('\n', ' '), first)
+      records.push({ preview: inline.markdown, tex: segment.tex, rows: 1, inline: true, columns: inline.columns, ...(place === 'center' ? {} : { place }) })
+    }
+    writer.text(text)
+    before = lastChar(written) ?? before
+  }
+}
+
+/** The last character of a text (a surrogate pair whole), or undefined. */
+function lastChar(text: string): string | undefined {
+  if (text === '') return undefined
+  const code = text.charCodeAt(text.length - 1)
+  return code >= 0xdc00 && code <= 0xdfff && text.length > 1 ? text.slice(-2) : text.slice(-1)
+}
+
+/**
+ * Chooses the form of each inline formula in a run (see writeProse), keyed by
+ * its index in the run. `display`: a display formula follows the run (its
+ * block is read as a line of text where MarkdownWriter.block will put it).
+ */
+function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, choices: Map<number, InlineChoice>): void {
+  const inlineEnv = inlineEnvFor(env)
+  const width = proseWidthFor(env)
+  const mode = linkModeOf(env)
+  const head = writer.recent().slice(plan.anchor)
+  // The run as written with the forms chosen so far; each formula's place in it.
+  const build = (): string => {
+    let body = ''
+    let first = true
+    for (const [at, segment] of run.entries()) {
+      const choice = choices.get(at)
+      const text = segment.kind === 'text' ? segment.text : choice && choice.choice < choice.options.length ? choice.options[choice.choice]!.markdown : inlineFallback(segment)
+      if (text === '') continue
+      body += first ? writer.prepare(text) : text
+      first = false
+      if (choice) {
+        choice.end = head.length + body.length
+        choice.start = choice.end - text.length
+      }
+    }
+    return head + body
+  }
+  for (const [at, segment] of run.entries()) {
+    if (segment.kind === 'math') choices.set(at, { segment, options: [], choice: 0, done: false, start: 0, end: 0 })
+  }
+  let source = build()
+  for (const choice of choices.values()) {
+    // In a quote the formula's row is the quote's text: two cells in, two more per quote nested in it.
+    const line = source.slice(source.lastIndexOf('\n', choice.start - 1) + 1, choice.start)
+    choice.options = inlineOptions(choice.segment.tex, inlineEnv, width - QUOTE_INDENT * quotesOpening(line))
+  }
+  const live = () => [...choices.values()].filter(choice => choice.choice < choice.options.length)
+  let parts: BlockPart[] | null = null
+  for (let layouts = 0; ; layouts++) {
+    source = build()
+    if (display) source += blockOpening(source).before + 'x'
+    // At a piece's start, the blank lines the landing drops from it (piecesOf): read without them.
+    const skip = plan.anchor === plan.piece ? (/^(?:[ \t]*\r?\n)+/.exec(source)?.[0].length ?? 0) : 0
+    parts = skip === 0 ? blockParts(source) : (blockParts(source.slice(skip))?.map(part => ({ ...part, start: part.start + skip, end: part.end + skip, block: (part.block ?? part.start) + skip })) ?? null)
+    const open = live().filter(choice => !choice.done)
+    if (open.length === 0) break
+    if (!parts || layouts > MAX_RELAYOUTS) {
+      for (const choice of open) choice.choice = choice.options.length
+      break
+    }
+    // The formulas of each part the replay lays out; any other is plain.
+    const inPart = new Map<BlockPart, InlineChoice[]>()
+    let changed = false
+    let p = 0
+    for (const choice of live()) {
+      while (p < parts.length && parts[p]!.end < choice.end) p++
+      const part = parts[p]
+      if (part && part.start <= choice.start && layable(part)) {
+        inPart.set(part, [...(inPart.get(part) ?? []), choice])
+      } else if (!choice.done) {
+        choice.choice = choice.options.length
+        changed = true
+      }
+    }
+    for (const [part, inside] of inPart) {
+      if (inside.every(choice => choice.done)) continue
+      const spans = inside.map(choice => ({ start: choice.start - part.start, end: choice.end - part.start, width: choice.options[choice.choice]!.columns }))
+      const layout = layoutPart(part, source.slice(part.start, part.end), spans, width, env.columns, mode)
+      for (const [i, choice] of inside.entries()) {
+        if (layout?.places[i]) {
+          // A table's columns follow every cell: its formulas are asked again until none moves.
+          if (!part.table) choice.done = true
+          continue
+        }
+        if (!layout || (layout.stop !== undefined && spans[i]!.end > layout.stop)) {
+          // Past where the replay follows the part: no form of these is placed.
+          for (const later of inside.slice(i)) if (!later.done) later.choice = later.options.length
+        } else {
+          choice.choice++
+        }
+        changed = true
+        break
+      }
+    }
+    if (!changed) break
+  }
+  // The text read again from the start of its last block: what comes before it is laid out for good.
+  const last = parts?.at(-1)
+  if (last) plan.anchor += last.block ?? last.start
+}
+
+/** The forms of an inline formula already worked out, by formula, geometry and row width (a long list repeats its formulas). */
+const optionsMemo = new Map<string, InlinePreview[]>()
+const OPTIONS_MEMO = 4096
+
+/** The forms an inline formula may be streamed as where it gets an image, padded first (inlinePreview, narrowPreview); none where it can't. */
+function inlineOptions(tex: string, env: InlineEnv, rowWidth: number): InlinePreview[] {
+  const key = [tex, env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.baselinePx, rowWidth].join('\n')
+  let options = optionsMemo.get(key)
+  if (!options) {
+    const padded = inlinePreview(tex, env, rowWidth)
+    const narrow = padded ? narrowPreview(tex, env) : null
+    options = [padded, narrow].filter((option): option is InlinePreview => option !== null)
+    if (optionsMemo.size >= OPTIONS_MEMO) optionsMemo.delete(optionsMemo.keys().next().value!)
+    optionsMemo.set(key, options)
+  }
+  return options
+}
+
+/** Whether a part's inline previews can get images: a paragraph, a heading, a blockquote, a table or a list. */
+function layable(part: BlockPart): boolean {
+  return part.paragraph || part.heading === true || part.quote === true || part.table === true || part.list === true
+}
+
+/**
+ * A part laid out by the replay the landing lays it out with (placeInline):
+ * up to where it can follow it, a table whole, in the terminal's width.
+ */
+function layoutPart(part: BlockPart, markdown: string, spans: readonly SourceSpan[], width: number, columns: number, mode: LinkMode): ProseLayout | null {
+  if (part.paragraph) return layoutProse(markdown, width, spans, mode, true)
+  if (part.heading) return layoutHeading(markdown, width, spans, mode, true)
+  if (part.quote) return layoutQuote(markdown, width, spans, mode, true)
+  if (part.table) return layoutTable(markdown, columns, spans, width, mode)
+  if (part.list) return layoutList(markdown, width, spans, mode, true)
+  return null
+}
+
+/**
+ * Whether inline math written next, after `written`, lands where its part is
+ * laid out up to it (blockParts, the parts the landing lays out): a paragraph,
+ * a heading, a list, a blockquote or a table the replay follows that far
+ * (`width`: the width prose wraps at; `columns`: the terminal's width, which
+ * tables are laid out in; `mode`: how the engine draws links and the terminal
+ * emoji sequences). Anywhere else (a code block, a part the replay doesn't
+ * follow up to there) the formula is drawn as plain Unicode, so streaming
+ * writes it unpadded: padding there would stay behind as gaps. The stream
+ * itself asks this of every formula in a run at once (writeProse).
  */
 export function placeable(written: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
   // A stand-in for the formula, so the line it starts is part of the block read.
   const text = written + 'x'
-  const last = blockParts(text)?.at(-1)
-  if (last === undefined || last.end !== text.length) return false
-  const block = text.slice(last.start, last.end)
-  if (last.paragraph) return layoutProse(block, width, [], mode) !== null
-  // A line opening with a bar may be a table's first row until its delimiter
-  // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
-  if (!last.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) return false
-  if (last.heading) return layoutHeading(block, width, [], mode) !== null
-  if (last.quote) return layoutQuote(block, width, [], mode) !== null
-  if (last.table) return layoutTable(block, columns, [], width, mode) !== null
-  return last.list === true && layoutList(block, width, [], mode) !== null
-}
-
-/**
- * Whether an inline preview written after `written`, with `rest` (the rest of
- * its line) after it, lands whole on a row of the part it is in, as the
- * replay of that part lays it out up to where it can (a part's drawing never
- * depends on what comes after it): the rule the landed plan places images by
- * (placeInline), so a preview padded here gets its image, and its pad never
- * stays behind as a gap or wraps onto a row of its own (a table cell
- * narrower than it). `width`: the width prose wraps at; `columns`: the
- * terminal's (tables are laid out in it); `mode`: as placeable.
- */
-export function previewPlaced(written: string, preview: InlinePreview, rest: string, width: number, columns = width + REPLY_INDENT, mode: LinkMode = {}): boolean {
-  const text = written + preview.markdown + rest
-  const start = written.length
-  const end = start + preview.markdown.length
-  const part = blockParts(text)?.find(one => one.start <= start && one.end >= end)
-  if (!part) return false
-  const block = text.slice(part.start, part.end)
-  const spans = [{ start: start - part.start, end: end - part.start, width: preview.columns }]
-  let layout: ProseLayout | null
-  if (part.paragraph) {
-    layout = layoutProse(block, width, spans, mode, true)
-  } else if (!part.table && /^[ \t>]*\|/.test(written.slice(written.lastIndexOf('\n') + 1))) {
-    // A line opening with a bar may be a table's first row until its delimiter
-    // row arrives: in a quote or a list item, where tables aren't replayed, it stays plain.
-    return false
-  } else if (part.heading) {
-    layout = layoutHeading(block, width, spans, mode, true)
-  } else if (part.quote) {
-    layout = layoutQuote(block, width, spans, mode, true)
-  } else if (part.table) {
-    layout = layoutTable(block, columns, spans, width, mode)
-  } else {
-    layout = part.list ? layoutList(block, width, spans, mode, true) : null
-  }
-  return layout?.places[0] != null
-}
-
-/**
- * The rest of the line after inline math `k` of a flush (whose lines come
- * whole), as it will be written about: its text, and its inline math as plain
- * Unicode (an image's preview is about as wide). It decides how the formula's
- * word, and a table's row, are laid out.
- */
-function lineAfter(segments: readonly Segment[], k: number): string {
-  let out = ''
-  for (const next of segments.slice(k + 1)) {
-    if (next.kind === 'text') {
-      const end = next.text.indexOf('\n')
-      if (end >= 0) return out + next.text.slice(0, end)
-      out += next.text
-    } else if (next.display) {
-      return out
-    } else {
-      out += inlineFallback(next)
-    }
-  }
-  return out
+  const part = blockParts(text)?.find(one => one.start < text.length && one.end >= text.length)
+  if (!part || !layable(part)) return false
+  const at = text.length - 1 - part.start
+  return layoutPart(part, text.slice(part.start, part.end), [{ start: at, end: at + 1 }], width, columns, mode)?.places[0] != null
 }
 
 /**
@@ -967,10 +1122,11 @@ export function narrowPreview(tex: string, env: InlineEnv): InlinePreview | null
  * The cells from the reply column's left edge to the text of the list item a
  * block written after `written` would be in (a display formula indented under
  * an item), where the replay lays out the list written so far; undefined
- * outside a list item, or where it doesn't.
+ * outside a list item, or where it doesn't. The block's first line is put
+ * where MarkdownWriter.block puts it (blockOpening).
  */
 export function itemIndent(written: string, width: number, mode: LinkMode = {}): number | undefined {
-  const text = written + 'x'
+  const text = written + blockOpening(written).before + 'x'
   const part = blockParts(text)?.at(-1)
   if (!part?.list || part.end !== text.length) return undefined
   const block = text.slice(part.start, part.end)
@@ -995,6 +1151,95 @@ function texErrorOf(tex: string, env: RenderEnv): string | undefined {
   }
 }
 
+/** Lines of a table (from its first row holding inline math) held back while it streams, at most: past them it is written as it comes. */
+const MAX_HELD_ROWS = 40
+
+/** A table's delimiter row (marked's: a `|` or a `:` in it), its line's quote markers and indentation taken off. */
+const DELIMITER_ROW = /^\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/
+
+/** A line that starts a block of its own, ending a table (marked's interruptions), quote markers and indentation taken off. */
+const ENDS_TABLE = /^(?:#{1,6}(?:[ \t]|$)|```|~~~|[-*+][ \t]|\d{1,9}[.)][ \t]|<[A-Za-z/!?]|(?:[-*_][ \t]*){3,}$)/
+
+/**
+ * Where to hold the segments of a flush back from, as an offset of the text
+ * pushed (undefined: hold nothing): a table's columns, so the rows its inline
+ * math lands on, depend on every row of it, the header row included, which
+ * reads as a paragraph until the delimiter row under it arrives. So a line
+ * holding inline math that could be a table's header (a `|` in it) waits for
+ * the next line, and a table holding inline math is held from its first row
+ * that does until it ends (a blank line, or a line that starts another
+ * block), at most MAX_HELD_ROWS lines. The engine shows nothing for them
+ * meanwhile, as for a display block being held. `text`: what was pushed, up to
+ * the end of the flush's segments.
+ */
+export function holdFrom(text: string, segments: readonly Segment[]): number | undefined {
+  // The last lines, up to a blank one or a display formula (a block of its own: a table before it has ended), with their starts.
+  const floor = segments.findLast(isDisplayMath)?.end ?? 0
+  const lines: { start: number; text: string }[] = []
+  let end = text.endsWith('\n') ? text.length - 1 : text.length
+  while (lines.length < MAX_HELD_ROWS + 2 && end > floor) {
+    const start = text.lastIndexOf('\n', end - 1) + 1
+    const line = text.slice(start, end)
+    if (line.trim() === '' || start < floor) break
+    lines.unshift({ start, text: line.replace(/^[ \t>]*/, '') })
+    if (start === 0) break
+    end = start - 1
+  }
+  if (lines.length === 0) return undefined
+  const math = (from: number, to: number) => segments.some(segment => segment.kind === 'math' && !segment.display && segment.start < to && segment.end > from)
+  const endOf = (k: number) => (k + 1 < lines.length ? lines[k + 1]!.start : text.length)
+  const first = segments[0]?.start ?? 0
+  // The table the last line is in: a header with a `|`, its delimiter row (the first: a row may look like
+  // one), then rows up to the last line that start no other block.
+  const ended = lines.findLastIndex(line => ENDS_TABLE.test(line.text))
+  let top: number | undefined
+  for (let d = Math.max(1, ended + 2); d < lines.length; d++) {
+    if (DELIMITER_ROW.test(lines[d]!.text) && /[|:]/.test(lines[d]!.text) && lines[d - 1]!.text.includes('|')) {
+      top = d - 1
+      break
+    }
+  }
+  // Else the last line may be a header whose delimiter row is still to come.
+  if (top === undefined) top = lines.at(-1)!.text.includes('|') ? lines.length - 1 : undefined
+  if (top === undefined) return undefined
+  for (let k = top; k < lines.length; k++) {
+    if (endOf(k) <= first || !math(lines[k]!.start, endOf(k))) continue
+    // A table longer than the lines held is written as it comes.
+    if (lines.length - k > MAX_HELD_ROWS) return undefined
+    return Math.max(lines[k]!.start, first)
+  }
+  return undefined
+}
+
+/** Splits a flush's segments at an offset of the text pushed: those written now, and those held back (a formula across it is held whole). */
+function splitAt(segments: readonly Segment[], at: number): [Segment[], Segment[]] {
+  const now: Segment[] = []
+  const held: Segment[] = []
+  for (const segment of segments) {
+    if (segment.end <= at) now.push(segment)
+    else if (segment.start >= at || segment.kind === 'math') held.push(segment)
+    else {
+      const cut = at - segment.start
+      now.push({ kind: 'text', text: segment.text.slice(0, cut), start: segment.start, end: at })
+      held.push({ kind: 'text', text: segment.text.slice(cut), start: at, end: segment.end })
+    }
+  }
+  // A formula held whole holds what comes after it too, never what comes before it.
+  while (now.length > 0 && held.length > 0 && now.at(-1)!.end > held[0]!.start) held.unshift(now.pop()!)
+  return [now, held]
+}
+
+/** Segments with each run of text segments one after another joined into one (held text and the text after it read together). */
+function joinText(segments: readonly Segment[]): Segment[] {
+  const out: Segment[] = []
+  for (const segment of segments) {
+    const last = out.at(-1)
+    if (segment.kind === 'text' && last?.kind === 'text' && last.end === segment.start) out[out.length - 1] = { kind: 'text', text: last.text + segment.text, start: last.start, end: segment.end }
+    else out.push(segment)
+  }
+  return out
+}
+
 /**
  * One message streaming through MessageDisplay: its scanner, its line state
  * and how much of what was pushed has been shown. One per `message_id` (every
@@ -1003,20 +1248,33 @@ function texErrorOf(tex: string, env: RenderEnv): string | undefined {
 export class MessageStream {
   private readonly scanner: LineScanner
   private readonly writer = new MarkdownWriter()
+  private readonly plan = new StreamPlan()
   private pushed = ''
   private shown = 0
+  /** Segments completed but held back (see holdFrom). */
+  private held: Segment[] = []
 
   constructor(scanner: LineScanner = createLineScanner()) {
     this.scanner = scanner
   }
 
-  /** The text to show for one flush (HELD_DISPLAY while a display block is held) and the previews it wrote. */
+  /** The text to show for one flush (HELD_DISPLAY while a display block or a table is held) and the previews it wrote. */
   push(delta: string, final: boolean, env: StreamEnv): StreamRewrite {
     this.pushed += delta
-    const segments = this.scanner.push(delta, final)
+    let segments = joinText([...this.held, ...this.scanner.push(delta, final)])
+    this.held = []
+    let from = final || segments.length === 0 || !(env.inline && env.images) ? undefined : holdFrom(this.pushed.slice(0, segments.at(-1)!.end), segments)
+    // In a quote, the line break ending a display block's closing line waits for the next line, which decides
+    // how the quote goes on after the block (MarkdownWriter.prepare): as the landing writes it, the two read together.
+    const last = segments.at(-1)
+    const display = segments.at(-2)
+    if (!final && from === undefined && last?.kind === 'text' && /^[ \t]*\r?\n$/.test(last.text) && display && isDisplayMath(display)) {
+      if (QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', display.start - 1) + 1, display.start))) from = last.start
+    }
+    if (from !== undefined) [segments, this.held] = splitAt(segments, from)
     if (segments.length === 0) return { text: delta === '' ? '' : HELD_DISPLAY, records: [] }
     this.shown = segments[segments.length - 1]!.end
-    return rewriteSegments(segments, env, this.writer)
+    return rewriteSegments(segments, env, this.writer, this.plan)
   }
 
   /** What was pushed and not shown yet, as written: what a failure falls back to. */
@@ -1286,7 +1544,10 @@ interface InlineMark {
   quote?: number
 }
 
-/** How many times a plan is drawn again with the math read back as LaTeX that got no image written plain (see planLanded). */
+/**
+ * How many times a plan is drawn: math read back as LaTeX that got no image
+ * takes its next form each time (padded, unpadded, plain: see planLanded).
+ */
 const PLAN_PASSES = 3
 
 /** What may hold LaTeX as written: math delimiters, a bare environment, a ```math fence. */
@@ -1327,12 +1588,15 @@ export const MARKDOWN_TAIL = '\n\n'
 export function planLanded(text: string, records: readonly PreviewRecord[], options: PlanOptions): LandedPlan {
   // Math read back as LaTeX was never shown, so how it is written is free: a
   // formula padded for an image that its part's layout then didn't place
-  // (its row too narrow) is written plain, and the plan drawn again.
-  let plain = new Set<number>()
+  // (its row too narrow) takes its next form, as streaming tries them
+  // (padded, then unpadded where its image fits its Unicode's cells, then
+  // plain), and the plan is drawn again.
+  let forms = new Map<number, number>()
   for (let pass = 1; ; pass++) {
-    const { plan, unplaced } = planOnce(text, records, options, plain)
+    const { plan, unplaced } = planOnce(text, records, options, forms)
     if (unplaced.length === 0 || pass === PLAN_PASSES) return plan
-    plain = new Set([...plain, ...unplaced])
+    forms = new Map(forms)
+    for (const id of unplaced) forms.set(id, (forms.get(id) ?? 0) + 1)
   }
 }
 
@@ -1358,8 +1622,12 @@ function nestedAt(text: string, at: number): boolean {
   return last === undefined || !last.paragraph
 }
 
-/** One pass of planLanded: the plan, with the formulas in `plain` (by InlineMark id) written plain; and those padded that got no image. */
-function planOnce(text: string, records: readonly PreviewRecord[], options: PlanOptions, plain: ReadonlySet<number>): { plan: LandedPlan; unplaced: number[] } {
+/**
+ * One pass of planLanded: the plan, the math read back as LaTeX in the form
+ * `forms` gives it (by InlineMark id: 0 padded, 1 unpadded, 2 plain); and
+ * those written padded or unpadded that got no image.
+ */
+function planOnce(text: string, records: readonly PreviewRecord[], options: PlanOptions, forms: ReadonlyMap<number, number>): { plan: LandedPlan; unplaced: number[] } {
   let inlineId = 0
   const writer = new MarkdownWriter()
   const items: Item[] = []
@@ -1432,21 +1700,36 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
   }
 
   // A display formula that gets no image: the preview (or the source, a refused formula's note) as streaming writes it there.
-  const kept = (tex: string, columns: number, nested: boolean) => {
+  // Why MathJax refuses a formula in the reply column, as streaming finds it (measured where a measure is given).
+  const refusal = (tex: string): string | undefined => {
+    if (!measure) return texErrorOf(tex, { cellWidth: 10, cellHeight: 20, emPx: 16, maxColumns, ink: { r: 0, g: 0, b: 0 } })
+    try {
+      measure(tex, maxColumns)
+      return undefined
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+      return reasonOf(error)
+    }
+  }
+
+  // A display formula that gets no image: the preview (or the source, a refused formula's note) as streaming
+  // writes it there: padded to its image's rows where streaming measured it (`measured`), else its own rows.
+  const kept = (tex: string, columns: number, nested: boolean, measured = true) => {
     changed = true
     let rows: number | undefined
     try {
-      rows = options.draw && measure ? measure(tex, columns) : undefined
+      rows = measured && options.draw && measure ? measure(tex, columns) : undefined
     } catch (error) {
       if (!(error instanceof TexError)) throw error
       return refused(tex, reasonOf(error), nested)
     }
     const lines = displayPreviewLines(tex, columns, rows)
     if (lines) return void writer.block(lines)
-    const reason = texErrorOf(tex, { cellWidth: 10, cellHeight: 20, emPx: 16, maxColumns: columns, ink: { r: 0, g: 0, b: 0 } })
+    const reason = refusal(tex)
     if (reason) refused(tex, reason, nested)
     else writer.block(sourceMarkdownLines(tex))
   }
+
 
   // Display math read back as LaTeX, where streaming would have written it.
   const display = (tex: string) => {
@@ -1455,8 +1738,12 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     if (depth > 0) {
       // In a quote, as wide as its text, at any depth (fuzz FUZZ-9), where the quote so far is one the replay follows.
       const columns = quoteColumnsFor(width, depth)
-      if (placeable(recent, width, maxColumnsOf(options), mode) && overlay(tex, columns, true, depth)) return
-      return kept(tex, columns, true)
+      // Where it isn't, streaming wrote it unmeasured (no image could be placed): its preview's own rows.
+      if (placeable(recent, width, maxColumnsOf(options), mode)) {
+        if (overlay(tex, columns, true, depth)) return
+        return kept(tex, columns, true)
+      }
+      return kept(tex, columns, true, false)
     }
     if (nestedAt(recent, recent.length)) {
       // In a list item: as wide as its text, its image over it; the preview alone where the replay doesn't follow the list.
@@ -1478,7 +1765,10 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       } else if (!segment.display) {
         const fallback = inlineFallback(segment)
         const id = inlineId++
-        const padded = options.inline && !plain.has(id) ? inlinePreview(segment.tex, options.inline.env, options.inline.width) : null
+        const form = forms.get(id) ?? 0
+        const env = options.inline?.env
+        const preview = !env || form > 1 ? null : form === 0 ? inlinePreview(segment.tex, env, options.inline!.width) : narrowPreview(segment.tex, env)
+        const padded = preview && preview.columns <= options.inline!.width ? preview : null
         if (padded) {
           mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: fallback, id })
           continue

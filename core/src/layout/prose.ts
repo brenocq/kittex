@@ -55,9 +55,25 @@ const GLUE = / (\d{1,9}[.)])(?!\w)/g
 
 /** Whether markdown holds something whose drawing kittex can't follow at all (controls, tags). */
 export function unfollowable(markdown: string): boolean {
-  if (/[\t\r\u0000-\u0008\u000b-\u001f\u007f]/.test(markdown)) return true
-  for (const tag of markdown.matchAll(/<[A-Za-z/!?]/g)) if (!AUTOLINK.test(markdown.slice(tag.index))) return true
-  return false
+  return unfollowableFrom(markdown) !== undefined
+}
+
+/**
+ * Where markdown starts holding something whose drawing kittex can't follow
+ * (see unfollowable): the start of the line it is on (a line's drawing never
+ * depends on the lines after it, so a partial layout stops there); undefined
+ * where it holds none.
+ */
+export function unfollowableFrom(markdown: string): number | undefined {
+  let at = markdown.search(/[\t\r\u0000-\u0008\u000b-\u001f\u007f]/)
+  for (const tag of markdown.matchAll(/<[A-Za-z/!?]/g)) {
+    if (at >= 0 && tag.index >= at) break
+    if (!AUTOLINK.test(markdown.slice(tag.index))) {
+      at = tag.index
+      break
+    }
+  }
+  return at < 0 ? undefined : markdown.lastIndexOf('\n', at - 1) + 1
 }
 
 /**
@@ -104,10 +120,21 @@ export function cutPartial(visible: VisibleText, stop: number, at = visible.text
  * sure of. `mode`: how the engine draws links (none are followed unknown).
  */
 export function visibleProse(markdown: string, mode: LinkMode = {}, partial = false): VisibleText | null {
-  if (unfollowable(markdown)) return null
+  // The engine reads the whole text as markdown or as written, however much of it is laid out.
+  const asWritten = !MARKDOWN_LIKE.test(markdown) && !markdown.includes('&nbsp;')
+  const cut = unfollowableFrom(markdown)
+  if (cut === undefined) return visibleOf(markdown, mode, partial, asWritten, markdown)
+  if (!partial) return null
+  // Partial: drawn up to the line holding what isn't followed.
+  const before = visibleOf(markdown.slice(0, cut), mode, true, asWritten, markdown)
+  return before && { ...before, stop: Math.min(before.stop ?? Infinity, cut) }
+}
+
+/** visibleProse of markdown with nothing unfollowable in it, read as written or not; `whole`: the text it begins (where the engine moves links). */
+function visibleOf(markdown: string, mode: LinkMode, partial: boolean, asWritten: boolean, whole: string): VisibleText | null {
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   const out: VisibleText = { text: '', source: [] }
-  if (!MARKDOWN_LIKE.test(markdown) && !markdown.includes('&nbsp;')) {
+  if (asWritten) {
     emit(out, markdown, 0)
   } else {
     let tokens: Token[]
@@ -141,7 +168,7 @@ export function visibleProse(markdown: string, mode: LinkMode = {}, partial = fa
     }
     if (out.stop === undefined && at !== markdown.length) return null
   }
-  if (!linksHold(markdown, links)) return null
+  if (!linksHold(whole, links)) return null
   // The engine drops leading newlines and trailing whitespace of a prose run.
   const lead = /^\n*/.exec(out.text)![0].length
   const kept = out.text.slice(lead).trimEnd().length

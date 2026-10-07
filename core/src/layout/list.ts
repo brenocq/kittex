@@ -1,7 +1,7 @@
 import type { Token, Tokens } from 'marked'
 
 import type { InlineLinks, LinkMode } from './links.js'
-import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
+import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowableFrom } from './prose.js'
 import type { VisibleText } from './prose.js'
 import { codeWidth, textWidth } from './width.js'
 import { wrapLine } from './wrap.js'
@@ -177,7 +177,15 @@ export class Canvas {
  * followed (see above). `mode`: how the engine draws links.
  */
 export function drawList(markdown: string, width: number, mode: LinkMode = {}, partial = false): Canvas | null {
-  if (unfollowable(markdown) || !(width >= 1)) return null
+  if (!(width >= 1)) return null
+  const cut = unfollowableFrom(markdown)
+  if (cut !== undefined) {
+    if (!partial || cut === 0) return null
+    // Partial: drawn up to the line holding what isn't followed (the lines above it are drawn the same whatever follows).
+    const canvas = drawList(markdown.slice(0, cut), width, mode, true)
+    canvas?.halt(cut)
+    return canvas
+  }
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
@@ -204,7 +212,10 @@ export function drawList(markdown: string, width: number, mode: LinkMode = {}, p
       listed = true
       if (!drawItems(canvas, token as Tokens.List, mapped, 0, 0, links)) return stopped()
     } else if (token.type !== 'space' || !listed) {
-      return null
+      // Partial: what follows the list in its part (a block the replay doesn't follow) is drawn under it.
+      if (!partial || !listed) return null
+      canvas.halt(at)
+      return stopped()
     }
     at += token.raw.length
     after = token.type
@@ -255,6 +266,8 @@ function drawItem(
   type Part = { kind: 'inline'; runs: Run[]; newlines: string } | { kind: 'list'; list: Tokens.List; raw: Mapped }
   const parts: Part[] = []
   let at = 0
+  /** Where the item holds a block the replay doesn't follow (a code block, a quote): it is drawn up to there. */
+  let halt: number | undefined
   for (const token of item.tokens) {
     if (token.type === 'list') {
       const list = token as Tokens.List
@@ -276,7 +289,9 @@ function drawItem(
       part.runs.push({ tokens: run.tokens, text: run.text, at: start })
       at = start + run.text.length
     } else {
-      return false
+      const start = text.text.indexOf(token.raw.trimStart(), at)
+      halt = text.map[start < 0 ? at : start] ?? raw.map[0] ?? 0
+      break
     }
   }
   if (parts[0]?.kind !== 'inline') return false
@@ -311,7 +326,9 @@ function drawItem(
     if (!canvas.draw(shown, top, left, room)) return false
     gap = drawn.blankAfter
   }
-  return true
+  if (halt === undefined) return true
+  canvas.halt(halt)
+  return false
 }
 
 type Run = { space: true } | { space?: false; tokens: readonly Token[]; text: string; at: number }

@@ -140,18 +140,26 @@ function partRows(source: string, part: NonNullable<ReturnType<typeof blockParts
   // A paragraph's indentation is drawn as it is (seen live on 2.1.291: `   which gives y.` after a list's
   // display image keeps its three cells); the replay refuses a row opening with a space, so it gets glyphs.
   if (part.paragraph) markdown = markdown.replace(/(^|\n)([ \t]+)/g, (_, lead: string, run: string) => lead + SPACE_GLYPH.repeat(run.length))
-  let lines: string[] | undefined
-  if (part.paragraph) {
-    // The engine reads the whole text as markdown (it holds markdown, or `&nbsp;`), this paragraph's escapes
-    // included even where the paragraph alone holds no markdown: one more paragraph keeps the replay reading it so.
-    lines = layoutProse(markdown.replace(/\s+$/, '') + '\n\n' + PAD_GLYPH, ctx.width, [], ctx.mode)?.lines.slice(0, -2)
+  // Whole, or (as kittex lays a part out) up to what the replay can't follow: the rows before it are the
+  // engine's, the rest of the part an opaque row.
+  const layout = (partial: boolean) => {
+    if (part.paragraph) {
+      // The engine reads the whole text as markdown (it holds markdown, or `&nbsp;`), this paragraph's escapes
+      // included even where the paragraph alone holds no markdown: one more paragraph keeps the replay reading it so.
+      const laid = layoutProse(markdown.replace(/\s+$/, '') + '\n\n' + PAD_GLYPH, ctx.width, [], ctx.mode, partial)
+      return laid && laid.stop === undefined ? { ...laid, lines: laid.lines.slice(0, -2) } : laid
+    }
+    if (part.list) return layoutList(markdown, ctx.width, [], ctx.mode, partial)
+    if (part.heading) return layoutHeading(markdown, ctx.width, [], ctx.mode, partial)
+    if (part.quote) return layoutQuote(markdown, ctx.width, [], ctx.mode, partial)
+    if (part.table) return layoutTable(markdown, ctx.columns, [], ctx.width, ctx.mode)
+    return null
   }
-  else if (part.list) lines = layoutList(markdown, ctx.width, [], ctx.mode)?.lines
-  else if (part.heading) lines = layoutHeading(markdown, ctx.width, [], ctx.mode)?.lines
-  else if (part.quote) lines = layoutQuote(markdown, ctx.width, [], ctx.mode)?.lines
-  else if (part.table) lines = layoutTable(markdown, ctx.columns, [], ctx.width, ctx.mode)?.lines
-  if (!lines) return [{ opaque: source, source }]
-  return laidOut(lines, source, ctx.mode.emojiSequences === true)
+  const whole = layout(false)
+  if (whole) return laidOut(whole.lines, source, ctx.mode.emojiSequences === true)
+  const partial = layout(true)
+  if (partial?.stop === undefined || partial.stop <= 0) return [{ opaque: source, source }]
+  return [...laidOut(partial.lines, source, ctx.mode.emojiSequences === true), { opaque: markdown.slice(partial.stop), source }]
 }
 
 /** A part's laid-out lines as rows (preview lines' glyphs drawn back as blanks), each knowing its part's source. */
@@ -195,11 +203,12 @@ export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext, stream
     const top = rows.length
     if (piece.kind === 'prose') {
       const drawn = engineRows(piece.text, ctx)
-      // kittex lays a part out up to what the replay can't follow; this model can't, so it can't tell those rows.
-      const unknown = rows.some(row => row.opaque !== undefined) || drawn.some(row => row.opaque !== undefined)
+      // Below a part the replay can't follow (up to its row), the rows aren't known here.
+      const above = rows.some(row => row.opaque !== undefined)
       rows.push(...drawn)
       const table = drawn.some(row => row.part === 'table')
       for (const inline of piece.inline ?? []) {
+        const unknown = above || drawn.slice(0, inline.row + 1).some(row => row.opaque !== undefined)
         // A display formula is drawn over its preview as the inline ones are: in the reply column (a paragraph
         // of preview lines, column 0), or in a quote or a list item.
         const overlay = inline.display === true || isOverlay(inline.tex, inline.image.rows, inline.image.columns, streamed)
