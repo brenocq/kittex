@@ -2681,10 +2681,20 @@ export interface TexUse {
   inline: boolean
 }
 
-/** One short line kittex adds to its instructions to the model where the local LaTeX draws diagrams. */
+/**
+ * What kittex adds to its instructions to the model where the local LaTeX
+ * draws diagrams. It answers what a capable model would otherwise check with
+ * its tools (what is loaded, how colours come out, whether it compiles), and
+ * tells it not to: kittex compiles the block, and a failure shows TeX's error.
+ */
 export const DIAGRAM_INSTRUCTIONS =
   'Diagrams are drawn here too: for a figure, plot, molecule, circuit or commutative diagram, write TikZ (or pgfplots, chemfig, ' +
-  'circuitikz, tikz-cd) in a ```latex code block, a tikzpicture or similar environment with no preamble, and it is shown as a picture.'
+  'circuitikz, tikz-cd) in a ```latex code block, a tikzpicture or similar environment, and kittex compiles it with the local TeX ' +
+  'and shows it as a picture. Those packages, siunitx and the common TikZ libraries are already loaded; put any other ' +
+  '`\\usetikzlibrary`, `\\usepgfplotslibrary` or `\\usepackage` line at the top of the block. Use colours as on paper: they are ' +
+  "adapted to the terminal's theme. A block that fails stays code with TeX's error under it, so there is nothing to verify: unless " +
+  "asked, don't compile or test a diagram, look for TeX or its packages, write .tex files or read kittex's files; a diagram needs no " +
+  'tool. Keep sample counts moderate (about 100 for a curve, 25×25 for a surface) so each picture compiles in a second or two.'
 
 /** Where a diagram is drawn: the width prose wraps at, centred, MAX_PICTURE_ROWS tall at most, on the terminal's background. */
 export function pictureEnvFor(env: KittexEnv, columns = env.columns): PictureEnv {
