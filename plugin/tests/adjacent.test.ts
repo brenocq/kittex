@@ -186,9 +186,12 @@ describe('adjacent blocks: the landed plan', () => {
     expect(plan(text).pieces).toEqual(plan(landed, records).pieces)
   })
 
-  test('a block whose parts are not all followed keeps its Unicode', async () => {
+  test('a block whose parts are not all followed is laid out up to what is not (FUZZ-3), and keeps its Unicode past it', async () => {
     await init()
     const { pieces } = plan('Text with $x$ here\n<div>\nhtml\n</div>')
-    expect(pieces.every(piece => piece.kind !== 'prose' || !piece.inline?.length)).toBe(true)
+    expect(pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(image => [image.tex, image.row, image.col]) : []))).toEqual([['x', 0, 10]])
+    expect(pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain('<div>\nhtml\n</div>')
+    const after = plan('<div>\nhtml\n</div>\nText with $x$ here').pieces
+    expect(after.every(piece => piece.kind !== 'prose' || !piece.inline?.length)).toBe(true)
   })
 })

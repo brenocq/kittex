@@ -143,3 +143,30 @@ describe('layoutQuote', () => {
     expect(layoutQuote('> one&nbsp;&nbsp;two three four five', 14)).toBeNull()
   })
 })
+
+describe('partial quotes and headings (FUZZ-3)', () => {
+  // What the replay doesn't follow later in a quote or a heading (a code
+  // block, a tab, a link with no link mode known) leaves what comes before it
+  // laid out: the engine draws it the same whatever follows.
+  const at = (markdown: string, part: string) => ({ start: markdown.indexOf(part), end: markdown.indexOf(part) + part.length })
+
+  test('a quote is laid out up to the line holding a code block, a tab or a tag', () => {
+    for (const rest of ['> ```\n> code\n> ```', '> then\tmore y⠀', '> <b>bold</b> y⠀', '```']) {
+      const markdown = `> See x⠀ here.\n${rest}`
+      expect(layoutQuote(markdown, 40, [at(markdown, 'x⠀')])).toBeNull()
+      const layout = layoutQuote(markdown, 40, [at(markdown, 'x⠀')], {}, true)
+      expect({ rest, places: layout?.places }).toEqual({ rest, places: [{ row: 0, col: 6, columns: 2 }] })
+      expect(layout?.stop).toBe(markdown.indexOf('\n') + 1)
+    }
+  })
+
+  test('a heading is laid out up to a link with no link mode known', () => {
+    const markdown = '## See x⠀ in [docs](https://example.com) for y⠀'
+    expect(layoutHeading(markdown, 60, [at(markdown, 'x⠀')])).toBeNull()
+    expect(layoutHeading(markdown, 60, [at(markdown, 'x⠀'), at(markdown, 'y⠀')], {}, true)?.places).toEqual([{ row: 0, col: 4, columns: 2 }, null])
+    expect(layoutHeading(markdown, 60, [at(markdown, 'x⠀'), at(markdown, 'y⠀')], { hyperlinks: true }, true)?.places).toEqual([
+      { row: 0, col: 4, columns: 2 },
+      { row: 0, col: 19, columns: 2 },
+    ])
+  })
+})
