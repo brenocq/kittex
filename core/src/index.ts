@@ -88,6 +88,26 @@ export const MAX_TEX_LENGTH = 4096
 /** Images with more pixels than this are refused before they are drawn (255 × 255 large cells would be ~200 M). */
 export const MAX_PIXELS = 16_000_000
 
+/**
+ * The longest side, in pixels, of a PNG Claude Code's Image takes; a larger
+ * one fails the whole drawing it is in (the engine then draws its own). An
+ * image never spans more columns than fit in it (large cells: narrower than
+ * the reply column), and a formula taller than it is refused.
+ */
+export const MAX_IMAGE_SIDE = 4096
+
+/**
+ * The most bytes of PNG Claude Code takes, for one Image and for all the
+ * Images of one drawing together (one ui.render answer; past either, it draws
+ * its own instead). A formula whose PNG alone passes it is refused.
+ */
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+
+/** The columns an image `maxColumns` wide may take: at most 255, and no wider than MAX_IMAGE_SIDE pixels. */
+export function imageColumns(env: Pick<RenderEnv, 'cellWidth' | 'maxColumns'>): number {
+  return Math.max(1, Math.min(255, Math.floor(env.maxColumns), Math.floor(MAX_IMAGE_SIDE / env.cellWidth)))
+}
+
 let ready: Promise<void> | undefined
 
 /**
@@ -140,9 +160,12 @@ export function measureDisplay(tex: string, env: RenderEnv): CellBox {
   const box = measure(result, rasterOptions(env))
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
   const forms = previewForms(tex, previewWidth(env.maxColumns))
-  if (forms.length === 0 || forms.some(form => form.lines.length <= box.rows)) return box
-  return measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
+  const reserved = forms.length === 0 || forms.some(form => form.lines.length <= box.rows) ? box : measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
+  if (reserved.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
+  return reserved
 }
+
+const TOO_LARGE = 'formula too large to draw'
 
 function tooSmall(scale: number): string {
   return `formula too wide to draw legibly (it would be drawn at ${Math.round(scale * 100)}% size)`
@@ -158,9 +181,11 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     const options = rasterOptions(env, minRows)
     const box = measure(result, options)
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
-    if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
+    if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS || box.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
+    const png = encodePng(raster, env.ink, env.inkOver)
+    if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png })
   }
   return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
@@ -257,7 +282,9 @@ export function renderInline(tex: string, env: InlineEnv, columns: number, place
     const result = typesetInline(tex)
     const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
+    const png = encodePng(raster, env.ink, env.inkOver)
+    if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png })
   }
   return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
 }
@@ -293,7 +320,7 @@ export function toBase64(bytes: Uint8Array): string {
 function typesetDisplay(tex: string, env: RenderEnv): TypesetResult {
   if (tex.length > MAX_TEX_LENGTH) throw new TexError(`formula longer than ${MAX_TEX_LENGTH} characters`)
   // A cell clear of each edge: a tag (\tag, a numbered row) sits at the line's right end.
-  const lineWidth = (previewWidth(env.maxColumns) * env.cellWidth) / env.emPx
+  const lineWidth = (previewWidth(imageColumns(env)) * env.cellWidth) / env.emPx
   const key = `${lineWidth.toFixed(3)}\n${tex}`
   return remember(typesetCache, key) ?? store(typesetCache, key, typeset(tex, { display: true, lineWidth }))
 }
@@ -337,7 +364,7 @@ function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'
     emPx: env.emPx,
     cellWidth: env.cellWidth,
     cellHeight: env.cellHeight,
-    maxColumns: Math.max(1, Math.min(255, columns)),
+    maxColumns: imageColumns({ cellWidth: env.cellWidth, maxColumns: columns }),
     align,
     minRows: 1,
     baselinePx: env.baselinePx,
@@ -354,7 +381,7 @@ function rasterOptions(env: RenderEnv, minRows?: number): RasterOptions {
     emPx: env.emPx,
     cellWidth: env.cellWidth,
     cellHeight: env.cellHeight,
-    maxColumns: Math.max(1, Math.min(255, env.maxColumns)),
+    maxColumns: imageColumns(env),
     align: 'center',
     minRows,
     ...(env.weight !== undefined ? { weight: env.weight } : {}),

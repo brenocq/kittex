@@ -26,6 +26,7 @@ import {
   fontCell,
   imageInkBackground,
   measureDisplay,
+  previewDisplay,
   readTerminalColors,
   renderDisplay,
   renderInline,
@@ -67,6 +68,7 @@ import {
   streamEnvFor,
   withoutTextOverride,
 } from './math.ts'
+import { altText, fallbackLines, overBudget } from './budget.ts'
 import type { InlineSlot, KittexEnv, MathOptions, Piece, PreviewRecord } from './math.ts'
 
 type $ = EngineInterface
@@ -287,8 +289,11 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // opens with a formula gets the bullet beside the image's first row,
     // where the preview's first line had it.
     const { pieces } = plan
+    // One answer holds at most 2 MiB of Image source: past it, the rest keep their Unicode (budget.ts).
+    const left = overBudget(pieces)
     if (images) cells?.poll()
     const { Box, Button, Image, Text } = $.ui.resolve(e as Extract<LandedEvent, { surface: 'terminal' }>)
+    const indentOf = (isFirstOfReply: boolean) => (isFirstOfReply ? REPLY_INDENT : 0)
     const first = e.props.isFirstOfReply
     const indent = first ? REPLY_INDENT : 0
     // A selection over an image copies the terminal's placeholder cells, not the
@@ -300,9 +305,13 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       $.ui.toast(copied.isCopied ? 'Copied the formula as LaTeX' : 'Could not copy the formula')
     }
     const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
-      piece.kind === 'image' ? (
+      piece.kind === 'image' && left.has(piece.image) ? (
+        <Box key={`kittex-formula-${i}-text`} width={piece.image.columns} height={piece.image.rows} flexDirection="column">
+          <Text>{fallbackLines(previewDisplay(piece.tex, { maxColumns: piece.image.columns }, piece.image.rows), piece.tex, piece.image.columns, piece.image.rows).join('\n')}</Text>
+        </Box>
+      ) : piece.kind === 'image' ? (
         <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
-          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={piece.tex} />
+          <Image source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={altText(piece.tex)} />
           <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
             <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex)} />
           </Box>
@@ -323,15 +332,15 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // its own drawing under a Box with a size, a position or an overflow.
     const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean) => {
       const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
-      if (!piece.inline?.length) return text
-      const left = isFirstOfReply ? REPLY_INDENT : 0
+      const inline = piece.inline?.filter(one => !left.has(one.image))
+      if (!inline?.length) return text
       return (
         <Box flexDirection="row-reverse">
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
             {text}
           </Box>
           <Box flexDirection="column" width={0} flexShrink={0} alignItems="flex-start">
-            {inlineFlow(piece.inline, left).map(({ inline, marginTop, marginLeft }: InlineSlot, k: number) => (
+            {inlineFlow(inline, indentOf(isFirstOfReply)).map(({ inline, marginTop, marginLeft }: InlineSlot, k: number) => (
               <Box
                 key={`kittex-inline-${k}-${signatureOf(inline.image.png)}`}
                 marginTop={marginTop}
@@ -340,7 +349,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
                 height={inline.image.rows}
                 flexShrink={0}
               >
-                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={inline.tex} />
+                <Image source={{ png: base64Of(inline.image.png) }} columns={inline.image.columns} rows={inline.image.rows} alt={altText(inline.tex)} />
               </Box>
             ))}
           </Box>
