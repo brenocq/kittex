@@ -13,6 +13,7 @@ import type { On, RenderSurface } from 'claude-code'
 
 import { COLUMNS, COMPOSE, INTRO, KITTY, startSession, test } from './support.ts'
 import { SECTION_ID } from '../hooks/math.ts'
+import { DOCTOR_COMMAND } from '../hooks/doctor.ts'
 
 const TIKZ = '```latex\n\\begin{tikzpicture}\n\\draw[red] (0,0) -- (2,1);\n\\end{tikzpicture}\n```'
 const TABLE = '| quantity | value |\n|---|---|\n| energy | $E = mc^2$ |\n| area | $\\pi r^2$ |'
@@ -21,7 +22,8 @@ const REPLY = `Euler's identity:\n\n$$\ne^{i\\pi} + 1 = \\frac{a}{b}\n$$\n\nand 
 const REMOTE: readonly RenderSurface[] = ['desktop', 'vscode', 'mobile']
 
 /** The world beneath the plugins without a terminal: kitty's variables (Claude Code started from it), every command recorded and answered. */
-function world(on: On): { runs: string[][] } {
+function world(on: On, attached: readonly RenderSurface[] = []): { runs: string[][] } {
+  on('session.surfaces', () => ({ value: attached }))
   mock.env(on, { ...KITTY, PATH: '/usr/bin', HOME: '/home/user' })
   const runs: string[][] = []
   on('process.run', ($, e) => {
@@ -122,5 +124,42 @@ describe('a terminal session with a client attached', () => {
     }
     // The terminal's drawing of the same reply is kittex's.
     expect(await (await mountOn($, 'terminal', REPLY)).find({ type: 'Image' })).toBeDefined()
+  })
+})
+
+/** /kittex-doctor as typed at the prompt. */
+const RUN = { command: DOCTOR_COMMAND, args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 } }
+
+describe('/kittex-doctor', () => {
+  test('in a -p run: no terminal, replies as Claude wrote them, nothing about kitty graphics', async ($, on) => {
+    world(on)
+    await $.session.start({ cwd: '/tmp', surface: null, isInteractive: false })
+    const { text } = await $.command.run(RUN)
+    expect(text).toContain('· no surface')
+    expect(text).toContain('– no terminal (a -p run or the SDK): kittex leaves replies as Claude wrote them')
+    expect(text).toContain('– not a terminal: replies pass as Claude wrote them')
+    expect(text).not.toContain('kitty graphics with Unicode placeholders')
+    expect(text).not.toContain('no reply has streamed yet')
+    expect(text).toContain('**Diagrams (local TeX)**')
+  })
+
+  for (const client of REMOTE) {
+    test(`in the SDK with ${client} attached: that surface, drawing its own way`, async ($, on) => {
+      world(on, [client])
+      await $.session.start({ cwd: '/tmp', surface: null, isInteractive: false })
+      const { text } = await $.command.run(RUN)
+      expect(text).toContain(`· ${client} surface`)
+      expect(text).toContain(`– the ${client} surface: kittex leaves replies to its own drawing here`)
+      expect(text).not.toContain('kitty graphics with Unicode placeholders')
+    })
+  }
+
+  test('in a terminal with a phone attached: the terminal, and the phone left to its own drawing', async ($, on) => {
+    on('session.surfaces', () => ({ value: ['terminal', 'mobile'] }))
+    await startSession($, on)
+    const { text } = await $.command.run(RUN)
+    expect(text).toContain('· terminal surface')
+    expect(text).toContain('✓ kitty: kitty graphics with Unicode placeholders')
+    expect(text).toContain("– also drawn on mobile: kittex leaves replies to that surface's own drawing there")
   })
 })

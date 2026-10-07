@@ -1636,12 +1636,12 @@ function texRefusal(tex: string, display: boolean): TexError | undefined {
 
 // ─── /kittex-doctor (doctor.ts) ──────────────────────────────────────────────
 
-/** The surface session.start reported, for the doctor. */
-let doctorSurface: string | undefined
+/** The surface session.start reported, for the doctor (null: a -p run or the SDK; undefined: not seen). */
+let doctorSurface: string | null | undefined
 
 /** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
 async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {
-  doctorSurface = surface ?? undefined
+  doctorSurface = surface
   await $.command.register({ name: 'kittex-doctor', description: DOCTOR_DESCRIPTION }).catch(() => undefined)
   return started
 }
@@ -1680,7 +1680,10 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
   ])
   const os = osFacts(uname, typeof osRelease === 'string' ? osRelease : undefined)
   const info = terminal ?? detectTerminal(variables)
-  const surface = doctorSurface
+  // Where the session draws now: session.start's surface, else (a -p run or the SDK) the clients attached since.
+  const attached = await $.session.surfaces().catch(() => [] as const)
+  const clients = attached.filter(one => one !== 'terminal')
+  const surface = doctorSurface === null ? (clients[0] ?? 'none') : doctorSurface
   const drawn = !off && surface === 'terminal' && (env?.images ?? info.images) && math.block === 'image'
   const env2 = { PATH, HOME: variables.HOME, TMPDIR, XDG_CACHE_HOME }
   // The section the setup looked for: still there now?
@@ -1714,6 +1717,7 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
     kittex: { ...(typeof pluginVersion === 'string' ? { version: pluginVersion } : {}), build: BUILD_ID.replace(/^kittex-build:/, '') },
     ...(version ? { claudeCode: version.version } : {}),
     ...(surface ? { surface } : {}),
+    ...(surface === 'terminal' && clients.length > 0 ? { clients } : {}),
     ...(off ? {} : { terminal: terminalFacts }),
     streaming: { off, streamed: streams.size, unstreamed: pendingRows.length, ...(section !== undefined ? { section } : {}), managed: policy !== undefined && Object.keys(policy).length > 0 },
     options: {
