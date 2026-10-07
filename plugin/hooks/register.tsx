@@ -1536,12 +1536,13 @@ async function setUpTex($: $): Promise<void> {
     write: (path, text) => $.fs.write(path, text),
     // A missing file is no error (a cache miss): asked first, so the engine logs no failed read.
     read: async path => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).catch(() => undefined) : undefined),
+    readBytes: path => readBytes($, path),
   }
   try {
-    const [tmpdir, cacheHome] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME')])
+    const [tmpdir, cacheHome, path] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME'), $.env.get('PATH')])
     const home = processEnv.HOME
     const cacheDir = texCacheDir({ XDG_CACHE_HOME: cacheHome, HOME: home })
-    const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}) })
+    const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}), ...(path !== undefined ? { path } : {}) })
     // For the next session's first renders: the cache's key, or nothing (TeX gone: its diagrams start as code).
     await $.store.set(REMEMBERED_TEX, setup ?? null).catch(() => undefined)
     if (!setup) return
@@ -1655,6 +1656,7 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
     read: async path => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).catch(() => undefined) : undefined),
     exists: path => $.fs.exists(path),
     size: path => $.fs.stat(path).then(stat => stat.size, () => undefined),
+    readBytes: path => readBytes($, path),
   }
   const [uname, osRelease, version, manifest, env, policy] = await Promise.all([
     platform ?? run(['uname', '-s']).then(out => (out?.exitCode === 0 ? out.stdout : undefined)),
@@ -1734,5 +1736,15 @@ async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['f
     ...(file ? { file } : {}),
     ...(source ? { source } : {}),
     metrics,
+  }
+}
+
+/** A file's bytes, or undefined when it can't be read (the sandbox's Uint8Array has the base64 helpers). */
+async function readBytes($: $, path: string): Promise<Uint8Array | undefined> {
+  try {
+    const { base64 } = await $.fs.read(path, { as: 'bytes' })
+    return (Uint8Array as unknown as { fromBase64(text: string): Uint8Array }).fromBase64(base64)
+  } catch {
+    return undefined
   }
 }

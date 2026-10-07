@@ -20,6 +20,7 @@ import {
 import type { DiagramFacts, DoctorFacts, DoctorHost, OsFacts } from '../hooks/doctor.ts'
 import { formatName } from '../hooks/core.js'
 import { startSession, test } from './support.ts'
+import { TIKZ_DVI } from './fixtures/dvi.ts'
 
 const ARCH = osFacts('Linux\n', 'NAME="Arch Linux"\nPRETTY_NAME="Arch Linux"\nID=arch\n')
 const DEBIAN = osFacts('Linux', 'PRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nID=debian\n')
@@ -111,6 +112,10 @@ interface FakeOptions {
   format?: boolean
   /** latex fails on the trial with this log line. */
   texError?: string
+  /** TeX Live installed here (its programs found through /usr/bin links). */
+  texRoot?: string
+  /** dvisvgm -V1 names a Ghostscript it links. */
+  linkedGs?: boolean
 }
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20pt" height="10pt" viewBox="0 0 20 10"><path d="M0 0L20 10" stroke="#000" stroke-width="1"/></svg>'
@@ -129,24 +134,37 @@ function fakeHost(options: FakeOptions = {}) {
       runs.push([...argv])
       // Confined commands: past bwrap's and prlimit's own arguments.
       const at = argv.findIndex(arg => arg === 'latex' || arg === 'dvisvgm' || arg === 'mktemp' || arg === 'rm')
-      const name = argv[0] === 'bwrap' && argv.at(-1) === 'true' ? 'bwrap-probe' : at >= 0 && (argv[0] === 'bwrap' || argv[0] === 'prlimit') ? argv[at]! : argv[0]!
-      if (missing.has(name === 'bwrap-probe' ? 'bwrap' : name)) throw new Error('not found')
+      const name = at >= 0 && (argv[0] === 'bwrap' || argv[0] === 'prlimit') ? argv[at]! : argv[0]!
+      if (missing.has(name) || (argv.includes('bwrap') && missing.has('bwrap'))) throw new Error('not found')
       const args = argv.slice(at >= 0 && name === argv[at] ? at + 1 : 1)
+      // The sandbox's trial (latex \stop inside bubblewrap).
+      if (argv[0] === 'bwrap' || argv.includes('bwrap')) {
+        if (options.bwrapError && name === 'latex') return result(1, '', `bwrap: ${options.bwrapError}\n`)
+      }
       switch (name) {
+        case 'realpath':
+          if (options.texRoot && args[0] === '-e') {
+            const real = args.slice(2).flatMap(arg => (/\/(latex|dvisvgm)$/.test(arg) ? [`${options.texRoot}/bin/x86_64-linux/${arg.split('/').pop()}`] : arg.includes('/.config/') ? [] : [arg]))
+            return result(0, `${[...new Set(real)].join('\n')}\n`)
+          }
+          return result(0, args.filter(arg => arg.startsWith('/') && !(arg.startsWith('/usr/local/bin/') || [...missing].some(gone => arg.endsWith(`/${gone}`)))).join('\n') + '\n')
+        case 'ldd':
+          return result(0, '\tlibc.so.6 => /usr/lib/libc.so.6 (0x7f00)\n\t/lib64/ld-linux-x86-64.so.2 (0x7f01)\n')
         case 'latex':
           if (args[0] === '--version') return result(0, `${LATEX_VERSION}\nkpathsea version 6.4.2\n`)
+          if (args.at(-1) === '\\stop') return result(0, 'No pages of output.')
           return options.texError ? result(1, `! ${options.texError}.\nl.12 x\n`) : result(0, 'Output written on kittex.dvi')
         case 'dvisvgm':
           if (args[0] === '--version') return result(0, `${DVISVGM_VERSION}\n`)
           if (args[0] === '--help') return result(0, `  -S, --no-specials[=prefixes]  don't process specials\n${options.libgs ? '      --libgs=filename  set name of Ghostscript shared library\n' : ''}`)
+          if (args[0] === '-V1') return result(0, `${DVISVGM_VERSION}\n${options.linkedGs ? 'Ghostscript: 10.08.0\n' : ''}`)
           return args.includes('--libgs=/tmp/kittex-tex.ABCDEFGHIJ/no-ghostscript') && !options.libgs ? result(1, '', 'ERROR: unknown option --libgs') : result(0, SVG)
         case 'kpsewhich':
           if (args[0] === '--version') return result(0, 'kpathsea version 6.4.2\n')
+          if (args[0]?.startsWith('-expand-braces=')) return result(0, options.texRoot ? `${options.texRoot}:/tmp/kittex-tex.probe/.config/texlive/texmf:!!${options.texRoot}/texmf-dist\n` : '!!/usr/share/texmf-dist:/usr/share/texmf\n')
           return result(options.noFiles?.length ? 1 : 0, args.filter(file => !options.noFiles?.includes(file)).map(file => `/usr/share/texmf-dist/tex/${file}`).join('\n') + '\n')
         case 'prlimit':
           return result(0, 'prlimit from util-linux 2.41\n')
-        case 'bwrap-probe':
-          return options.bwrapError ? result(1, '', `bwrap: ${options.bwrapError}\n`) : result(0)
         case 'mktemp':
           return result(0, '/tmp/kittex-tex.ABCDEFGHIJ\n')
         case 'rm':
@@ -167,6 +185,7 @@ function fakeHost(options: FakeOptions = {}) {
       return path === '/home/u/.cache/kittex'
     },
     size: async path => (options.format && path.endsWith('.fmt') ? 10_800_000 : undefined),
+    readBytes: async () => (Uint8Array as unknown as { fromBase64(text: string): Uint8Array }).fromBase64(TIKZ_DVI),
   }
   return { host, runs, writes }
 }
@@ -180,14 +199,14 @@ describe('the probes', () => {
     expect(facts.latex).toEqual({ path: '/usr/bin/latex', version: LATEX_VERSION })
     expect(facts.dvisvgm).toEqual({ path: '/usr/bin/dvisvgm', version: DVISVGM_VERSION })
     expect(facts.files?.every(file => file.path !== undefined)).toBe(true)
-    expect(facts.bwrap).toEqual({ path: '/usr/bin/bwrap', usable: true })
+    expect(facts.bwrap).toEqual({ path: '/usr/bin/bwrap', usable: true, sandbox: { binds: [], path: '/usr/bin:/usr/local/bin' } })
     expect(facts.prlimit?.path).toBe('/usr/bin/prlimit')
     expect(facts.libgs).toBe(true)
     const name = formatName(`${LATEX_VERSION}\n${DVISVGM_VERSION}`)
     expect(facts.format).toEqual({ path: `/home/u/.cache/kittex/tex/fmt/${name}.fmt`, bytes: 10_800_000 })
     expect(facts.trial).toMatchObject({ ok: true, format: true })
     // The trial runs confined, from the format, and TeX sees only the fixed picture.
-    const latex = runs.find(argv => argv.includes('latex') && !argv.includes('--version'))!
+    const latex = runs.find(argv => argv.includes('-jobname=kittex'))!
     expect(latex.slice(0, 2)).toEqual(['prlimit', expect.stringMatching(/^--fsize=/)])
     expect(latex).toContain('bwrap')
     expect(latex).toContain(`-fmt=${name}`)
@@ -223,9 +242,9 @@ describe('the probes', () => {
   test('bubblewrap that cannot run, and no prlimit: the trial runs unconfined', async () => {
     const { host, runs } = fakeHost({ missing: ['prlimit'], bwrapError: 'setting up uid map: Permission denied', libgs: true })
     const facts = await probe(host)
-    expect(facts.bwrap).toEqual({ path: '/usr/bin/bwrap', usable: false, error: 'bwrap: setting up uid map: Permission denied' })
+    expect(facts.bwrap).toEqual({ path: '/usr/bin/bwrap', usable: false, error: 'latex in the sandbox: bwrap: setting up uid map: Permission denied' })
     expect(facts.prlimit).toEqual({})
-    const latex = runs.find(argv => argv.includes('latex') && !argv.includes('--version'))!
+    const latex = runs.find(argv => argv.includes('-jobname=kittex'))!
     expect(latex[0]).toBe('latex')
   })
 
@@ -330,17 +349,28 @@ describe('the report', () => {
     expect(missing).toContain('✗ bubblewrap: not found: TeX can read any file you can')
     expect(missing).toContain('**To confine TeX (Arch Linux)**\n```sh\nsudo pacman -S --needed bubblewrap\n```')
     const refused = formatDoctor(facts(await probe(fakeHost({ bwrapError: 'setting up uid map: Permission denied', libgs: true }).host)))
-    expect(refused).toContain("✗ bubblewrap can't run here (bwrap: setting up uid map: Permission denied)")
+    expect(refused).toContain("✗ bubblewrap can't run TeX here (latex in the sandbox: bwrap: setting up uid map: Permission denied): kittex runs TeX without it")
     const mac = formatDoctor(facts(await allThere(MACOS), { os: MACOS }))
     expect(mac).toContain('– confinement: none on macOS (no bubblewrap, no prlimit)')
     expect(mac).toContain('nothing hides your files from TeX')
     expect(mac).not.toContain('To confine TeX')
   })
 
-  test('TeX inside a folder bubblewrap hides: said when the trial fails', async () => {
-    const diagrams = await probe(fakeHost({ texError: "I can't find file 'latex'", libgs: true }).host)
-    const text = formatDoctor(facts({ ...diagrams, latex: { path: '/home/u/texlive/2026/bin/x86_64-linux/latex', version: LATEX_VERSION } }))
-    expect(text).toContain("– `~/texlive/2026/bin/x86_64-linux/latex` is in a folder bubblewrap hides from TeX")
+  test('TeX Live inside the home folder: its tree, and only it, is bound back into the sandbox', async () => {
+    const { host, runs } = fakeHost({ texRoot: '/home/u/texlive/2026', libgs: true })
+    const diagrams = await probe(host)
+    expect(diagrams.bwrap).toMatchObject({ usable: true, sandbox: { binds: ['/home/u/texlive/2026'], path: '/home/u/texlive/2026/bin/x86_64-linux:/usr/local/bin:/usr/bin' } })
+    const latex = runs.find(argv => argv.includes('-jobname=kittex'))!
+    expect(latex.join(' ')).toContain('--ro-bind /home/u/texlive/2026 /home/u/texlive/2026')
+    expect(latex.join(' ')).not.toContain('--ro-bind /home/u /home/u')
+    expect(formatDoctor(facts(diagrams))).toContain('✓ bubblewrap: TeX runs with your home, /tmp and /run hidden (but for `~/texlive/2026`, bound read-only), and no network')
+  })
+
+  test("a dvisvgm that can't keep Ghostscript out: said, and kittex's pictures still drawn", async () => {
+    const diagrams = await probe(fakeHost({ linkedGs: true, missing: ['bwrap'] }).host)
+    expect(diagrams.postscript).toBe(true)
+    expect(diagrams.trial).toMatchObject({ ok: true })
+    expect(formatDoctor(facts(diagrams))).toContain("this dvisvgm runs PostScript through its own Ghostscript, without -dSAFER, whatever it is told (3.5 to 3.6.1): kittex's pictures hold none; a document that rotates or scales is refused, as there is no sandbox")
   })
 
   test('streaming: live, bypassed, likely bypassed, not seen yet, off', async () => {

@@ -10,7 +10,6 @@
 // only for what it refuses, and the source (or Unicode) when TeX fails too.
 
 import {
-  bwrapProbe,
   confined,
   diagramDocument,
   drawsPicture,
@@ -46,6 +45,8 @@ export interface TexHost {
   run(argv: readonly string[], init: { cwd?: string; env?: Record<string, string>; timeoutMs: number }): Promise<{ exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }>
   write(path: string, text: string): Promise<void>
   read(path: string): Promise<string | undefined>
+  /** A file's bytes (the DVI, for its specials), or undefined when it can't be read; absent: never read. */
+  readBytes?(path: string): Promise<Uint8Array | undefined>
 }
 
 /** The host as found at session start: TeX's commands are there, and how jobs are confined. */
@@ -65,7 +66,29 @@ export interface TexSetup {
    * so jobs run without it. Absent: dvisvgm takes it (TeX Live's own build).
    */
   libgs?: false
+  /**
+   * True where dvisvgm has Ghostscript linked in and can't be told to ignore
+   * PostScript (3.5 to 3.6.1 read `--no-specials=<list>` wrongly and ignore
+   * nothing): it runs every PostScript special through Ghostscript, which it
+   * starts with -dDELAYSAFER and never makes safe. kittex's own documents
+   * carry none; a document that does is refused unless bubblewrap confines
+   * the job.
+   */
+  postscript?: true
+  /** With bubblewrap: what its namespace must still show (the TeX trees and programs it hides) and the PATH jobs run with. */
+  sandbox?: Sandbox
 }
+
+/** What a job's namespace binds back read-only, and the PATH TeX is found by inside it. */
+export interface Sandbox {
+  /** Directories and files TeX needs that lie in a hidden directory (TeX Live installed into the home folder): bound read-only, nothing more. */
+  binds: string[]
+  /** PATH with latex's and dvisvgm's own directories first, so the namespace finds them where a hidden link would have; absent: the host's. */
+  path?: string
+}
+
+/** Whether a job's sandbox runs TeX here, and if not, why (the first line its trial printed). */
+export type SandboxProbe = { ok: true; sandbox: Sandbox } | { ok: false; error: string }
 
 /** How long a probe command may run. */
 const PROBE_MS = 3000
@@ -80,31 +103,187 @@ const BOOK_LIMIT = 256
 
 /**
  * Finds TeX: `latex` and `dvisvgm` answering `--version`, and what jobs can
- * be confined with (prlimit; bubblewrap, by a trial run hiding `hide`).
+ * be confined with: prlimit, and bubblewrap where TeX runs inside its
+ * namespace (probeSandbox: a real trial, not a bare `true`), else none.
  * Undefined when either command is missing.
  */
-export async function probeTex(host: TexHost, options: { tmpdir: string | undefined; hide: readonly string[]; cacheDir?: string }): Promise<TexSetup | undefined> {
+export async function probeTex(host: TexHost, options: { tmpdir: string | undefined; hide: readonly string[]; cacheDir?: string; path?: string }): Promise<TexSetup | undefined> {
   const ok = (argv: readonly string[]) =>
     host.run(argv, { timeoutMs: PROBE_MS }).then(
       result => (result.exitCode === 0 ? result.stdout : undefined),
       () => undefined,
     )
-  const [latex, dvisvgm, help, prlimit, bwrap] = await Promise.all([
+  const [latex, dvisvgm, help, extended, prlimit] = await Promise.all([
     ok(['latex', '--version']),
     ok(['dvisvgm', '--version']),
     ok(['dvisvgm', '--help']),
+    ok(['dvisvgm', '-V1']),
     ok(['prlimit', '--version']),
-    options.hide.length > 0 ? ok(bwrapProbe(options.hide)) : Promise.resolve(undefined),
   ])
   if (latex === undefined || dvisvgm === undefined) return undefined
+  const sandbox = options.hide.length > 0 ? await probeSandbox(host, { hide: options.hide, tmpdir: options.tmpdir, path: options.path, prlimit: prlimit !== undefined }) : undefined
   const first = (text: string) => text.split('\n', 1)[0]!.trim()
   return {
     versions: `${first(latex)}\n${first(dvisvgm)}`,
-    confinement: { prlimit: prlimit !== undefined, ...(bwrap !== undefined ? { bwrap: { hide: options.hide } } : {}) },
+    confinement: { prlimit: prlimit !== undefined, ...(sandbox?.ok ? { bwrap: { hide: options.hide } } : {}) },
     tmpdir: options.tmpdir,
     ...(options.cacheDir !== undefined ? { cacheDir: options.cacheDir } : {}),
     ...(help !== undefined && !takesLibgs(help) ? { libgs: false as const } : {}),
+    ...(help !== undefined && !takesLibgs(help) && runsPostScript(first(dvisvgm), extended) ? { postscript: true as const } : {}),
+    ...(sandbox?.ok ? { sandbox: sandbox.sandbox } : {}),
   }
+}
+
+/**
+ * Whether a dvisvgm without --libgs hands PostScript specials to Ghostscript
+ * whatever --no-specials says: Ghostscript linked in (`-V1` names it) and a
+ * version whose list parsing ignores nothing (3.5 to 3.6.1, fixed after).
+ */
+export function runsPostScript(version: string, extended: string | undefined): boolean {
+  const m = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(version)
+  if (!m || !/^Ghostscript:/m.test(extended ?? '')) return false
+  const v = Number(m[1]) * 10_000 + Number(m[2]) * 100 + Number(m[3] ?? 0)
+  return v >= 30_500 && v <= 30_601
+}
+
+/** The special prefixes dvisvgm's PostScript handler takes (PsSpecialHandler::prefixes). */
+const POSTSCRIPT_PREFIXES = new Set(['header=', 'pdffile=', 'psfile=', 'PSfile=', 'ps:', 'ps::', '!', '"', 'pst:', 'PST:'])
+
+/** A special's prefix as dvisvgm reads it: letters and digits, then one punctuation character (`ps::` whole). */
+function specialPrefix(text: string): string {
+  const m = /^[A-Za-z0-9]*/.exec(text)!
+  let prefix = m[0]
+  const next = text[prefix.length]
+  if (next !== undefined && /[!-/:-@[-`{-~]/.test(next)) prefix += next
+  if (prefix === 'ps:' && text[3] === ':') prefix += ':'
+  return prefix
+}
+
+/**
+ * The specials a DVI file holds, in order (a walk over its commands from the
+ * preamble to the postamble); undefined when the bytes aren't a DVI file.
+ */
+export function dviSpecials(bytes: Uint8Array): string[] | undefined {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const n = (at: number, size: number) => (size === 1 ? view.getUint8(at) : size === 2 ? view.getUint16(at) : size === 3 ? (view.getUint16(at) << 8) | view.getUint8(at + 2) : view.getUint32(at))
+  const out: string[] = []
+  let at = 0
+  try {
+    if (view.getUint8(0) !== 247) return undefined
+    at = 15 + view.getUint8(14)
+    while (at < bytes.length) {
+      const op = view.getUint8(at++)
+      if (op <= 127 || (op >= 171 && op <= 234) || op === 138 || op === 140 || op === 141 || op === 142 || op === 147 || op === 152 || op === 161 || op === 166) continue
+      if (op >= 128 && op <= 131) at += op - 127
+      else if (op === 132 || op === 137) at += 8
+      else if (op >= 133 && op <= 136) at += op - 132
+      else if (op === 139) at += 44
+      else if (op >= 143 && op <= 146) at += op - 142
+      else if (op >= 148 && op <= 151) at += op - 147
+      else if (op >= 153 && op <= 156) at += op - 152
+      else if (op >= 157 && op <= 160) at += op - 156
+      else if (op >= 162 && op <= 165) at += op - 161
+      else if (op >= 167 && op <= 170) at += op - 166
+      else if (op >= 235 && op <= 238) at += op - 234
+      else if (op >= 239 && op <= 242) {
+        const size = op - 238
+        const length = n(at, size)
+        at += size
+        let text = ''
+        for (const byte of bytes.subarray(at, at + length)) text += String.fromCharCode(byte)
+        out.push(text)
+        at += length
+      } else if (op >= 243 && op <= 246) {
+        at += op - 242 + 12
+        const a = view.getUint8(at)
+        const l = view.getUint8(at + 1)
+        at += 2 + a + l
+      } else if (op === 248) return out
+      else return undefined
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
+/** Whether any of these specials is PostScript (dvisvgm would hand it to Ghostscript). */
+export function hasPostScript(specials: readonly string[]): boolean {
+  return specials.some(special => POSTSCRIPT_PREFIXES.has(specialPrefix(special.trimStart())))
+}
+
+/** The kpathsea variables naming every tree TeX reads: its root (programs, texmf.cnf), the search path, the config path. */
+const TEX_TREES = '-expand-braces=$TEXMFROOT:$TEXMF:$TEXMFCNF'
+
+/**
+ * Whether TeX runs inside bubblewrap's namespace here, and what that needs:
+ * the TeX trees (kpsewhich, as a job's environment sees them), latex's and
+ * dvisvgm's real files and the libraries they load, each bound read-only
+ * where it lies in a hidden directory (never a hidden directory itself), and
+ * latex's and dvisvgm's directories first on PATH. The trial runs latex
+ * (its format loaded) and dvisvgm in that namespace, as a job does.
+ */
+export async function probeSandbox(host: TexHost, options: { hide: readonly string[]; tmpdir: string | undefined; path?: string; prlimit: boolean }): Promise<SandboxProbe> {
+  const run = (argv: readonly string[], init: { cwd?: string; env?: Record<string, string> } = {}) =>
+    host.run(argv, { ...init, timeoutMs: PROBE_MS }).catch(() => undefined)
+  const lines = (text: string | undefined) => (text ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+  const dirs = (options.path ?? '').split(':').filter(dir => dir.startsWith('/')).map(dir => dir.replace(/\/+$/, '') || '/')
+  // The first latex and dvisvgm on PATH, links resolved (realpath prints only the ones there, in order).
+  const find = async (name: string) => (dirs.length > 0 ? lines((await run(['realpath', '-e', '--', ...dirs.map(dir => `${dir}/${name}`)]))?.stdout)[0] : undefined)
+  const placeholder = `${jobDirTemplate(options.tmpdir).replace(/\.X+$/, '')}.probe`
+  const [latex, dvisvgm, trees, hidden] = await Promise.all([
+    find('latex'),
+    find('dvisvgm'),
+    run(['kpsewhich', TEX_TREES], { env: texEnvironment(placeholder) }),
+    run(['realpath', '-m', '--', ...options.hide]),
+  ])
+  const programs = [latex, dvisvgm].filter((one): one is string => one !== undefined)
+  const libraries = await Promise.all(programs.map(program => run(['ldd', program])))
+  const candidates = [
+    ...programs.map(program => program.replace(/\/[^/]+$/, '')),
+    ...(trees?.exitCode === 0 ? trees.stdout.trim().split(':') : []).map(tree => tree.replace(/^!!/, '').replace(/\/+$/, '')),
+    ...libraries.flatMap(result => lines(result?.stdout).flatMap(line => /(?:=>\s*)?(\/[^\s()]+)\s*\(0x/.exec(line)?.[1] ?? [])),
+  ].filter(path => path.startsWith('/'))
+  const real = candidates.length > 0 ? lines((await run(['realpath', '-e', '--', ...new Set(candidates)]))?.stdout) : []
+  const hide = [...new Set([...options.hide, ...lines(hidden?.stdout)])]
+  const binds = sandboxBinds(real, hide)
+  const bin = [...new Set(programs.map(program => program.replace(/\/[^/]+$/, '')))]
+  const sandbox: Sandbox = { binds, ...(options.path !== undefined ? { path: [...new Set([...bin, ...dirs])].join(':') } : {}) }
+  // The trial: latex with its format and dvisvgm, in the namespace a job gets.
+  const made = await run(['mktemp', '-d', jobDirTemplate(options.tmpdir)])
+  const job = made?.stdout.trim() ?? ''
+  if (made?.exitCode !== 0 || !isJobDir(job)) return { ok: false, error: 'no temporary directory for the trial' }
+  try {
+    const confinement: Confinement = { prlimit: options.prlimit, bwrap: { hide: options.hide } }
+    const env = { ...texEnvironment(job), ...(sandbox.path ? { PATH: sandbox.path } : {}) }
+    for (const argv of [['latex', '-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '\\stop'], ['dvisvgm', '--version']]) {
+      const result = await run(confined(argv, job, confinement, binds), { cwd: job, env })
+      if (result?.exitCode !== 0) {
+        const said = lines(result?.stderr)[0] ?? lines(result?.stdout).find(line => line.startsWith('!'))
+        return { ok: false, error: `${argv[0]} in the sandbox: ${said ?? (result ? `exit ${result.exitCode}` : 'did not run')}`.slice(0, 200) }
+      }
+    }
+    return { ok: true, sandbox }
+  } finally {
+    await run(['rm', '-rf', '--', job])
+  }
+}
+
+/**
+ * The paths a job's namespace binds back: those of `paths` that lie inside a
+ * hidden directory (never one of them, nor anything holding one), each once
+ * (none inside another).
+ */
+export function sandboxBinds(paths: readonly string[], hide: readonly string[]): string[] {
+  const inside = (path: string, dir: string) => path.startsWith(`${dir.replace(/\/+$/, '')}/`)
+  const under = [...new Set(paths)].filter(path => hide.some(dir => inside(path, dir)) && !hide.some(dir => dir === path || inside(dir, path)))
+  return under.filter(path => !under.some(other => other !== path && inside(path, other))).sort()
+}
+
+/** The extra paths every confined command of a job binds back, and the variables it runs with (a sandbox's PATH). */
+function sandboxed(setup: Pick<TexSetup, 'confinement' | 'sandbox'>): { binds: string[]; env: Record<string, string> } {
+  const on = setup.confinement.bwrap !== undefined
+  return { binds: on ? (setup.sandbox?.binds ?? []) : [], env: on && setup.sandbox?.path ? { PATH: setup.sandbox.path } : {} }
 }
 
 /** Whether `dvisvgm --help` lists `--libgs`; a help that isn't dvisvgm's (no `--no-specials`) counts as yes. */
@@ -306,7 +485,8 @@ export async function prepareFormat(host: TexHost, setup: TexSetup): Promise<voi
   if (made.exitCode !== 0 || !isJobDir(job)) return
   try {
     await host.write(`${job}/${name}.tex`, FORMAT_SOURCE)
-    const dumped = await run(confined(formatArgv(name), job, setup.confinement), { cwd: job, env: texEnvironment(job), timeoutMs: FORMAT_MS })
+    const jail = sandboxed(setup)
+    const dumped = await run(confined(formatArgv(name), job, setup.confinement, jail.binds), { cwd: job, env: { ...texEnvironment(job), ...jail.env }, timeoutMs: FORMAT_MS })
     if (dumped.exitCode !== 0) return
     if ((await run(['mkdir', '-p', '--', dir], { timeoutMs: PROBE_MS })).exitCode !== 0) return
     // Copied under a name of its own, then renamed: a session starting meanwhile never reads half a format.
@@ -356,17 +536,18 @@ async function compileOnce(host: TexHost, setup: TexSetup, document: TexDocument
   if (made.exitCode !== 0 || !isJobDir(dir)) return { ok: false, error: 'no temporary directory for TeX', lasting: false }
   try {
     await host.write(`${dir}/${JOB_NAME}.tex`, document.text)
-    const env = texEnvironment(dir)
+    const jail = sandboxed(setup)
+    const env = { ...texEnvironment(dir), ...jail.env }
     let latex
     // A fragment starts from the dumped format, read where the namespace hides the cache directory.
     const format = document.format ? setup.format : undefined
     try {
       latex = format
-        ? await host.run(confined(latexArgv(format.name), dir, setup.confinement, [format.dir]), { cwd: dir, env: { ...env, TEXFORMATS: `${format.dir}:` }, timeoutMs: Math.max(1, left()) })
-        : await host.run(confined(LATEX_ARGV, dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+        ? await host.run(confined(latexArgv(format.name), dir, setup.confinement, [...jail.binds, format.dir]), { cwd: dir, env: { ...env, TEXFORMATS: `${format.dir}:` }, timeoutMs: Math.max(1, left()) })
+        : await host.run(confined(LATEX_ARGV, dir, setup.confinement, jail.binds), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
       // A format TeX can't read (a stale or broken file): the same job without it.
       if (format && latex.exitCode !== 0 && /format file|\.fmt\b/i.test(latex.stdout)) {
-        latex = await host.run(confined(LATEX_ARGV, dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+        latex = await host.run(confined(LATEX_ARGV, dir, setup.confinement, jail.binds), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
       }
     } catch {
       return late
@@ -375,10 +556,16 @@ async function compileOnce(host: TexHost, setup: TexSetup, document: TexDocument
       const log = `${latex.stdout}\n${(await host.read(`${dir}/${JOB_NAME}.log`)) ?? ''}`
       return { ok: false, error: texError(log, document.offset), lasting: true }
     }
+    // A dvisvgm that would run PostScript through Ghostscript unconfined (setup.postscript): only a DVI without any.
+    if (setup.postscript && !setup.confinement.bwrap) {
+      const bytes = await host.readBytes?.(`${dir}/${JOB_NAME}.dvi`).catch(() => undefined)
+      const specials = bytes ? dviSpecials(bytes) : undefined
+      if (!specials || hasPostScript(specials)) return { ok: false, error: 'uses PostScript (a rotation or scaling, say), which this dvisvgm runs through Ghostscript outside any sandbox', lasting: true }
+    }
     let svg
     try {
       if (left() < 1) return late
-      svg = await host.run(confined(dvisvgmCommand(dir, setup), dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+      svg = await host.run(confined(dvisvgmCommand(dir, setup), dir, setup.confinement, jail.binds), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
     } catch {
       return late
     }
@@ -470,5 +657,9 @@ export function rememberedTex(value: unknown): TexSetup | undefined {
     cacheDir: setup.cacheDir,
     ...(setup.format && typeof setup.format.name === 'string' && typeof setup.format.dir === 'string' ? { format: setup.format } : {}),
     ...(setup.libgs === false ? { libgs: false as const } : {}),
+    ...(setup.postscript === true ? { postscript: true as const } : {}),
+    ...(setup.sandbox && Array.isArray(setup.sandbox.binds) && setup.sandbox.binds.every(bind => typeof bind === 'string')
+      ? { sandbox: { binds: setup.sandbox.binds, ...(typeof setup.sandbox.path === 'string' ? { path: setup.sandbox.path } : {}) } }
+      : {}),
   }
 }

@@ -372,15 +372,17 @@ describe('the TeX book', () => {
   test('probing: latex and dvisvgm required; prlimit and bubblewrap used where they run', async () => {
     const answering = (missing: string[]): TexHost => ({
       run: async argv => {
-        if (missing.includes(argv[0]!)) throw new Error('not found')
-        return { exitCode: 0, stdout: `${argv[0]} 1.0\n`, stderr: '', isStdoutTruncated: false }
+        // bubblewrap missing: its trial (latex inside it) can't start.
+        if (missing.includes(argv[0]!) || (missing.includes('bwrap') && argv.includes('bwrap'))) throw new Error('not found')
+        const stdout = argv[0] === 'mktemp' ? '/tmp/kittex-tex.AbCdEfGhIj\n' : argv[0] === 'realpath' ? `${argv.filter(arg => arg.startsWith('/')).join('\n')}\n` : `${argv[0]} 1.0\n`
+        return { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false }
       },
       write: async () => undefined,
       read: async () => undefined,
     })
     expect(await probeTex(answering(['latex']), { tmpdir: undefined, hide: [] })).toBeUndefined()
     expect(await probeTex(answering(['dvisvgm']), { tmpdir: undefined, hide: [] })).toBeUndefined()
-    const full = await probeTex(answering([]), { tmpdir: '/tmp', hide: ['/home/u', '/tmp'] })
+    const full = await probeTex(answering([]), { tmpdir: '/tmp', hide: ['/home/u', '/tmp'], path: '/usr/bin' })
     expect(full?.confinement).toEqual({ prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } })
     const bare = await probeTex(answering(['prlimit', 'bwrap']), { tmpdir: '/tmp', hide: ['/home/u'] })
     expect(bare?.confinement).toEqual({ prlimit: false })

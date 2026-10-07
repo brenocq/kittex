@@ -136,7 +136,7 @@ Change these in `/config`.
 - `off`: never runs TeX; diagrams stay code blocks.
 
 TeX runs with its shell escape off and a time limit, and kittex refuses any diagram that reads a file by its path.
-On Linux, bubblewrap also hides your home folder and the network from it, and prlimit caps its CPU time and file sizes.
+On Linux, bubblewrap also hides your home folder and the network from it (a TeX installed in your home folder stays readable, nothing else there), and prlimit caps its CPU time and file sizes.
 macOS has neither, so there TeX can read the files you can: choose `off` if that matters to you.
 `/kittex-doctor` shows which of these apply on your machine.
 

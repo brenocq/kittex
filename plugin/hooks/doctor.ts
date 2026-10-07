@@ -10,9 +10,9 @@
 // math). It holds no `$`, and every name from the host (a path, a TeX error)
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
-import { bwrapProbe, diagramDocument, formatName } from './core.js'
-import { compileTrial, takesLibgs, texCacheDir } from './tex.ts'
-import type { TexHost, TexSetup } from './tex.ts'
+import { diagramDocument, formatName } from './core.js'
+import { compileTrial, probeSandbox, runsPostScript, takesLibgs, texCacheDir } from './tex.ts'
+import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
 
 /** The command's name: typed as `/kittex-doctor`. */
 export const DOCTOR_COMMAND = 'kittex-doctor'
@@ -37,7 +37,7 @@ export interface Requirement {
    * `math`: the formulas MathJax refuses; `speed`: the dumped format;
    * `check`: this doctor's package check; `confine`: confinement (Linux).
    */
-  need: 'pictures' | 'math' | 'speed' | 'check' | 'confine'
+  need: 'pictures' | 'math' | 'speed' | 'check' | 'confine' | 'postscript'
 }
 
 /** The commands, in the order the report lists them. */
@@ -58,8 +58,9 @@ export const CONFINE_COMMANDS: readonly Requirement[] = [
  * preamble, the format's mylatexformat, the math preamble), and three a
  * distribution may split off: chemfig's simplekv, the Computer Modern
  * outlines dvisvgm draws the glyphs from, and dvips's PostScript header
- * (tex.pro), which a dvisvgm built with Ghostscript linked in (Fedora's)
- * reads for every page and fails without.
+ * (tex.pro), which a dvisvgm that runs PostScript through Ghostscript reads
+ * first (kittex's own documents carry no PostScript; a whole document that
+ * rotates or scales with graphicx does).
  */
 export const TEX_FILES: readonly Requirement[] = [
   { name: 'standalone.cls', kind: 'file', need: 'pictures' },
@@ -73,7 +74,7 @@ export const TEX_FILES: readonly Requirement[] = [
   { name: 'simplekv.tex', kind: 'file', need: 'pictures' },
   { name: 'siunitx.sty', kind: 'file', need: 'pictures' },
   { name: 'cmr10.pfb', kind: 'file', need: 'pictures' },
-  { name: 'tex.pro', kind: 'file', need: 'pictures' },
+  { name: 'tex.pro', kind: 'file', need: 'postscript' },
   { name: 'mathtools.sty', kind: 'file', need: 'math' },
   { name: 'preview.sty', kind: 'file', need: 'math' },
   { name: 'mylatexformat.ltx', kind: 'file', need: 'speed' },
@@ -337,14 +338,15 @@ export interface DiagramFacts {
   /** Each TEX_FILES name with the path kpsewhich gave; undefined when kpsewhich couldn't run. */
   files?: { name: string; path?: string }[]
   /** Linux only: bubblewrap found and whether its trial namespace runs (else its first error line). */
-  bwrap?: ToolFacts & { usable: boolean; error?: string }
+  /** Linux only: bubblewrap found, whether TeX runs in its namespace (else why not), and what it binds back. */
+  bwrap?: ToolFacts & { usable: boolean; error?: string; sandbox?: Sandbox }
   prlimit?: ToolFacts
   /** The dumped format for this TeX (prepareFormat), when latex and dvisvgm answered. */
   format?: { path: string; bytes?: number }
   /** Whether dvisvgm takes --libgs (false: kittex leaves it out). */
   libgs?: boolean
-  /** The directories bubblewrap hides from TeX. */
-  hidden?: readonly string[]
+  /** dvisvgm runs PostScript specials through a Ghostscript it links, whatever kittex asks (3.5 to 3.6.1). */
+  postscript?: boolean
   trial: TrialFacts
 }
 
@@ -402,23 +404,32 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
   const [latexAt, dvisvgmAt, kpsewhichAt, tlmgrAt, bwrapAt, prlimitAt] = await Promise.all(
     ['latex', 'dvisvgm', 'kpsewhich', 'tlmgr', 'bwrap', 'prlimit'].map(name => (linux || (name !== 'bwrap' && name !== 'prlimit') ? which(host, name, PATH) : Promise.resolve(undefined))),
   )
-  const [latex, dvisvgm, kpsewhich, prlimit, help, kpse, bwrapRun] = await Promise.all([
+  const [latex, dvisvgm, kpsewhich, prlimit, help, extended, kpse, bwrapRun] = await Promise.all([
     version('latex', latexAt),
     version('dvisvgm', dvisvgmAt),
     version('kpsewhich', kpsewhichAt),
     linux ? version('prlimit', prlimitAt) : Promise.resolve(undefined),
     dvisvgmAt ? run(['dvisvgm', '--help']) : Promise.resolve(undefined),
+    dvisvgmAt ? run(['dvisvgm', '-V1']) : Promise.resolve(undefined),
     kpsewhichAt ? run(['kpsewhich', ...TEX_FILES.map(file => file.name)]) : Promise.resolve(undefined),
-    linux && bwrapAt && input.hide.length > 0 ? run(bwrapProbe(input.hide)) : Promise.resolve(undefined),
+    // The sandbox's own trial (latex and dvisvgm inside it), not run where Local LaTeX is off.
+    linux && bwrapAt && latexAt && dvisvgmAt && input.hide.length > 0 && input.option === 'auto'
+      ? probeSandbox(host, { hide: input.hide, tmpdir: input.env.TMPDIR, path: PATH, prlimit: prlimitAt !== undefined })
+      : Promise.resolve(undefined as SandboxProbe | undefined),
   ])
   const tlmgr: ToolFacts = tlmgrAt ? { path: tlmgrAt } : {}
   // kpsewhich prints the path of each file it finds (exit 1 when any is missing).
   const found = kpse?.stdout.split('\n').map(line => line.trim()).filter(Boolean) ?? []
   const files = kpse ? TEX_FILES.map(({ name }) => ({ name, path: found.find(path => path === name || path.endsWith(`/${name}`)) })).map(({ name, path }) => (path ? { name, path } : { name })) : undefined
-  const bwrap = linux
-    ? { ...(bwrapAt ? { path: bwrapAt } : {}), usable: bwrapRun?.exitCode === 0, ...(bwrapAt && bwrapRun?.exitCode !== 0 ? { error: firstLine(bwrapRun?.stderr) ?? (bwrapRun ? `exit ${bwrapRun.exitCode}` : 'did not answer') } : {}) }
+  const bwrap: DiagramFacts['bwrap'] = linux
+    ? {
+        ...(bwrapAt ? { path: bwrapAt } : {}),
+        usable: bwrapRun?.ok === true,
+        ...(bwrapRun?.ok ? { sandbox: bwrapRun.sandbox } : bwrapRun ? { error: bwrapRun.error } : bwrapAt && input.option === 'auto' && latexAt && dvisvgmAt ? { error: 'not tried' } : {}),
+      }
     : undefined
   const libgs = help?.exitCode === 0 ? takesLibgs(help.stdout) : undefined
+  const postscript = libgs === false && dvisvgm.version !== undefined && runsPostScript(dvisvgm.version, extended?.exitCode === 0 ? extended.stdout : undefined)
   const facts: DiagramFacts = {
     option: input.option,
     drawn: input.drawn,
@@ -431,7 +442,7 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
     ...(bwrap ? { bwrap } : {}),
     ...(prlimit ? { prlimit } : {}),
     ...(libgs !== undefined ? { libgs } : {}),
-    ...(linux && input.hide.length > 0 ? { hidden: input.hide } : {}),
+    ...(postscript ? { postscript } : {}),
     trial: { skipped: '' },
   }
   // The format kittex dumps for this TeX (named by the versions, as tex.ts's probeTex reads them).
@@ -455,6 +466,8 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
       tmpdir: input.env.TMPDIR,
       ...(format ? { format } : {}),
       ...(libgs === false ? { libgs: false as const } : {}),
+      ...(postscript ? { postscript: true as const } : {}),
+      ...(bwrap?.sandbox ? { sandbox: bwrap.sandbox } : {}),
     }
     const started = Date.now()
     const outcome = await compileTrial(host, setup, diagramDocument(TRIAL_PICTURE, 'tikz'), DOCTOR_TRIAL_MS)
@@ -656,6 +669,8 @@ export function formatDoctor(facts: DoctorFacts): string {
       if (pictures.length > 0) line(NO, `missing ${pictures.map(code).join(', ')}: no diagram compiles without ${pictures.length === 1 ? 'it' : 'them'} (one preamble loads every picture package)`)
       if (math.length > 0) line(NO, `missing ${math.map(code).join(', ')}: math MathJax refuses can't be drawn by TeX`)
       if (speed.length > 0) line(NO, `missing ${speed.map(code).join(', ')}: no format, so each picture loads its packages (about twice as slow)`)
+      const ps = missing.filter(name => need(name) === 'postscript')
+      if (ps.length > 0) line(INFO, `missing ${ps.map(code).join(', ')}: a whole document that rotates or scales (graphicx) can't be drawn where dvisvgm runs Ghostscript`)
       const present = d.files.length - missing.length
       if (present > 0) line(OK, `${present} of ${d.files.length} packages found`)
     }
@@ -663,8 +678,10 @@ export function formatDoctor(facts: DoctorFacts): string {
   if (linux) {
     const b = d.bwrap
     const p = d.prlimit
-    if (b?.usable) line(OK, 'bubblewrap: TeX runs with your home, /tmp and /run hidden, and no network')
-    else if (b?.path) line(NO, `bubblewrap can't run here (${plain(b.error ?? 'failed')}): TeX can read any file you can (kittex still refuses diagrams that read a file by its path)`)
+    const bound = b?.sandbox?.binds ?? []
+    if (b?.usable) line(OK, `bubblewrap: TeX runs with your home, /tmp and /run hidden${bound.length > 0 ? ` (but for ${bound.map(path).join(', ')}, bound read-only)` : ''}, and no network`)
+    else if (b?.path && d.option === 'auto' && b.error !== undefined) line(NO, `bubblewrap can't run TeX here (${plain(b.error)}): kittex runs TeX without it, so TeX can read any file you can (kittex still refuses diagrams that read a file by its path)`)
+    else if (b?.path) line(INFO, 'bubblewrap: found (not tried: Local LaTeX is off or TeX is missing)')
     else line(NO, 'bubblewrap: not found: TeX can read any file you can (kittex still refuses diagrams that read a file by its path)')
     if (p?.path) line(OK, 'prlimit: TeX runs under a CPU-time and a file-size limit')
     else line(NO, 'prlimit: not found: no CPU or file-size limit, only the time limit')
@@ -672,6 +689,7 @@ export function formatDoctor(facts: DoctorFacts): string {
     line(INFO, "confinement: none on macOS (no bubblewrap, no prlimit). TeX runs as you, with its shell escape off, writes kept to its job folder and a time limit; kittex refuses diagrams that read a file by its path, but nothing hides your files from TeX.")
   }
   if (d.libgs === false) line(INFO, 'dvisvgm has no --libgs option here: kittex leaves it out')
+  if (d.postscript) line(INFO, `this dvisvgm runs PostScript through its own Ghostscript, without -dSAFER, whatever it is told (3.5 to 3.6.1): kittex's pictures hold none; a document that rotates or scales ${d.bwrap?.usable ? 'runs inside bubblewrap' : 'is refused, as there is no sandbox'}`)
   if (d.format) {
     if (d.format.bytes !== undefined && d.format.bytes > 0) line(OK, `format: built, ${path(d.format.path)} (${bytes(d.format.bytes)})`)
     else line(INFO, `format: not built yet${d.files?.some(file => file.name === 'mylatexformat.ltx' && !file.path) ? ' (needs mylatexformat)' : ': kittex dumps it in the background once a session finds TeX'}`)
@@ -680,9 +698,6 @@ export function formatDoctor(facts: DoctorFacts): string {
   if ('skipped' in trial) line(INFO, `trial picture: skipped${trial.skipped ? ` (${plain(trial.skipped)})` : ''}`)
   else if (trial.ok) line(OK, `trial picture: drawn in ${seconds(trial.ms)}${trial.format ? '' : ' (without the format)'}`)
   else line(NO, `trial picture: failed after ${seconds(trial.ms)}: ${plain(trial.error)}`)
-  // TeX installed under a folder the namespace hides (TeX Live installed into the home folder): not found inside it.
-  const under = d.bwrap?.usable ? [d.latex.path, d.dvisvgm.path].find(p => p && d.hidden?.some(dir => p.startsWith(`${dir}/`))) : undefined
-  if (under && 'ok' in trial && !trial.ok) line(INFO, `${path(under)} is in a folder bubblewrap hides from TeX, so the sandbox can't run it: install TeX outside your home folder and /tmp`)
   const ready = d.latex.version !== undefined && d.dvisvgm.version !== undefined
   if (ready && !d.found && d.option === 'auto' && d.drawn) line(INFO, 'this session started before TeX was there: restart Claude Code to draw diagrams')
 
