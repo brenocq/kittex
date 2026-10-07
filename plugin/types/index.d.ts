@@ -35,6 +35,29 @@ export type KittexEnv = {
   emojiSequences?: boolean
   /** The stroke weight the math is drawn with, matched to the terminal font's weight (strokeWeight); absent when that weight isn't known (the default weight). */
   weight?: number
+  /** With `inkOver`: kitty's text curve (text_composition_strategy) the ink's alpha follows instead of the gamma-blend correction. */
+  inkCurve?: { gamma: number; contrast: number }
+  /** kitty's modify_font changes to its cells; absent when none is set. */
+  kittyAdjust?: {
+    cellWidth?: { value: number; unit: 'pt' | 'px' | '%' }
+    cellHeight?: { value: number; unit: 'pt' | 'px' | '%' }
+    baseline?: { value: number; unit: 'pt' | 'px' | '%' }
+  }
+  /**
+   * The text font's metrics (read from its file once kittex is set up), its
+   * configured size and the platform: the math's em and baseline follow the
+   * text's (textLayout); absent until read, or when they can't be.
+   */
+  font?: {
+    unitsPerEm: number
+    ascender: number
+    descender: number
+    lineGap: number
+    xHeight?: number
+    advance?: number
+    sizePt?: number
+    platform?: string
+  }
 }
 
 /** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */

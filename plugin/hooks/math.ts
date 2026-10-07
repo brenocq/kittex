@@ -23,8 +23,12 @@ import {
   scan,
   TexError,
   textBaseline,
+  textLayout,
   textWidth,
   typeset,
+  emPxForCell,
+  fontCell,
+  mathEmPx,
 } from './core.js'
 import type { BlockPart, CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
 import type { KittexBlock, KittexEnv, KittexPreview } from '../types'
@@ -112,6 +116,19 @@ export const NOT_RENDERED = 'not rendered: '
  * normal size.
  */
 export const TEXT_BASELINE = 20 / 26
+
+/**
+ * How far below its baseline an inline formula's ink reaches, in em of the
+ * math, as each terminal's text compares: the stroke weight's dilation and
+ * Computer Modern's overshoot, against the bottom edge of the terminal's own
+ * letters (kitty hints them onto the pixel row, Ghostty's linear-corrected
+ * blending draws their edge a little lower). Measured on kitty 0.49 and
+ * Ghostty 1.3 over eleven fonts at 9 to 18 pt (math `x` against text `x`):
+ * with the math on the text's own baseline its ink ended 0.55 to 0.9 px
+ * lower in kitty and 0.25 to 0.75 px lower in Ghostty, growing with the size.
+ * The math's baseline goes that much higher, to the nearest pixel.
+ */
+export const MATH_INK_DEPTH = { kitty: 0.04, ghostty: 0.026 } as const
 
 /**
  * What joins the words of an inline preview: a no-break space, one cell that
@@ -399,13 +416,51 @@ export function previewColumns(maxColumns: number): number {
 export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
   const renderEnv: RenderEnv = { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: proseWidthFor(env, columns), emPx: env.emPx, ink: env.ink }
   if (env.inkOver) renderEnv.inkOver = env.inkOver
+  if (env.inkOver && env.inkCurve) renderEnv.inkCurve = env.inkCurve
   if (env.weight !== undefined) renderEnv.weight = env.weight
   return renderEnv
 }
 
 /** Where inline formulas are drawn: one text row, the math on the font's baseline. */
 export function inlineEnvFor(env: KittexEnv, columns = env.columns): InlineEnv {
-  return { ...renderEnvFor(env, columns), baselinePx: textBaseline(env.cellHeight, TEXT_BASELINE, env.cellAdjust) }
+  return { ...renderEnvFor(env, columns), baselinePx: mathBaseline(env) }
+}
+
+/** The text font's layout in the env's cells (textLayout), when its metrics are known. */
+function fontLayout(env: Pick<KittexEnv, 'kind' | 'cellWidth' | 'cellHeight' | 'cellAdjust' | 'kittyAdjust' | 'font'>) {
+  const { font } = env
+  if (!font) return undefined
+  const { sizePt, platform, ...metrics } = font
+  return textLayout(env.kind, metrics, { cellWidth: env.cellWidth, cellHeight: env.cellHeight }, {
+    ...(sizePt ? { sizePt } : {}),
+    ...(platform ? { platform } : {}),
+    ...(env.cellAdjust ? { adjust: env.cellAdjust } : {}),
+    ...(env.kittyAdjust ? { kittyAdjust: env.kittyAdjust } : {}),
+  })
+}
+
+/**
+ * Where an inline formula's baseline goes, in pixels from the top of its
+ * cell: the text font's own baseline as the terminal sets it (from the font's
+ * metrics, adjustments included), raised by the math's ink depth
+ * (MATH_INK_DEPTH); before the font is read, TEXT_BASELINE of the cell.
+ */
+export function mathBaseline(env: Pick<KittexEnv, 'kind' | 'cellWidth' | 'cellHeight' | 'cellAdjust' | 'kittyAdjust' | 'font' | 'emPx'>): number {
+  const layout = fontLayout(env)
+  if (!layout) return textBaseline(env.cellHeight, TEXT_BASELINE, env.cellAdjust)
+  const depth = env.kind === 'kitty' || env.kind === 'ghostty' ? MATH_INK_DEPTH[env.kind] : MATH_INK_DEPTH.ghostty
+  return Math.max(1, layout.baselinePx - Math.round(depth * env.emPx))
+}
+
+/**
+ * Pixels per em of the math in these cells: its x-height against the text
+ * font's (mathEmPx) when the font's metrics are known, else from the cell's
+ * width (emPxForCell, the terminal's adjustments undone).
+ */
+export function mathEmPxFor(cell: Pick<CellSize, 'cellWidth' | 'cellHeight'>, env: Pick<KittexEnv, 'kind' | 'cellAdjust' | 'kittyAdjust' | 'font'>): number {
+  const own = fontCell(cell, env.cellAdjust)
+  const layout = fontLayout({ ...env, cellWidth: cell.cellWidth, cellHeight: cell.cellHeight })
+  return layout ? mathEmPx(layout, own) : emPxForCell(own)
 }
 
 /**
