@@ -58,7 +58,7 @@ function fakeTex(latex: 'ok' | 'error' | 'slow' = 'ok', svg = SVG): Fake {
       if (argv[0] === 'mktemp') return result('/tmp/kittex-tex.AbCdEfGhIj\n')
       if (argv.includes('latex')) {
         if (latex === 'slow') throw new Error('timed out')
-        return latex === 'error' ? result('! Undefined control sequence.\nl.14 \\draw[red] \\nope\n', 1) : result('')
+        return latex === 'error' ? result('! Undefined control sequence.\nl.16 \\draw[red] \\nope\n', 1) : result('')
       }
       if (argv.includes('dvisvgm')) return result(svg)
       return result('')

@@ -41,7 +41,7 @@
  */
 
 /** Bump when a document below changes what any picture looks like: it keys the disk cache. */
-export const PREAMBLE_VERSION = 2
+export const PREAMBLE_VERSION = 3
 
 /** The job file's name in the job directory, and its outputs'. */
 export const JOB_NAME = 'kittex'
@@ -92,6 +92,17 @@ export interface TexDocument {
   fontSize: number
 }
 
+/**
+ * standalone's \sa@papersize without its `ps::%%HiResBoundingBox` special
+ * (the papersize specials and the offset kept): a PostScript special is
+ * handed to Ghostscript by a dvisvgm that has it linked in and can't be told
+ * to ignore PostScript (dvisvgm 3.5 to 3.6.1 read `--no-specials=<list>`
+ * wrongly and ignore nothing), and a page's bounding-box comment draws
+ * nothing. So kittex's own documents carry no PostScript at all.
+ */
+const STANDALONE_NO_PS =
+  '\\def\\sa@papersize{\\global\\let\\sa@papersize\\relax\\global\\sa@yoffset=\\paperheight\\global\\setbox\\@begindvibox\\vbox{\\special{papersize=\\the\\paperwidth,\\the\\paperheight}\\unvbox\\@begindvibox\\special{papersize=\\the\\paperwidth,\\the\\paperheight}}}'
+
 /** The TikZ libraries a fragment gets. */
 const TIKZ_LIBRARIES = 'arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains'
 
@@ -104,6 +115,7 @@ const TIKZ_LIBRARIES = 'arrows.meta,positioning,calc,shapes.geometric,shapes.mis
  */
 const FRAGMENT_PREAMBLE = [
   '\\documentclass[dvisvgm,border=1pt]{standalone}',
+  `\\makeatletter${STANDALONE_NO_PS}\\makeatother`,
   '\\usepackage{amsmath,amssymb}',
   '\\usepackage{tikz}',
   `\\usetikzlibrary{${TIKZ_LIBRARIES}}`,
@@ -134,8 +146,13 @@ export function diagramDocument(source: string, lang: DiagramLang): TexDocument 
   if (lang === 'latex' && isDocument(trimmed)) {
     const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed)
     const body = hasClass ? trimmed : `\\documentclass[dvisvgm,border=1pt]{standalone}\n${trimmed}`
-    const head = '\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\\PassOptionsToPackage{dvisvgm}{graphicx}'
-    const text = `${head}\n${body.replace(/\\begin\{document\}/, '\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}')}\n`
+    // TikZ's and graphicx's SVG drivers; the class's (and so every package's) backend dvisvgm, not dvips, whose
+    // l3backend writes a PostScript header; standalone without its PostScript special (STANDALONE_NO_PS).
+    const head = `\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\\PassOptionsToPackage{dvisvgm}{graphicx}\\makeatletter\\AddToHook{class/standalone/after}{${STANDALONE_NO_PS}}\\makeatother`
+    const classed = body.replace(/\\documentclass\s*(?:\[([^\]]*)\])?\s*\{/, (_, options: string | undefined) =>
+      options === undefined ? '\\documentclass[dvisvgm]{' : /(?:^|,)\s*dvisvgm\s*(?:,|$)/.test(options) ? `\\documentclass[${options}]{` : `\\documentclass[${options},dvisvgm]{`,
+    )
+    const text = `${head}\n${classed.replace(/\\begin\{document\}/, '\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}')}\n`
     return { text, offset: hasClass ? 1 : 2, baseline: 'bottom', fontSize: documentFontSize(body) }
   }
   const moved = [...trimmed.matchAll(PREAMBLE_LINE)].map(match => match[0].trim())
@@ -177,7 +194,8 @@ export function latexArgv(format?: string): string[] {
 }
 
 /** The math preamble: what MathJax lacks that formulas reach for (siunitx's \unit, \qty, \ang...). */
-const MATH_PREAMBLE = ['\\documentclass{article}', '\\usepackage{amsmath,amssymb,mathtools}', '\\usepackage{siunitx}', '\\pagestyle{empty}']
+// dvisvgm's backend, not dvips's (whose l3backend writes a PostScript header): no PostScript in the DVI.
+const MATH_PREAMBLE = ['\\documentclass[dvisvgm]{article}', '\\usepackage{amsmath,amssymb,mathtools}', '\\usepackage{siunitx}', '\\pagestyle{empty}']
 
 /** Display environments a formula may be written as on its own (amsmath's), set as they are. */
 const DISPLAY_ENV = /^\\begin\{(equation|align|gather|multline|flalign|alignat|eqnarray)\*?\}/
@@ -190,7 +208,8 @@ const DISPLAY_ENV = /^\\begin\{(equation|align|gather|multline|flalign|alignat|e
 export function mathDocument(tex: string, display: boolean): TexDocument {
   const body = tex.trim()
   if (!display) {
-    const head = [...MATH_PREAMBLE.slice(0, 3), '\\usepackage[active,tightpage]{preview}', '\\begin{document}']
+    // No tightpage: in DVI mode it is PostScript, and dvisvgm crops to the ink anyway (the same SVG).
+    const head = [...MATH_PREAMBLE.slice(0, 3), '\\usepackage[active]{preview}', '\\begin{document}']
     return { text: `${head.join('\n')}\n\\begin{preview}$${body}$\\end{preview}\n\\end{document}\n`, offset: head.length, baseline: 'origin', fontSize: 10 }
   }
   const head = [...MATH_PREAMBLE, '\\begin{document}']

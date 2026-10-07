@@ -62,7 +62,7 @@ describe('documents', () => {
     expect(doc.text.startsWith('\\def\\pgfsysdriver{pgfsys-dvisvgm.def}')).toBe(true)
     expect(doc.text).toContain('\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}')
     expect(doc.fontSize).toBe(12)
-    expect(doc.text.split('\n')[doc.offset]).toBe('\\documentclass[12pt]{article}')
+    expect(doc.text.split('\n')[doc.offset]).toBe('\\documentclass[12pt,dvisvgm]{article}')
   })
 
   test("pgfplots' interpolated shading is drawn flat (the SVG driver has no shading for it)", () => {
@@ -77,7 +77,7 @@ describe('documents', () => {
 
   test('math: inline in a preview box on its baseline, display cropped', () => {
     const inline = mathDocument('\\unit{m/s^2}', false)
-    expect(inline.text).toContain('\\usepackage[active,tightpage]{preview}')
+    expect(inline.text).toContain('\\usepackage[active]{preview}')
     expect(inline.text).toContain('\\begin{preview}$\\unit{m/s^2}$\\end{preview}')
     expect(inline.baseline).toBe('origin')
     const display = mathDocument('\\qty{3}{m}', true)
