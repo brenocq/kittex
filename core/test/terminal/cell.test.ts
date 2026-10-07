@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, parseWinsize, textBaseline } from '../../src/terminal/index.js'
-import type { Probe } from '../../src/types.js'
+import { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, MATH_X_HEIGHT, mathEmPx, parseWinsize, textBaseline, textLayout, X_HEIGHT_RATIO } from '../../src/terminal/index.js'
+import type { FontMetrics } from '../../src/terminal/index.js'
+import type { CellAdjust, KittyAdjust, Probe } from '../../src/types.js'
 
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -101,5 +102,106 @@ describe('fontCell and textBaseline (Ghostty adjust-cell-width / -height / adjus
     // 5 px from the bottom, 20% more: 6.
     expect(textBaseline(21, 20 / 26, { baseline: { factor: 1.2 } })).toBe(15)
     expect(textBaseline(21, 20 / 26, { baseline: { px: 40 } })).toBe(0)
+  })
+})
+
+// ─── the text font's own layout ──────────────────────────────────────────────
+
+const layouts = JSON.parse(readFileSync(new URL('fixtures/font-layouts.json', import.meta.url), 'utf8')) as {
+  fonts: Record<string, FontMetrics & { file: string }>
+  kitty: { font: string; modify_font: string; pt: number; dpi: number; cell: [number, number]; baseline: number }[]
+  ghostty: { font: string; pt: number; dpi: number; cell: [number, number]; baseline: number; adjust?: CellAdjust }[]
+}
+
+/** kitty's modify_font lines in the fixture, as the probe reports them. */
+function kittyAdjustOf(spec: string): KittyAdjust | undefined {
+  const adjust: KittyAdjust = {}
+  for (const part of spec.split(' + ').filter(Boolean)) {
+    const [name, value] = part.split(' ') as [string, string]
+    const m = /^(-?[\d.]+)(%|px)?$/.exec(value)!
+    const metric = { value: Number(m[1]), unit: (m[2] ?? 'pt') as '%' | 'px' | 'pt' }
+    if (name === 'cell_height') adjust.cellHeight = metric
+    else adjust.baseline = metric
+  }
+  return Object.keys(adjust).length ? adjust : undefined
+}
+
+describe('textLayout: where the terminal sets its font in a cell', () => {
+  test("kitty: the baseline kitty itself computes, for seven fonts, two DPIs and modify_font", () => {
+    expect(layouts.kitty.length).toBeGreaterThan(100)
+    for (const row of layouts.kitty) {
+      const kittyAdjust = kittyAdjustOf(row.modify_font)
+      const layout = textLayout('kitty', layouts.fonts[row.font]!, { cellWidth: row.cell[0], cellHeight: row.cell[1] }, { sizePt: row.pt, platform: 'linux', ...(kittyAdjust ? { kittyAdjust } : {}) })
+      expect([row, layout?.baselinePx]).toEqual([row, row.baseline])
+      expect(layout!.emPx).toBeCloseTo((row.pt * row.dpi) / 72, 6)
+    }
+  })
+
+  test('kitty without the size (a font zoomed at run time): the baseline from the cell, within a pixel', () => {
+    let exact = 0
+    const plain = layouts.kitty.filter(row => !row.modify_font)
+    for (const row of plain) {
+      const layout = textLayout('kitty', layouts.fonts[row.font]!, { cellWidth: row.cell[0], cellHeight: row.cell[1] })!
+      expect(Math.abs(layout.baselinePx - row.baseline)).toBeLessThanOrEqual(1)
+      if (layout.baselinePx === row.baseline) exact++
+    }
+    expect(exact / plain.length).toBeGreaterThan(0.75)
+  })
+
+  test("Ghostty: the text's baseline measured in its windows, eleven fonts at 9 to 18 pt, adjust-cell-height and adjust-font-baseline", () => {
+    expect(layouts.ghostty.length).toBeGreaterThan(40)
+    for (const row of layouts.ghostty) {
+      const layout = textLayout('ghostty', layouts.fonts[row.font]!, { cellWidth: row.cell[0], cellHeight: row.cell[1] }, { sizePt: row.pt, platform: 'linux', ...(row.adjust ? { adjust: row.adjust } : {}) })
+      expect([row, layout?.baselinePx]).toEqual([row, row.baseline])
+    }
+  })
+
+  test('Liberation Mono sits higher in its cell than the old 20/26 rule put the math (2 px at 18 pt in kitty)', () => {
+    const font = layouts.fonts['Liberation Mono']!
+    expect(textLayout('kitty', font, { cellWidth: 14, cellHeight: 28 }, { sizePt: 18, platform: 'linux' })!.baselinePx).toBe(20)
+    expect(textBaseline(28, 20 / 26)).toBe(22)
+  })
+
+  test('macOS converts points at 72 DPI times the scale', () => {
+    // JetBrains Mono 13 pt on a 2x Retina screen: 26 px per em.
+    const layout = textLayout('ghostty', layouts.fonts['JetBrains Mono']!, { cellWidth: 16, cellHeight: 34 }, { sizePt: 13, platform: 'darwin' })!
+    expect(layout.emPx).toBeCloseTo(26)
+    expect(layout.baselinePx).toBe(26)
+  })
+
+  test('other terminals and degenerate metrics: no layout', () => {
+    const font = layouts.fonts['JetBrains Mono']!
+    expect(textLayout('wezterm', font, { cellWidth: 10, cellHeight: 20 })).toBeUndefined()
+    expect(textLayout('kitty', { ...font, unitsPerEm: 0 }, { cellWidth: 10, cellHeight: 20 })).toBeUndefined()
+    expect(textLayout('ghostty', { ...font, ascender: 0, descender: 0 }, { cellWidth: 10, cellHeight: 20 })).toBeUndefined()
+  })
+})
+
+describe('mathEmPx: the math x-height against the text font', () => {
+  const at = (name: string, kind: 'kitty' | 'ghostty', pt: number, cell: { cellWidth: number; cellHeight: number }) =>
+    mathEmPx(textLayout(kind, layouts.fonts[name]!, cell, { sizePt: pt, platform: 'linux' })!, cell)
+
+  test('Roboto Mono keeps the size it was tuned at (emPxForCell)', () => {
+    const cell = { cellWidth: 13, cellHeight: 30 } // kitty's own cell for Roboto Mono 11 pt at 1.5x (144 DPI)
+    expect(at('Roboto Mono', 'kitty', 11, cell) / emPxForCell(cell)).toBeCloseTo(1, 2)
+  })
+
+  test("follows each font's x-height: Iosevka (half an em wide) larger, Source Code Pro smaller", () => {
+    const iosevka = { cellWidth: 9, cellHeight: 24 }
+    const scp = { cellWidth: 11, cellHeight: 24 }
+    expect(at('Iosevka', 'ghostty', 14, iosevka) / emPxForCell(iosevka)).toBeGreaterThan(1.15)
+    expect(at('Source Code Pro', 'ghostty', 14, scp) / emPxForCell(scp)).toBeLessThan(0.92)
+    // The math's x-height is X_HEIGHT_RATIO of the text's.
+    for (const [name, cell, pt] of [['Iosevka', iosevka, 14], ['Source Code Pro', scp, 14], ['DejaVu Sans Mono', { cellWidth: 9, cellHeight: 17 }, 11]] as const) {
+      const layout = textLayout('ghostty', layouts.fonts[name]!, cell, { sizePt: pt, platform: 'linux' })!
+      expect((mathEmPx(layout, cell) * MATH_X_HEIGHT) / layout.xHeightPx!).toBeCloseTo(X_HEIGHT_RATIO, 6)
+    }
+  })
+
+  test('held within 0.75 to 1.35 times the cell-based size', () => {
+    const cell = { cellWidth: 10, cellHeight: 20 }
+    expect(mathEmPx({ emPx: 200, baselinePx: 15, xHeightPx: 100 }, cell)).toBeCloseTo(emPxForCell(cell) * 1.35)
+    expect(mathEmPx({ emPx: 2, baselinePx: 15, xHeightPx: 1 }, cell)).toBeCloseTo(emPxForCell(cell) * 0.75)
+    expect(mathEmPx({ emPx: 17, baselinePx: 15 }, cell)).toBeCloseTo(17 * 1.15)
   })
 })

@@ -1,4 +1,4 @@
-import type { CellAdjust, MetricAdjust, Probe, RGB, TerminalColors } from '../types.js'
+import type { CellAdjust, MetricAdjust, Probe, RGB, TerminalColors, TerminalFont } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
 import { fontWeightOf } from './font.js'
@@ -50,8 +50,8 @@ interface GhosttyColors {
   palette: Map<number, RGB>
   alphaBlending?: TerminalColors['alphaBlending']
   adjust: CellAdjust
-  /** font-variation, font-style and the first font-family, as last set. */
-  font: { variation?: string; style?: string; family?: string }
+  /** font-variation, font-style, the first font-family and font-size, as last set. */
+  font: { variation?: string; style?: string; family?: string; size?: number }
 }
 
 /** Ghostty's options that set its cells off the font's own metrics, and the CellAdjust field each sets. */
@@ -99,6 +99,10 @@ function applyColor(into: GhosttyColors, key: string, value: string): void {
     const field = key === 'font-family' ? 'family' : key === 'font-style' ? 'style' : 'variation'
     if (!value) delete into.font[field]
     else if (field !== 'family' || into.font.family === undefined) into.font[field] = value
+  } else if (key === 'font-size') {
+    const size = Number(value)
+    if (value && size > 0 && Number.isFinite(size)) into.font.size = size
+    else delete into.font.size
   } else if (key === 'alpha-blending') {
     // An empty value resets it to the default, which depends on the platform.
     into.alphaBlending = parseAlphaBlending(value)
@@ -139,6 +143,11 @@ function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   const style = font.style === undefined || ['default', 'true', 'false'].includes(font.style) ? undefined : font.style
   const fontWeight = fontWeightOf([font.variation, style, font.family]) ?? (font.family === undefined && style === undefined ? 400 : undefined)
   if (fontWeight) colors.fontWeight = fontWeight
+  const named: TerminalFont = {}
+  if (font.family) named.family = font.family
+  if (font.family && style) named.style = style
+  if (font.size) named.sizePt = font.size
+  if (Object.keys(named).length > 0) colors.font = named
   return colors
 }
 

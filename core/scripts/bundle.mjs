@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 
-const LOAD = resolve(dirname(fileURLToPath(import.meta.url)), '../core/src/typeset/load.ts')
+const LOAD = resolve(dirname(fileURLToPath(import.meta.url)), '../src/typeset/load.ts')
 
 /** typeset/load.ts in the bundle: engine.ts and what only it imports, evaluated on the first call. */
 const lazyEngine = {

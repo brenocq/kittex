@@ -6,12 +6,12 @@
 // Checks that loading it evaluates no MathJax, then typesets and draws sample
 // formulas and a TeX picture, and reports timings.
 //
-//   node --experimental-vm-modules scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
+//   node --experimental-vm-modules .github/scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
-import { bundleCore } from './bundle.mjs'
-import { splitModule } from './split.mjs'
+import { bundleCore } from '../../core/scripts/bundle.mjs'
+import { splitModule } from '../../core/scripts/split.mjs'
 
 const SAMPLES = [
   String.raw`\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}`,

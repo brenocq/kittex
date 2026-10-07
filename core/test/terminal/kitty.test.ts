@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { describe, expect, test } from 'vitest'
-import { colorProbes, detectTerminal, kittyConfigDirs, parseKittyColors, readKittyColors, readTerminalColors, toHex } from '../../src/terminal/index.js'
+import { colorProbes, detectTerminal, imageInkBackground, imageInkCurve, kittyConfigDirs, parseKittyColors, parseTextComposition, readKittyColors, readTerminalColors, toHex } from '../../src/terminal/index.js'
 import type { TerminalColors } from '../../src/types.js'
 
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
@@ -130,6 +130,69 @@ describe('colorProbes for kitty', () => {
     const fromProbe = probe.parse(result.stdout)
     expect(fromProbe).toBeDefined()
     const read = (path: string) => readFile(path, 'utf8').catch(() => undefined)
-    expect(await readTerminalColors(kitty, read, { env: process.env, platform: process.platform })).toEqual(fromProbe)
+    const fromFiles = await readTerminalColors(kitty, read, { env: process.env, platform: process.platform })
+    // The probe names the font's file (kitty resolves it), the files its family and style.
+    const { font: probeFont, ...probeRest } = fromProbe!
+    const { font: fileFont, ...fileRest } = fromFiles!
+    expect(fileRest).toEqual(probeRest)
+    expect(fileFont?.sizePt).toBe(probeFont?.sizePt)
+    if (probeFont?.file) expect(probeFont.file).toMatch(/^\//)
+  })
+})
+
+describe('the font and its cells (font_size, modify_font, text_composition_strategy)', () => {
+  // Printed by the probe in kitty 0.49.1 for: font_family family="Roboto Mono" style="Medium", font_size 11.5,
+  // modify_font cell_height 130%, modify_font baseline -2px, text_composition_strategy 1.7 30.
+  const probe = [
+    'foreground #dddddd',
+    'background #000000',
+    'font_spec ["Medium", "Roboto Mono", "family=\\"Roboto Mono\\" style=\\"Medium\\""]',
+    'font_size 11.5',
+    'modify_font cell_height 130.0 percent',
+    'modify_font baseline -2.0 pixel',
+    'text_composition 1.7 30',
+    'font_file 0 /usr/share/fonts/TTF/RobotoMono-Medium.ttf',
+  ].join('\n')
+
+  test('the probe names the file kitty draws with, its size, its cell changes and its text curve', () => {
+    const colors = parseKittyColors(probe)!
+    expect(colors.fontWeight).toBe(500)
+    expect(colors.font).toEqual({ file: '/usr/share/fonts/TTF/RobotoMono-Medium.ttf', index: 0, sizePt: 11.5 })
+    expect(colors.kittyAdjust).toEqual({ cellHeight: { value: 130, unit: '%' }, baseline: { value: -2, unit: 'px' } })
+    expect(colors.textComposition).toEqual({ gamma: 1.7, contrast: 30 })
+    expect(parseKittyColors('foreground #ffffff\nmodify_font baseline 3.0 pt\ntext_composition platform\n')).toMatchObject({ kittyAdjust: { baseline: { value: 3, unit: 'pt' } }, textComposition: 'platform' })
+  })
+
+  test('parseTextComposition', () => {
+    expect(parseTextComposition('platform')).toBe('platform')
+    expect(parseTextComposition('legacy')).toBe('legacy')
+    expect(parseTextComposition('1.7 30')).toEqual({ gamma: 1.7, contrast: 30 })
+    expect(parseTextComposition('1.2')).toEqual({ gamma: 1.2, contrast: 0 })
+    for (const bad of ['', 'fast', '0 0', '1 200', '-1']) expect(parseTextComposition(bad)).toBeUndefined()
+  })
+
+  test('config files: the family and style, the size, modify_font and the strategy (platform when unset)', async () => {
+    const env = { HOME: '/home/u' }
+    const conf = 'font_family family="JetBrains Mono" style="Medium"\nfont_size 13\nmodify_font cell_height 2px\nmodify_font baseline 3\nmodify_font underline_position 2\ntext_composition_strategy legacy\n'
+    const colors = await readKittyColors(memFs({ '/home/u/.config/kitty/kitty.conf': conf }), { env })
+    expect(colors?.font).toEqual({ family: 'JetBrains Mono', style: 'Medium', sizePt: 13 })
+    expect(colors?.kittyAdjust).toEqual({ cellHeight: { value: 2, unit: 'px' }, baseline: { value: 3, unit: 'pt' } })
+    expect(colors?.textComposition).toBe('legacy')
+    const plain = await readKittyColors(memFs({ '/home/u/.config/kitty/kitty.conf': 'font_family Fira Code\n' }), { env })
+    expect(plain?.font).toEqual({ family: 'Fira Code' })
+    expect(plain?.textComposition).toBe('platform')
+  })
+
+  test('the images\' alpha follows the text: legacy against the background, a curve other than 1.0 0 too', () => {
+    const background = { r: 0x28, g: 0x28, b: 0x28 }
+    const at = (textComposition: TerminalColors['textComposition'], platform?: string) => [imageInkBackground('kitty', { background, textComposition }, platform), imageInkCurve('kitty', { background, textComposition }, platform)]
+    expect(at('legacy')).toEqual([background, undefined])
+    expect(at({ gamma: 1.7, contrast: 30 })).toEqual([background, { gamma: 1.7, contrast: 30 }])
+    expect(at({ gamma: 1, contrast: 0 })).toEqual([undefined, undefined])
+    // `platform` is 1.0 0 on Linux and 1.7 30 on macOS.
+    expect(at('platform', 'linux')).toEqual([undefined, undefined])
+    expect(at('platform', 'darwin')).toEqual([background, { gamma: 1.7, contrast: 30 }])
+    expect(at(undefined, 'darwin')).toEqual([background, { gamma: 1.7, contrast: 30 }])
+    expect(imageInkCurve('ghostty', { background, textComposition: { gamma: 1.7, contrast: 30 } })).toBeUndefined()
   })
 })

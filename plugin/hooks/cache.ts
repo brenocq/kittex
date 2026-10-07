@@ -46,7 +46,7 @@ export function entryKey(text: string, facts: unknown): string {
   return hash128(`${CACHE_VERSION}\n${JSON.stringify(facts)}\n${text}`)
 }
 
-/** What a resumed block's drawing depends on besides its text (the key's facts): the build, the options, the reply's width, the cells, the ink and its blending, the weight, the prose width, links and emoji. */
+/** What a resumed block's drawing depends on besides its text (the key's facts): the build, the options, the reply's width, the cells and the text font, the ink and its blending, the weight, the prose width, links and emoji. */
 export function cacheFacts(env: KittexEnv, columns: number, math: MathOptions, build: string): unknown {
   return {
     build,
@@ -54,6 +54,9 @@ export function cacheFacts(env: KittexEnv, columns: number, math: MathOptions, b
     columns,
     cell: [env.cellWidth, env.cellHeight, env.emPx],
     adjust: env.cellAdjust ?? null,
+    kitty: env.kittyAdjust ?? null,
+    font: env.font ?? null,
+    curve: env.inkCurve ?? null,
     ink: [env.ink.r, env.ink.g, env.ink.b],
     over: env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b] : null,
     weight: env.weight ?? null,

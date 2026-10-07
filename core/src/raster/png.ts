@@ -1,5 +1,5 @@
 import { zlibSync } from 'fflate'
-import type { RGB } from '../types.js'
+import type { RGB, TextCurve } from '../types.js'
 
 /*
  * A coverage raster as an indexed-colour PNG (colour type 3, 8 bits): pixel
@@ -26,7 +26,7 @@ const TRNS_AT = PLTE_AT + 12 + 768
  * Encodes `alpha` (width × height coverage bytes) as a palette PNG in one ink
  * colour, its alpha levels corrected against `over` when given (inkAlpha).
  */
-export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number, ink: RGB, over?: RGB): Uint8Array {
+export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number, ink: RGB, over?: RGB, curve?: TextCurve): Uint8Array {
   const ihdr = new Uint8Array(13)
   const view = new DataView(ihdr.buffer)
   view.setUint32(0, width)
@@ -36,7 +36,7 @@ export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number,
     SIGNATURE,
     chunk('IHDR', ihdr),
     chunk('PLTE', palette(ink)),
-    chunk('tRNS', alphaTable(ink, over)),
+    chunk('tRNS', alphaTable(ink, over, curve)),
     chunk('IDAT', zlibSync(filter(alpha, width, height), { level: 6 })),
     chunk('IEND', new Uint8Array(0)),
   ])
@@ -107,7 +107,7 @@ function filterRgba(rgba: Uint8Array, w: number, h: number): Uint8Array {
  * encodeAlphaPng): only the PLTE and tRNS chunks are rewritten. Throws if
  * `png` is not one of encodePng's.
  */
-export function recolorPng(png: Uint8Array, ink: RGB, over?: RGB): Uint8Array {
+export function recolorPng(png: Uint8Array, ink: RGB, over?: RGB, curve?: TextCurve): Uint8Array {
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength)
   const isPlte =
     png.length > TRNS_AT + 12 + 256 &&
@@ -118,7 +118,7 @@ export function recolorPng(png: Uint8Array, ink: RGB, over?: RGB): Uint8Array {
   if (!isPlte) throw new Error('recolorPng: not a kittex palette PNG')
   const out = png.slice()
   out.set(chunk('PLTE', palette(ink)), PLTE_AT)
-  out.set(chunk('tRNS', alphaTable(ink, over)), TRNS_AT)
+  out.set(chunk('tRNS', alphaTable(ink, over, curve)), TRNS_AT)
   return out
 }
 
@@ -145,10 +145,34 @@ export function inkAlpha(alpha: number, ink: RGB, over: RGB): number {
   return Math.min(1, Math.max(0, (blend - bg) / (fg - bg)))
 }
 
-/** tRNS: alpha level i is i, or i corrected against `over` (inkAlpha); 0 and 255 stay put. */
-function alphaTable(ink: RGB, over: RGB | undefined): Uint8Array {
+/**
+ * Coverage `alpha` (0 to 1) of ink over `over`, given the curve kitty's
+ * `text_composition_strategy` gives its text glyphs (cell.slang,
+ * foreground_contrast_new): the alpha moved towards alpha^(1/gamma), the more
+ * so the darker the ink against the background, then multiplied by
+ * 1 + contrast/100. kitty draws images with their alpha as it is, so with
+ * this applied to a formula's alpha levels it weighs what the text does
+ * (`1.7 30`, kitty's default on macOS, draws text much bolder than images).
+ * The luminances are of the linear colours, as in the shader.
+ */
+export function curvedAlpha(alpha: number, ink: RGB, over: RGB, curve: TextCurve): number {
+  const gamma = curve.gamma < 0.01 ? 1 : 1 / curve.gamma
+  const t = (1 - linearLuminance(ink) + linearLuminance(over)) * 0.5
+  const moved = alpha + (alpha ** gamma - alpha) * t
+  return Math.min(1, Math.max(0, moved * (1 + curve.contrast * 0.01)))
+}
+
+/**
+ * tRNS: alpha level i is i, or i corrected against `over` (inkAlpha, or
+ * curvedAlpha with a `curve`); 0 stays put, and 255 too unless a curve
+ * moves it.
+ */
+function alphaTable(ink: RGB, over: RGB | undefined, curve?: TextCurve): Uint8Array {
   const trns = new Uint8Array(256)
-  for (let i = 0; i < 256; i++) trns[i] = over && i > 0 && i < 255 ? Math.round(255 * inkAlpha(i / 255, ink, over)) : i
+  for (let i = 0; i < 256; i++) {
+    if (!over || i === 0 || (i === 255 && !curve)) trns[i] = i
+    else trns[i] = Math.round(255 * (curve ? curvedAlpha(i / 255, ink, over, curve) : inkAlpha(i / 255, ink, over)))
+  }
   return trns
 }
 

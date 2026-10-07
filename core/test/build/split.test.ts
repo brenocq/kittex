@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, describe, expect, test } from 'vitest'
-import { jsonTables, splitModule } from '../../../scripts/split.mjs'
+import { jsonTables, splitModule } from '../../scripts/split.mjs'
 
 const dirs: string[] = []
 afterAll(() => {
@@ -82,7 +82,7 @@ describe('splitModule', () => {
   })
 
   test('a bundle of the whole core splits and draws as the unsplit one does', async () => {
-    const { bundleCore } = await import('../../../scripts/bundle.mjs' as string)
+    const { bundleCore } = await import('../../scripts/bundle.mjs' as string)
     const code: string = await bundleCore({ legalComments: 'none' })
     const [split, one] = await Promise.all([load(code, 9000), whole(code)])
     expect(split.parts).toBeGreaterThan(10)
