@@ -73,6 +73,15 @@ Change these in `/config`.
 
 </details>
 
+<details>
+<summary><b>Cache equation images</b>: keep rendered equations on disk for instant resumes</summary>
+<br>
+
+- `on` (default): resumed sessions draw their equations from the cache, in `${XDG_CACHE_HOME:-~/.cache}/kittex` (at most 50 MB, oldest removed first).
+- `off`: every equation is typeset again on each resume; nothing is written.
+
+</details>
+
 ## FAQ
 
 <details>
