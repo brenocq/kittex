@@ -105,6 +105,8 @@ export function shrink(reply: Reply, shape: Shape, failure: Failure, budget = 40
   if (s.links !== 'osc8') tryShape({ ...s, links: 'osc8' })
   if (s.trimLanded) tryShape({ ...s, trimLanded: false })
   if (s.cellWidth !== 13 || s.cellHeight !== 26) tryShape({ ...s, cellWidth: 13, cellHeight: 26 })
+  if (s.block !== 'image') tryShape({ ...s, block: 'image' })
+  if (s.inline !== 'image') tryShape({ ...s, inline: 'image' })
   for (const columns of [80, 100, 120, 60, 40]) {
     if (s.columns === columns) break
     const before = s

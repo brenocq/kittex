@@ -51,12 +51,12 @@ import {
   inlineFlow,
   joinProse,
   LANDED_PATTERN,
-  SOURCE_PATTERN,
   STREAMED_PATTERN,
   linkEnv,
   locatePreviews,
   MessageStream,
   MATH_INSTRUCTIONS,
+  mathOptions,
   planLanded,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
@@ -67,10 +67,12 @@ import {
   REPLY_INDENT,
   RESIZE_SETTLE_MS,
   SECTION_ID,
+  sourcePattern,
   STREAM_LIMIT,
+  streamEnvFor,
   withoutTextOverride,
 } from './math.ts'
-import type { InlineSlot, KittexEnv, Piece, PreviewRecord, StreamedBlock } from './math.ts'
+import type { InlineSlot, KittexEnv, MathOptions, Piece, PreviewRecord, StreamedBlock } from './math.ts'
 
 type $ = EngineInterface
 
@@ -123,9 +125,10 @@ let cells: Cells | undefined
 let later: ((fn: () => void) => void) | undefined
 
 export const register: Register = (on, options) => {
-  if (options.enabled === false) return
-  /** Inline math drawn as images where the terminal draws them (the `inline` option); off, it is Unicode text as before. */
-  const inlineImages = options.inline !== false
+  /** The `block` and `inline` options: how each kind of math is shown (image, unicode or raw). */
+  const math = mathOptions(options)
+  // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model).
+  if (math.block === 'raw' && math.inline === 'raw') return
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -223,7 +226,7 @@ export const register: Register = (on, options) => {
       }
       before = entry.shown
       entry.source += e.delta
-      const rewrite = entry.stream!.push(delta, e.final, { ...env, inline: inlineImages && env.images })
+      const rewrite = entry.stream!.push(delta, e.final, streamEnvFor(env, math))
       // Each preview where the engine will show it: a landed block maps its previews back by place, not by content.
       const records = locatePreviews(rewrite.text, rewrite.records, before)
       entry.shown = before + rewrite.text.length
@@ -288,18 +291,19 @@ export const register: Register = (on, options) => {
   // which reports no `onScreen`. The four matchers never select the same
   // render, so kittex runs once per render.
   const landed = { component: 'AssistantMessage' } as const
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, inlineImages))
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
-  on('ui.render', { ...landed, surface: 'terminal', props: { text: SOURCE_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
-  on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, inlineImages))
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math) } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
 }
 
 /**
  * Draws a landed block (see the AssistantMessage registrations): its prose
  * through the engine, an Image where each preview was; anything that fails
- * falls back to the engine's drawing. `inlineImages` is the `inline` option.
+ * falls back to the engine's drawing. `math`: the options (a kind set to
+ * `unicode` gets no image, one set to `raw` is left as written).
  */
-async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, inlineImages: boolean): Promise<RenderElement> {
+async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, math: MathOptions): Promise<RenderElement> {
   if (e.props.isSummary) return next(e)
   try {
     let env = await readEnv($)
@@ -315,7 +319,10 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       cells?.settle(seen)
     }
     const columns = e.viewport?.columns ?? env.columns
-    const images = e.surface === 'terminal' && env.images
+    const terminalImages = e.surface === 'terminal' && env.images
+    const blockImages = terminalImages && math.block === 'image'
+    const inlineImages = terminalImages && math.inline === 'image'
+    const images = blockImages || inlineImages
     // The text may lack the block's last flush (or be empty) on the first
     // render: nothing here is final, and the render runs again when it lands
     // (and when its block's previews or its row's link are stored: read here).
@@ -329,11 +336,12 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
       columns,
       maxColumns: renderEnv.maxColumns,
-      draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
+      draw: blockImages ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
       width: proseWidthFor(env, columns),
       measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+      math,
       inline:
-        images && inlineImages
+        inlineImages
           ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
           : undefined,
     })

@@ -17,7 +17,7 @@ import { BLOCK_LIMIT, MessageStream } from '../../../plugin/hooks/math.js'
 import { envFor, land, remember, runCase, streamReply } from './drive.js'
 import type { CheckName, Shape } from './drive.js'
 
-const BASE: Shape = { columns: 80, cellWidth: 13, cellHeight: 26, terminal: 'kitty', inline: true, links: 'osc8', flushSeed: 1, trimLanded: false }
+const BASE: Shape = { columns: 80, cellWidth: 13, cellHeight: 26, terminal: 'kitty', block: 'image', inline: 'image', links: 'osc8', flushSeed: 1, trimLanded: false }
 
 /** The failures of these checks in a reply landed in a terminal of this shape. */
 function failures(markdown: string, shape: Partial<Shape>, checks: CheckName[]) {
@@ -259,7 +259,7 @@ describe('fuzz regressions', () => {
     // Live (the streamed text landed with no records, as with `inline` off): the two rows land as one,
     // `$100 per seat, or † and [$` drawn as a formula.
     const md = 'The fee is $100 per seat, or\n$\\dagger$ and [$\\begin{pmatrix} 1 \\\\ 0 \\end{pmatrix}$] for both.\n'
-    expect(failures(md, { inline: false }, ['phantom', 'moved'])).toEqual([])
+    expect(failures(md, { inline: 'unicode' }, ['phantom', 'moved'])).toEqual([])
   })
 
   // FUZZ-13. The Unicode renderer drops the parentheses of a fraction's
@@ -294,7 +294,7 @@ describe('fuzz regressions', () => {
       // A table's header row, its delimiter row in the next flush.
       ['|  | | | $|a| |b|$\n-------- | ---: | :--- | ---\n', {}],
       // A display right after a list item's line is no part of the item.
-      ['- in](https://example.com)\n$$\\comm{\\hat{L}_i}{\\hat{L}_j} i\\hbar\\,\\epsilon_{ijk}\\hat{L}_k$$\n', { inline: false }],
+      ['- in](https://example.com)\n$$\\comm{\\hat{L}_i}{\\hat{L}_j} i\\hbar\\,\\epsilon_{ijk}\\hat{L}_k$$\n', { inline: 'unicode' }],
       // A piece after a refused formula's note, its blank lines dropped as the landing drops them.
       ['\\[\\frac{d}{dx}\\int_{a(x)}^{b(x)} x}\\,dt\\]\n  \n$\\emptyset$\n\n', {}],
       // A heading right above a code fence that is still open.
@@ -330,12 +330,12 @@ describe('fuzz regressions', () => {
   // whatever the inline option. Fixed: PlanOptions.mode.
   test('FUZZ-16: with inline images off, a display in an item holding a link lands as resumed lands it', () => {
     const md = '2. rank](https://github.com/owner/repo/issues/42)\n   \\[\nN(d_2)\n\\]\n   $\\frac{n(n+1)}{2}$\n'
-    expect(failures(md, { inline: false }, ['resumed', 'displayImage'])).toEqual([])
+    expect(failures(md, { inline: 'unicode' }, ['resumed', 'displayImage'])).toEqual([])
   })
 
   test('FUZZ-16: a quote goes on after a display block as the landing writes it, whatever the flushes', () => {
     const md = '> > > $$\n> > > \\Gamma^\\rho_{\\nu\\sigma}\n> > > $$\n> > >\ncovariance\n'
-    for (const flushSeed of [1, 2, 3]) expect(failures(md, { inline: false, flushSeed }, ['resumed', 'moved'])).toEqual([])
+    for (const flushSeed of [1, 2, 3]) expect(failures(md, { inline: 'unicode', flushSeed }, ['resumed', 'moved'])).toEqual([])
   })
 
   // fix/landing-map's fuzz run: with inline images off the plan knew no terminal width (only `inline` had it),
@@ -343,7 +343,7 @@ describe('fuzz regressions', () => {
   // and math read back as LaTeX in a table cell kept the unpadded form where the plain one was its last chance.
   test('the plan lays tables out in the terminal width, and gives resumed math its last form', () => {
     const md = '[value](https://github.com/owner/repo/issues/42) | $D_{KL}(p \\sum_x p(x) \\log | | |\n- | - | - | -------- \n$\\min_i x_i$ \n\\mid B)$ | | `\\frac{a}{b}` \n$$\n\\ointctrclockwise_C \n$$\n\n- norm.\n'
-    expect(failures(md, { inline: false, maxProseWidth: 49 }, ['overPreview', 'moved'])).toEqual([])
+    expect(failures(md, { inline: 'unicode', maxProseWidth: 49 }, ['overPreview', 'moved'])).toEqual([])
     const table = 'likelihood | $\\hbar$ | | averyveryveryveryveryveryveryveryveryveryverylongidentifierwithoutanybreaks \n| - | :--- | :--- | :--- \n$\\beta_1$ \nupdate | holds $\\arg\\max_x f(x)$ space \n\n'
     expect(failures(table, {}, ['resumed'])).toEqual([])
   })

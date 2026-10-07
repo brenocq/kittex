@@ -100,7 +100,7 @@ describe('streamed blocks', () => {
     expect(alts(await (await mount($, shown, 'unlinked')).drawn())).toEqual(['\\alpha', '\\beta'])
   })
 
-  test("a streamed block's text is never read as LaTeX again: dollars it shows don't pair into a formula (FUZZ-12)", { options: { inline: false } }, async ($, on) => {
+  test("a streamed block's text is never read as LaTeX again: dollars it shows don't pair into a formula (FUZZ-12)", { options: { inline: 'unicode' } }, async ($, on) => {
     await startSession($, on)
     await init()
     // With inline images off, `\$` in a formula is a `$` in its Unicode, and the two left pair as LaTeX would.

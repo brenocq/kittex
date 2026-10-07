@@ -2,19 +2,20 @@
 // (fuzz/generate.ts) streamed through register.tsx's own
 // MessageDisplay hook in their terminal (its env, cells, link mode and
 // maxProseWidth, as session.start reads them) and landed through its own
-// AssistantMessage hook. What streamed must be what the driver's MessageStream
-// writes, and the landing must draw as many images as the driver's plan: the
-// offline suite (core/test/fuzz, run by npm test) then speaks for register.tsx.
+// AssistantMessage hook, each under one setting of the `block` and `inline`
+// options. What streamed must be what the driver's MessageStream writes, and
+// the landing must draw as many images as the driver's plan: the offline suite
+// (core/test/fuzz, run by npm test) then speaks for register.tsx.
 
 import { describe, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { cellProbe, init, measureDisplay, renderDisplay, renderInline } from '../hooks/core.js'
-import { inlineEnvFor, MessageStream, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
-import type { PreviewRecord } from '../hooks/math.ts'
+import { inlineEnvFor, MessageStream, planLanded, proseWidthFor, renderEnvFor, streamEnvFor } from '../hooks/math.ts'
+import type { MathMode, PreviewRecord } from '../hooks/math.ts'
 import { generateReply, writeReply } from './fuzz/generate.ts'
-import { envFor, flushesOf, remember, shapeFor, variablesFor } from './fuzz/shape.ts'
+import { envFor, flushesOf, mathOf, remember, shapeFor, variablesFor } from './fuzz/shape.ts'
 import type { Shape } from './fuzz/shape.ts'
 import { test } from './support.ts'
 
@@ -48,29 +49,40 @@ function planned(text: string, records: readonly PreviewRecord[], shape: Shape):
   const env = envFor(shape)
   const renderEnv = renderEnvFor(env, shape.columns)
   const inlineEnv = inlineEnvFor(env, shape.columns)
+  if (shape.block === 'raw' && shape.inline === 'raw') return 0
   const plan = planLanded(text, records, {
     streamed: {},
     mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
     columns: shape.columns,
     maxColumns: renderEnv.maxColumns,
-    draw: (tex, rows, maxColumns) => {
+    draw: shape.block !== 'image' ? undefined : (tex, rows, maxColumns) => {
       const at = maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }
       return renderDisplay(tex, at, rows ?? measureDisplay(tex, at).rows)
     },
     width: proseWidthFor(env, shape.columns),
     measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-    inline: shape.inline ? { env: inlineEnv, width: proseWidthFor(env, shape.columns), columns: shape.columns, draw: (tex, cells, place) => renderInline(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
+    math: mathOf(shape),
+    inline: shape.inline === 'image' ? { env: inlineEnv, width: proseWidthFor(env, shape.columns), columns: shape.columns, draw: (tex, cells, place) => renderInline(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
   })
   if (!plan.changed || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) return 0
   return plan.pieces.reduce((sum, piece) => sum + (piece.kind === 'image' ? 1 : piece.kind === 'prose' ? (piece.inline?.length ?? 0) : 0), 0)
 }
 
 describe('the fuzz driver against register.tsx', () => {
-  for (const seed of [11, 23, 42, 77, 108]) {
-    test(`seed ${seed}: streamed and landed as the driver does`, { timeoutMs: 60_000 }, async ($, on) => {
+  const runs: [number, MathMode, MathMode][] = [
+    [11, 'image', 'image'],
+    [23, 'image', 'image'],
+    [42, 'unicode', 'image'],
+    [77, 'raw', 'unicode'],
+    [108, 'image', 'raw'],
+    [131, 'unicode', 'unicode'],
+    [150, 'raw', 'raw'],
+  ]
+  for (const [seed, block, inline] of runs) {
+    test(`seed ${seed}, block ${block}, inline ${inline}: streamed and landed as the driver does`, { timeoutMs: 60_000, options: { block, inline } }, async ($, on) => {
       // Ghostty's config (cell adjustments, grapheme width) isn't in this world: the plain terminal.
       const { cellAdjust: _adjust, graphemeLegacy: _legacy, ...plain } = shapeFor(seed)
-      const shape: Shape = { ...plain, inline: true }
+      const shape: Shape = { ...plain, block, inline }
       await startIn($, on, shape)
       await init()
       const reply = writeReply(generateReply(seed))
@@ -84,7 +96,9 @@ describe('the fuzz driver against register.tsx', () => {
         if (index === 0 && delta === '' && final) break
         const result = await $.classic.MessageDisplay({ turn_id: 't', message_id: `m${seed}`, index, final, delta })
         shown += result.displayContent ?? delta
-        const rewrite = stream.push(delta, final, { ...envFor(shape), inline: true })
+        // With both kinds raw kittex registers no hook: every flush shows as written.
+        const off = block === 'raw' && inline === 'raw'
+        const rewrite = off ? { text: delta, records: [] } : stream.push(delta, final, streamEnvFor(envFor(shape), mathOf(shape)))
         records = remember(records, rewrite.records, expected, rewrite.text)
         expected += rewrite.text
       }
