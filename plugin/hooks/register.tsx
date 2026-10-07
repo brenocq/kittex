@@ -25,7 +25,6 @@ import {
   emPxForCell,
   fontCell,
   imageInkBackground,
-  init,
   measureDisplay,
   readTerminalColors,
   renderDisplay,
@@ -398,7 +397,7 @@ function instructs(env: KittexEnv | null): boolean {
 }
 
 async function setUp($: $, surface: string | null): Promise<void> {
-  await init()
+  // MathJax is not loaded here: the first formula loads it (core's typeset is lazy).
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])

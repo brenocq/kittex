@@ -1,13 +1,17 @@
 // Runs the core bundle under the mod sandbox's rules: a vm context with code
 // generation off (no eval, new Function or WebAssembly) and none of Node's
 // globals (no timers, process, Buffer or require), only the web APIs the
-// sandbox has. Typesets and draws sample formulas and reports timings.
+// sandbox has. The bundle is the mod's own: the entry and its chain of parts
+// as the build writes them (bundle.mjs, split.mjs), linked as ES modules.
+// Checks that loading it evaluates no MathJax, then typesets and draws sample
+// formulas and reports timings.
 //
-//   node scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
+//   node --experimental-vm-modules scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
-import { build } from 'esbuild'
+import { bundleCore } from './bundle.mjs'
+import { splitModule } from './split.mjs'
 
 const SAMPLES = [
   String.raw`\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}`,
@@ -20,20 +24,9 @@ const SAMPLES = [
 
 const out = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : undefined
 
-const bundle = await build({
-  entryPoints: ['core/src/index.ts'],
-  bundle: true,
-  write: false,
-  format: 'iife',
-  globalName: 'kittex',
-  platform: 'neutral',
-  mainFields: ['module', 'main'],
-  conditions: ['import', 'default'],
-  target: 'es2022',
-  minify: true,
-  logLevel: 'warning',
-})
-const code = bundle.outputFiles[0].text
+const { entry, parts } = splitModule(await bundleCore({ legalComments: 'none' }), { dir: '.' })
+const sources = new Map([['core.js', entry], ...parts.map(part => [part.file, part.source])])
+const code = [...sources.values()].join('\n')
 
 let failed = false
 const fail = message => {
@@ -62,9 +55,18 @@ const context = vm.createContext(
 )
 try {
   let t = performance.now()
-  vm.runInContext(code, context, { filename: 'core.js' })
-  const kittex = context.kittex
-  console.log(`load: ${(performance.now() - t).toFixed(0)} ms`)
+  const modules = new Map()
+  for (const [file, source] of sources) modules.set(file, new vm.SourceTextModule(source, { identifier: file, context }))
+  await modules.get('core.js').link(specifier => {
+    const module = modules.get(specifier.replace(/^\.\//, ''))
+    if (!module) throw new Error(`no part ${specifier}`)
+    return module
+  })
+  await modules.get('core.js').evaluate()
+  const kittex = modules.get('core.js').namespace
+  console.log(`load: ${(performance.now() - t).toFixed(0)} ms (${sources.size} modules)`)
+  if (kittex.typesetLoaded()) fail('loading the bundle evaluated MathJax (it should wait for the first formula)')
+
 
   t = performance.now()
   await kittex.init()

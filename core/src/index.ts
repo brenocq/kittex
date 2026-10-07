@@ -1,7 +1,7 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
-import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
+import { GlyphError, initTypeset, TexError, texToMathML, typeset, typesetLoaded } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
@@ -24,7 +24,7 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset }
+export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset, typesetLoaded }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
@@ -90,7 +90,10 @@ export const MAX_PIXELS = 16_000_000
 
 let ready: Promise<void> | undefined
 
-/** Prepares the typesetter. Await it once before measuring, rendering or previewing. */
+/**
+ * Prepares the typesetter (loads MathJax and the font data) ahead of the first
+ * formula. Optional: measuring, rendering or previewing does it when needed.
+ */
 export function init(): Promise<void> {
   return (ready ??= initTypeset())
 }
