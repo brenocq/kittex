@@ -7,10 +7,10 @@
 
 import { describe, expect } from 'claude-code/testing'
 
-import { init, layoutList, layoutProse, measureDisplay, renderDisplay, renderInline } from '../hooks/core.js'
+import { init, measureDisplay, renderDisplay, renderInline } from '../hooks/core.js'
 import { inlineEnvFor, joinProse, MessageStream, placeable, planLanded, proseWidthFor, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv, Piece, PreviewRecord, StreamEnv } from '../hooks/math.ts'
-import { kittyEnv, test } from './support.ts'
+import { kittyEnv, pieceLines, test } from './support.ts'
 
 const kitty26 = (): KittexEnv => ({ ...kittyEnv(), cellHeight: 26 })
 const inlineOn = (): StreamEnv => ({ ...kitty26(), inline: true })
@@ -55,9 +55,8 @@ function composed(pieces: readonly Piece[]): { rows: string[]; images: [string, 
   const images: [string, number, number][] = []
   for (const piece of pieces) {
     if (piece.kind !== 'prose') throw new Error('prose only')
-    const layout = layoutProse(piece.text, WIDTH) ?? layoutList(piece.text, WIDTH)
-    // A heading here is one row, a code block its lines inside the fences.
-    const lines = layout?.lines ?? (piece.text.startsWith('```') ? piece.text.split('\n').slice(1, -1) : [piece.text.replace(/^#+ /, '')])
+    // Its parts one under the other, a code block its lines inside the fences.
+    const lines = pieceLines(piece.text, WIDTH, WIDTH + 2, {}, true)!
     if (piece.gap) rows.push('')
     for (const image of piece.inline ?? []) images.push([image.tex, rows.length + image.row, image.col])
     rows.push(...lines)
@@ -98,14 +97,11 @@ describe('adjacent blocks: streaming', () => {
 })
 
 describe('adjacent blocks: the landed plan', () => {
-  test('a heading, then a paragraph: the paragraph is a piece of its own a blank row under it', async () => {
+  test('a heading, then a paragraph: the paragraph a blank row under it, in one piece', async () => {
     await init()
     const { landed, records } = streamed(['## The model\n', 'Text with $x_k$ in it.\n'])
     const { pieces } = plan(landed, records)
-    expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([
-      ['## The model', false, []],
-      [expect.stringMatching(/^Text with /), true, ['x_k']],
-    ])
+    expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([['## The model', false, ['x_k']]])
     expect(composed(pieces).images).toEqual([['x_k', 2, 'Text with '.length]])
   })
 
@@ -124,12 +120,9 @@ describe('adjacent blocks: the landed plan', () => {
     const { landed, records } = streamed(flushes)
     expect(records.map(record => record.tex)).toEqual(['a', 'b', 'c', 'd'])
     const { pieces } = plan(landed, records)
+    // One piece down to the code block, whose rows the replay doesn't know: the paragraph under it is a piece of its own.
     expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([
-      [expect.stringMatching(/^Text with /), false, ['a']],
-      ['## Then a heading', false, []],
-      [expect.stringMatching(/^Where /), true, ['b']],
-      [expect.stringMatching(/^- the item /), false, ['c']],
-      ['```python', false, []],
+      [expect.stringMatching(/^Text with /), false, ['a', 'b', 'c']],
       [expect.stringMatching(/^After the code/), false, ['d']],
     ])
     // Rows: the paragraph, the heading, a blank row, the paragraph, the list, the code's one line, the paragraph.
@@ -144,23 +137,19 @@ describe('adjacent blocks: the landed plan', () => {
   test('a table or a quote right under a paragraph: a blank row between them', async () => {
     await init()
     const { landed, records } = streamed(['Values of $x$:\n', '| a | b |\n', '|---|---|\n', '| 1 | 2 |\n'])
-    expect(shape(plan(landed, records).pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([
-      [expect.stringMatching(/^Values of /), false, ['x']],
-      ['| a | b |', true, []],
-    ])
+    const { pieces } = plan(landed, records)
+    expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([[expect.stringMatching(/^Values of /), false, ['x']]])
+    expect(pieceLines(pieces[0]!.kind === 'prose' ? pieces[0]!.text : '', WIDTH, WIDTH + 2)![1]).toBe('')
   })
 
   test('a display formula in a blockquote right under a paragraph lies over its preview in the quote', async () => {
     await init()
     const { landed, records } = streamed(['Intro, with $x$:\n', '> The filter:\n', '>\n', '> $$\n', '> \\frac{a}{b} = K_k\n', '> $$\n'])
     const { pieces } = plan(landed, records)
-    expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([
-      [expect.stringMatching(/^Intro, with /), false, ['x']],
-      ['> The filter:', true, ['\\frac{a}{b} = K_k']],
-    ])
-    // Under the quote's first line and the blank `>` line, two cells in (the bar and a space).
-    const quoted = pieces[1]!.kind === 'prose' ? pieces[1]!.inline![0]! : undefined
-    expect([quoted?.row, quoted?.col]).toEqual([2, 2])
+    expect(shape(pieces).map(([text, gap, texes]) => [text.split('\n')[0], gap, texes])).toEqual([[expect.stringMatching(/^Intro, with /), false, ['x', '\\frac{a}{b} = K_k']]])
+    // A blank row under the paragraph, then under the quote's first line and the blank `>` line, two cells in (the bar and a space).
+    const quoted = pieces[0]!.kind === 'prose' ? pieces[0]!.inline![1]! : undefined
+    expect([quoted?.row, quoted?.col, quoted?.display]).toEqual([2 + 2, 2, true])
   })
 
   test('a paragraph streamed before the list under it arrived keeps its place once the list lands', async () => {

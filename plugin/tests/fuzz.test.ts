@@ -51,6 +51,9 @@ function planned(text: string, records: readonly PreviewRecord[], shape: Shape):
   const inlineEnv = inlineEnvFor(env, shape.columns)
   if (shape.block === 'raw' && shape.inline === 'raw') return 0
   const plan = planLanded(text, records, {
+    streamed: {},
+    mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
+    columns: shape.columns,
     maxColumns: renderEnv.maxColumns,
     draw: shape.block !== 'image' ? undefined : (tex, rows, maxColumns) => {
       const at = maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }
@@ -96,14 +99,25 @@ describe('the fuzz driver against register.tsx', () => {
         // With both kinds raw kittex registers no hook: every flush shows as written.
         const off = block === 'raw' && inline === 'raw'
         const rewrite = off ? { text: delta, records: [] } : stream.push(delta, final, streamEnvFor(envFor(shape), mathOf(shape)))
+        records = remember(records, rewrite.records, expected, rewrite.text)
         expected += rewrite.text
-        records = remember(records, rewrite.records)
       }
       expect(shown).toBe(expected)
+      // The block's row, as the engine appends it when the block lands: kittex links the landed block to its
+      // stream on the way down (this world has no store beneath, so the append itself then fails).
+      await $.session
+        .append({
+          message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: reply }] },
+          door: 'response',
+          origin: { kind: 'model', model: 'claude' },
+          uuid: `row-${seed}`,
+        })
+        .catch(() => undefined)
       const ui = await $.ui.mount({
         plugin: 'kittex',
         surface: 'terminal',
         component: 'AssistantMessage',
+        requestId: `row-${seed}`,
         props: { text: shown, isFirstOfReply: true },
         viewport: { columns: shape.columns, rows: 50, isFullscreen: false },
       })

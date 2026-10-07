@@ -180,16 +180,15 @@ describe('the landed plan', () => {
     }
   })
 
-  test('a paragraph holding inline images is a piece of its own; the rest keeps together', async () => {
+  test('a paragraph holding inline images is drawn with the prose around it, its images on its rows', async () => {
     await init()
     const text = 'Intro.\n\nMore intro.\n\nLet $x$ be.\n\nOutro.'
     const { pieces } = plan(text)
+    // One piece (one round trip through the engine): the paragraphs above take a row each, a blank row between.
     expect(pieces.map(piece => [piece.kind, piece.gap, piece.kind === 'prose' ? piece.text.replace(/[ ⠀]/g, '_') : ''])).toEqual([
-      ['prose', false, 'Intro.\n\nMore intro.'],
-      ['prose', true, `Let ${previewInline('x')}_ be.`],
-      ['prose', true, 'Outro.'],
+      ['prose', false, `Intro.\n\nMore intro.\n\nLet ${previewInline('x')}_ be.\n\nOutro.`],
     ])
-    expect(places(pieces)).toEqual([['x', 0, 4, 2]])
+    expect(places(pieces)).toEqual([['x', 4, 4, 2]])
   })
 
   test('after --resume the LaTeX gets the same previews and images', async () => {
@@ -223,7 +222,8 @@ describe('the landed plan', () => {
     expect(places(pieces)).toEqual([
       ['x', 0, textWidth(landed.slice(0, x)), records[0]!.columns],
       ['E = mc^2', 0, textWidth(landed.slice(0, e)), records[1]!.columns],
-      ['y', 0, 10, records[2]!.columns],
+      // The list a blank row under the paragraph, in the same piece.
+      ['y', 2, 10, records[2]!.columns],
     ])
     expect(textWidth(landed.slice(0, x))).toBe(9)
     expect(plan('🚀 Let 😀$x$ and $E = mc^2$✅ hold.\n\n- ⭐ item $y$ 🎉').pieces).toEqual(pieces)
@@ -690,10 +690,18 @@ describe('display math in a blockquote (stress report F11)', () => {
     expect(strip(plan(quote, [], kitty26(), options).pieces)).toEqual(strip(plan(landed, records, kitty26(), options).pieces))
   })
 
-  test('two quotes deep the preview stays Unicode inside the quote', async () => {
+  test('two quotes deep the preview gets its image too, four cells in (fuzz FUZZ-9)', async () => {
     await init()
     const { landed, records } = streamed(['> > $$\n', '> > x^2 + y^2\n', '> > $$\n'])
-    expect(records).toEqual([])
+    expect(records).toMatchObject([{ tex: 'x^2 + y^2', quote: 2 }])
     expect(landed.split('\n').filter(line => line.includes('&nbsp;')).every(line => line.startsWith('> > '))).toBe(true)
+    const options = {
+      width: proseWidthFor(kitty26()),
+      measure: (tex: string, maxColumns: number) => measureDisplay(tex, { ...renderEnvFor(kitty26()), maxColumns }).rows,
+    }
+    const { pieces } = plan(landed, records, kitty26(), options)
+    expect(places(pieces).map(([tex, row, col]) => [tex, row, col])).toEqual([['x^2 + y^2', 0, 4]])
+    // After --resume, the same.
+    expect(places(plan('> > $$\n> > x^2 + y^2\n> > $$\n', [], kitty26(), options).pieces)).toEqual(places(pieces))
   })
 })

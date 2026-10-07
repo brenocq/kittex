@@ -8,7 +8,9 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 
 import { emPxForCell, init, layoutTable, measureDisplay, renderDisplay, renderInline } from '../../../plugin/hooks/core.js'
-import { inlineEnvFor, inlineFlow, MessageStream, PIECE_TOP, planLanded, proseWidthFor, renderEnvFor, SOURCE_PATTERN, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
+import { inlineEnvFor, inlineFlow, locatePreviews, MessageStream, PIECE_TOP, planLanded, proseWidthFor, renderEnvFor, SOURCE_PATTERN, STREAMED_PATTERN } from '../../../plugin/hooks/math.js'
+import { NUMBER_THEORY } from '../../../plugin/tests/fixtures/number-theory.js'
+import { performance } from 'node:perf_hooks'
 import type { InlineImage, KittexEnv, PreviewRecord, StreamEnv } from '../../../plugin/hooks/math.js'
 
 const CELL = { cellWidth: 13, cellHeight: 26 }
@@ -207,5 +209,45 @@ describe('live QA regressions', () => {
         'y_c', 'r_1 \\neq r_2', 'y_c = C_1 e^{r_1 x} + C_2 e^{r_2 x}', 'r_1 = r_2 = r', 'y_c = (C_1 + C_2 x) e^{rx}', 'f(x) \\neq 0', 'y_p',
       ])
     }
+  })
+
+  // The landing got slower (p27-K120: ~78 ms, then ~153 ms for the
+  // AssistantMessage hook, its plan ~8 ms of it): every paragraph, list and
+  // heading holding a formula was drawn as a piece of its own, and every
+  // display formula cut the text, so the reply's landing made 44 round trips
+  // through the engine (one next() a piece, one after another). Now a piece
+  // is cut only where a part's rows aren't known, the images laid over it,
+  // and the pieces are drawn at once: a few round trips, the plan as cheap.
+  test('a long reply lands in a few pieces, its plan in a few milliseconds (p27)', () => {
+    const e = env(120)
+    const out = new MessageStream()
+    let shown = ''
+    let records: PreviewRecord[] = []
+    const lines = NUMBER_THEORY.split(/(?<=\n)/)
+    for (let i = 0; i < lines.length; i += 2) {
+      const flush = out.push(lines.slice(i, i + 2).join(''), i + 2 >= lines.length, { ...e, inline: true })
+      records = [...records, ...locatePreviews(flush.text, flush.records, shown.length)]
+      shown += flush.text
+    }
+    const renderEnv = renderEnvFor(e)
+    const inlineEnv = inlineEnvFor(e)
+    const options = {
+      streamed: {},
+      maxColumns: renderEnv.maxColumns,
+      draw: (tex: string, rows?: number, maxColumns?: number) => renderDisplay(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows),
+      width: proseWidthFor(e),
+      measure: (tex: string, maxColumns: number) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+      inline: { env: inlineEnv, width: proseWidthFor(e), columns: e.columns, draw: (tex: string, cells: number, place?: 'center' | 'start' | 'end') => renderInline(tex, inlineEnv, cells, place) },
+    }
+    // The images were drawn while the reply streamed: the landing composes.
+    planLanded(shown, records, options)
+    const start = performance.now()
+    const { pieces } = planLanded(shown, records, options)
+    const ms = performance.now() - start
+    const images = pieces.reduce((n, piece) => n + (piece.kind === 'prose' ? (piece.inline?.length ?? 0) : 0), 0)
+    expect(images).toBe(records.length)
+    // Its rules (`---`, rows the replay doesn't follow) cut it, nothing else.
+    expect(pieces.length).toBeLessThanOrEqual(6)
+    expect(ms).toBeLessThan(100)
   })
 })

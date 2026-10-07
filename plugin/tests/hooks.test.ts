@@ -10,7 +10,9 @@ import {
   copiedFormula,
   COPY_LABEL,
   HELD_DISPLAY,
+  MARKDOWN_TAIL,
   MATH_INSTRUCTIONS,
+  PIECE_TOP,
   PREVIEW_PAD,
   renderEnvFor,
   REPLY_INDENT,
@@ -32,13 +34,30 @@ function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = '
   })
 }
 
-/** A formula as kittex draws it: its Image, with a copy button revealed on hover over it. */
-function formula(image: Record<string, unknown>) {
+/**
+ * A display formula as kittex draws it: a slot of the overlay laid over the
+ * engine's drawing of the prose (`slot`: its margins there), holding its Image
+ * and a copy button revealed on hover over it.
+ */
+function formula(image: Record<string, unknown>, slot: Record<string, unknown> = {}) {
   return {
     type: 'Box',
+    props: slot,
     children: [
       { type: 'Image', ...image },
       { type: 'Box', props: { position: 'absolute', top: 0, right: 0, display: 'none' }, hover: { display: 'flex' }, children: [{ type: 'Button', props: { label: COPY_LABEL } }] },
+    ],
+  }
+}
+
+/** A prose piece as kittex composes it: the engine's drawing of its text (a Text of it here), the formulas' slots laid over it. */
+function overlaid(text: unknown, slots: unknown[]) {
+  return {
+    type: 'Box',
+    props: { flexDirection: 'row-reverse' },
+    children: [
+      { type: 'Box', props: { flexDirection: 'column' }, children: [{ type: 'Text', children: [text] }] },
+      { type: 'Box', props: { width: 0 }, children: slots },
     ],
   }
 }
@@ -54,22 +73,19 @@ describe('off switch', () => {
 })
 
 describe('AssistantMessage', () => {
-  test('a $$ formula becomes an Image between engine drawings of the prose, laid out as the preview was', async ($, on) => {
+  test('a $$ formula becomes an Image over the preview it streams as, in the engine drawing of the prose', async ($, on) => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, REPLY)
     const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
+    // The text, the blank row, then the preview's rows (a paragraph of its own), under the drawing's top margin and beside the bullet.
     expect(await ui.drawn()).toMatchObject({
       type: 'Box',
       props: { flexDirection: 'column' },
       children: [
-        { type: 'Text', children: ["Euler's identity:"] },
-        {
-          type: 'Box',
-          props: { marginLeft: REPLY_INDENT, marginTop: 1 },
-          children: [formula({ props: { columns: replyColumns(COLUMNS), rows, alt: TEX, source: { png: expect.any(String) } } })],
-        },
-        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
+        overlaid(expect.stringMatching(/^Euler's identity:\n\n&nbsp;[^]*\nis beautiful\.$/), [
+          formula({ props: { columns: replyColumns(COLUMNS), rows, alt: TEX, source: { png: expect.any(String) } } }, { marginTop: PIECE_TOP + 2, marginLeft: REPLY_INDENT }),
+        ]),
       ],
     })
   })
@@ -91,16 +107,12 @@ describe('AssistantMessage', () => {
     expect(copiedFormula(TEX)).toBe(`$$\n${TEX}\n$$`)
   })
 
-  test('with no blank lines around the formula, nothing is added between the rows', async ($, on) => {
+  test('with no blank lines around the formula, its preview is a paragraph of its own as it streams', async ($, on) => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, `Euler's identity:\n$$\n${TEX}\n$$\nis beautiful.`)
     expect(await ui.drawn()).toMatchObject({
-      children: [
-        { type: 'Text', children: ["Euler's identity:"] },
-        { type: 'Box', props: { marginLeft: REPLY_INDENT, marginTop: 1 } },
-        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 } },
-      ],
+      children: [overlaid(expect.stringMatching(/^Euler's identity:\n\n&nbsp;/), [formula({ props: { alt: TEX } }, { marginTop: PIECE_TOP + 2, marginLeft: REPLY_INDENT })])],
     })
   })
 
@@ -108,19 +120,11 @@ describe('AssistantMessage', () => {
     await startSession($, on)
     await init()
     const ui = await mountReply($, `$$${TEX}$$\n\nis beautiful.`)
+    // The engine draws the bullet beside the preview's first row, the image over the rows after it.
     expect(await ui.drawn()).toMatchObject({
-      children: [
-        {
-          type: 'Box',
-          props: { flexDirection: 'row', marginTop: 1 },
-          children: [
-            { type: 'Box', props: { minWidth: REPLY_INDENT }, children: [{ type: 'Text', props: { color: 'text' }, children: [BULLET.other] }] },
-            formula({ props: { alt: TEX } }),
-          ],
-        },
-        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
-      ],
+      children: [overlaid(expect.stringMatching(/^&nbsp;[^]*is beautiful\.$/), [formula({ props: { alt: TEX } }, { marginTop: PIECE_TOP, marginLeft: REPLY_INDENT })])],
     })
+    expect(BULLET.other).toBe('●')
   })
 
   test('a block drawn without the bullet keeps everything at column 0', async ($, on) => {
@@ -128,10 +132,7 @@ describe('AssistantMessage', () => {
     await init()
     const ui = await mountReply($, `$$${TEX}$$\n\nis beautiful.`, 'terminal', false)
     expect(await ui.drawn()).toMatchObject({
-      children: [
-        { type: 'Box', props: { flexDirection: 'row', marginTop: 1 }, children: [formula({})] },
-        { type: 'Box', props: { paddingLeft: 0, marginTop: 0 } },
-      ],
+      children: [overlaid(expect.stringMatching(/^&nbsp;/), [formula({}, { marginTop: PIECE_TOP, marginLeft: 0 })])],
     })
   })
 
@@ -143,7 +144,8 @@ describe('AssistantMessage', () => {
       children: [
         { type: 'Text', children: ['Bad:\n\n```latex\n\\frac{1}{\n```'] },
         { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 1 }, children: [{ type: 'Text', props: { dimColor: true }, children: [expect.stringMatching(/^not rendered: /)] }] },
-        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['after.'] }] },
+        // A piece with no markdown of its own is read as markdown, as the whole was (its escapes read).
+        { type: 'Box', props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: [`after.${MARKDOWN_TAIL}`] }] },
       ],
     })
   })
@@ -265,12 +267,9 @@ describe('MessageDisplay', () => {
     expect(landed).not.toContain('$$')
     const ui = await mountReply($, landed)
     const rows = measureDisplay(TEX, renderEnvFor(kittyEnv(), COLUMNS)).rows
+    // Drawn as it streamed, the image over the preview's rows.
     expect(await ui.drawn()).toMatchObject({
-      children: [
-        { type: 'Text', children: ["Euler's identity:"] },
-        { props: { marginLeft: REPLY_INDENT, marginTop: 1 }, children: [formula({ props: { rows, alt: TEX } })] },
-        { props: { paddingLeft: REPLY_INDENT, marginTop: 0 }, children: [{ type: 'Text', children: ['is beautiful.'] }] },
-      ],
+      children: [overlaid(landed.trimEnd(), [formula({ props: { rows, alt: TEX } }, { marginTop: PIECE_TOP + 2, marginLeft: REPLY_INDENT })])],
     })
   })
 

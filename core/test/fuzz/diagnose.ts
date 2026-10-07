@@ -79,7 +79,7 @@ function layoutFor(part: BlockPart, text: string, ctx: DrawContext): boolean {
 export function missingInline(tex: string, c: CaseContext): string {
   const own = c.written.filter(record => record.inline && record.tex === tex)
   const previews = new Set(own.map(record => record.preview))
-  if (c.written.some(record => record.inline && record.tex !== tex && previews.has(record.preview))) return 'collision'
+  // (Another formula streaming the same preview is no cause: a record is found again where it was written.)
   const causes: string[] = []
   for (const piece of c.pieces) {
     if (piece.kind !== 'prose') continue

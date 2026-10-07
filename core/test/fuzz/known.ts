@@ -17,7 +17,9 @@ export const KNOWN: readonly Known[] = [
   {
     id: 'FUZZ-12',
     title: 'the landed text is scanned again: dollar signs the streaming left (currency, a `\\$` inside a formula) pair into new formulas',
-    keys: [/^resumed\/rows$/, /^phantom\/rescan$/, /:dollars-paired$/],
+    // Fixed (a streamed block's text is never scanned again, 'streamed' in planLanded): what is left is a part the
+    // replay can't follow whose rows the dollar tail can't be told from (unverified).
+    keys: [/:dollars-paired$/],
   },
   {
     id: 'FUZZ-2',
@@ -28,13 +30,6 @@ export const KNOWN: readonly Known[] = [
     id: 'FUZZ-5',
     title: 'a display preview line in a list item or quote is wider than the item text: it wraps while streaming',
     keys: [/preview-wider-than-prose\((indent|quote|wide)\)/],
-  },
-  {
-    // Mostly fixed on main (90c1bba: list display math is drawn in its item); what is left: a list whose
-    // display formula keeps its preview or its source (refused, a glyph the font lacks) is still cut there.
-    id: 'FUZZ-1',
-    title: 'a list holding a display formula that is not drawn (refused, kept as preview) is cut at it: the rest is drawn as a new text (a blank row added, indent and numbering lost)',
-    keys: [/^moved\/(rows|cells):list>/],
   },
   {
     // Mostly fixed (fix/stream-plan: the stream reads the whole part, the replays stop at what they can't follow);
@@ -72,18 +67,10 @@ export const KNOWN: readonly Known[] = [
     keys: [/^rawLatex\/inline-no-unicode$/],
   },
   {
-    id: 'FUZZ-7',
-    title: 'two formulas with the same preview (\\tfrac12 and \\frac12, A^T and A^\\top) both land with the later one\'s image',
-    keys: [/^impure\/collision$/, /^inlineImage\/inline-extra$/, /^inlineImage\/inline-missing:collision$/, /^resumed\/images-swapped$/],
-  },
-  {
-    id: 'FUZZ-8',
-    title: 'a ```math fence in a reply with no other math is drawn live, but stays a code block after --resume',
-    keys: [/^resumed\/live-only-d$/],
-  },
-  {
     id: 'FUZZ-9',
-    title: 'display math in a quote the replay refuses, or nested two quotes deep, keeps its Unicode preview or its source',
+    // Nested quotes are drawn now; what is left by design: a display in a list or a quote the replay doesn't follow up
+    // to it keeps its preview, the list or quote whole (nothing moves), and the model's rows below such a part.
+    title: 'display math in a list item or a quote the replay does not follow up to it keeps its Unicode preview (no image)',
     keys: [
       /^rawLatex\/(display|note)$/,
       /^displayImage\/display-missing$/,
@@ -92,11 +79,6 @@ export const KNOWN: readonly Known[] = [
       /^resumed\/(resumed|live)-only-q$/,
       /^overlap\/images-below-opaque$/,
     ],
-  },
-  {
-    id: 'FUZZ-11',
-    title: 'a prose piece cut out at an image, with no markdown in it, is drawn as written: its escapes show (`\\$5`)',
-    keys: [/^moved\/(cells|rows):paragraph>text/],
   },
   {
     // Not failures: where the replay can't follow a part (rows unknown), the comparison can't be made.

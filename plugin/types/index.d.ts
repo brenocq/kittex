@@ -56,6 +56,8 @@ export type KittexPreview = {
    * rows decide).
    */
   place?: 'center' | 'start' | 'end'
+  /** Where the preview starts in the block's text as the engine shows it (every flush's displayContent joined): how a landed block finds it. */
+  at?: number
   /** Display: written in a blockquote this deep (its lines carry the quote's `>`, its width the quote's text width). */
   quote?: number
   /**
@@ -66,13 +68,25 @@ export type KittexPreview = {
   indent?: number
 }
 
+/** One text block kittex streamed (kittex.blocks, by MessageDisplay's message_id). */
+export type KittexBlock = {
+  /** Its previews, in the order written, each with `at`. */
+  records: KittexPreview[]
+  /** Where the stream gave up: from this offset of the shown text on, the model's text passed as written. */
+  raw?: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     kittex: {
       /** The terminal as drawing sees it; null until session.start set it up, or when that failed. */
       env: KittexEnv | null
-      /** Previews written while streaming, newest last. */
-      records: KittexPreview[]
+      /** Each streamed block's previews, by MessageDisplay's message_id; null once dropped (past BLOCK_LIMIT). */
+      blocks: StateFamily<KittexBlock | null>
+      /** The message_id each landed block streamed as, by its transcript row's uuid (AssistantMessage's requestId). */
+      requests: StateFamily<string>
+      /** The newest blocks' message_ids, newest last (a landed block that no row links is looked for among them). */
+      recent: string[]
     }
   }
 }

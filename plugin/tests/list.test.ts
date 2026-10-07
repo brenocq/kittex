@@ -122,13 +122,11 @@ describe('list items: the landed plan', () => {
     expect(y[2]).toBe(4 + 3 + 2 + 'deeper '.length)
   })
 
-  test('a list block is a piece of its own, between the prose around it', async () => {
+  test('a list is drawn with the prose around it, its images on its rows under the paragraph above', async () => {
     await init()
     const { pieces } = plan('Intro.\n\n- a $x$ item\n- b\n\nOutro.')
-    expect(pieces.map(piece => [piece.kind, piece.gap, piece.kind === 'prose' ? piece.inline?.length ?? 0 : -1])).toEqual([
-      ['prose', false, 0],
-      ['prose', true, 1],
-      ['prose', true, 0],
+    expect(pieces.map(piece => [piece.kind, piece.gap, piece.kind === 'prose' ? (piece.inline ?? []).map(image => [image.tex, image.row, image.col]) : []])).toEqual([
+      ['prose', false, [['x', 2, '- a '.length]]],
     ])
   })
 
