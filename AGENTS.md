@@ -49,6 +49,20 @@ over 1 MiB, so the build splits the bundle and fails if a file passes 900 KiB.
 Only the integration on `main` commits them: before committing on a branch,
 `git checkout plugin/hooks/core.js plugin/hooks/core-parts` if the build changed them.
 
+## Heavy jobs
+
+This machine has 31 GB of RAM and agents often run side by side; parallel fuzz
+shards once filled it and the swap, and the OOM killer took down the desktop.
+
+- Fuzz only through `npm run fuzz -- <cases> [findings dir]` (scripts/fuzz.sh):
+  at most 3 shards at once, one fuzz run machine-wide at a time (a lock), and
+  the whole run capped at 8 GB with no swap, so it dies alone if it grows.
+  Never start fuzz shards as background jobs yourself.
+- Run anything else heavy (batches of Claude Code sessions, headless Chrome
+  renders) under a cap too:
+  `systemd-run --user --scope -p MemoryMax=4G -p MemorySwapMax=0 <command>`,
+  and no more than 3 at a time.
+
 ## Commits
 
 Conventional commits with the module as scope (`feat(scan): ...`,
