@@ -59,6 +59,12 @@ export interface TexSetup {
   cacheDir?: string
   /** The dumped fragment format (prepareFormat), once it is there: its name and the directory holding `<name>.fmt`. */
   format?: { name: string; dir: string }
+  /**
+   * False where dvisvgm has no `--libgs` (built with Ghostscript linked in or
+   * left out, as Arch's, Debian's and Fedora's are): it refuses the option,
+   * so jobs run without it. Absent: dvisvgm takes it (TeX Live's own build).
+   */
+  libgs?: false
 }
 
 /** How long a probe command may run. */
@@ -83,9 +89,10 @@ export async function probeTex(host: TexHost, options: { tmpdir: string | undefi
       result => (result.exitCode === 0 ? result.stdout : undefined),
       () => undefined,
     )
-  const [latex, dvisvgm, prlimit, bwrap] = await Promise.all([
+  const [latex, dvisvgm, help, prlimit, bwrap] = await Promise.all([
     ok(['latex', '--version']),
     ok(['dvisvgm', '--version']),
+    ok(['dvisvgm', '--help']),
     ok(['prlimit', '--version']),
     options.hide.length > 0 ? ok(bwrapProbe(options.hide)) : Promise.resolve(undefined),
   ])
@@ -96,7 +103,19 @@ export async function probeTex(host: TexHost, options: { tmpdir: string | undefi
     confinement: { prlimit: prlimit !== undefined, ...(bwrap !== undefined ? { bwrap: { hide: options.hide } } : {}) },
     tmpdir: options.tmpdir,
     ...(options.cacheDir !== undefined ? { cacheDir: options.cacheDir } : {}),
+    ...(help !== undefined && !takesLibgs(help) ? { libgs: false as const } : {}),
   }
+}
+
+/** Whether `dvisvgm --help` lists `--libgs`; a help that isn't dvisvgm's (no `--no-specials`) counts as yes. */
+export function takesLibgs(help: string): boolean {
+  return !/--no-specials\b/.test(help) || /--libgs\b/.test(help)
+}
+
+/** dvisvgm on a job in `dir`, as this host's dvisvgm takes it (without `--libgs` where it has none). */
+export function dvisvgmCommand(dir: string, setup: Pick<TexSetup, 'libgs'>): string[] {
+  const argv = dvisvgmArgv(dir)
+  return setup.libgs === false ? argv.filter(arg => !arg.startsWith('--libgs=')) : argv
 }
 
 /**
@@ -359,7 +378,7 @@ async function compileOnce(host: TexHost, setup: TexSetup, document: TexDocument
     let svg
     try {
       if (left() < 1) return late
-      svg = await host.run(confined(dvisvgmArgv(dir), dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
+      svg = await host.run(confined(dvisvgmCommand(dir, setup), dir, setup.confinement), { cwd: dir, env, timeoutMs: Math.max(1, left()) })
     } catch {
       return late
     }
@@ -442,5 +461,6 @@ export function rememberedTex(value: unknown): TexSetup | undefined {
     tmpdir: typeof setup.tmpdir === 'string' ? setup.tmpdir : undefined,
     cacheDir: setup.cacheDir,
     ...(setup.format && typeof setup.format.name === 'string' && typeof setup.format.dir === 'string' ? { format: setup.format } : {}),
+    ...(setup.libgs === false ? { libgs: false as const } : {}),
   }
 }

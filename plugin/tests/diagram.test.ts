@@ -26,7 +26,7 @@ import {
 } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { createLineScanner } from '../hooks/core.js'
-import { diagramJob, hiddenDirs, prepareFormat, probeTex, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
+import { diagramJob, dvisvgmCommand, hiddenDirs, prepareFormat, probeTex, rememberedTex, takesLibgs, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
 import { fitPictures } from '../hooks/budget.ts'
 import { diagramDocument, formatName } from '../hooks/core.js'
 import type { TexHost, TexSetup } from '../hooks/tex.ts'
@@ -384,6 +384,26 @@ describe('the TeX book', () => {
     expect(full?.confinement).toEqual({ prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } })
     const bare = await probeTex(answering(['prlimit', 'bwrap']), { tmpdir: '/tmp', hide: ['/home/u'] })
     expect(bare?.confinement).toEqual({ prlimit: false })
+  })
+
+  test("a dvisvgm without --libgs (Arch's, Debian's, Fedora's builds refuse it) runs without the option", async () => {
+    const help = (libgs: boolean) => `  -S, --no-specials[=prefixes]  don't process specials\n${libgs ? '      --libgs=filename  set name of Ghostscript shared library\n' : ''}`
+    expect(takesLibgs(help(true))).toBe(true)
+    expect(takesLibgs(help(false))).toBe(false)
+    // A help that isn't dvisvgm's says nothing: the option stays.
+    expect(takesLibgs('')).toBe(true)
+    const answering = (libgs: boolean): TexHost => ({
+      run: async argv => ({ exitCode: 0, stdout: argv[1] === '--help' ? help(libgs) : `${argv[0]} 1.0\n`, stderr: '', isStdoutTruncated: false }),
+      write: async () => undefined,
+      read: async () => undefined,
+    })
+    const without = await probeTex(answering(false), { tmpdir: '/tmp', hide: [] })
+    expect(without?.libgs).toBe(false)
+    expect((await probeTex(answering(true), { tmpdir: '/tmp', hide: [] }))?.libgs).toBeUndefined()
+    expect(dvisvgmCommand('/tmp/kittex-tex.ABCDEFGHIJ', { libgs: false }).some(arg => arg.startsWith('--libgs'))).toBe(false)
+    expect(dvisvgmCommand('/tmp/kittex-tex.ABCDEFGHIJ', {})).toContain('--libgs=/tmp/kittex-tex.ABCDEFGHIJ/no-ghostscript')
+    // Remembered for the next session with the rest of the setup.
+    expect(rememberedTex({ ...without, cacheDir: '/home/u/.cache/kittex/tex' })?.libgs).toBe(false)
   })
 
   test('the directories hidden from TeX and the cache directory', () => {
