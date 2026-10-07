@@ -964,7 +964,7 @@ function displayImage(tex: string, env: RenderEnv, rows?: number): RenderedImage
   } catch (error) {
     // MathJax refused it: TeX's drawing where the local LaTeX made one.
     const result = error instanceof TexError ? texDrawn(tex, true) : undefined
-    if (!result) throw error
+    if (!result) throw texRefusal(tex, true) ?? error
     height = rows ?? measureDisplayResult(result, env).rows
     return cachedImage(`t\n${geometryKey(env)}\n${height}\n${tex}`, () => renderDisplayResult(result, env, height))
   }
@@ -976,7 +976,7 @@ function displayRows(tex: string, env: RenderEnv): number {
     return measureDisplay(tex, env).rows
   } catch (error) {
     const result = error instanceof TexError ? texDrawn(tex, true) : undefined
-    if (!result) throw error
+    if (!result) throw texRefusal(tex, true) ?? error
     return measureDisplayResult(result, env).rows
   }
 }
@@ -1176,4 +1176,11 @@ function texDrawn(tex: string, display: boolean): ReturnType<typeof texResult> |
   if (outcome?.ok) return texResult(outcome.picture)
   if (!outcome || !outcome.lasting) texBook.ask(document)
   return undefined
+}
+
+/** TeX's own error for a formula MathJax refused and TeX failed on for good (the note shows it, as the stream did). */
+function texRefusal(tex: string, display: boolean): TexError | undefined {
+  const document = mathJob(tex, display)
+  const outcome = document ? texBook.known(document) : undefined
+  return outcome && !outcome.ok && outcome.lasting ? new TexError(outcome.error) : undefined
 }
