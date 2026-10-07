@@ -1,9 +1,11 @@
-import type { CellBox, DrawOp, Matrix, Raster, RasterOptions, RGB, TypesetResult } from '../types.js'
+import type { CellBox, DrawOp, Matrix, Picture, Raster, RasterOptions, RGB, TypesetResult } from '../types.js'
 import { Coverage } from './fill.js'
-import { type Contour, flattenPath } from './path.js'
-import { encodeAlphaPng, inkAlpha, recolorPng } from './png.js'
+import { Canvas } from './paint.js'
+import { type Contour, flattenPath, flattenSubpaths } from './path.js'
+import { encodeAlphaPng, encodeRgbaPng, inkAlpha, recolorPng } from './png.js'
+import { snapStroke, strokeOutlines } from './stroke.js'
 
-export { inkAlpha, recolorPng }
+export { encodeRgbaPng, inkAlpha, recolorPng }
 
 /*
  * Draw ops (em) -> anti-aliased coverage over whole terminal cells.
@@ -441,4 +443,190 @@ export function snapRule(c: Contour, maxThickness = RULE_MIN_SNAP): void {
   const to = Math.round(lo + size / 2 - t / 2)
   const f = t / size
   for (let i = axis; i < c.length; i += 2) c[i] = to + (c[i]! - lo) * f
+}
+
+// ─── Pictures (TeX diagrams in colour, see diagram/) ─────────────────────────
+
+/** Where and how a picture is drawn. */
+export interface PictureOptions {
+  /** Pixels per em (the picture's em is its TeX font size). */
+  emPx: number
+  cellWidth: number
+  cellHeight: number
+  /** Cells across, 1 to 255: the image spans them, the picture centred, shrunk to fit. */
+  maxColumns: number
+  /** Rows the picture may take, 1 to 255: a taller one is shrunk to fit. */
+  maxRows: number
+  /** Reserve at least this many rows (a streaming placeholder's); the picture is centred vertically. */
+  minRows?: number
+  /** Stroke darkening, as RasterOptions.weight: glyphs, fills and lines grow by this many thousandths of an em. */
+  weight?: number
+  /** The colour a picture's colour is drawn in (`line`: a stroke or a glyph), or `erase` for none. */
+  color: (color: RGB, line: boolean) => RGB | 'erase'
+  /** The background alpha is corrected against, per colour (inkAlpha); absent where images and text blend alike. */
+  over?: RGB
+}
+
+export interface PictureRaster extends CellBox {
+  /** widthPx × heightPx straight-alpha RGBA. */
+  rgba: Uint8Array
+  widthPx: number
+  heightPx: number
+}
+
+/** The thinnest a line is drawn, in pixels, however far its picture is shrunk. */
+export const MIN_STROKE_PX = 1
+
+function pictureLayout(picture: Picture, options: PictureOptions): Layout {
+  const maxRows = Math.max(1, Math.min(255, Math.floor(options.maxRows) || 1))
+  const weight = Math.max(0, options.weight ?? DEFAULT_WEIGHT)
+  const box = { width: picture.width, height: picture.height, depth: picture.depth, ops: [] }
+  const boxHeight = Math.max(0, picture.height + picture.depth)
+  let emPx = options.emPx
+  // Shrunk to its rows first; layout then shrinks it to the columns.
+  const pad = Math.ceil((weight / 1000) * emPx - 1e-9)
+  const room = maxRows * options.cellHeight - 2 * pad
+  if (boxHeight * emPx > room) emPx = Math.max(1e-6, room) / boxHeight
+  const placed = layout(box, { emPx, cellWidth: options.cellWidth, cellHeight: options.cellHeight, maxColumns: options.maxColumns, align: 'center', minRows: options.minRows, weight })
+  return { ...placed, scale: (placed.scale * emPx) / options.emPx }
+}
+
+/** The cells a picture takes under `options`, without drawing it (`scale`: against the size its em would give it). */
+export function measurePicture(picture: Picture, options: PictureOptions): CellBox {
+  const { columns, rows, scale } = pictureLayout(picture, options)
+  return { columns, rows, scale }
+}
+
+/** Draws a picture in its colours over whole cells, its shapes painted in order (fills, strokes, clips). */
+export function rasterizePicture(picture: Picture, options: PictureOptions): PictureRaster {
+  const box = pictureLayout(picture, options)
+  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box
+  const toPx: Matrix = [k, 0, 0, k, originX, baselinePx]
+  const canvas = new Canvas(widthPx, heightPx)
+  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
+  const masks = new Map<number, Uint8Array>()
+  const maskOf = (index: number): Uint8Array | undefined => {
+    const known = masks.get(index)
+    if (known) return known
+    const clip = picture.clips[index]
+    if (!clip) return undefined
+    const mask = new Uint8Array(widthPx * heightPx)
+    for (const path of clip.paths) {
+      const coverage = new Coverage(widthPx, heightPx)
+      const contours = flattenPath(path.d, compose(toPx, path.transform))
+      let area = 0
+      for (const c of contours) area += signedArea(c)
+      for (const c of contours) coverage.fill(c, area >= 0 ? 1 : -1)
+      const alpha = path.rule === 'evenodd' ? coverage.toAlphaEvenOdd() : coverage.toAlpha()
+      for (let i = 0; i < mask.length; i++) if (alpha[i]! > mask[i]!) mask[i] = alpha[i]!
+    }
+    const outer = clip.within !== undefined && clip.within < index ? maskOf(clip.within) : undefined
+    if (outer) for (let i = 0; i < mask.length; i++) mask[i] = (mask[i]! * outer[i]! + 127) / 255
+    masks.set(index, mask)
+    return mask
+  }
+  for (const op of picture.ops) {
+    const m = compose(toPx, op.transform)
+    let contours: Contour[]
+    let sign = 1
+    let evenOdd = false
+    if (op.type === 'fill') {
+      contours = flattenPath(op.d, m)
+      if (op.rule === 'evenodd') {
+        evenOdd = true
+      } else {
+        let area = 0
+        for (const c of contours) area += signedArea(c)
+        if (!(Math.abs(area) > 1e-9)) continue
+        sign = area > 0 ? 1 : -1
+        contours = contours.map(c => {
+          const grown = dilation > 0 ? dilate(c, dilation, sign) : c
+          snapRule(grown, ruleMax)
+          return grown
+        })
+      }
+    } else {
+      const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))
+      const subpaths = flattenSubpaths(op.d, m)
+      const width = snapStroke(subpaths, Math.max(MIN_STROKE_PX, op.style.width * unit) + 2 * dilation)
+      contours = strokeOutlines(subpaths, {
+        width,
+        cap: op.style.cap,
+        join: op.style.join,
+        miterLimit: op.style.miterLimit,
+        ...(op.style.dash ? { dash: op.style.dash.map(n => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}),
+      })
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const c of contours) {
+      for (let i = 0; i < c.length; i += 2) {
+        if (c[i]! < x0) x0 = c[i]!
+        if (c[i]! > x1) x1 = c[i]!
+        if (c[i + 1]! < y0) y0 = c[i + 1]!
+        if (c[i + 1]! > y1) y1 = c[i + 1]!
+      }
+    }
+    const left = Math.max(0, Math.floor(x0))
+    const top = Math.max(0, Math.floor(y0))
+    const right = Math.min(widthPx, Math.ceil(x1))
+    const bottom = Math.min(heightPx, Math.ceil(y1))
+    if (!(right > left && bottom > top)) continue
+    const w = right - left
+    const h = bottom - top
+    const coverage = new Coverage(w, h)
+    for (const c of contours) {
+      for (let i = 0; i < c.length; i += 2) {
+        c[i] = c[i]! - left
+        c[i + 1] = c[i + 1]! - top
+      }
+      coverage.fill(c, sign)
+    }
+    const alpha = evenOdd ? coverage.toAlphaEvenOdd() : coverage.toAlpha()
+    const color = options.color(op.paint.color, op.type === 'stroke' || op.glyph === true)
+    canvas.paint(alpha, left, top, w, h, color, op.paint.opacity, op.clip !== undefined ? maskOf(op.clip) : undefined)
+  }
+  return { columns: box.columns, rows: box.rows, scale: box.scale, rgba: canvas.straight(options.over), widthPx, heightPx }
+}
+
+/** Virtual pixels per em that a picture's strokes are outlined at when it is drawn in one ink (pictureOutlines). */
+const OUTLINE_EM_PX = 40
+
+/**
+ * A picture as one ink's draw ops (its strokes outlined, clips and colours
+ * dropped): TeX's math drawn where MathJax refused it, which kittex then lays
+ * out, sizes and colours as it does MathJax's.
+ */
+export function pictureOutlines(picture: Picture): TypesetResult {
+  const ops: DrawOp[] = []
+  const back: Matrix = [1 / OUTLINE_EM_PX, 0, 0, 1 / OUTLINE_EM_PX, 0, 0]
+  for (const op of picture.ops) {
+    if (op.type === 'fill') {
+      ops.push({ type: 'path', d: op.d, transform: op.transform })
+      continue
+    }
+    const m = compose([OUTLINE_EM_PX, 0, 0, OUTLINE_EM_PX, 0, 0], op.transform)
+    const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))
+    const contours = strokeOutlines(flattenSubpaths(op.d, m), {
+      width: op.style.width * unit,
+      cap: op.style.cap,
+      join: op.style.join,
+      miterLimit: op.style.miterLimit,
+      ...(op.style.dash ? { dash: op.style.dash.map(n => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}),
+    })
+    // Every piece winds the same way, so the op's ink (the side its contours wind on overall, see outline) is their union.
+    if (contours.length > 0) ops.push({ type: 'path', d: contours.map(contourPath).join(''), transform: back })
+  }
+  return { width: picture.width, height: picture.height, depth: picture.depth, ops }
+}
+
+function contourPath(c: Contour): string {
+  const n = (v: number) => (Math.round(v * 1000) / 1000).toString()
+  let d = `M${n(c[0]!)} ${n(c[1]!)}`
+  for (let i = 2; i < c.length; i += 2) d += `L${n(c[i]!)} ${n(c[i + 1]!)}`
+  return d + 'Z'
+}
+
+/** A picture's pixels as a PNG (straight alpha, its colours as drawn). */
+export function encodePicturePng(raster: PictureRaster): Uint8Array {
+  return encodeRgbaPng(raster.rgba, raster.widthPx, raster.heightPx)
 }
