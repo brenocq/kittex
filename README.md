@@ -1,7 +1,7 @@
 <div align="center">
   <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://github.com/brenocq/kittex/raw/assets/banner.svg" width="880">
 
-  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#options">Options</a> · <a href="#faq">FAQ</a>
+  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#config">Config</a> · <a href="#faq">FAQ</a>
 
   <a href="https://github.com/brenocq/kittex/actions/workflows/tests.yml"><img src="https://github.com/brenocq/kittex/actions/workflows/tests.yml/badge.svg" alt="🧪 Tests"/></a>
 </div>
@@ -49,7 +49,7 @@ Derive the quadratic formula step by step
   <img alt="kitty and Ghostty show typeset images; every other terminal (WezTerm, iTerm2, Terminal.app, Windows Terminal, Alacritty, tmux) shows Unicode math." src="https://github.com/brenocq/kittex/raw/assets/terminals.svg" width="100%">
 </p>
 
-## Options
+## Config
 
 Two pickers in `/config`, one for each kind of math:
 
@@ -101,8 +101,8 @@ as LaTeX: `$…$` inside a sentence and `$$…$$` on a line of its own. Where Cl
 Code doesn't let plugins change the system prompt (Team and Enterprise plans),
 kittex sends the same note along with your first message instead, and again
 after `/clear` or a compaction. Either way Claude writes LaTeX without being
-asked, and nothing is added to your CLAUDE.md. Setting both options to `raw`
-stops the note too.
+asked, and nothing is added to your CLAUDE.md. Setting both Block math and
+Inline math to `raw` stops the note too.
 
 </details>
 
