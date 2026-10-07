@@ -288,6 +288,24 @@ const INLINE_DOLLARS = String.raw`(?<![\\$\`])\$(?![\s$])(?:[^$\`\\\n]|\\[^\n]|\
 const DISPLAY_DOLLARS = String.raw`(?<![\\$])\$\$(?!\$)[\s\S]*?\$\$`
 
 /**
+ * What follows a backslash that the engine's markdown reads as an escape and
+ * drops (`\{` drawn `{`, `\,` drawn `,`): ASCII punctuation, and a line break
+ * (a hard break). `$` aside: an escaped dollar is kittex's scanner's too, and
+ * stays one.
+ */
+const ESCAPED = String.raw`(?:[!-#%-\/:-@\[-\`{-~]|\r?\n)`
+const ESCAPING = new RegExp(String.raw`\\(?=${ESCAPED})`, 'g')
+
+/**
+ * `$$…$$` with other text on its first or last line: inline math (a display
+ * formula has its lines to itself), within a paragraph (no blank line).
+ */
+const INLINE_DISPLAY_DOLLARS = (() => {
+  const one = String.raw`(?<![\\$])\$\$(?!\$)(?:(?!\$\$)(?!\n[ \t]*\n)[\s\S])*?\$\$`
+  return String.raw`[^\s>][^\n]*?${one}|${one}[ \t]*[^\s]`
+})()
+
+/**
  * LaTeX as written: a reply that never streamed through MessageDisplay, or one
  * read back after `--resume`. Never a block holding a preview mark (one kittex
  * streamed: its `\[` is a bracket its previews escaped, `𝔼\[x\]`, and a `$`
@@ -295,26 +313,25 @@ const DISPLAY_DOLLARS = String.raw`(?<![\\$])\$\$(?!\$)[\s\S]*?\$\$`
  */
 export const SOURCE_PATTERN = sourcePattern({})
 
-/** `$$…$$` on one line with other text on it: inline math (a display formula has its line to itself). */
-const INLINE_DISPLAY_DOLLARS = (() => {
-  const one = String.raw`(?<![\\$])\$\$(?!\$)[^\n]*?\$\$`
-  return String.raw`[^\s>][^\n]*?${one}|${one}[ \t]*[^\s]`
-})()
-
 /**
  * SOURCE_PATTERN for these options: only the math of a kind kittex changes
  * (a block whose math is all left raw stays the engine's, which would
- * otherwise draw nothing until kittex answered). With display math raw,
- * `$$…$$` counts only where it is inline math.
+ * otherwise draw nothing until kittex answered). Math left raw counts where a
+ * backslash in it needs its mark (rawSource), as math read back after
+ * --resume does. With display math raw, `$$…$$` counts only where it is
+ * inline math.
  */
 export function sourcePattern(math: Partial<MathOptions>): RegExp {
   const inline = math.inline !== 'raw'
   const block = math.block !== 'raw'
+  const needs = String.raw`\\(?=${ESCAPED})`
   const kinds = [
-    ...(inline ? [INLINE_DOLLARS, String.raw`\\\(`] : []),
-    ...(block ? [DISPLAY_DOLLARS, String.raw`\\\[`, String.raw`\\begin\{`] : inline ? [INLINE_DISPLAY_DOLLARS] : []),
+    ...(inline ? [INLINE_DOLLARS] : [String.raw`(?<![\\$])\$(?![\s$])[^$\n]*?${needs}`]),
+    String.raw`\\\(`,
+    ...(block
+      ? [DISPLAY_DOLLARS, String.raw`\\\[`, String.raw`\\begin\{`]
+      : [String.raw`(?<![\\$])\$\$(?:(?!\$\$)[\s\S])*?${needs}`, String.raw`\\\[`, String.raw`\\begin\{(?:(?!\\end\{)[\s\S])*?${needs}`, ...(inline ? [INLINE_DISPLAY_DOLLARS] : [])]),
   ]
-  if (kinds.length === 0) return /(?!)/
   return new RegExp(String.raw`^(?![\s\S]*(?:${PREVIEW_MARK}))[\s\S]*?(?:${kinds.join('|')})`)
 }
 
@@ -445,6 +462,22 @@ export type StreamEnv = KittexEnv & {
 /** Whether a math segment is of a kind these options leave as written. */
 function leftRaw(segment: { display: boolean }, math: Partial<MathOptions> | undefined): boolean {
   return (segment.display ? math?.block : math?.inline) === 'raw'
+}
+
+
+/**
+ * Math left raw as the engine draws it as written: INLINE_MARK (no width,
+ * drawn as nothing) after every backslash its markdown would read as an escape,
+ * so the backslash is no escape and stays, whether the engine reads the text
+ * as markdown or draws it plain (it does either, part by part, while a reply
+ * streams). A ```math fence is code, where markdown reads no escapes; in a
+ * GFM table row `\|` is the row's escape of a pipe and stays one. Idempotent:
+ * the landing reads the streamed text again.
+ */
+export function rawSource(math: Pick<MathSegment, 'raw' | 'tex' | 'display' | 'delimiter'>): string {
+  if (math.delimiter === 'fence') return math.raw
+  const tableRow = !math.display && math.raw.includes('\\|') && !math.tex.includes('\\|')
+  return math.raw.replace(ESCAPING, (backslash: string, at: number) => (tableRow && math.raw[at + 1] === '|' ? backslash : backslash + INLINE_MARK))
 }
 
 /**
@@ -865,6 +898,7 @@ export class StreamPlan {
  */
 export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, writer: MarkdownWriter, plan = new StreamPlan()): StreamRewrite {
   const records: PreviewRecord[] = []
+  // Math its option leaves raw is text from here on (as written, its backslashes kept), as the landing reads it.
   segments = asWritten(segments, env.math)
   for (let k = 0; k < segments.length; ) {
     const segment = segments[k]!
@@ -886,7 +920,7 @@ type MathSegment = Extract<Segment, { kind: 'math' }>
 /** The segments with the math of each kind its option leaves raw turned into text, as written (adjacent text joined). */
 function asWritten(segments: readonly Segment[], math: Partial<MathOptions> | undefined): Segment[] {
   if (math?.block !== 'raw' && math?.inline !== 'raw') return [...segments]
-  return joinText(segments.map(segment => (segment.kind === 'math' && leftRaw(segment, math) ? { kind: 'text', text: segment.raw, start: segment.start, end: segment.end } : segment)))
+  return joinText(segments.map(segment => (segment.kind === 'math' && leftRaw(segment, math) ? { kind: 'text', text: rawSource(segment), start: segment.start, end: segment.end } : segment)))
 }
 
 function isDisplayMath(segment: Segment): boolean {
@@ -1303,8 +1337,7 @@ export class MessageStream {
   /** The text to show for one flush (HELD_DISPLAY while a display block or a table is held) and the previews it wrote. */
   push(delta: string, final: boolean, env: StreamEnv): StreamRewrite {
     this.pushed += delta
-    // Math its option leaves raw is text from here on, as the landing reads it.
-    let segments = joinText([...this.held, ...asWritten(this.scanner.push(delta, final), env.math)])
+    let segments = joinText([...this.held, ...this.scanner.push(delta, final)])
     this.held = []
     let from = final || segments.length === 0 || !(env.inline && env.images) ? undefined : holdFrom(this.pushed.slice(0, segments.at(-1)!.end), segments)
     // In a quote, the line break ending a display block's closing line waits for the next line, which decides
@@ -1640,7 +1673,9 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       if (segment.kind === 'text') {
         writer.text(segment.text)
       } else if (leftRaw(segment, options.math)) {
-        writer.text(segment.raw)
+        const written = rawSource(segment)
+        if (written !== segment.raw) changed = true
+        writer.text(written)
       } else if (!segment.display) {
         const fallback = inlineFallback(segment)
         const id = inlineId++

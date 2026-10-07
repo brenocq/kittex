@@ -19,6 +19,7 @@ import {
   planLanded,
   proseWidthFor,
   renderEnvFor,
+  rawSource,
   replyColumns,
   SECTION_ID,
   SOURCE_PATTERN,
@@ -132,17 +133,82 @@ describe('which landed blocks kittex takes from the engine', () => {
   // A block taken on its first render is drawn as nothing until kittex answers:
   // one holding only math left raw stays the engine's.
   test('only blocks holding math of a kind kittex changes', () => {
-    const display = 'So:\n\n$$x^2$$\n\nand \\[y\\] then\n\\begin{aligned}a\\end{aligned}\n'
-    const inline = 'So $x$ and \\(y\\) here.'
+    const display = 'So:\n\n$$x^2$$\n\nthen\n\\begin{aligned}a\\end{aligned}\n'
+    const inline = 'So $x$ and $y$ here.'
     expect(sourcePattern({ block: 'image', inline: 'image' }).source).toBe(SOURCE_PATTERN.source)
     expect(sourcePattern({ block: 'raw' }).test(display)).toBe(false)
     expect(sourcePattern({ block: 'raw' }).test(inline)).toBe(true)
     expect(sourcePattern({ block: 'raw' }).test('So $$x$$ inline.')).toBe(true)
     expect(sourcePattern({ block: 'raw' }).test('$$x$$ and more.')).toBe(true)
     expect(sourcePattern({ block: 'raw' }).test('> $$x$$\n')).toBe(false)
+    expect(sourcePattern({ block: 'raw' }).test('$$\nx\n$$ and more.\n')).toBe(true)
+    expect(sourcePattern({ block: 'raw' }).test('$$\nx\n$$\n\n$$\ny\n$$ more\n')).toBe(true)
+    expect(sourcePattern({ block: 'raw' }).test('$$\nx\n$$\n\n$$\ny\n$$\n')).toBe(false)
     expect(sourcePattern({ inline: 'raw' }).test(inline)).toBe(false)
     expect(sourcePattern({ inline: 'raw' }).test(display)).toBe(true)
-    expect(sourcePattern({ block: 'raw', inline: 'raw' }).test(display + inline)).toBe(false)
+  })
+
+  test('math left raw counts where a backslash in it needs its mark (as read back after --resume)', () => {
+    for (const text of ['$$\\{x\\}$$\n', '\\[y\\]\n', '\\begin{align}a \\\\\nb\\end{align}\n']) expect(sourcePattern({ block: 'raw' }).test(text)).toBe(true)
+    for (const text of ['So $\\{x\\}$ here.', 'So $a\\,b$ here.', 'So \\(y\\) here.']) expect(sourcePattern({ inline: 'raw' }).test(text)).toBe(true)
+    // Marked already (streamed): the block holds a preview mark, and is no source.
+    expect(sourcePattern({ inline: 'raw' }).test(`So $\\${INLINE_MARK}{x\\${INLINE_MARK}}$ here.`)).toBe(false)
+  })
+})
+
+describe('math left raw keeps its backslashes', () => {
+  // The engine's markdown reads `\{`, `\,`, `\\` and a backslash before a line
+  // break as escapes and drops the backslash: each gets a mark of no width.
+  const INLINE_RAW = 'Sets $\\{x\\}\\,y$ and $a\\\\b$ here.'
+  const BLOCK_RAW = '$$\\{x\\}\\,y$$\n\n\\begin{align}\na &= b \\\\\nc &= d\n\\end{align}'
+  const reply = `${INLINE_RAW}\n\n${BLOCK_RAW}\n\nDone.`
+  const marked = (text: string) => text.replace(/\\(?=[{},\\\n])/g, `\\${INLINE_MARK}`)
+  const cases: [MathMode, MathMode][] = [
+    ['raw', 'image'],
+    ['raw', 'unicode'],
+    ['image', 'raw'],
+    ['unicode', 'raw'],
+  ]
+  for (const [block, inline] of cases) {
+    test(`block ${block}, inline ${inline}: streamed, landed and resumed with every backslash`, { options: { block, inline } }, async ($, on) => {
+      await startSession($, on)
+      await init()
+      const shown = await stream($, reply)
+      if (inline === 'raw') expect(shown).toContain(marked(INLINE_RAW))
+      if (block === 'raw') expect(shown).toContain(marked(BLOCK_RAW))
+      // Without the marks, the text is Claude's where it is left raw.
+      if (inline === 'raw') expect(shown.replaceAll(INLINE_MARK, '')).toContain(INLINE_RAW)
+      if (block === 'raw') expect(shown.replaceAll(INLINE_MARK, '')).toContain(BLOCK_RAW)
+      // Landed: the raw math as streamed; resumed: marked the same way, drawn as the live landing.
+      const live = await (await mount($, shown)).drawn()
+      const resumed = await (await mount($, reply)).drawn()
+      expect(shapeOf(resumed)).toEqual(shapeOf(live))
+      if (inline === 'raw') expect(JSON.stringify(live)).toContain(JSON.stringify(marked(INLINE_RAW)).slice(1, -1))
+      if (block === 'raw') expect(JSON.stringify(live)).toContain(JSON.stringify(marked('\\begin{align}\na &= b \\\\\nc &= d\n\\end{align}')).slice(1, -1))
+    })
+  }
+
+  test('rawSource: marks each backslash markdown would drop, once', async () => {
+    const M = INLINE_MARK
+    const span = (raw: string, tex = raw.slice(1, -1), display = false) => rawSource({ raw, tex, display, delimiter: display ? '$$' : '$' })
+    expect(span('$\\{x\\}\\,\\;\\!y$')).toBe(`$\\${M}{x\\${M}}\\${M},\\${M};\\${M}!y$`)
+    expect(span('$a\\\\b$')).toBe(`$a\\${M}\\b$`)
+    expect(span('$\\alpha + \\beta$')).toBe('$\\alpha + \\beta$')
+    // An escaped dollar stays one (for kittex's scanner, as for the reader).
+    expect(span('$a \\$ b$')).toBe('$a \\$ b$')
+    // Idempotent: the landing reads the streamed text again.
+    const once = span('$\\{x\\}\\\\$')
+    expect(span(once)).toBe(once)
+    // In a table row `\|` is the row's escape of a pipe (the formula reads it as `|`): it stays.
+    expect(rawSource({ raw: '$\\|x\\|\\,$', tex: '|x|\\,', display: false, delimiter: '$' })).toBe(`$\\|x\\|\\${M},$`)
+    expect(rawSource({ raw: '$\\|x\\|$', tex: '\\|x\\|', display: false, delimiter: '$' })).toBe(`$\\${M}|x\\${M}|$`)
+  })
+
+  test('a ```math fence is code: left as written', async () => {
+    await init()
+    const fence = '```math\n\\{x\\} \\\\ y\n```\n'
+    const stream = new MessageStream()
+    expect(stream.push(fence, true, streamEnvFor(kittyEnv(), { block: 'raw', inline: 'image' })).text).toBe(fence)
   })
 })
 
