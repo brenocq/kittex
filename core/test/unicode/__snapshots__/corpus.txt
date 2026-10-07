@@ -424,7 +424,7 @@ $ softmax(z)ᵢ = e^(zᵢ)/(∑ⱼ e^(zⱼ))
 $$ \theta \leftarrow \theta - \eta \nabla_\theta J(\theta)
 > │θ ← θ − η∇ J(θ)│
   │          θ    │
-$ θ ← θ − η∇_θJ(θ)
+$ θ ← θ − η∇_θ J(θ)
 
 $$ \alpha, \beta, \gamma \in \{1, 2, \ldots, n\}
 > │α, β, γ ∈ {1, 2, …, n}│
