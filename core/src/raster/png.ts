@@ -59,11 +59,11 @@ export function encodeRgbaPng(rgba: Uint8Array, width: number, height: number): 
 
 /**
  * Straight-alpha RGBA pixels (a TeX picture) as an indexed PNG, at most 256
- * palette entries, most compressed: a picture has few colours, so each
- * pixel is its nearest of up to MAX_INKS colours (the most covered first,
- * one per distinct colour) at one of the alpha levels the rest of the
- * palette leaves, so anti-aliasing stays. Exact where the picture has at most
- * 255 colour and alpha pairs. A tenth or less of encodeRgbaPng's bytes.
+ * palette entries, most compressed. Exact where the picture has at most 255
+ * colour and alpha pairs; else a solid pixel is its nearest of up to
+ * SOLID_COLOURS colours (a colormap keeps its shades) and an edge pixel its
+ * nearest of up to MAX_INKS inks at one of their alpha levels (anti-aliasing
+ * stays). A third or less of encodeRgbaPng's bytes.
  */
 export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: number): Uint8Array {
   const n = width * height
@@ -95,14 +95,27 @@ export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: numb
       index[i] = slot.get(rgb * 256 + a)!
     }
   } else {
-    // The inks: the most covered colours, each one far enough from those before it (an edge's blends are not inks).
-    const inks: [number, number, number][] = []
-    for (const [rgb] of [...weight].sort((a, b) => b[1] - a[1])) {
-      const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
-      if (inks.every(ink => distance(ink, c) > INK_DISTANCE)) inks.push(c)
-      if (inks.length >= MAX_INKS) break
+    // Solid pixels (a filled area, a colormap's patches): up to SOLID_COLOURS colours of their own, the most
+    // covered first, each one a little apart from those before. Edges (partial alpha): up to MAX_INKS inks,
+    // at the alpha levels the rest of the palette leaves, so anti-aliasing stays.
+    const solidWeight = new Map<number, number>()
+    for (let i = 0; i < n; i++) {
+      if (rgba[4 * i + 3]! < SOLID) continue
+      const rgb = (rgba[4 * i]! << 16) | (rgba[4 * i + 1]! << 8) | rgba[4 * i + 2]!
+      solidWeight.set(rgb, (solidWeight.get(rgb) ?? 0) + 1)
     }
-    const levels = Math.floor(255 / inks.length)
+    const pick = (weights: Map<number, number>, most: number, apart: number) => {
+      const chosen: [number, number, number][] = []
+      for (const [rgb] of [...weights].sort((a, b) => b[1] - a[1])) {
+        const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
+        if (chosen.every(one => distance(one, c) > apart)) chosen.push(c)
+        if (chosen.length >= most) break
+      }
+      return chosen
+    }
+    const inks = pick(weight, MAX_INKS, INK_DISTANCE)
+    const solids = pick(solidWeight, SOLID_COLOURS, SOLID_DISTANCE)
+    const levels = Math.min(MAX_LEVELS, Math.floor((255 - solids.length) / inks.length))
     plte = [0, 0, 0]
     trns = [0]
     for (const ink of inks) {
@@ -111,20 +124,33 @@ export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: numb
         trns.push(Math.round((255 * l) / levels))
       }
     }
-    const nearest = new Map<number, number>()
+    const solidAt = plte.length / 3
+    for (const solid of solids) {
+      plte.push(...solid)
+      trns.push(255)
+    }
+    const nearest = (set: readonly (readonly [number, number, number])[], memo: Map<number, number>, rgb: number) => {
+      let k = memo.get(rgb)
+      if (k === undefined) {
+        const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
+        k = 0
+        for (let j = 1; j < set.length; j++) if (distance(set[j]!, c) < distance(set[k]!, c)) k = j
+        memo.set(rgb, k)
+      }
+      return k
+    }
+    const inkMemo = new Map<number, number>()
+    const solidMemo = new Map<number, number>()
     for (let i = 0; i < n; i++) {
       const a = rgba[4 * i + 3]!
       if (a === 0) continue
       const rgb = (rgba[4 * i]! << 16) | (rgba[4 * i + 1]! << 8) | rgba[4 * i + 2]!
-      let k = nearest.get(rgb)
-      if (k === undefined) {
-        const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
-        k = 0
-        for (let j = 1; j < inks.length; j++) if (distance(inks[j]!, c) < distance(inks[k]!, c)) k = j
-        nearest.set(rgb, k)
+      if (a >= SOLID && solids.length > 0) {
+        index[i] = solidAt + nearest(solids, solidMemo, rgb)
+        continue
       }
       const level = Math.max(1, Math.round((a * levels) / 255))
-      index[i] = 1 + k * levels + level - 1
+      index[i] = 1 + nearest(inks, inkMemo, rgb) * levels + level - 1
     }
   }
   const ihdr = new Uint8Array(13)
@@ -142,10 +168,15 @@ export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: numb
   ])
 }
 
-/** The most colours a quantized picture keeps (each with 255 / MAX_INKS alpha levels: 31 at 8). */
-const MAX_INKS = 8
+/** The most inks a quantized picture's edges keep, each at up to MAX_LEVELS alpha levels. */
+const MAX_INKS = 6
+const MAX_LEVELS = 24
 /** How far apart (squared RGB distance) two inks are. */
 const INK_DISTANCE = 40 * 40
+/** Pixels at least this opaque are solid: drawn in one of up to SOLID_COLOURS colours, SOLID_DISTANCE apart. */
+const SOLID = 248
+const SOLID_COLOURS = 104
+const SOLID_DISTANCE = 6 * 6
 
 function distance(a: readonly number[], b: readonly number[]): number {
   return (a[0]! - b[0]!) ** 2 + (a[1]! - b[1]!) ** 2 + (a[2]! - b[2]!) ** 2

@@ -65,6 +65,11 @@ describe('documents', () => {
     expect(doc.text.split('\n')[doc.offset]).toBe('\\documentclass[12pt]{article}')
   })
 
+  test("pgfplots' interpolated shading is drawn flat (the SVG driver has no shading for it)", () => {
+    expect(diagramDocument('\\addplot3[surf, shader=interp] {x};', 'tikz').text).toContain('shader=flat]')
+    expect(diagramDocument('\\documentclass{standalone}\n\\begin{document}\\addplot3[shader=interp]{x};\\end{document}', 'latex').text).not.toContain('interp')
+  })
+
   test('a body with \\begin{document} but no class gets one', () => {
     const doc = diagramDocument('\\usepackage{tikz}\n\\begin{document}\n\\tikz\\draw (0,0)--(1,1);\n\\end{document}', 'latex')
     expect(doc.text).toMatch(/\\documentclass\[dvisvgm,border=1pt\]\{standalone\}\n\\usepackage\{tikz\}/)

@@ -442,26 +442,11 @@ describe('the format, the shading retry, the budget', () => {
     expect(env?.TEXFORMATS).toBe('/home/u/.cache/kittex/tex/fmt:')
   })
 
-  test("pgfplots' shader=interp, which the SVG driver can't draw, is drawn flat instead", async () => {
-    await init()
-    const fake = fakeTex()
-    const run = fake.host.run
-    let attempts = 0
-    fake.host.run = async (argv, init) => {
-      if (argv.includes('latex')) {
-        attempts++
-        const source = fake.writes.get('/tmp/kittex-tex.AbCdEfGhIj/kittex.tex') ?? ''
-        if (/shader=interp/.test(source)) return { exitCode: 1, stdout: "! Package pgfplots Error: Sorry, surface shading (shader=interp) is NOT available for the selected driver `pgfsys-dvisvgm.def'.\nl.14 \\addplot3", stderr: '', isStdoutTruncated: false }
-      }
-      return run(argv, init)
-    }
-    texBook.reset(fake.host, fake.setup)
-    const source = '\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader=interp] {x*y};\\end{axis}\\end{tikzpicture}'
-    const job = diagramJob(source, 'latex')
+  test("pgfplots' shader=interp, which the SVG driver can't draw, is compiled as shader=flat", () => {
+    const job = diagramJob('\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader = interp] {x*y};\\end{axis}\\end{tikzpicture}', 'latex')
     if (!job || !('document' in job)) throw new Error('no job')
-    expect((await texBook.compile(job.document, 3000)).ok).toBe(true)
-    expect(attempts).toBe(2)
-    expect(fake.writes.get('/tmp/kittex-tex.AbCdEfGhIj/kittex.tex')).toContain('shader=flat')
+    expect(job.document.text).toContain('\\addplot3[surf, shader=flat]')
+    expect(job.document.text).not.toContain('interp')
   })
 
   test('pictures past the drawing budget are drawn at fewer pixels, largest first, before any is left out', () => {

@@ -232,13 +232,7 @@ export class TexBook {
       const deadline = Date.now() + timeoutMs
       if (this.active >= MAX_COMPILES) await new Promise<void>(resolve => this.waiting.push(resolve))
       this.active++
-      const once = (doc: TexDocument) => compileOnce(host, setup, doc, deadline, timeoutMs).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
-      let outcome = await once(document)
-      // pgfplots' interpolated shading needs PostScript or PDF: drawn flat instead (same colours per facet).
-      if (!outcome.ok && outcome.lasting && /shader=interp/.test(outcome.error) && INTERP.test(document.text)) {
-        const flat = await once({ ...document, text: document.text.replace(new RegExp(INTERP.source, 'g'), 'shader=flat') })
-        if (flat.ok) outcome = flat
-      }
+      const outcome = await compileOnce(host, setup, document, deadline, timeoutMs).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
       this.active--
       this.waiting.shift()?.()
       // A passing failure is remembered too (the stream reads it and shows the source), but compiled again when asked.
@@ -251,9 +245,6 @@ export class TexBook {
     return job
   }
 }
-
-/** pgfplots' `shader=interp`, which the SVG driver can't draw (see compile). */
-const INTERP = /shader\s*=\s*interp\b/
 
 /** How long dumping the format may take. */
 const FORMAT_MS = 60_000

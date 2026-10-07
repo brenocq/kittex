@@ -129,7 +129,8 @@ const PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usep
  * \usepackage lines moved up there.
  */
 export function diagramDocument(source: string, lang: DiagramLang): TexDocument {
-  const trimmed = source.replace(/^\s*\n/, '').replace(/\s+$/, '')
+  // pgfplots' interpolated shading needs PostScript or PDF, which the SVG driver has neither of: drawn flat (a colour per facet).
+  const trimmed = source.replace(/^\s*\n/, '').replace(/\s+$/, '').replace(/shader\s*=\s*interp\b/g, 'shader=flat')
   if (lang === 'latex' && isDocument(trimmed)) {
     const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed)
     const body = hasClass ? trimmed : `\\documentclass[dvisvgm,border=1pt]{standalone}\n${trimmed}`

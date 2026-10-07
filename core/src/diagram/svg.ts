@@ -30,6 +30,8 @@ export interface SvgReadOptions {
 
 /** Shapes one picture may paint, at most. */
 export const MAX_PICTURE_OPS = 60_000
+/** Elements one picture's walk may visit, at most (a `use` of a group visits it again). */
+const MAX_VISITS = 400_000
 /** How deep `use` may reference (a cycle is refused). */
 const MAX_USE_DEPTH = 8
 /** The opacity a pattern's colour paints with, standing for its lines' coverage. */
@@ -163,11 +165,24 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
     return index
   }
 
-  const walk = (el: XmlElement, ctm: Matrix, inherited: Style, depth: number, glyph: boolean) => {
-    if (depth > 400) throw new SvgError('nested too deep')
-    if (SKIPPED.has(el.name)) return
-    if (REFUSED.has(el.name) && depth > 0) throw new SvgError(`<${el.name}> is not drawn`)
-    if (declared(el, 'display') === 'none') return
+  // Depth first, in document order, with a stack of its own: dvisvgm nests a group per pgfplots patch (thousands deep).
+  interface Frame {
+    el: XmlElement
+    ctm: Matrix
+    inherited: Style
+    root: boolean
+    glyph: boolean
+    /** How many `use` elements led here. */
+    uses: number
+  }
+  const stack: Frame[] = [{ el: root, ctm: IDENTITY, inherited: { ...INITIAL }, root: true, glyph: false, uses: 0 }]
+  let visits = 0
+  while (stack.length > 0) {
+    const { el, ctm, inherited, root: isRoot, glyph, uses } = stack.pop()!
+    if (++visits > MAX_VISITS) throw new SvgError('picture too complex')
+    if (SKIPPED.has(el.name)) continue
+    if (REFUSED.has(el.name) && !isRoot) throw new SvgError(`<${el.name}> is not drawn`)
+    if (declared(el, 'display') === 'none') continue
     const m = el.name === 'svg' ? ctm : multiply(ctm, transformOf(el.attrs.transform))
     const style = styleOf(el, inherited)
     const clipRef = urlOf(declared(el, 'clip-path'))
@@ -179,29 +194,28 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
       case 'g':
       case 'a':
       case 'switch':
-        for (const child of el.children) walk(child, m, style, depth + 1, glyph)
-        return
+        // Pushed last child first: the first is drawn first.
+        for (let k = el.children.length - 1; k >= 0; k--) stack.push({ el: el.children[k]!, ctm: m, inherited: style, root: false, glyph, uses })
+        continue
       case 'use': {
-        if (depth > MAX_USE_DEPTH * 50) throw new SvgError('use nested too deep')
         const id = hrefOf(el)
         const target = id === undefined ? undefined : ids.get(id)
-        if (!target || target === el) return
-        if (useDepth(el, ids) > MAX_USE_DEPTH) throw new SvgError('use nested too deep')
+        if (!target || target === el) continue
+        if (uses >= MAX_USE_DEPTH || useDepth(el, ids) > MAX_USE_DEPTH) throw new SvgError('use nested too deep')
         // A glyph: dvisvgm puts each character's outline in <defs> and draws it with <use>.
         const isGlyph = target.name === 'path' && /^g\d*-/.test(id ?? '')
-        walk(target.name === 'symbol' ? { ...target, name: 'g' } : target, multiply(m, translation(el)), style, depth + 1, glyph || isGlyph)
-        return
+        stack.push({ el: target.name === 'symbol' ? { ...target, name: 'g' } : target, ctm: multiply(m, translation(el)), inherited: style, root: false, glyph: glyph || isGlyph, uses: uses + 1 })
+        continue
       }
       default: {
         const d = shapePath(el)
-        if (d === undefined || hidden) return
+        if (d === undefined || hidden) continue
         // A line has no inside to fill.
         draw(d, m, style, glyph, el.name !== 'line')
       }
     }
   }
 
-  walk(root, IDENTITY, { ...INITIAL }, 0, false)
   const height = (baselineY - box.y) * s
   const depth = (box.y + box.height - baselineY) * s
   return { width: box.width * s, height: Math.max(0, height), depth: Math.max(0, depth), ops, clips }

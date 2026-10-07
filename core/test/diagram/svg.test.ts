@@ -20,8 +20,14 @@ describe('xml', () => {
     for (const bad of ['', '<a>', '<a></b>', '<a x=1/>', '<a x="1/>', 'text']) expect(() => parseXml(bad), bad).toThrow(XmlError)
   })
 
-  test('nesting is bounded', () => {
-    expect(() => parseXml('<g>'.repeat(1000) + '</g>'.repeat(1000))).toThrow(XmlError)
+  test('nesting is deep but bounded, with no recursion (a pgfplots surface nests a group per patch)', () => {
+    expect(parseXml('<g>'.repeat(5000) + '</g>'.repeat(5000)).children).toHaveLength(1)
+    expect(() => parseXml('<g>'.repeat(25_000) + '</g>'.repeat(25_000))).toThrow(XmlError)
+  })
+
+  test('a picture thousands of groups deep reads', () => {
+    const body = '<g fill="#00f">'.repeat(3000) + '<path d="M0 0H1V1Z"/>' + '</g>'.repeat(3000)
+    expect(read(body).ops).toHaveLength(1)
   })
 })
 
