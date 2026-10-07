@@ -4,7 +4,7 @@
 // sandbox has. Typesets and draws sample formulas and a TeX picture, and
 // reports timings.
 //
-//   node scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
+//   node .github/scripts/sandbox-check.mjs [--out <dir>]   # --out also writes the PNGs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'

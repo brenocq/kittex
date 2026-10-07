@@ -1,4 +1,5 @@
-import type { CellAdjust, CellSize, MetricAdjust, Probe } from '../types.js'
+import type { CellAdjust, CellSize, KittyAdjust, KittyMetric, MetricAdjust, Probe } from '../types.js'
+import type { FontMetrics } from './fontfile.js'
 
 // The cell probes. A child of Claude Code has no controlling terminal (opening
 // /dev/tty fails with ENXIO), so each probe walks up from its parent to the
@@ -196,11 +197,189 @@ function unadjust(n: number, adjust: MetricAdjust | undefined): number {
  */
 export function textBaseline(cellHeight: number, fraction: number, adjust?: CellAdjust): number {
   const font = unadjust(cellHeight, adjust?.height)
-  let top = Math.round(font * fraction) + Math.ceil((cellHeight - font) / 2)
+  return adjustedBaseline(cellHeight, Math.round(font * fraction), font, adjust)
+}
+
+/** A baseline `top` px down the font's own cell (`font` px tall), moved as Ghostty's adjustments move it in the cell. */
+function adjustedBaseline(cellHeight: number, fontTop: number, font: number, adjust?: CellAdjust): number {
+  let top = fontTop + Math.ceil((cellHeight - font) / 2)
   const shift = adjust?.baseline
   if (shift) {
     const fromBottom = cellHeight - top
     top = cellHeight - ('factor' in shift ? Math.round(fromBottom * shift.factor) : fromBottom + shift.px)
   }
   return Math.min(cellHeight, Math.max(0, top))
+}
+
+// ─── the text font's own layout ──────────────────────────────────────────────
+
+/** Computer Modern's x-height, in em: the math font's lowercase letters stand this tall. */
+export const MATH_X_HEIGHT = 0.4306
+
+/**
+ * The math's x-height against the text font's (both in design units: the
+ * font's sxHeight, CM's 0.431 em). What emPxForCell's 1.15 gives next to
+ * Roboto Mono, against which kittex's sizes were tuned by eye (in ink, the
+ * stroke weight included, the math's x stands about as tall as the text's);
+ * DejaVu Sans Mono and JetBrains Mono read 0.90 there, Source Code Pro 1.02,
+ * Iosevka (half an em wide) 0.76.
+ */
+export const X_HEIGHT_RATIO = 0.92
+
+/** Where the terminal sets its text font in a cell, from the font's own metrics. */
+export interface TextLayout {
+  /** The text's em, in pixels. */
+  emPx: number
+  /** The text's baseline, in pixels from the top of the cell. */
+  baselinePx: number
+  /** The text's x-height, in pixels (before hinting), when the font gives one. */
+  xHeightPx?: number
+}
+
+export interface TextLayoutOptions {
+  /** The configured size, in points: with the cell, it tells the screen's DPI (and so the exact em). */
+  sizePt?: number
+  /** Ghostty's adjust-cell-height and adjust-font-baseline. */
+  adjust?: CellAdjust
+  /** kitty's modify_font. */
+  kittyAdjust?: KittyAdjust
+  /** `darwin` (points at 72 DPI times the display's scale), else 96 DPI times the scale; both when not given. */
+  platform?: string
+}
+
+/** Screen DPIs a terminal converts points with: 96 (Linux, Windows) or 72 (macOS) times the display's scale. */
+function dpis(platform: string | undefined): number[] {
+  const bases = platform === undefined ? [96, 72] : platform === 'darwin' ? [72] : [96]
+  return bases.flatMap(base => [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3, 4].map(scale => base * scale))
+}
+
+/**
+ * How kitty or Ghostty lay out this font in a cell of this size: the em, the
+ * baseline and the x-height in pixels, computed as each terminal computes its
+ * cell from the font's metrics (both through FreeType on Linux: the font's
+ * line height rounded to whole pixels, the baseline from its ascender), with
+ * the config's adjustments. The em comes from the configured size at the DPI
+ * that gives this cell; when none does (a font zoomed at run time, an
+ * unexpected DPI), from the cell's height alone. Undefined for other
+ * terminals and for metrics that make no cell.
+ */
+export function textLayout(kind: string, font: FontMetrics, cell: CellPixels, options: TextLayoutOptions = {}): TextLayout | undefined {
+  const upm = font.unitsPerEm
+  const height = (font.ascender - font.descender + font.lineGap) / upm
+  if (!(upm > 0 && height > 0.5 && height < 4 && cell.cellHeight >= 2)) return undefined
+  const layout = kind === 'kitty' ? kittyLayout(font, height, cell, options) : kind === 'ghostty' ? ghosttyLayout(font, height, cell, options) : undefined
+  if (!layout || !Number.isFinite(layout.emPx) || layout.emPx <= 0) return undefined
+  if (font.xHeight) layout.xHeightPx = (font.xHeight / upm) * layout.emPx
+  layout.baselinePx = Math.min(cell.cellHeight, Math.max(1, layout.baselinePx))
+  return layout
+}
+
+/**
+ * Pixels per em for math set next to this text: the math's x-height
+ * X_HEIGHT_RATIO of the text's, held within 0.75 to 1.35 times what the cell
+ * alone suggests (emPxForCell) against odd metrics.
+ */
+export function mathEmPx(layout: TextLayout, cell: CellPixels): number {
+  const byCell = emPxForCell(cell)
+  const byFont = layout.xHeightPx ? (X_HEIGHT_RATIO * layout.xHeightPx) / MATH_X_HEIGHT : layout.emPx * 1.15
+  return Math.min(byCell * 1.35, Math.max(byCell * 0.75, byFont))
+}
+
+// kitty (fonts.c, freetype.c, 0.49): the cell is ceil(line height), grown to
+// fit the underscore when a font draws it lower (DejaVu Sans Mono: a pixel),
+// and as wide as the widest ASCII advance; the baseline is ceil(ascender) from
+// the top. modify_font then sets the cell's height (a percentage of it, or
+// pixels or points added), moves the baseline up by its `baseline` (kept inside
+// the cell), and, when the cell grew by more than a pixel, moves the baseline
+// down by half the rows added.
+function kittyLayout(font: FontMetrics, height: number, cell: CellPixels, options: TextLayoutOptions): TextLayout | undefined {
+  const upm = font.unitsPerEm
+  const adjust = options.kittyAdjust
+  // FreeType's FT_MulFix to 26.6 fixed point, then kitty's ceil to whole pixels.
+  const ceilPx = (units: number, em: number) => Math.ceil(Math.round((units / upm) * em * 64) / 64)
+  const lineUnits = font.ascender - font.descender + font.lineGap
+  const wide = (em: number) => !font.advance || adjust?.cellWidth !== undefined || Math.abs(ceilPx(font.advance, em) - cell.cellWidth) <= 1
+  let em: number | undefined
+  let own: number | undefined
+  let dpi = 96
+  if (options.sizePt && options.sizePt > 0) {
+    // The DPI that gives this cell: the line height exactly, else one or two rows more (an underscore drawn lower).
+    search: for (const extra of [0, 1, 2]) {
+      for (const d of dpis(options.platform)) {
+        const e = (options.sizePt * d) / 72
+        const h = ceilPx(lineUnits, e) + extra
+        if (wide(e) && kittyMetric(h, adjust?.cellHeight, d) === cell.cellHeight) {
+          ;[em, own, dpi] = [e, h, d]
+          break search
+        }
+      }
+    }
+  }
+  if (em === undefined || own === undefined) {
+    // From the cell alone: the font's own cell height (before modify_font), then the ems that give it and the cell's width.
+    own = adjust?.cellHeight ? unkittyMetric(cell.cellHeight, adjust.cellHeight, dpi) : cell.cellHeight
+    let low = (own - 1) / height
+    let high = own / height
+    if (font.advance && !adjust?.cellWidth) {
+      const advance = font.advance / upm
+      const [l, h] = [(cell.cellWidth - 1.5) / advance, (cell.cellWidth + 0.5) / advance]
+      if (Math.max(low, l) < Math.min(high, h)) [low, high] = [Math.max(low, l), Math.min(high, h)]
+    }
+    em = (low + high) / 2
+  }
+  const cellHeight = cell.cellHeight
+  let baseline = ceilPx(font.ascender, em)
+  if (adjust?.baseline) {
+    const moved = kittyMetric(baseline, adjust.baseline, dpi) - baseline
+    const shift = moved >= 0 ? Math.min(moved, baseline - 1) : Math.max(moved, baseline - cellHeight + 1)
+    baseline -= shift
+  }
+  const added = cellHeight - own
+  if (added > 1) baseline += Math.min(cellHeight - 1, Math.floor(added / 2))
+  return { emPx: em, baselinePx: baseline }
+}
+
+/** kitty's adjust_metric: a percentage of the value, or pixels or points (at `dpi`) added. */
+function kittyMetric(value: number, metric: KittyMetric | undefined, dpi: number): number {
+  if (!metric || metric.value === 0) return value
+  if (metric.unit === '%') return Math.round((Math.abs(metric.value) * value) / 100)
+  const add = metric.unit === 'px' ? Math.round(metric.value) : Math.round((metric.value * dpi) / 72)
+  return add < 0 && -add > value ? 0 : value + add
+}
+
+function unkittyMetric(value: number, metric: KittyMetric, dpi: number): number {
+  if (metric.value === 0) return value
+  if (metric.unit === '%') return Math.max(1, Math.round((value * 100) / Math.abs(metric.value)))
+  const add = metric.unit === 'px' ? Math.round(metric.value) : Math.round((metric.value * dpi) / 72)
+  return Math.max(1, value - add)
+}
+
+// Ghostty (font/Metrics.zig, font/face/freetype.zig, 1.3): FreeType's whole
+// pixels per em (the size rounded), the cell round(line height) tall and
+// round(widest ASCII advance) wide, the baseline round(half the line gap -
+// descender - half the rounding of the height) up from the bottom; then
+// adjust-cell-height and adjust-font-baseline as textBaseline applies them.
+function ghosttyLayout(font: FontMetrics, height: number, cell: CellPixels, options: TextLayoutOptions): TextLayout | undefined {
+  const upm = font.unitsPerEm
+  const own = unadjust(cell.cellHeight, options.adjust?.height)
+  const ownWidth = unadjust(cell.cellWidth, options.adjust?.width)
+  const fits = (ppem: number) =>
+    Math.round(height * ppem) === own && (!font.advance || Math.abs(Math.round((font.advance / upm) * ppem) - ownWidth) <= 1)
+  let ppem: number | undefined
+  let em: number | undefined
+  if (options.sizePt && options.sizePt > 0) {
+    for (const d of dpis(options.platform)) {
+      const p = Math.round((Math.round(options.sizePt * 64) * d) / 72 / 64)
+      if (p > 0 && fits(p)) {
+        ppem = p
+        em = (options.sizePt * d) / 72
+        break
+      }
+    }
+  }
+  ppem ??= Math.max(1, Math.round(own / height))
+  em ??= ppem
+  const faceHeight = height * ppem
+  const fromBottom = Math.round(((font.lineGap / 2 - font.descender) / upm) * ppem - (own - faceHeight) / 2)
+  return { emPx: em, baselinePx: adjustedBaseline(cell.cellHeight, own - fromBottom, own, options.adjust) }
 }

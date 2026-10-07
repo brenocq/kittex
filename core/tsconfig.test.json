@@ -5,5 +5,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["core/src", "core/test"]
+  "include": ["src", "test"]
 }

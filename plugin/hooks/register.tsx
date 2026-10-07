@@ -23,9 +23,15 @@ import {
   colorProbes,
   detectTerminal,
   drawsEmojiSequences,
-  emPxForCell,
-  fontCell,
+  fontFileArgv,
+  GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
+  imageInkCurve,
+  matchesFamily,
+  odArgv,
+  parseFontFile,
+  parseOd,
+  readFontMetrics,
   init,
   measureDisplay,
   measureDisplayResult,
@@ -40,7 +46,7 @@ import {
   strokeWeight,
   toBase64,
 } from './core.js'
-import type { CellSize, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
+import type { ByteReader, CellSize, FontMetrics, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
 import {
   BLOCK_LIMIT,
   blockMatches,
@@ -55,6 +61,7 @@ import {
   INK_PREFER,
   IMAGE_LIMIT,
   inlineEnvFor,
+  mathEmPxFor,
   INSTRUCT_WITHOUT_IMAGES,
   inlineFlow,
   joinProse,
@@ -135,6 +142,8 @@ let contextPending = false
 let cells: Cells | undefined
 /** Runs a function on session.start's clock once the current dispatch resolves (a hook's `$` belongs to its one dispatch). */
 let later: ((fn: () => void) => void) | undefined
+/** `darwin`, `linux`... from `uname -s`, when it ran. */
+let platform: string | undefined
 /** The probe for the local TeX (the `latex` option), started after session.start; settles once texBook knows. */
 let texProbe: Promise<void> | undefined
 /** Redraws the landed blocks once a compile they asked for ends (session.start's `$`). */
@@ -344,7 +353,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       // out for cells that are gone, and once more when the resize settles.
       // A render may not write state, so the settle timer stores what it finds.
       const cell = await cells?.probe()
-      if (cell) env = { ...env, ...cellEnv(cell, env.cellAdjust), columns: seen }
+      if (cell) env = { ...env, ...cellEnv(cell, env), columns: seen }
       cells?.settle(seen)
     }
     const columns = e.viewport?.columns ?? env.columns
@@ -539,12 +548,15 @@ async function setUp($: $, surface: string | null): Promise<void> {
   processEnv = await readProcessEnv($)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
+  platform = uname?.trim().toLowerCase() || undefined
   const cellAdjust = terminalColors?.cellAdjust
+  const kittyAdjust = terminalColors?.kittyAdjust
   const env: KittexEnv = {
     kind: terminal.kind,
     images: terminal.images,
-    ...cellEnv(cell, cellAdjust),
+    ...cellEnv(cell, { kind: terminal.kind, cellAdjust, kittyAdjust }),
     ...(cellAdjust ? { cellAdjust } : {}),
+    ...(kittyAdjust ? { kittyAdjust } : {}),
     columns: cell?.columns ?? FALLBACK_COLUMNS,
     ink: inkNow(),
     ...inkOverNow(),
@@ -557,6 +569,8 @@ async function setUp($: $, surface: string | null): Promise<void> {
     ...(terminalColors?.fontWeight ? { weight: strokeWeight(terminalColors.fontWeight) } : {}),
   }
   await $.state.set(ENV, env)
+  // The text font's metrics, read from its file after setup (the first drawing doesn't wait for them).
+  if (env.images) later?.(() => void loadFont($).catch(() => undefined))
 
   // Self-check: a policy plugin (cc-plugin-sec-default on Team/Enterprise or
   // managed machines) may skip installed plugins' prompt.compose hooks; then
@@ -738,9 +752,10 @@ function inkNow() {
 }
 
 /** The background the ink's alpha is corrected against (imageInkBackground), as kittex.env's `inkOver`: none where images blend as text does. */
-function inkOverNow(): Pick<KittexEnv, 'inkOver'> {
-  const over = terminal ? imageInkBackground(terminal.kind, terminalColors) : undefined
-  return over ? { inkOver: { r: over.r, g: over.g, b: over.b } } : {}
+function inkOverNow(): Pick<KittexEnv, 'inkOver' | 'inkCurve'> {
+  const over = terminal ? imageInkBackground(terminal.kind, terminalColors, platform) : undefined
+  const curve = terminal ? imageInkCurve(terminal.kind, terminalColors, platform) : undefined
+  return over ? { inkOver: { r: over.r, g: over.g, b: over.b }, ...(curve ? { inkCurve: { gamma: curve.gamma, contrast: curve.contrast } } : {}) } : {}
 }
 
 /** The terminal's background as kittex.env's `background`, when its colours were read (diagrams are drawn for it). */
@@ -750,6 +765,7 @@ function backgroundNow(): Pick<KittexEnv, 'background'> {
 }
 
 const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b || (!!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b)
+const sameCurve = (a: KittexEnv['inkCurve'], b: KittexEnv['inkCurve']) => a === b || (!!a && !!b && a.gamma === b.gamma && a.contrast === b.contrast)
 
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
 async function readProseWidth($: $): Promise<number | undefined> {
@@ -777,8 +793,8 @@ async function refreshInk($: $, setting: string): Promise<void> {
   const ink = inkNow()
   const over = inkOverNow()
   const back = backgroundNow()
-  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver) && sameColor(back.background, env.background)) return
-  const { inkOver: _, background: __, ...rest } = env
+  if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver) && sameCurve(over.inkCurve, env.inkCurve) && sameColor(back.background, env.background)) return
+  const { inkOver: _, inkCurve: __, background: ___, ...rest } = env
   await $.state.set(ENV, { ...rest, ink, ...over, ...back })
 }
 
@@ -850,10 +866,75 @@ function cellsFor($: $): Cells {
   }
 }
 
-/** A measured cell as kittex.env holds it: the math's em from the font's own cell (fontCell), the terminal's adjustments undone. */
-function cellEnv(cell: CellSize | undefined, adjust: KittexEnv['cellAdjust']): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
+/**
+ * A measured cell as kittex.env holds it, with the math's em for it
+ * (mathEmPxFor: from the text font's metrics once read, else the font's own
+ * cell, the terminal's adjustments undone).
+ */
+function cellEnv(cell: CellSize | undefined, env: Pick<KittexEnv, 'kind' | 'cellAdjust' | 'kittyAdjust' | 'font'>): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
   const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
-  return { cellWidth, cellHeight, measured, emPx: emPxForCell(fontCell({ cellWidth, cellHeight }, adjust)) }
+  return { cellWidth, cellHeight, measured, emPx: mathEmPxFor({ cellWidth, cellHeight }, env) }
+}
+
+/**
+ * Reads the text font's metrics and stores them in kittex.env, with the em
+ * they give the math, then redraws: the file kitty names (its probe), else
+ * the one fontconfig finds for the configured family and style; Ghostty's
+ * built-in JetBrains Mono when it names none or fontconfig has no such
+ * family. Off the startup path: on session.start's clock after setup.
+ */
+async function loadFont($: $): Promise<void> {
+  if (!terminal || (terminal.kind !== 'kitty' && terminal.kind !== 'ghostty') || terminal.ssh) return
+  const named = terminalColors?.font
+  let metrics: FontMetrics | undefined
+  let file = named?.file
+  let index = named?.index ?? 0
+  if (!file && named?.family) {
+    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
+    if (found && matchesFamily(found, named.family)) [file, index] = [found.file, found.index]
+  }
+  if (file) metrics = await readFontMetrics(await fontBytes($, file), index)
+  else if (terminal.kind === 'ghostty') metrics = GHOSTTY_BUILTIN_FONT
+  if (!metrics) return
+  const env = await readEnv($)
+  if (!env) return
+  const font: NonNullable<KittexEnv['font']> = {
+    unitsPerEm: metrics.unitsPerEm,
+    ascender: metrics.ascender,
+    descender: metrics.descender,
+    lineGap: metrics.lineGap,
+    ...(metrics.xHeight ? { xHeight: metrics.xHeight } : {}),
+    ...(metrics.advance ? { advance: metrics.advance } : {}),
+    ...(named?.sizePt ? { sizePt: named.sizePt } : {}),
+    ...(platform ? { platform } : {}),
+  }
+  // The font's weight (usWeightClass) when the config's names don't say one.
+  const weight = env.weight === undefined && metrics.weight && metrics.weight !== 400 ? { weight: strokeWeight(metrics.weight) } : {}
+  const next = { ...env, font, ...weight }
+  await $.state.set(ENV, { ...next, emPx: mathEmPxFor(next, next) })
+  $.ui.invalidate('ui.render')
+}
+
+/** A font file's bytes: read whole when $.fs.read takes it (up to 4 MiB), else in pieces through `od`. */
+async function fontBytes($: $, path: string): Promise<ByteReader> {
+  try {
+    const { base64 } = await $.fs.read(path, { as: 'bytes' })
+    // The sandbox's Uint8Array has the base64 helpers (Node's TypeScript lib doesn't declare them yet).
+    const bytes = (Uint8Array as unknown as { fromBase64(text: string): Uint8Array }).fromBase64(base64)
+    return async (offset, length) => (offset < bytes.length ? bytes.subarray(offset, offset + length) : undefined)
+  } catch {
+    return async (offset, length) => (length > 1 << 20 ? undefined : runProbe($, odArgv(path, offset, length), parseOd))
+  }
+}
+
+/** Runs a fixed argv and parses its output, or undefined when it fails. */
+async function runProbe<T>($: $, argv: readonly string[], parse: (stdout: string) => T | undefined): Promise<T | undefined> {
+  try {
+    const { exitCode, stdout } = await $.process.run(argv, { timeoutMs: PROBE_TIMEOUT_MS })
+    return exitCode === 0 ? parse(stdout) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Stores a probe's cells and columns in kittex.env when they changed (a failed probe changes only the columns, to `seen`). */
@@ -861,7 +942,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
   const env = await readEnv($)
   if (!env) return
   const columns = cell?.columns ?? seen ?? env.columns
-  const measured = cell ? cellEnv(cell, env.cellAdjust) : undefined
+  const measured = cell ? cellEnv(cell, env) : undefined
   const same = measured === undefined || (measured.cellWidth === env.cellWidth && measured.cellHeight === env.cellHeight)
   if (same && columns === env.columns) return
   await $.state.set(ENV, { ...env, ...measured, columns })
@@ -961,7 +1042,7 @@ function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
 }
 
 function geometryKey(env: RenderEnv): string {
-  const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b] : []
+  const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b, env.inkCurve?.gamma ?? '', env.inkCurve?.contrast ?? ''] : []
   return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
 }
 

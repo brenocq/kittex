@@ -1,6 +1,6 @@
 // Glyph outlines for the banner: New Computer Modern from kittex's own
 // typesetter (MathJax 4 with the newcm font, bundled with esbuild the way
-// scripts/build.mjs bundles core) and Roboto Mono for the raw LaTeX source.
+// core/scripts/build.mjs bundles core) and Roboto Mono for the raw LaTeX source.
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +22,7 @@ export async function loadCore() {
   return module
 }
 
-/** Bundles a core entry point with esbuild, as scripts/build.mjs does, and imports it. */
+/** Bundles a core entry point with esbuild, as core/scripts/build.mjs does, and imports it. */
 async function bundle(entry) {
   const dir = mkdtempSync(join(tmpdir(), 'kittex-banner-'))
   const outfile = join(dir, 'bundle.mjs')

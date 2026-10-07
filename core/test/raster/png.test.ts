@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { crc32, inflateSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { encodePng, inkAlpha, rasterize, recolorPng } from '../../src/raster/index.js'
+import { curvedAlpha, encodePng, inkAlpha, rasterize, recolorPng } from '../../src/raster/index.js'
 import type { Raster, RGB, TypesetResult } from '../../src/types.js'
 
 interface Chunk {
@@ -169,5 +169,42 @@ describe('encodePng / recolorPng with a corrected alpha', () => {
     // Only the PLTE and tRNS chunks (data and CRCs) differ.
     expect(Math.min(...changed)).toBeGreaterThanOrEqual(33 + 8)
     expect(Math.max(...changed)).toBeLessThan(33 + 12 + 768 + 12 + 256)
+  })
+})
+
+// kitty 0.49's text curve (cell.slang, foreground_contrast_new), written out independently.
+function kittyText(a: number, fg: RGB, bg: RGB, gamma: number, contrast: number): number {
+  const g = gamma < 0.01 ? 1 : 1 / gamma
+  const t = (1 - lum(fg) + lum(bg)) * 0.5
+  const mixed = a * (1 - t) + a ** g * t
+  return Math.min(1, Math.max(0, mixed * (1 + contrast * 0.01)))
+}
+
+describe("curvedAlpha (kitty's text_composition_strategy, for images)", () => {
+  test("matches kitty's text shader over the measured themes", () => {
+    for (const [fg, bg] of [[lightFg, lightBg], [darkFg, darkBg], [black, white], [white, black]] as const) {
+      for (const [gamma, contrast] of [[1.7, 30], [1.2, 0], [0.8, 10]] as const) {
+        for (let i = 0; i <= 255; i++) expect(curvedAlpha(i / 255, fg, bg, { gamma, contrast })).toBeCloseTo(kittyText(i / 255, fg, bg, gamma, contrast), 12)
+      }
+    }
+  })
+
+  test('1.7 30 (macOS) thickens dark ink on light much more than light ink on dark; 1.0 0 changes nothing', () => {
+    const curve = { gamma: 1.7, contrast: 30 }
+    expect(curvedAlpha(0.3, lightFg, lightBg, curve) - 0.3).toBeGreaterThan(curvedAlpha(0.3, darkFg, darkBg, curve) - 0.3)
+    expect(curvedAlpha(0.3, darkFg, darkBg, curve)).toBeGreaterThan(0.3)
+    for (const a of [0, 0.2, 0.5, 1]) expect(curvedAlpha(a, lightFg, lightBg, { gamma: 1, contrast: 0 })).toBeCloseTo(a, 12)
+  })
+
+  test("a curve goes into the PNG's tRNS, and recolouring keeps it", () => {
+    const raster: Raster = { alpha: Uint8Array.of(0, 64, 128, 255), widthPx: 4, heightPx: 1, columns: 1, rows: 1, scale: 1, baselinePx: 1 }
+    const curve = { gamma: 1.7, contrast: 30 }
+    const trns = (png: Uint8Array) => chunks(png).find(c => c.type === 'tRNS')!.data
+    const png = encodePng(raster, lightFg, lightBg, curve)
+    expect(trns(png)[128]).toBe(Math.round(255 * kittyText(128 / 255, lightFg, lightBg, 1.7, 30)))
+    expect(trns(png)[255]).toBe(255)
+    expect(trns(recolorPng(encodePng(raster, darkFg), lightFg, lightBg, curve))).toEqual(trns(png))
+    // Without a curve, the gamma correction as before.
+    expect(trns(encodePng(raster, lightFg, lightBg))[128]).toBe(Math.round(255 * inkAlpha(128 / 255, lightFg, lightBg)))
   })
 })

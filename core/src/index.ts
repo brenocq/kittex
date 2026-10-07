@@ -3,7 +3,7 @@ import { adaptColor, assumedBackground, texPicture } from './diagram/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
-import type { CellBox, Picture, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
+import type { CellBox, Picture, RasterOptions, RGB, TextCurve, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
@@ -48,12 +48,22 @@ export {
   drawsEmojiSequences,
   emPxForCell,
   fontCell,
+  fontFileArgv,
+  GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
+  imageInkCurve,
+  matchesFamily,
+  mathEmPx,
+  odArgv,
+  parseFontFile,
+  parseOd,
+  readFontMetrics,
   readTerminalColors,
   textBaseline,
+  textLayout,
   toHex,
 } from './terminal/index.js'
-export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
+export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
@@ -75,6 +85,11 @@ export interface RenderEnv {
    * blend alike.
    */
   inkOver?: RGB
+  /**
+   * With `inkOver`: kitty's text curve (its text_composition_strategy) to
+   * correct the ink's alpha with, instead of the gamma-blend correction.
+   */
+  inkCurve?: TextCurve
   /**
    * The stroke weight to draw with (RasterOptions.weight), to match the
    * terminal font's (strokeWeight); absent for the default.
@@ -210,11 +225,11 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS || box.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
     const raster = rasterize(result, options)
-    const png = encodePng(raster, env.ink, env.inkOver)
+    const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
     if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
     image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png })
   }
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
 }
 
 /**
@@ -311,7 +326,7 @@ export function renderInline(tex: string, env: InlineEnv, columns: number, place
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.weight ?? '', env.baselinePx, columns, place, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) image = store(imageCache, key, drawInline(typesetInline(tex), env, columns, place))
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
 }
 
 /** renderInline for a formula typeset some other way (TeX's, see texFormula); not cached. */
@@ -322,7 +337,7 @@ export function renderInlineResult(result: TypesetResult, env: InlineEnv, column
 function drawInline(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace): RenderedImage {
   const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
   const raster = rasterize(result, options)
-  const png = encodePng(raster, env.ink, env.inkOver)
+  const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
   if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
   return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
 }
@@ -524,7 +539,7 @@ export function renderDisplayResult(result: TypesetResult, env: RenderEnv, minRo
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
   if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS || box.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
   const raster = rasterize(result, options)
-  const png = encodePng(raster, env.ink, env.inkOver)
+  const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
   if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
   return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
 }
