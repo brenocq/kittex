@@ -182,6 +182,14 @@ describe('alpha-blending and the cell adjustments', () => {
     expect((await readGhosttyColors(memFs(reset), { env }))?.cellAdjust).toBeUndefined()
   })
 
+  test('font-family, font-style and font-size name the text font (none: the built-in JetBrains Mono)', async () => {
+    expect(parseGhosttyConfig('foreground = #000000\nfont-family = \nfont-size = 12\n')?.font).toEqual({ sizePt: 12 })
+    expect(parseGhosttyConfig('foreground = #000000\nfont-family = Iosevka\nfont-family = Symbols Nerd Font\nfont-style = Medium\nfont-size = 13.5\n')?.font).toEqual({ family: 'Iosevka', style: 'Medium', sizePt: 13.5 })
+    expect(parseGhosttyConfig('foreground = #000000\nfont-family = Hack\nfont-style = default\n')?.font).toEqual({ family: 'Hack' })
+    const files = { '/h/.config/ghostty/config': 'font-family = "Fira Code"\nfont-size = 11\n' }
+    expect((await readGhosttyColors(memFs(files), { env: { HOME: '/h' } }))?.font).toEqual({ family: 'Fira Code', sizePt: 11 })
+  })
+
   test('imageInkBackground: the background in Ghostty with linear-corrected blending only', () => {
     const background = { r: 0xfb, g: 0xf1, b: 0xc7 }
     expect(imageInkBackground('ghostty', { background, alphaBlending: 'linear-corrected' })).toEqual(background)

@@ -2,7 +2,7 @@ import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layou
 import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
-import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
+import type { CellBox, RasterOptions, RGB, TextCurve, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
@@ -18,12 +18,22 @@ export {
   drawsEmojiSequences,
   emPxForCell,
   fontCell,
+  fontFileArgv,
+  GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
+  imageInkCurve,
+  matchesFamily,
+  mathEmPx,
+  odArgv,
+  parseFontFile,
+  parseOd,
+  readFontMetrics,
   readTerminalColors,
   textBaseline,
+  textLayout,
   toHex,
 } from './terminal/index.js'
-export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
+export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
@@ -45,6 +55,11 @@ export interface RenderEnv {
    * blend alike.
    */
   inkOver?: RGB
+  /**
+   * With `inkOver`: kitty's text curve (its text_composition_strategy) to
+   * correct the ink's alpha with, instead of the gamma-blend correction.
+   */
+  inkCurve?: TextCurve
   /**
    * The stroke weight to draw with (RasterOptions.weight), to match the
    * terminal font's (strokeWeight); absent for the default.
@@ -157,9 +172,9 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('formula too large to draw')
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver, env.inkCurve) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
 }
 
 /**
@@ -254,9 +269,9 @@ export function renderInline(tex: string, env: InlineEnv, columns: number, place
     const result = typesetInline(tex)
     const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
     const raster = rasterize(result, options)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver) })
+    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png: encodePng(raster, env.ink, env.inkOver, env.inkCurve) })
   }
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver) }
+  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
 }
 
 export interface InlinePreviewOptions {

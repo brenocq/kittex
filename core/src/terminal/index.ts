@@ -1,10 +1,38 @@
-import type { Probe, RGB, TerminalColors, TerminalInfo } from '../types.js'
+import type { Probe, RGB, TerminalColors, TerminalInfo, TextCurve } from '../types.js'
 import type { ConfigReadOptions, FileReader } from './color.js'
 import type { Env } from './detect.js'
 import { ghosttyColorProbes, readGhosttyColors } from './ghostty.js'
 import { kittyColorProbes, readKittyColors } from './kitty.js'
 
-export { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, parseWinsize, textBaseline } from './cell.js'
+export {
+  cellProbe,
+  cellProbePython,
+  cellProbes,
+  emPxForCell,
+  fontCell,
+  MATH_X_HEIGHT,
+  mathEmPx,
+  parseWinsize,
+  textBaseline,
+  type TextLayout,
+  textLayout,
+  type TextLayoutOptions,
+  X_HEIGHT_RATIO,
+} from './cell.js'
+export {
+  type ByteReader,
+  bytesReader,
+  type FontFile,
+  fontFileArgv,
+  type FontMetrics,
+  fontPattern,
+  GHOSTTY_BUILTIN_FONT,
+  matchesFamily,
+  odArgv,
+  parseFontFile,
+  parseOd,
+  readFontMetrics,
+} from './fontfile.js'
 export {
   CLAUDE_THEME_TEXT,
   type ClaudeBuiltinTheme,
@@ -21,7 +49,7 @@ export {
 export { type ConfigReadOptions, type FileReader, isDark, parseColorValue, toHex } from './color.js'
 export { detectTerminal, type Env } from './detect.js'
 export { ghosttyDefaultAlphaBlending, ghosttyEntries, parseAlphaBlending, parseGhosttyConfig, parseMetricAdjust, readGhosttyColors } from './ghostty.js'
-export { kittyConfigDirs, parseKittyColors, readKittyColors } from './kitty.js'
+export { kittyConfigDirs, parseKittyColors, parseTextComposition, readKittyColors } from './kitty.js'
 
 export interface ColorProbeOptions {
   /** Claude Code's environment, to find the terminal's binary (GHOSTTY_BIN_DIR, KITTY_INSTALLATION_DIR). */
@@ -82,8 +110,9 @@ export async function readTerminalColors(terminal: TerminalInfo, read: FileReade
 
 /**
  * The background an image's ink alpha must be corrected against so a formula
- * weighs what the terminal's text weighs (raster's inkAlpha), or undefined
- * where the terminal blends images and text alike.
+ * weighs what the terminal's text weighs (raster's inkAlpha, or with
+ * imageInkCurve its curvedAlpha), or undefined where the terminal blends
+ * images and text alike.
  *
  * Ghostty with `alpha-blending = linear-corrected` (its default outside macOS)
  * blends everything in linear light but corrects text glyphs to look
@@ -91,10 +120,28 @@ export async function readTerminalColors(terminal: TerminalInfo, read: FileReade
  * formula drew thinner than the text beside it on a light background and
  * bolder on a dark one. Text is corrected against the cell's background, the
  * default background under reply text. With `native` or `linear` Ghostty
- * blends images as it blends text, and kitty blends both in linear light (its
- * `text_composition_strategy` on Linux, 1.0 0, adds nothing to that).
+ * blends images as it blends text. kitty blends both in linear light, and its
+ * `text_composition_strategy` changes only the text: `legacy` makes it look
+ * gamma-blended as Ghostty's correction does, and a curve other than `1.0 0`
+ * (on macOS, `platform` is `1.7 30`) makes it bolder; measured on kitty 0.49,
+ * the formulas then drew a third bolder (legacy, dark theme) or a sixth
+ * thinner (`1.7 30`, light theme) than the text, relative to `platform`.
  */
-export function imageInkBackground(kind: TerminalInfo['kind'], colors: TerminalColors | undefined): RGB | undefined {
-  if (kind !== 'ghostty' || colors?.alphaBlending !== 'linear-corrected') return undefined
-  return colors.background
+export function imageInkBackground(kind: TerminalInfo['kind'], colors: TerminalColors | undefined, platform?: string): RGB | undefined {
+  if (kind === 'ghostty') return colors?.alphaBlending === 'linear-corrected' ? colors.background : undefined
+  if (kind !== 'kitty' || !colors) return undefined
+  return colors.textComposition === 'legacy' || imageInkCurve(kind, colors, platform) ? colors.background : undefined
+}
+
+/**
+ * kitty's text alpha curve when it isn't the identity (`1.0 0`): the curve its
+ * `text_composition_strategy` sets, `platform` being `1.7 30` on macOS (and
+ * when kittex can't tell the platform, `1.0 0` elsewhere). Undefined for other
+ * terminals, `legacy` (see imageInkBackground) and the identity.
+ */
+export function imageInkCurve(kind: TerminalInfo['kind'], colors: TerminalColors | undefined, platform?: string): TextCurve | undefined {
+  if (kind !== 'kitty' || !colors || colors.textComposition === 'legacy') return undefined
+  const strategy = colors.textComposition ?? 'platform'
+  const curve = strategy === 'platform' ? (platform === 'darwin' ? { gamma: 1.7, contrast: 30 } : undefined) : strategy
+  return curve && (Math.abs(curve.gamma - 1) > 1e-6 || curve.contrast !== 0) ? curve : undefined
 }

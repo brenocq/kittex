@@ -1,4 +1,4 @@
-import type { Probe, RGB, TerminalColors } from '../types.js'
+import type { KittyAdjust, Probe, RGB, TerminalColors, TerminalFont } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
 import { fontWeightOf } from './font.js'
@@ -46,6 +46,22 @@ try:
 except Exception:
     pass
 try:
+    print('font_size', float(o.font_size))
+    for k, m in o.modify_font.items():
+        if k in ('cell_width', 'cell_height', 'baseline'):
+            v, u = m.mod_value
+            print('modify_font', k, float(v), getattr(u, 'name', u))
+    print('text_composition', o.text_composition_strategy)
+except Exception:
+    pass
+try:
+    from kitty.fonts.render import get_font_files
+    f = get_font_files(o)['medium']
+    if isinstance(f, dict) and f.get('path'):
+        print('font_file', int(f.get('index') or 0), f['path'])
+except Exception:
+    pass
+try:
     from kitty.colors import theme_colors
     theme_colors.refresh()
     for name in ('dark', 'light', 'no_preference'):
@@ -68,9 +84,30 @@ export function parseKittyColors(stdout: string, scheme?: Scheme): TerminalColor
   const base = new Map<string, RGB>()
   const variants = new Map<string, Map<string, RGB>>()
   let fontWeight: number | undefined
+  const font: TerminalFont = {}
+  const kittyAdjust: KittyAdjust = {}
+  let textComposition: TerminalColors['textComposition']
   for (const line of stdout.split('\n')) {
     if (line.startsWith('font_spec ')) {
       fontWeight = fontWeightOf(fontNames(line.slice(10)))
+      continue
+    }
+    const fontLine = /^(font_size|font_file|modify_font|text_composition) (.*)$/.exec(line)
+    if (fontLine) {
+      const [, key, value] = fontLine as unknown as [string, string, string]
+      if (key === 'font_size') {
+        const size = Number(value)
+        if (size > 0 && Number.isFinite(size)) font.sizePt = size
+      } else if (key === 'font_file') {
+        const m = /^(\d+) (\/.+)$/.exec(value)
+        if (m) [font.index, font.file] = [Number(m[1]), m[2]!]
+      } else if (key === 'modify_font') {
+        const m = /^(cell_width|cell_height|baseline) (-?[\d.]+) (pt|pixel|percent)$/.exec(value)
+        const field = m && ({ cell_width: 'cellWidth', cell_height: 'cellHeight', baseline: 'baseline' } as const)[m[1] as 'baseline']
+        if (m && field && Number.isFinite(Number(m[2]))) kittyAdjust[field] = { value: Number(m[2]), unit: m[3] === 'pixel' ? 'px' : m[3] === 'percent' ? '%' : 'pt' }
+      } else {
+        textComposition = parseTextComposition(value)
+      }
       continue
     }
     const m = /^\s*(?:(dark|light|no_preference):)?([a-z_0-9]+)\s+(\S+)\s*$/.exec(line)
@@ -82,7 +119,28 @@ export function parseKittyColors(stdout: string, scheme?: Scheme): TerminalColor
   }
   const chosen = (scheme && variants.get(scheme)) || base
   if (!chosen.has('foreground') && !chosen.has('background')) return undefined
-  return { ...kittyColors(chosen), ...(fontWeight ? { fontWeight } : {}) }
+  return {
+    ...kittyColors(chosen),
+    ...(fontWeight ? { fontWeight } : {}),
+    ...(Object.keys(font).length > 0 ? { font } : {}),
+    ...(Object.keys(kittyAdjust).length > 0 ? { kittyAdjust } : {}),
+    ...(textComposition ? { textComposition } : {}),
+  }
+}
+
+/**
+ * A `text_composition_strategy` value: `platform`, `legacy`, or a gamma and
+ * an optional contrast percent (`1.7 30`). Undefined when malformed (kitty
+ * then keeps its default, `platform`).
+ */
+export function parseTextComposition(value: string): TerminalColors['textComposition'] {
+  const v = value.trim()
+  if (v === 'platform' || v === 'legacy') return v
+  const m = /^(\d+(?:\.\d+)?|\.\d+)(?:\s+(\d+(?:\.\d+)?))?$/.exec(v)
+  if (!m) return undefined
+  const gamma = Number(m[1])
+  const contrast = m[2] === undefined ? 0 : Number(m[2])
+  return gamma >= 0.01 && contrast <= 100 ? { gamma, contrast } : undefined
 }
 
 /** The names in a font_spec line's JSON list, axes first, as the probe prints them. */
@@ -147,7 +205,7 @@ export function kittyConfigDirs(env: Env, platform?: string): string[] {
 export async function readKittyColors(read: FileReader, options: ConfigReadOptions): Promise<TerminalColors | undefined> {
   const { env } = options
   const values = new Map<string, RGB>()
-  const ctx: KittyParse = { read, env, platform: options.platform, seen: new Set(), values }
+  const ctx: KittyParse = { read, env, platform: options.platform, seen: new Set(), values, lines: [] }
   let found = await loadKittyFile(ctx, '/etc/xdg/kitty/kitty.conf')
   let configDir: string | undefined
   for (const dir of kittyConfigDirs(env, options.platform)) {
@@ -164,8 +222,26 @@ export async function readKittyColors(read: FileReader, options: ConfigReadOptio
   }
   if (!found) return undefined
   // font_family as written: `family="Roboto Mono" style="Medium"` or a bare name (`Roboto Mono Medium`).
-  const fontWeight = ctx.font === undefined ? undefined : fontWeightOf([/\bstyle\s*=\s*"([^"]*)"/.exec(ctx.font)?.[1], ctx.font])
-  return { ...kittyColors(values), ...(fontWeight ? { fontWeight } : {}) }
+  const style = ctx.font === undefined ? undefined : /\bstyle\s*=\s*"([^"]*)"/.exec(ctx.font)?.[1]
+  const fontWeight = ctx.font === undefined ? undefined : fontWeightOf([style, ctx.font])
+  // The rest as the probe would print it, read by the same parser.
+  const family = ctx.font === undefined ? undefined : (/\bfamily\s*=\s*"([^"]*)"/.exec(ctx.font)?.[1] ?? (/=/.test(ctx.font) ? undefined : ctx.font))
+  const probeLines = ctx.lines.flatMap(([key, value]) => {
+    if (key === 'font_size') return [`font_size ${value}`]
+    if (key === 'text_composition_strategy') return [`text_composition ${value}`]
+    const m = /^(cell_width|cell_height|baseline)\s+(-?[\d.]+)(%|px)?$/.exec(value)
+    return m ? [`modify_font ${m[1]} ${m[2]} ${m[3] === '%' ? 'percent' : m[3] === 'px' ? 'pixel' : 'pt'}`] : []
+  })
+  const parsed = parseKittyColors(['foreground #000000', ...probeLines].join('\n'))
+  const font = { ...parsed?.font, ...(family && family !== 'monospace' ? { family } : {}), ...(family && style ? { style } : {}) }
+  return {
+    ...kittyColors(values),
+    ...(fontWeight ? { fontWeight } : {}),
+    ...(Object.keys(font).length > 0 ? { font } : {}),
+    ...(parsed?.kittyAdjust ? { kittyAdjust: parsed.kittyAdjust } : {}),
+    // kitty's default when the files don't set it.
+    textComposition: parsed?.textComposition ?? 'platform',
+  }
 }
 
 interface KittyParse {
@@ -176,6 +252,8 @@ interface KittyParse {
   values: Map<string, RGB>
   /** The last font_family value. */
   font?: string
+  /** font_size, modify_font and text_composition_strategy lines, in order. */
+  lines: [key: string, value: string][]
 }
 
 const KITTY_COLOR_KEY = /^(foreground|background|color(?:[0-9]|1[0-5]))$/
@@ -210,6 +288,8 @@ async function loadKittyLines(ctx: KittyParse, text: string, base: string, depth
       if (color) ctx.values.set(key, color)
     } else if (key === 'font_family') {
       ctx.font = value.trim()
+    } else if (key === 'font_size' || key === 'modify_font' || key === 'text_composition_strategy') {
+      ctx.lines.push([key, value.trim()])
     }
   }
 }

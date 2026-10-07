@@ -231,6 +231,16 @@ export interface TerminalColors {
    * (strokeWeight draws the math to match).
    */
   fontWeight?: number
+  /** The text font as the config names it (its file is read for its metrics: textLayout). */
+  font?: TerminalFont
+  /** kitty's `modify_font` changes to its cells (cell_width, cell_height, baseline), when any is set. */
+  kittyAdjust?: KittyAdjust
+  /**
+   * kitty's `text_composition_strategy`: `platform` (1.0 0 on Linux, 1.7 30
+   * on macOS), `legacy` (gamma-incorrect blending) or its gamma and contrast.
+   * kitty applies it to text, not to images (see imageInkCurve).
+   */
+  textComposition?: 'platform' | 'legacy' | TextCurve
 }
 
 /** kitty's text alpha curve (text_composition_strategy `gamma contrast`). */
@@ -238,6 +248,32 @@ export interface TextCurve {
   gamma: number
   /** Percent, 0 to 100. */
   contrast: number
+}
+
+/** The terminal's text font, as its config names it. */
+export interface TerminalFont {
+  /** The file the terminal draws the text with, when it says (kitty), and the face's index in a collection. */
+  file?: string
+  index?: number
+  /** The family and style the config sets (Ghostty), for fontconfig to find the file; no family is Ghostty's built-in JetBrains Mono. */
+  family?: string
+  style?: string
+  /** The configured size, in points. */
+  sizePt?: number
+}
+
+/** One kitty `modify_font` value: points, pixels or a percentage of the font's own metric. */
+export interface KittyMetric {
+  value: number
+  unit: 'pt' | 'px' | '%'
+}
+
+/** kitty's `modify_font` changes to the cell and the baseline (see textLayout). */
+export interface KittyAdjust {
+  cellWidth?: KittyMetric
+  cellHeight?: KittyMetric
+  /** Positive moves the baseline up. */
+  baseline?: KittyMetric
 }
 
 /** A change to one cell metric: a factor (Ghostty's `20%` is 1.2) or whole pixels added. */
