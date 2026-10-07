@@ -160,6 +160,14 @@ describe('partial quotes and headings (FUZZ-3)', () => {
     }
   })
 
+  test('a heading is laid out above a block that follows it in its part, or a line holding a tag', () => {
+    for (const rest of ['```latex', '<div>\nhtml\n</div>']) {
+      const markdown = `### See x⠀ here\n${rest}`
+      expect(layoutHeading(markdown, 40, [at(markdown, 'x⠀')])).toBeNull()
+      expect({ rest, places: layoutHeading(markdown, 40, [at(markdown, 'x⠀')], {}, true)?.places }).toEqual({ rest, places: [{ row: 0, col: 4, columns: 2 }] })
+    }
+  })
+
   test('a heading is laid out up to a link with no link mode known', () => {
     const markdown = '## See x⠀ in [docs](https://example.com) for y⠀'
     expect(layoutHeading(markdown, 60, [at(markdown, 'x⠀')])).toBeNull()

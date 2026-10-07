@@ -841,10 +841,8 @@ function writeDisplay(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
   const renderEnv = renderEnvFor(env)
   const { maxColumns } = renderEnv
   const quote = writer.quoteDepth()
-  // The item's text is laid out from where its list starts, however far back that is, in the link mode the
-  // landing lays it out in (known to it only where inline math gets images).
-  const mode = env.inline && env.images ? linkModeOf(env) : {}
-  const indent = quote === 0 && env.images ? itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), mode) : undefined
+  // The item's text is laid out from where its list starts, however far back that is.
+  const indent = quote === 0 && env.images ? itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) : undefined
   const width = quote > 0 ? quoteColumns(env, quote) : indent !== undefined ? Math.max(1, proseWidthFor(env) - indent) : maxColumns
   const drawn = env.images && quote <= 1
   let rows: number | undefined
@@ -969,7 +967,9 @@ function decideInline(run: readonly Segment[], display: boolean, env: StreamEnv,
   for (let layouts = 0; ; layouts++) {
     source = build()
     if (display) source += blockOpening(source).before + 'x'
-    parts = blockParts(source)
+    // At a piece's start, the blank lines the landing drops from it (piecesOf): read without them.
+    const skip = plan.anchor === plan.piece ? (/^(?:[ \t]*\r?\n)+/.exec(source)?.[0].length ?? 0) : 0
+    parts = skip === 0 ? blockParts(source) : (blockParts(source.slice(skip))?.map(part => ({ ...part, start: part.start + skip, end: part.end + skip, block: (part.block ?? part.start) + skip })) ?? null)
     const open = live().filter(choice => !choice.done)
     if (open.length === 0) break
     if (!parts || layouts > MAX_RELAYOUTS) {

@@ -2,7 +2,7 @@ import type { Token, Tokens } from 'marked'
 
 import { Canvas } from './list.js'
 import type { InlineLinks, LinkMode } from './links.js'
-import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowable } from './prose.js'
+import { cutPartial, inline, LEADING_SPACE, linksHold, marked, unfollowableFrom } from './prose.js'
 import type { VisibleText } from './prose.js'
 
 /*
@@ -30,7 +30,13 @@ export function drawHeading(markdown: string, width: number, mode: LinkMode = {}
  * else, or holds anything paragraphs can't hold (see visibleProse).
  */
 export function visibleHeading(markdown: string, mode: LinkMode = {}, partial = false): VisibleText | null {
-  if (unfollowable(markdown)) return null
+  const cut = unfollowableFrom(markdown)
+  if (cut !== undefined) {
+    // Partial: drawn up to the line holding what isn't followed.
+    if (!partial || cut === 0) return null
+    const before = visibleHeading(markdown.slice(0, cut - 1), mode, true)
+    return before && { ...before, stop: Math.min(before.stop ?? Infinity, cut) }
+  }
   const links: InlineLinks = { hyperlinks: mode.hyperlinks, linked: { value: false } }
   let tokens: Token[]
   try {
@@ -39,7 +45,10 @@ export function visibleHeading(markdown: string, mode: LinkMode = {}, partial = 
     return null
   }
   const heading = tokens[0]
-  if (heading?.type !== 'heading' || tokens.slice(1).some(token => token.type !== 'space')) return null
+  if (heading?.type !== 'heading') return null
+  // Partial: what follows the heading in its part (a block the replay doesn't follow) is drawn under it.
+  const trailing = tokens.slice(1).some(token => token.type !== 'space')
+  if (trailing && !partial) return null
   const { text, raw } = heading as Tokens.Heading
   if (!markdown.startsWith(raw) || text === '') return null
   // ATX: the text after the opening hashes; setext: the lines above the underline.
@@ -59,5 +68,5 @@ export function visibleHeading(markdown: string, mode: LinkMode = {}, partial = 
     if (!partial) return null
     visible = cutPartial(visible, visible.stop ?? Infinity, space.index + 1)
   }
-  return visible
+  return trailing && visible.stop === undefined ? { ...visible, stop: raw.length } : visible
 }
