@@ -38,7 +38,7 @@
     "latex": {
       "type": "string",
       "title": "Local LaTeX",
-      "description": "Draw diagrams and math MathJax can't render with your TeX install",
+      "description": "Diagrams (TikZ, pgfplots, chemfig…) and math MathJax can't render: auto (drawn with your TeX install where one is found) or off (TeX never runs; diagrams stay code blocks).",
       "options": ["auto", "off"],
       "default": "auto"
     },
