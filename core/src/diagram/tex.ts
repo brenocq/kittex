@@ -41,7 +41,7 @@
  */
 
 /** Bump when a document below changes what any picture looks like: it keys the disk cache. */
-export const PREAMBLE_VERSION = 1
+export const PREAMBLE_VERSION = 2
 
 /** The job file's name in the job directory, and its outputs'. */
 export const JOB_NAME = 'kittex'
@@ -82,6 +82,8 @@ function isDocument(source: string): boolean {
 /** A document ready for TeX, and how its SVG reads back. */
 export interface TexDocument {
   text: string
+  /** Written on the fragment preamble (FORMAT_SOURCE), so TeX may start from its dumped format (formatArgv) instead of loading it. */
+  format?: true
   /** Lines of `text` before the source's first line (TeX's line numbers less this are the source's). */
   offset: number
   /** Where the picture's baseline is in dvisvgm's SVG (see readSvg). */
@@ -127,7 +129,8 @@ const PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usep
  * \usepackage lines moved up there.
  */
 export function diagramDocument(source: string, lang: DiagramLang): TexDocument {
-  const trimmed = source.replace(/^\s*\n/, '').replace(/\s+$/, '')
+  // pgfplots' interpolated shading needs PostScript or PDF, which the SVG driver has neither of: drawn flat (a colour per facet).
+  const trimmed = source.replace(/^\s*\n/, '').replace(/\s+$/, '').replace(/shader\s*=\s*interp\b/g, 'shader=flat')
   if (lang === 'latex' && isDocument(trimmed)) {
     const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed)
     const body = hasClass ? trimmed : `\\documentclass[dvisvgm,border=1pt]{standalone}\n${trimmed}`
@@ -138,11 +141,39 @@ export function diagramDocument(source: string, lang: DiagramLang): TexDocument 
   const moved = [...trimmed.matchAll(PREAMBLE_LINE)].map(match => match[0].trim())
   let body = moved.length > 0 ? trimmed.replace(PREAMBLE_LINE, '') : trimmed
   if (lang === 'tikz' && !/\\begin\{tikzpicture\}|\\tikz\b/.test(body)) body = `\\begin{tikzpicture}\n${body}\n\\end{tikzpicture}`
-  const head = [...FRAGMENT_PREAMBLE, ...moved, '\\begin{document}']
+  // The format's dump point: with the format TeX starts here; without it, it is \relax.
+  const head = [...FRAGMENT_PREAMBLE, DUMP_POINT, ...moved, '\\begin{document}']
   // Moved lines leave blank ones behind, so the source's line numbers still hold.
   const wrapped = lang === 'tikz' && body !== trimmed && body.startsWith('\\begin{tikzpicture}\n') && !trimmed.startsWith('\\begin{tikzpicture}')
   const offset = head.length + (wrapped ? 1 : 0)
-  return { text: `${head.join('\n')}\n${body}\n\\end{document}\n`, offset, baseline: 'bottom', fontSize: 10 }
+  return { text: `${head.join('\n')}\n${body}\n\\end{document}\n`, offset, baseline: 'bottom', fontSize: 10, format: true }
+}
+
+/** Where mylatexformat stops dumping, and where TeX resumes in a document that uses the format. */
+const DUMP_POINT = '\\csname endofdump\\endcsname'
+
+/**
+ * The document a format is dumped from (mylatexformat): the fragment
+ * preamble up to its dump point. A fragment then starts from the format, the
+ * picture packages already loaded (about 0.25 s of TeX instead of 0.5 s).
+ */
+export const FORMAT_SOURCE = `${[...FRAGMENT_PREAMBLE, DUMP_POINT, '\\begin{document}', '\\end{document}'].join('\n')}\n`
+
+/** The format's name for these TeX versions (its file is `<name>.fmt`): a new preamble or a new TeX dumps a new one. */
+export function formatName(versions: string): string {
+  let hash = 0x811c9dc5
+  for (const char of `${PREAMBLE_VERSION}\n${versions}\n${FORMAT_SOURCE}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193)
+  return `kittex-${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+/** TeX dumping the format `name` from FORMAT_SOURCE (written as `<name>.tex`): no shell, no prompts, the first error ends it. */
+export function formatArgv(name: string): string[] {
+  return ['latex', '-ini', '-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-no-mktex=tex', '-no-mktex=tfm', '-no-mktex=pk', `-jobname=${name}`, '&latex', 'mylatexformat.ltx', `${name}.tex`]
+}
+
+/** LATEX_ARGV starting from the dumped format `name` (found through TEXFORMATS). */
+export function latexArgv(format?: string): string[] {
+  return format === undefined ? [...LATEX_ARGV] : [...LATEX_ARGV.slice(0, -2), `-fmt=${format}`, ...LATEX_ARGV.slice(-2)]
 }
 
 /** The math preamble: what MathJax lacks that formulas reach for (siunitx's \unit, \qty, \ang...). */
@@ -280,18 +311,20 @@ export function bwrapProbe(hide: readonly string[]): string[] {
   return ['bwrap', ...bwrapMounts(hide, undefined), 'true']
 }
 
-function bwrapMounts(hide: readonly string[], dir: string | undefined): string[] {
+function bwrapMounts(hide: readonly string[], dir: string | undefined, readable: readonly string[] = []): string[] {
   const args = ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc']
   for (const path of hide) args.push('--tmpfs', path)
+  // Read-only, and only these: the dumped format's directory.
+  for (const path of readable) args.push('--ro-bind', path, path)
   if (dir !== undefined) args.push('--bind', dir, dir, '--chdir', dir)
   args.push('--unshare-all', '--die-with-parent', '--new-session')
   return args
 }
 
-/** A command of the job, wrapped in its confinement: `dir` is the job's directory (also its working directory). */
-export function confined(argv: readonly string[], dir: string, confinement: Confinement): string[] {
+/** A command of the job, wrapped in its confinement: `dir` is the job's directory (also its working directory); `readable`, directories it may read in a namespace that hides them (the format's). */
+export function confined(argv: readonly string[], dir: string, confinement: Confinement, readable: readonly string[] = []): string[] {
   let out = [...argv]
-  if (confinement.bwrap) out = ['bwrap', ...bwrapMounts(confinement.bwrap.hide, dir), ...out]
+  if (confinement.bwrap) out = ['bwrap', ...bwrapMounts(confinement.bwrap.hide, dir, readable), ...out]
   if (confinement.prlimit) out = ['prlimit', `--fsize=${MAX_OUTPUT_BYTES}`, `--cpu=${MAX_CPU_SECONDS}`, ...out]
   return out
 }
@@ -309,9 +342,10 @@ export const LATEX_ARGV: readonly string[] = [
   `${JOB_NAME}.tex`,
 ]
 
-/** dvisvgm on the job's DVI: glyphs as paths, the box cropped to the ink, SVG on stdout, no PostScript (Ghostscript), PDF or HTML specials, nothing generated or cached. */
+/** dvisvgm on the job's DVI: glyphs as paths, the box cropped to the ink, SVG on stdout, no PostScript (no Ghostscript at all), PDF or HTML specials, nothing generated or cached. */
 export function dvisvgmArgv(dir: string): string[] {
-  return ['dvisvgm', '--no-fonts', '--exact-bbox', '--no-specials=ps,pdf,html', '--no-mktexmf', '--cache=none', `--tmpdir=${dir}`, '--page=1', '--stdout', '--verbosity=1', `${JOB_NAME}.dvi`]
+  // A libgs that isn't there: dvisvgm never loads Ghostscript (it would on every run, PostScript specials off or not: 35 ms, and code that reads PostScript).
+  return ['dvisvgm', '--no-fonts', '--exact-bbox', '--no-specials=ps,pdf,html', `--libgs=${dir}/no-ghostscript`, '--no-mktexmf', '--cache=none', `--tmpdir=${dir}`, '--page=1', '--stdout', '--verbosity=1', `${JOB_NAME}.dvi`]
 }
 
 /** The variables TeX and dvisvgm run with, over the host's: the restrictions above, and no wrapped log lines. */

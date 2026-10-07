@@ -33,8 +33,8 @@ import {
   parseOd,
   readFontMetrics,
   measureDisplay,
-  previewDisplay,
   measureDisplayResult,
+  previewDisplay,
   readTerminalColors,
   renderDisplay,
   renderDisplayResult,
@@ -88,12 +88,11 @@ import {
   streamEnvFor,
   withoutTextOverride,
 } from './math.ts'
-import { altText, fallbackLines, overBudget } from './budget.ts'
+import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
 import { newestFirst } from './schedule.ts'
-import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock } from './math.ts'
-import type { StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
+import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 
 type $ = EngineInterface
@@ -122,6 +121,30 @@ interface Streaming {
   linked: boolean
   /** Its final flush came. */
   done: boolean
+}
+
+/** Per message, a gate per flush index that opens once that flush's rewrite is done (see the MessageDisplay hook). */
+const flushGates = new Map<string, Map<number, { promise: Promise<void>; resolve: () => void }>>()
+
+/** The gate of a message's flush `index` (open at once below 0: there is no flush before the first). */
+function flushGate(id: string, index: number): { promise: Promise<void>; resolve: () => void } {
+  if (index < 0) return { promise: Promise.resolve(), resolve: () => undefined }
+  let gates = flushGates.get(id)
+  if (!gates) {
+    gates = new Map()
+    flushGates.set(id, gates)
+    for (const key of flushGates.keys()) if (flushGates.size > STREAM_LIMIT) flushGates.delete(key)
+  }
+  let gate = gates.get(index)
+  if (!gate) {
+    let resolve!: () => void
+    const promise = new Promise<void>(r => (resolve = r))
+    gate = { promise, resolve }
+    gates.set(index, gate)
+    // Only the last few are ever waited on.
+    gates.delete(index - 8)
+  }
+  return gate
 }
 
 /** Messages streaming through MessageDisplay, and the last ones that did (their rows may be appended after their final flush). */
@@ -279,54 +302,20 @@ export const register: Register = (on, options) => {
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
   on('classic.MessageDisplay', async ($, e, next) => {
-    const below = await next(e)
-    const delta = below.displayContent ?? e.delta
-    let entry: Streaming | undefined
-    let before = 0
+    // The engine dispatches a message's flushes without waiting for the hook on the one before (measured live:
+    // while a flush waited for TeX, the next two ran first). A stream reads them in order: each waits for the
+    // flush before it (its index - 1) to be done, then is done itself however it ends.
+    const done = flushGate(e.message_id, e.index)
     try {
-      const env = await readEnv($)
-      if (!env) return below
-      entry = streams.get(e.message_id)
-      if (entry?.done) entry = undefined
-      if (entry?.stream === null) {
-        entry.source += e.delta
-        entry.shown += delta.length
-        if (e.final) entry.done = true
-        return below
-      }
-      const streamEnv: StreamEnv = { ...streamEnvFor(env, math), ...texUse(env, math) }
-      if (!entry) {
-        if (delta === '' && e.final) return below
-        // Diagrams are held for TeX where it draws them (a block streaming when TeX is found keeps its code).
-        entry = { stream: new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true })), source: '', shown: 0, stored: false, linked: false, done: false }
-        streams.delete(e.message_id)
-        streams.set(e.message_id, entry)
-        for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
-      }
-      before = entry.shown
-      entry.source += e.delta
-      const rewrite = await withTex(entry.stream!, entry.stream!.push(delta, e.final, streamEnv), streamEnv)
-      // Each preview where the engine will show it: a landed block maps its previews back by place, not by content.
-      const records = locatePreviews(rewrite.text, rewrite.records, before)
-      entry.shown = before + rewrite.text.length
-      if (e.final) entry.done = true
-      if (records.length > 0 || (!entry.stored && rewrite.text !== delta)) await storeBlock($, e.message_id, entry, records)
-      if (!entry.linked) await linkPending($, e.message_id, entry)
-      if (records.length > 0 && env.images) drawSoon(records, env)
-      return rewrite.text === delta ? below : { ...below, displayContent: rewrite.text }
-    } catch {
-      // Show whatever was held back, as written, and leave the rest of the message alone.
-      const unshown = entry?.stream?.unshown() ?? delta
-      if (entry) {
-        entry.stream = null
-        entry.shown = before + unshown.length
-        if (e.final) entry.done = true
-        // From here on the text is the model's as written: the landing may read its LaTeX.
-        await storeBlock($, e.message_id, entry, [], before).catch(() => undefined)
-      }
-      return unshown === delta ? below : { ...below, displayContent: unshown }
+      const below = await next(e)
+      await flushGate(e.message_id, e.index - 1).promise
+      return await rewriteFlush($, e, below, math)
+    } finally {
+      done.resolve()
+      if (e.final) flushGates.delete(e.message_id)
     }
   }).catch(($, e, next) => next(e))
+
 
   // A landed block is told from the others by its transcript row: the row a
   // text block is appended as holds the model's text, which the block's
@@ -374,6 +363,56 @@ export const register: Register = (on, options) => {
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
+}
+
+/** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
+async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { message_id: string; delta: string; final: boolean }, below: B, math: MathOptions): Promise<B> {
+  const delta = below.displayContent ?? e.delta
+  let entry: Streaming | undefined
+  let before = 0
+  try {
+    const env = await readEnv($)
+    if (!env) return below
+    entry = streams.get(e.message_id)
+    if (entry?.done) entry = undefined
+    if (entry?.stream === null) {
+      entry.source += e.delta
+      entry.shown += delta.length
+      if (e.final) entry.done = true
+      return below
+    }
+    const streamEnv: StreamEnv = { ...streamEnvFor(env, math), ...texUse(env, math) }
+    if (!entry) {
+      if (delta === '' && e.final) return below
+      // Diagrams are held for TeX where it draws them (a block streaming when TeX is found keeps its code).
+      entry = { stream: new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true })), source: '', shown: 0, stored: false, linked: false, done: false }
+      streams.delete(e.message_id)
+      streams.set(e.message_id, entry)
+      for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
+    }
+    before = entry.shown
+    entry.source += e.delta
+    const rewrite = await withTex(entry.stream!, entry.stream!.push(delta, e.final, streamEnv), streamEnv)
+    // Each preview where the engine will show it: a landed block maps its previews back by place, not by content.
+    const records = locatePreviews(rewrite.text, rewrite.records, before)
+    entry.shown = before + rewrite.text.length
+    if (e.final) entry.done = true
+    if (records.length > 0 || (!entry.stored && rewrite.text !== delta)) await storeBlock($, e.message_id, entry, records)
+    if (!entry.linked) await linkPending($, e.message_id, entry)
+    if (records.length > 0 && env.images) drawSoon(records, env)
+    return rewrite.text === delta ? below : { ...below, displayContent: rewrite.text }
+  } catch {
+    // Show whatever was held back, as written, and leave the rest of the message alone.
+    const unshown = entry?.stream?.unshown() ?? delta
+    if (entry) {
+      entry.stream = null
+      entry.shown = before + unshown.length
+      if (e.final) entry.done = true
+      // From here on the text is the model's as written: the landing may read its LaTeX.
+      await storeBlock($, e.message_id, entry, [], before).catch(() => undefined)
+    }
+    return unshown === delta ? below : { ...below, displayContent: unshown }
+  }
 }
 
 /**
@@ -481,8 +520,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // column, a blank row above them where a blank line was. A block that
     // opens with a formula gets the bullet beside the image's first row,
     // where the preview's first line had it.
-    const { pieces } = plan
     // One answer holds at most 2 MiB of Image source: past it, the rest keep their Unicode (budget.ts).
+    // Pictures drawn at fewer pixels first (same cells), so they fit rather than stay placeholders.
+    const pieces = fitPictures(plan.pieces, (image, density) => pictureRedraws.get(image)?.(density))
     const over = overBudget(pieces)
     /** An image not drawn: past the budget, or only its rows reserved (off screen). */
     const left = { has: (image: RenderedImage) => image.png.length === 0 || over.has(image) }
@@ -1476,6 +1516,8 @@ async function setUpTex($: $): Promise<void> {
     texBook.setup = setup
     // Blocks drawn before TeX was found (a resumed conversation's) are drawn again with it.
     $.ui.invalidate('ui.render')
+    // The fragment format, dumped once into the cache directory (about a second, in the background).
+    void prepareFormat(host, setup).catch(() => undefined)
   } catch {
     // no TeX: diagrams stay code
   }
@@ -1503,6 +1545,9 @@ function compileAsked(documents: readonly TexDocument[]): void {
   void Promise.all(missing.map(document => texBook.compile(document, TEX_BACKGROUND_MS))).then(() => redraw?.(), () => undefined)
 }
 
+/** How each picture's image is drawn again at fewer pixels (fitPictures). */
+const pictureRedraws = new WeakMap<RenderedImage, (density: number) => RenderedImage>()
+
 /** A diagram's image `rows` tall (its own when not given), for the landing: as TexBook has it, or null / { error } (see PlanOptions.diagram). */
 function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number): RenderedImage | { error: string } | null {
   const job = diagramJob(source, kind)
@@ -1515,7 +1560,10 @@ function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?:
   }
   if (!outcome.ok) return { error: outcome.error }
   try {
-    return cachedImage(`p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`, () => renderPicture(outcome.picture, env, rows))
+    const key = `p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`
+    const image = cachedImage(key, () => renderPicture(outcome.picture, env, rows))
+    if (!pictureRedraws.has(image)) pictureRedraws.set(image, density => cachedImage(`${key}\n${density}`, () => renderPicture(outcome.picture, env, image.rows, density)))
+    return image
   } catch (error) {
     if (error instanceof TexError) return { error: error.message }
     throw error

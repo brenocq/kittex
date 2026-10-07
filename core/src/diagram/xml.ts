@@ -11,8 +11,8 @@ export interface XmlElement {
   children: XmlElement[]
 }
 
-/** Elements nested deeper than this are refused (dvisvgm nests a group per TikZ scope). */
-const MAX_DEPTH = 400
+/** Elements nested deeper than this are refused (dvisvgm nests a group per TikZ scope, and per pgfplots patch). */
+const MAX_DEPTH = 20_000
 /** Elements in one document, at most. */
 const MAX_ELEMENTS = 200_000
 
@@ -58,8 +58,8 @@ export function parseXml(source: string): XmlElement {
     return true
   }
 
-  const element = (depth: number): XmlElement => {
-    if (depth > MAX_DEPTH) fail('nested too deep')
+  /** An open tag at `pos` read up to its `>`: the element, and whether it closed itself (`/>`). */
+  const openTag = (): { el: XmlElement; closed: boolean } => {
     if (++count > MAX_ELEMENTS) fail('too many elements')
     pos++ // <
     const name = readName()
@@ -69,11 +69,11 @@ export function parseXml(source: string): XmlElement {
       const c = source[pos]
       if (c === '/' && source[pos + 1] === '>') {
         pos += 2
-        return { name, attrs, children: [] }
+        return { el: { name, attrs, children: [] }, closed: true }
       }
       if (c === '>') {
         pos++
-        break
+        return { el: { name, attrs, children: [] }, closed: false }
       }
       if (c === undefined) fail('unclosed tag')
       const key = readName()
@@ -88,22 +88,35 @@ export function parseXml(source: string): XmlElement {
       attrs[key] = decode(source.slice(pos + 1, end))
       pos = end + 1
     }
-    const children: XmlElement[] = []
+  }
+
+  /** An element and everything in it, with a stack of the open ones (dvisvgm nests a group per pgfplots patch: thousands deep). */
+  const element = (): XmlElement => {
+    const first = openTag()
+    if (first.closed) return first.el
+    const open: XmlElement[] = [first.el]
     for (;;) {
       const lt = source.indexOf('<', pos)
-      if (lt < 0) fail(`unclosed <${name}>`)
+      const top = open[open.length - 1]!
+      if (lt < 0) fail(`unclosed <${top.name}>`)
       pos = lt
       if (skipMarkup()) continue
       if (source[pos + 1] === '/') {
         pos += 2
         const closing = readName()
-        if (closing !== name) fail(`</${closing}> closes <${name}>`)
+        if (closing !== top.name) fail(`</${closing}> closes <${top.name}>`)
         skipSpace()
         if (source[pos] !== '>') fail('> expected')
         pos++
-        return { name, attrs, children }
+        open.pop()
+        if (open.length === 0) return top
+        continue
       }
-      children.push(element(depth + 1))
+      const child = openTag()
+      top.children.push(child.el)
+      if (child.closed) continue
+      if (open.length >= MAX_DEPTH) fail('nested too deep')
+      open.push(child.el)
     }
   }
 
@@ -112,7 +125,7 @@ export function parseXml(source: string): XmlElement {
     if (pos >= source.length) fail('no root element')
     if (source[pos] !== '<') fail('< expected')
     if (skipMarkup()) continue
-    const root = element(0)
+    const root = element()
     return root
   }
 }

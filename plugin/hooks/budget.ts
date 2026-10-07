@@ -63,3 +63,38 @@ export function altText(text: string): string {
   const clean = text.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
   return clean === '' ? ' ' : clean
 }
+
+/** The densities a picture is drawn again at, in turn, to fit a drawing's budget (its pixels each way: 1/2, then 1/3). */
+export const PICTURE_DENSITIES: readonly number[] = [0.5, 1 / 3]
+
+/**
+ * A drawing's pieces with its pictures (TeX diagrams) drawn at fewer pixels,
+ * largest first, while all its images together pass `limit`: a picture keeps
+ * its cells (the terminal scales an image to them), so nothing moves, and
+ * it is drawn after all instead of being left out. `redraw` gives a
+ * picture's image drawn again at a density (undefined for anything else: a
+ * formula is small and keeps its pixels).
+ */
+export function fitPictures(pieces: readonly Piece[], redraw: (image: RenderedImage, density: number) => RenderedImage | undefined, limit = TREE_IMAGE_BYTES): Piece[] {
+  const images = pieces.flatMap(piece => (piece.kind === 'image' ? [piece.image] : piece.kind === 'prose' ? (piece.inline ?? []).map(one => one.image) : []))
+  let total = images.reduce((sum, image) => sum + image.png.length, 0)
+  if (total <= limit) return [...pieces]
+  const swap = new Map<RenderedImage, RenderedImage>()
+  for (const density of PICTURE_DENSITIES) {
+    for (const image of [...images].sort((a, b) => b.png.length - a.png.length)) {
+      if (total <= limit) break
+      const now = swap.get(image) ?? image
+      const smaller = redraw(image, density)
+      if (!smaller || smaller.png.length >= now.png.length) continue
+      total += smaller.png.length - now.png.length
+      swap.set(image, smaller)
+    }
+    if (total <= limit) break
+  }
+  if (swap.size === 0) return [...pieces]
+  return pieces.map(piece => {
+    if (piece.kind === 'image') return swap.has(piece.image) ? { ...piece, image: swap.get(piece.image)! } : piece
+    if (piece.kind === 'prose' && piece.inline) return { ...piece, inline: piece.inline.map(one => (swap.has(one.image) ? { ...one, image: swap.get(one.image)! } : one)) }
+    return piece
+  })
+}

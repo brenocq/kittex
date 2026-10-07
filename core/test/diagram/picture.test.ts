@@ -86,40 +86,54 @@ function decode(png: Uint8Array): { width: number; height: number; type: number;
   const type = png[25]!
   let at = 8
   const idat: Uint8Array[] = []
+  let plte = new Uint8Array(0)
+  let trns = new Uint8Array(0)
   while (at < png.length) {
     const length = view.getUint32(at)
     const name = String.fromCharCode(...png.slice(at + 4, at + 8))
     if (name === 'IDAT') idat.push(png.slice(at + 8, at + 8 + length))
+    if (name === 'PLTE') plte = png.slice(at + 8, at + 8 + length)
+    if (name === 'tRNS') trns = png.slice(at + 8, at + 8 + length)
     at += 12 + length
   }
   const raw = unzlibSync(Uint8Array.from(idat.flatMap(part => [...part])))
-  const stride = width * 4
-  const rgba = new Uint8Array(width * height * 4)
+  const bpp = type === 3 ? 1 : 4
+  const stride = width * bpp
+  const bytes = new Uint8Array(width * height * bpp)
   for (let y = 0; y < height; y++) {
     const filter = raw[y * (stride + 1)]!
     for (let i = 0; i < stride; i++) {
       const x = raw[y * (stride + 1) + 1 + i]!
-      const a = i >= 4 ? rgba[y * stride + i - 4]! : 0
-      const b = y > 0 ? rgba[(y - 1) * stride + i]! : 0
-      const c = y > 0 && i >= 4 ? rgba[(y - 1) * stride + i - 4]! : 0
+      const a = i >= bpp ? bytes[y * stride + i - bpp]! : 0
+      const b = y > 0 ? bytes[(y - 1) * stride + i]! : 0
+      const c = y > 0 && i >= bpp ? bytes[(y - 1) * stride + i - bpp]! : 0
       const p = a + b - c
       const pred = filter === 0 ? 0 : filter === 1 ? a : filter === 2 ? b : filter === 3 ? (a + b) >> 1 : Math.abs(p - a) <= Math.abs(p - b) && Math.abs(p - a) <= Math.abs(p - c) ? a : Math.abs(p - b) <= Math.abs(p - c) ? b : c
-      rgba[y * stride + i] = (x + pred) & 255
+      bytes[y * stride + i] = (x + pred) & 255
     }
+  }
+  if (type !== 3) return { width, height, type, rgba: bytes }
+  // An indexed PNG: each index through its palette entry and transparency.
+  const rgba = new Uint8Array(width * height * 4)
+  for (let i = 0; i < width * height; i++) {
+    const k = bytes[i]!
+    rgba.set([plte[3 * k]!, plte[3 * k + 1]!, plte[3 * k + 2]!, k < trns.length ? trns[k]! : 255], 4 * i)
   }
   return { width, height, type, rgba }
 }
 
 describe('pictures', () => {
-  test('a picture fills the column width and is centred; its rows hold it', () => {
+  test('a picture is as wide as it needs (whole cells), in a palette PNG of tens of KB; its rows hold it', () => {
     const picture = texPicture(fixture('plot'), { baseline: 'bottom', fontSize: 10 })
     const box = measurePicture(picture, DARK)
-    expect(box.columns).toBe(100)
+    expect(box.columns).toBeLessThan(60)
+    expect(box.columns).toBeGreaterThan(30)
     expect(box.scale).toBe(1)
     const image = renderPicture(picture, DARK)
-    expect(image).toMatchObject({ columns: 100, rows: box.rows })
+    expect(image).toMatchObject({ columns: box.columns, rows: box.rows })
+    expect(image.png.length).toBeLessThan(30_000)
     const png = decode(image.png)
-    expect(png).toMatchObject({ width: 1300, height: box.rows * 26, type: 6 })
+    expect(png).toMatchObject({ width: box.columns * 13, height: box.rows * 26, type: 3 })
     // Explicit colours survive: the plot's red series.
     let red = 0
     for (let i = 0; i < png.rgba.length; i += 4) if (png.rgba[i + 3]! > 200 && png.rgba[i]! > 180 && png.rgba[i + 1]! < 90) red++
@@ -134,6 +148,23 @@ describe('pictures', () => {
     const narrow = measurePicture(picture, { ...DARK, maxColumns: 40 })
     expect(narrow.columns).toBe(40)
     expect(narrow.scale).toBeLessThan(1)
+  })
+
+  test('at a density below 1: the same cells, a fraction of the pixels and bytes', () => {
+    const picture = texPicture(fixture('plot'), { baseline: 'bottom', fontSize: 10 })
+    const full = renderPicture(picture, DARK)
+    const half = renderPicture(picture, DARK, undefined, 0.5)
+    expect(half).toMatchObject({ columns: full.columns, rows: full.rows })
+    expect(decode(half.png).width).toBe(Math.round(full.columns * 6.5))
+    expect(half.png.length).toBeLessThan(full.png.length * 0.6)
+  })
+
+  test('never wider or taller than 4096 px: at large cells, fewer columns and rows', () => {
+    const picture = texPicture(fixture('plot'), { baseline: 'bottom', fontSize: 10 })
+    const big = { ...DARK, cellWidth: 60, cellHeight: 300, maxColumns: 200, emPx: (60 / 0.6) * 1.15 }
+    const box = measurePicture(picture, big)
+    expect(box.columns * 60).toBeLessThanOrEqual(4096)
+    expect(box.rows * 300).toBeLessThanOrEqual(4096)
   })
 
   test('never grown: a small picture keeps its size', () => {
@@ -159,13 +190,16 @@ describe('pictures', () => {
     const plain = decode(renderPicture(picture, DARK).png)
     const corrected = decode(renderPicture(picture, { ...DARK, inkOver: DARK.background }).png)
     let changed = 0
+    let solid = 0
     let solidChanged = 0
     for (let i = 3; i < plain.rgba.length; i += 4) {
       if (plain.rgba[i] !== corrected.rgba[i]) changed++
-      if (plain.rgba[i] === 255 && corrected.rgba[i] !== 255) solidChanged++
+      if (plain.rgba[i] === 255) solid++
+      // (Quantized to the palette's alpha levels, an edge pixel near 255 may round to it in one and not the other.)
+      if (plain.rgba[i] === 255 && corrected.rgba[i]! < 240) solidChanged++
     }
     expect(changed).toBeGreaterThan(0)
-    expect(solidChanged).toBe(0)
+    expect(solidChanged).toBeLessThanOrEqual(solid * 0.01)
   })
 })
 

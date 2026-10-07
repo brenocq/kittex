@@ -7,7 +7,7 @@
 import { describe, expect } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { emPxForCell, imageColumns, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE, measureDisplay, renderDisplay, TexError } from '../hooks/core.js'
+import { emPxForCell, imageColumns, init, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE, measureDisplay, renderDisplay, TexError } from '../hooks/core.js'
 import type { RenderedImage } from '../hooks/core.js'
 import { altText, fallbackLines, overBudget, TREE_IMAGE_BYTES } from '../hooks/budget.ts'
 import type { Piece } from '../hooks/math.ts'
@@ -54,7 +54,8 @@ describe('image budget', () => {
     expect(fallbackLines(['1', '2', '3'], 'x', 4, 2)).toEqual([' x', ''])
   })
 
-  test('no image is wider than 4096 px: at large cells it spans fewer columns', () => {
+  test('no image is wider than 4096 px: at large cells it spans fewer columns', async () => {
+    await init()
     const cell = { cellWidth: 40, cellHeight: 80 }
     expect(imageColumns({ ...cell, maxColumns: 200 })).toBe(Math.floor(MAX_IMAGE_SIDE / 40))
     expect(imageColumns({ cellWidth: 13, maxColumns: 200 })).toBe(200)
@@ -72,7 +73,7 @@ describe('image budget', () => {
     expect(MAX_IMAGE_BYTES).toBe(2 * 1024 * 1024)
   })
 
-  test('a resumed block of large formulas past 2 MiB draws what fits, the rest keep their text in the same rows', { timeoutMs: 120_000 }, async ($: Engine, on) => {
+  test('a resumed block of large formulas past 2 MiB draws what fits, the rest as text in the same rows', { timeoutMs: 120_000 }, async ($: Engine, on) => {
     const session = await startSession($, on)
     // A font zoom: the window is now 120 columns of 26×52 px cells (the render measures them).
     Object.assign(session.screen, { columns: 120, cellWidth: 26, cellHeight: 52 })
@@ -92,10 +93,8 @@ describe('image budget', () => {
     })
     expect(bytes).toBeLessThanOrEqual(2 * 1024 * 1024)
     expect(images).toBeGreaterThan(0)
-    // Some are left out: an overlay leaves the preview under it, an image piece its Unicode in a box its size.
+    // Every image is laid over its preview in the text (landing-map): one left out leaves its preview there, in its rows.
     expect(images).toBeLessThan(15)
-    expect(images + boxes.length).toBeLessThanOrEqual(15)
-    const rows = measureDisplay(matrix(14), { cellWidth: 26, cellHeight: 52, maxColumns: 118, emPx: emPxForCell({ cellWidth: 26, cellHeight: 52 }), ink: { r: 0, g: 0, b: 0 } }).rows
-    for (const height of boxes) expect(height).toBe(rows)
+    expect(boxes).toEqual([])
   })
 })

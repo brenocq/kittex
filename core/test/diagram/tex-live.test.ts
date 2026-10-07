@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { bwrapProbe, confined, diagramDocument, dvisvgmArgv, JOB_NAME, LATEX_ARGV, mathDocument, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
+import { bwrapProbe, confined, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
 import type { Confinement, DiagramLang, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture } from '../../src/index.ts'
 
@@ -19,14 +19,31 @@ const confinement: Confinement = {
   ...(spawnSync(bwrapProbe(HIDE)[0]!, bwrapProbe(HIDE).slice(1), { stdio: 'ignore' }).status === 0 ? { bwrap: { hide: HIDE } } : {}),
 }
 
-/** Compiles a document as tex.ts does (mktemp's directory, latex, dvisvgm), in milliseconds. */
-function compile(document: TexDocument): { svg?: string; error?: string; ms: number } {
+/** Dumps the fragment format as tex.ts's prepareFormat does, into `out`; its time in milliseconds. */
+function dumpFormat(out: string): { name: string; ms: number } {
+  const started = performance.now()
+  const name = 'kittex-test'
+  const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
+  try {
+    writeFileSync(join(dir, `${name}.tex`), FORMAT_SOURCE)
+    const [cmd, ...args] = confined(formatArgv(name), dir, confinement)
+    const run = spawnSync(cmd!, args, { cwd: dir, env: { ...process.env, ...texEnvironment(dir) }, timeout: 60_000, encoding: 'utf8' })
+    if (run.status !== 0) throw new Error(`format: ${texError(run.stdout ?? '')}`)
+    execFileSync('cp', ['--', join(dir, `${name}.fmt`), join(out, `${name}.fmt`)])
+    return { name, ms: performance.now() - started }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** Compiles a document as tex.ts does (mktemp's directory, latex, dvisvgm), in milliseconds; from the format in `format` when given. */
+function compile(document: TexDocument, format?: { name: string; dir: string }): { svg?: string; error?: string; ms: number } {
   const started = performance.now()
   const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
   try {
     writeFileSync(join(dir, `${JOB_NAME}.tex`), document.text)
-    const env = { ...process.env, ...texEnvironment(dir) }
-    const [cmd, ...args] = confined(LATEX_ARGV, dir, confinement)
+    const env = { ...process.env, ...texEnvironment(dir), ...(format ? { TEXFORMATS: `${format.dir}:` } : {}) }
+    const [cmd, ...args] = format && document.format ? confined(latexArgv(format.name), dir, confinement, [format.dir]) : confined(LATEX_ARGV, dir, confinement)
     const latex = spawnSync(cmd!, args, { cwd: dir, env, timeout: 20_000, encoding: 'utf8' })
     if (latex.status !== 0) return { error: texError(latex.stdout ?? '', document.offset), ms: performance.now() - started }
     const [svgCmd, ...svgArgs] = confined(dvisvgmArgv(dir), dir, confinement)
@@ -89,16 +106,37 @@ describe.skipIf(!TEX)('the local TeX', () => {
     }
   })
 
+  test('from the dumped format, a fragment draws as it does without it', { timeout: 60_000 }, () => {
+    const out = mkdtempSync(join(tmpdir(), 'kittex-fmt.'))
+    try {
+      const format = { ...dumpFormat(out), dir: out }
+      const document = diagramDocument('\\usetikzlibrary{mindmap}\n\\begin{tikzpicture}[mindmap, concept color=blue!20]\\node[concept]{root};\\end{tikzpicture}', 'latex')
+      const plain = compile(document)
+      const fast = compile(document, format)
+      expect(fast.error).toBeUndefined()
+      expect(texPicture(fast.svg!, document).ops.length).toBe(texPicture(plain.svg!, document).ops.length)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   test.skipIf(process.env.KITTEX_TEX !== '1')('times the typical diagrams', () => {
+    const out = mkdtempSync(join(tmpdir(), 'kittex-fmt.'))
+    const dumped = dumpFormat(out)
+    const format = { name: dumped.name, dir: out }
+    process.stderr.write(`format dumped in ${dumped.ms.toFixed(0)} ms\n`)
     for (const [name, source, lang] of DIAGRAMS) {
       const document = diagramDocument(source, lang)
+      const fast = [compile(document, format), compile(document, format)]
+      for (const run of fast) expect(run.error, name).toBeUndefined()
+      process.stderr.write(`${name}: from the format ${fast.map(run => run.ms.toFixed(0)).join(' / ')} ms\n`)
       const runs = [compile(document), compile(document)]
       for (const run of runs) expect(run.error, name).toBeUndefined()
       const picture = texPicture(runs[0]!.svg!, document)
       const started = performance.now()
       const box = measurePicture(picture, ENV)
       renderPicture(picture, ENV, box.rows)
-      process.stderr.write(`${name}: TeX ${runs.map(run => run.ms.toFixed(0)).join(' / ')} ms, drawn ${(performance.now() - started).toFixed(0)} ms, ${box.columns}x${box.rows} cells (${confinement.bwrap ? 'bwrap' : 'no bwrap'}, ${confinement.prlimit ? 'prlimit' : 'no prlimit'})\n`)
+      process.stderr.write(`${name}: without ${runs.map(run => run.ms.toFixed(0)).join(' / ')} ms, drawn ${(performance.now() - started).toFixed(0)} ms, ${box.columns}x${box.rows} cells (${confinement.bwrap ? 'bwrap' : 'no bwrap'}, ${confinement.prlimit ? 'prlimit' : 'no prlimit'})\n`)
     }
   }, 120_000)
 })

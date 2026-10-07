@@ -26,7 +26,9 @@ import {
 } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { createLineScanner } from '../hooks/core.js'
-import { diagramJob, hiddenDirs, probeTex, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
+import { diagramJob, hiddenDirs, prepareFormat, probeTex, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
+import { fitPictures } from '../hooks/budget.ts'
+import { diagramDocument, formatName } from '../hooks/core.js'
 import type { TexHost, TexSetup } from '../hooks/tex.ts'
 import { CELL, COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
 
@@ -219,7 +221,11 @@ describe('diagrams landing', () => {
     })
     // Laid over the placeholder in the streamed text, which the engine draws as it streamed (nothing moves).
     const overlays = plan.pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
-    expect(overlays).toEqual([expect.objectContaining({ tex: TIKZ, copy: TIKZ, display: true, col: 0, image: expect.objectContaining({ rows: records[0]!.rows, columns: pictureEnv.maxColumns }) })])
+    expect(overlays).toEqual([expect.objectContaining({ tex: TIKZ, copy: TIKZ, display: true, image: expect.objectContaining({ rows: records[0]!.rows }) })])
+    // As wide as the picture, centred across the placeholder (its label is too).
+    const [overlay] = overlays
+    expect(overlay!.image.columns).toBeLessThan(pictureEnv.maxColumns)
+    expect(overlay!.col).toBe(Math.floor((pictureEnv.maxColumns - overlay!.image.columns) / 2))
     expect(plan.pieces.every(piece => piece.kind === 'prose')).toBe(true)
     expect(plan.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain(records[0]!.preview)
   })
@@ -386,6 +392,93 @@ describe('the TeX book', () => {
     expect(texCacheDir({ XDG_CACHE_HOME: '/x/cache', HOME: '/home/u' })).toBe('/x/cache/kittex/tex')
     expect(texCacheDir({ HOME: '/home/u' })).toBe('/home/u/.cache/kittex/tex')
     expect(texCacheDir({})).toBeUndefined()
+  })
+})
+
+describe('the format, the shading retry, the budget', () => {
+  test('the fragment format is dumped once into the cache directory, then reused', async () => {
+    const fake = fakeTex()
+    // The cache holds the format once it was moved there.
+    let stored = false
+    const run = fake.host.run
+    fake.host.run = async (argv, init) => {
+      if (argv[0] === 'test') return { exitCode: stored ? 0 : 1, stdout: '', stderr: '', isStdoutTruncated: false }
+      if (argv[0] === 'mv') stored = true
+      return run(argv, init)
+    }
+    const setup = { ...fake.setup }
+    const name = formatName(setup.versions)
+    await prepareFormat(fake.host, setup)
+    expect(setup.format).toEqual({ name, dir: '/home/u/.cache/kittex/tex/fmt' })
+    const dump = fake.runs.find(argv => argv.includes('-ini'))!
+    // Confined like any job, no shell, from kittex's own preamble (no source of the model's).
+    expect(dump.slice(0, 3)).toEqual(['prlimit', '--fsize=67108864', '--cpu=20'])
+    expect(dump).toEqual(expect.arrayContaining(['-no-shell-escape', '&latex', 'mylatexformat.ltx', `${name}.tex`]))
+    expect(fake.writes.get(`/tmp/kittex-tex.AbCdEfGhIj/${name}.tex`)).toContain('\\usepackage{pgfplots}')
+    expect(fake.runs.some(argv => argv[0] === 'mv' && argv.at(-1) === `/home/u/.cache/kittex/tex/fmt/${name}.fmt`)).toBe(true)
+    // The next session finds it: no TeX run.
+    const before = fake.runs.length
+    const again = { ...fake.setup }
+    await prepareFormat(fake.host, again)
+    expect(again.format).toEqual(setup.format)
+    expect(fake.runs.length).toBe(before)
+  })
+
+  test('a fragment compiles from the format, read-only where the namespace hides the cache', async () => {
+    await init()
+    const fake = fakeTex()
+    const setup = { ...fake.setup, confinement: { prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } }, format: { name: 'kittex-0', dir: '/home/u/.cache/kittex/tex/fmt' } }
+    texBook.reset(fake.host, setup)
+    let env: Record<string, string> | undefined
+    const run = fake.host.run
+    fake.host.run = async (argv, init) => {
+      if (argv.includes('latex')) env = init.env
+      return run(argv, init)
+    }
+    expect((await texBook.compile(diagramDocument(TIKZ, 'latex'), 3000)).ok).toBe(true)
+    const latex = fake.runs.find(argv => argv.includes('latex'))!
+    expect(latex).toContain('-fmt=kittex-0')
+    expect(latex.join(' ')).toContain('--ro-bind /home/u/.cache/kittex/tex/fmt /home/u/.cache/kittex/tex/fmt')
+    expect(env?.TEXFORMATS).toBe('/home/u/.cache/kittex/tex/fmt:')
+  })
+
+  test("pgfplots' shader=interp, which the SVG driver can't draw, is compiled as shader=flat", () => {
+    const job = diagramJob('\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader = interp] {x*y};\\end{axis}\\end{tikzpicture}', 'latex')
+    if (!job || !('document' in job)) throw new Error('no job')
+    expect(job.document.text).toContain('\\addplot3[surf, shader=flat]')
+    expect(job.document.text).not.toContain('interp')
+  })
+
+  test('pictures past the drawing budget are drawn at fewer pixels, largest first, before any is left out', () => {
+    const image = (bytes: number) => ({ columns: 40, rows: 10, scale: 1, png: new Uint8Array(bytes) })
+    const [a, b, c] = [image(900), image(600), image(100)]
+    const pieces = [{ kind: 'prose' as const, text: 'x', gap: false, inline: [{ tex: 'a', image: a, row: 0, col: 0, display: true as const }, { tex: 'b', image: b, row: 10, col: 0, display: true as const }, { tex: 'c', image: c, row: 20, col: 0 }] }]
+    const redrawn: string[] = []
+    const fitted = fitPictures(pieces, (one, density) => {
+      if (one === c) return undefined
+      redrawn.push(`${one === a ? 'a' : 'b'}@${density}`)
+      return image(Math.round(one.png.length * density * density))
+    }, 1000)
+    expect(redrawn).toEqual(['a@0.5'])
+    const sizes = fitted.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []).map(one => one.image.png.length) : []))
+    expect(sizes).toEqual([225, 600, 100])
+    expect(fitPictures(pieces, () => undefined, 10_000)[0]).toEqual(pieces[0])
+  })
+})
+
+describe('flushes dispatched together', () => {
+  test("a message's flushes are rewritten in their order, whatever order their hooks start in", async ($, on) => {
+    await startSession($, on)
+    const flush = (index: number, delta: string, final = false) => $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index, final, delta })
+    // The engine does not wait for one flush's hook before the next (measured live while one waited for TeX).
+    const later = flush(1, 'E = mc^2\n$$\n')
+    const first = flush(0, 'Energy:\n\n$$\n')
+    const last = flush(2, '\nDone.\n', true)
+    const [a, b, c] = await Promise.all([first, later, last])
+    const shown = [a, b, c].map((result, i) => result.displayContent ?? ['Energy:\n\n$$\n', 'E = mc^2\n$$\n', '\nDone.\n'][i]).join('')
+    expect(shown.startsWith('Energy:\n\n')).toBe(true)
+    expect(shown).not.toContain('$$')
+    expect(shown.endsWith('Done.\n')).toBe(true)
   })
 })
 
