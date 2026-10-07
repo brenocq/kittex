@@ -15,7 +15,11 @@ import {
   layoutQuote,
   layoutTable,
   measureDisplay,
+  measureDisplayResult,
   measureInline,
+  measureInlineResult,
+  measurePicture,
+  MAX_PICTURE_ROWS,
   MAX_TEX_LENGTH,
   previewDisplay,
   GlyphError,
@@ -26,8 +30,10 @@ import {
   textWidth,
   typeset,
 } from './core.js'
-import type { BlockPart, CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace } from './core.js'
+import type { BlockPart, CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, PictureEnv, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace, TexDocument } from './core.js'
 import type { KittexEnv, KittexPreview } from '../types'
+import { diagramJob, mathJob, texBook, texResult } from './tex.ts'
+import type { DiagramKind } from './tex.ts'
 
 // ─── The engine's layout (measured) ──────────────────────────────────────────
 
@@ -313,15 +319,18 @@ const INLINE_DISPLAY_DOLLARS = (() => {
  */
 export const SOURCE_PATTERN = sourcePattern({})
 
+/** A ```latex, ```tex or ```tikz fence's opening line. */
+const DIAGRAM_FENCE = String.raw`(?:^|\n)[ \t>]*(?:\`{3,}|~{3,})[ \t]*(?:latex|tex|tikz)\b`
+
 /**
- * SOURCE_PATTERN for these options: only the math of a kind kittex changes
+ * SOURCE_PATTERN for these options (and `diagrams`: where the local TeX may draw them): only the math of a kind kittex changes
  * (a block whose math is all left raw stays the engine's, which would
  * otherwise draw nothing until kittex answered). Math left raw counts where a
  * backslash in it needs its mark (rawSource), as math read back after
  * --resume does. With display math raw, `$$…$$` counts only where it is
  * inline math.
  */
-export function sourcePattern(math: Partial<MathOptions>): RegExp {
+export function sourcePattern(math: Partial<MathOptions>, diagrams = false): RegExp {
   const inline = math.inline !== 'raw'
   const block = math.block !== 'raw'
   const needs = String.raw`\\(?=${ESCAPED})`
@@ -331,6 +340,8 @@ export function sourcePattern(math: Partial<MathOptions>): RegExp {
     ...(block
       ? [DISPLAY_DOLLARS, String.raw`\\\[`, String.raw`\\begin\{`]
       : [String.raw`(?<![\\$])\$\$(?:(?!\$\$)[\s\S])*?${needs}`, String.raw`\\\[`, String.raw`\\begin\{(?:(?!\\end\{)[\s\S])*?${needs}`, ...(inline ? [INLINE_DISPLAY_DOLLARS] : [])]),
+    // A diagram for the local TeX: a ```latex, ```tex or ```tikz block (`diagrams`, with display math drawn).
+    ...(diagrams && block ? [DIAGRAM_FENCE] : []),
   ]
   return new RegExp(String.raw`^(?![\s\S]*(?:${PREVIEW_MARK}))[\s\S]*?(?:${kinds.join('|')})`)
 }
@@ -457,6 +468,12 @@ export type StreamEnv = KittexEnv & {
    * terminal draws no images.
    */
   math?: Partial<MathOptions>
+  /**
+   * Where the local LaTeX draws (the `latex` option, TeX found, images
+   * drawn): diagrams and display math MathJax refuses (`block`), inline math
+   * it refuses (`inline`). Absent: neither.
+   */
+  tex?: TexUse
 }
 
 /** Whether a math segment is of a kind these options leave as written. */
@@ -859,6 +876,12 @@ export class MarkdownWriter {
 export interface StreamRewrite {
   text: string
   records: PreviewRecord[]
+  /**
+   * Documents the stream waits for TeX to compile (TexBook): everything from
+   * the first segment that needs one is held, and comes out of resume() once
+   * their outcomes are known.
+   */
+  pending?: TexDocument[]
 }
 
 /**
@@ -903,7 +926,8 @@ export function rewriteSegments(segments: readonly Segment[], env: StreamEnv, wr
   for (let k = 0; k < segments.length; ) {
     const segment = segments[k]!
     if (segment.kind === 'math' && segment.display) {
-      writeDisplay(segment, env, writer, plan, records)
+      if (segment.diagram !== undefined) writeDiagram(segment, env, writer, plan, records)
+      else writeDisplay(segment, env, writer, plan, records)
       k++
       continue
     }
@@ -955,13 +979,32 @@ function writeDisplay(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
     rows = drawn ? measureDisplay(segment.tex, { ...renderEnv, maxColumns: width }).rows : undefined
   } catch (error) {
     if (!(error instanceof TexError)) throw error
-    const preview = writer.block(refusedMarkdownLines(segment.tex, reasonOf(error), maxColumns))
+    // What MathJax refuses, the local TeX may draw.
+    const viaTex = drawn && env.tex?.block ? texDisplay(segment.tex, { ...renderEnv, maxColumns: width }) : undefined
+    if (viaTex && 'rows' in viaTex) return writeDisplayPreview(segment, renderEnv, viaTex.rows, width, quote, indent, writer, plan, records)
+    const reason = viaTex?.error ?? reasonOf(error)
+    const preview = writer.block(refusedMarkdownLines(segment.tex, reason, maxColumns))
     if (images) {
-      records.push({ preview, tex: segment.tex, rows: 0, error: reasonOf(error) })
+      records.push({ preview, tex: segment.tex, rows: 0, error: reason })
       plan.cut(writer.recent().length)
     }
     return
   }
+  writeDisplayPreview(segment, renderEnv, rows, width, quote, indent, writer, plan, records)
+}
+
+/** Writes a display formula's preview `rows` tall (none: as Unicode alone) and records it; its source where Unicode has no form. */
+function writeDisplayPreview(
+  segment: MathSegment,
+  renderEnv: RenderEnv,
+  rows: number | undefined,
+  width: number,
+  quote: number,
+  indent: number | undefined,
+  writer: MarkdownWriter,
+  plan: StreamPlan,
+  records: PreviewRecord[],
+): void {
   const lines = displayPreviewLines(segment.tex, width, rows)
   if (lines) {
     const preview = writer.block(lines)
@@ -971,7 +1014,7 @@ function writeDisplay(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
     return
   }
   const refused = texErrorOf(segment.tex, renderEnv)
-  writer.block(refused ? refusedMarkdownLines(segment.tex, refused, maxColumns) : sourceMarkdownLines(segment.tex))
+  writer.block(refused ? refusedMarkdownLines(segment.tex, refused, renderEnv.maxColumns) : sourceMarkdownLines(segment.tex))
 }
 
 /** Layouts of one run of prose a flush may take beyond the first before what is still undecided in it is written plain. */
@@ -1137,7 +1180,10 @@ function inlineOptions(tex: string, env: InlineEnv, rowWidth: number): InlinePre
     if (optionsMemo.size >= OPTIONS_MEMO) optionsMemo.delete(optionsMemo.keys().next().value!)
     optionsMemo.set(key, options)
   }
-  return options
+  if (options.length > 0) return options
+  // MathJax refused it: TeX's image, once TeX drew it (not memoized: TeX answers later).
+  const viaTex = texInlinePreview(tex, env, rowWidth)
+  return viaTex ? [viaTex] : options
 }
 
 /** Whether a part's inline previews can get images: a paragraph, a heading, a blockquote, a table or a list. */
@@ -1334,10 +1380,28 @@ export class MessageStream {
     this.scanner = scanner
   }
 
-  /** The text to show for one flush (HELD_DISPLAY while a display block or a table is held) and the previews it wrote. */
+  /** The last push was the message's final one. */
+  private final = false
+
+  /**
+   * The text to show for one flush (HELD_DISPLAY while a display block or a
+   * table is held) and the previews it wrote. With `pending`, the stream
+   * waits for TeX: compile them (TexBook), then call resume().
+   */
   push(delta: string, final: boolean, env: StreamEnv): StreamRewrite {
     this.pushed += delta
-    let segments = joinText([...this.held, ...this.scanner.push(delta, final)])
+    this.final = final
+    return this.take(this.scanner.push(delta, final), env)
+  }
+
+  /** What was held for TeX, once the outcomes push() waited for are known (more may be pending). */
+  resume(env: StreamEnv): StreamRewrite {
+    return this.take([], env)
+  }
+
+  private take(fresh: readonly Segment[], env: StreamEnv): StreamRewrite {
+    const final = this.final
+    let segments = joinText([...this.held, ...fresh])
     this.held = []
     let from = final || segments.length === 0 || !(env.inline && env.images) ? undefined : holdFrom(this.pushed.slice(0, segments.at(-1)!.end), segments)
     // In a quote, the line break ending a display block's closing line waits for the next line, which decides
@@ -1348,9 +1412,19 @@ export class MessageStream {
       if (QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', display.start - 1) + 1, display.start))) from = last.start
     }
     if (from !== undefined) [segments, this.held] = splitAt(segments, from)
-    if (segments.length === 0) return { text: delta === '' ? '' : HELD_DISPLAY, records: [] }
+    // A segment TeX has yet to draw holds it and everything after it (shown once TeX answers or gives up).
+    const pending: TexDocument[] = []
+    // A diagram in a blockquote stays as written: no TeX for it.
+    const quoted = (segment: Segment) => QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', segment.start - 1) + 1, segment.start))
+    const wait = env.tex ? segments.findIndex(segment => !(segment.kind === 'math' && segment.diagram !== undefined && quoted(segment)) && texPending(segment, env, pending)) : -1
+    if (wait >= 0) {
+      this.held = [...segments.slice(wait), ...this.held]
+      segments = segments.slice(0, wait)
+    }
+    const waiting = pending.length > 0 ? { pending } : {}
+    if (segments.length === 0) return { text: HELD_DISPLAY, records: [], ...waiting }
     this.shown = segments[segments.length - 1]!.end
-    return rewriteSegments(segments, env, this.writer, this.plan)
+    return { ...rewriteSegments(segments, env, this.writer, this.plan), ...waiting }
   }
 
   /** What was pushed and not shown yet, as written: what a failure falls back to. */
@@ -1368,7 +1442,8 @@ export class MessageStream {
  */
 export type Piece =
   | { kind: 'prose'; text: string; gap: boolean; inline?: InlineImage[] }
-  | { kind: 'image'; tex: string; image: RenderedImage; gap: boolean }
+  /** `copy`: what its copy button copies, where that is not the formula as a display block (a diagram's source). */
+  | { kind: 'image'; tex: string; image: RenderedImage; gap: boolean; copy?: string }
   | { kind: 'note'; text: string; gap: boolean }
 
 /** Cells from a blockquote's edge to its text: the bar and a space (the engine's quote border and padding). */
@@ -1429,8 +1504,16 @@ export interface PlanOptions {
   width?: number
   /** The rows a display formula's image takes `maxColumns` wide (measureDisplay); absent, a quoted formula keeps its preview. Throws TexError. */
   measure?: (tex: string, maxColumns: number) => number
-  /** Splits markdown into prose and math (core's scan unless given). */
+  /** Splits markdown into prose and math (core's scan unless given; diagrams marked when `diagram` is given). */
   scan?: (markdown: string) => Segment[]
+  /**
+   * Draws a diagram for TeX (a ```latex, ```tex or ```tikz block, a bare
+   * tikzpicture, tikzcd or circuitikz) `rows` tall when given: its image,
+   * `{ error }` where TeX failed on it for good (it stays as written, with a
+   * `not rendered` line), or null where it isn't drawn now (it stays as
+   * written). Absent: diagrams are left as written.
+   */
+  diagram?: (source: string, kind: DiagramKind, rows?: number) => RenderedImage | { error: string } | null
   /**
    * The options: math of a kind set to `raw` is left as written. Images and
    * Unicode are `draw` and `inline` (absent for a kind set to `unicode`).
@@ -1516,7 +1599,7 @@ function escapeRegExp(text: string): string {
 const SLOT = /(\d+)/
 const slot = (index: number) => `${index}`
 
-type Item = { kind: 'image'; tex: string; image: RenderedImage } | { kind: 'note'; text: string }
+type Item = { kind: 'image'; tex: string; image: RenderedImage; copy?: string } | { kind: 'note'; text: string }
 
 /** Marks an inline preview in planned markdown: open, its index, separator, the preview, close (private-use characters). */
 const MARK_OPEN = '\ue002'
@@ -1668,8 +1751,8 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
   // Prose that may still hold LaTeX.
   const proseMath = (source: string) => {
     if (source === '') return
-    if (!/\$|\\[([]|\\begin\{/.test(source)) return writer.text(source)
-    for (const segment of (options.scan ?? scan)(source)) {
+    if (!/\$|\\[([]|\\begin\{/.test(source) && !(options.diagram && /```|~~~/.test(source))) return writer.text(source)
+    for (const segment of (options.scan ?? (markdown => scan(markdown, { diagrams: options.diagram !== undefined })))(source)) {
       if (segment.kind === 'text') {
         writer.text(segment.text)
       } else if (leftRaw(segment, options.math)) {
@@ -1679,17 +1762,28 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       } else if (!segment.display) {
         const fallback = inlineFallback(segment)
         const id = inlineId++
-        const padded = options.inline && !plain.has(id) ? inlinePreview(segment.tex, options.inline.env, options.inline.width) : null
+        const padded = options.inline && !plain.has(id) ? (inlinePreview(segment.tex, options.inline.env, options.inline.width) ?? texInlinePreview(segment.tex, options.inline.env, options.inline.width)) : null
         if (padded) {
           mark(padded.markdown, { tex: segment.tex, columns: padded.columns, plain: fallback, id })
           continue
         }
         changed = true
         writer.text(fallback)
+      } else if (segment.diagram !== undefined) {
+        diagram(segment)
       } else {
         display(segment.tex)
       }
     }
+  }
+
+  // A diagram as written (a reply read back after --resume, or one that never streamed): its image, or as written.
+  const diagram = (segment: MathSegment) => {
+    const drawn = options.diagram && options.draw && writer.quoteDepth() === 0 ? options.diagram(segment.tex, segment.diagram!) : null
+    if (drawn === null) return writer.text(segment.raw)
+    changed = true
+    if ('png' in drawn) return void writer.block([put({ kind: 'image', tex: segment.tex, image: drawn, copy: segment.tex })])
+    writer.block([...segment.raw.split('\n'), '', put({ kind: 'note', text: notRenderedText(drawn.error, maxColumns) })])
   }
 
   let at = 0
@@ -1711,6 +1805,15 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
       const lines = written.split('\n')
       lines[lines.length - 1] = lines[lines.length - 1]!.replace(/\S.*$/, put({ kind: 'note', text: notRenderedText(record.error, maxColumns) }))
       writer.text(lines.join('\n'))
+    } else if (record.diagram !== undefined) {
+      // A diagram's placeholder: its picture, drawn in the rows it reserved (as written where it can't be now).
+      const drawn = options.diagram?.(record.tex, record.diagram, record.rows) ?? null
+      if (drawn !== null && 'png' in drawn) {
+        changed = true
+        writer.text(put({ kind: 'image', tex: record.tex, image: drawn, copy: record.tex }))
+      } else {
+        writer.text(written)
+      }
     } else {
       changed = true
       try {
@@ -2080,4 +2183,178 @@ export function withoutTextOverride(customTheme: string | undefined): string | u
 export function bulletFor(uname: string | undefined, home: string | undefined): string {
   if (uname !== undefined && uname.trim() !== '') return uname.trim() === 'Darwin' ? BULLET.macos : BULLET.other
   return home?.startsWith('/Users/') ? BULLET.macos : BULLET.other
+}
+
+// ─── The local TeX: diagrams, and math MathJax refuses ───────────────────────
+
+/** Where the local LaTeX draws in a stream (StreamEnv.tex). */
+export interface TexUse {
+  /** Diagrams, and display math MathJax refuses. */
+  block: boolean
+  /** Inline math MathJax refuses. */
+  inline: boolean
+}
+
+/** One short line kittex adds to its instructions to the model where the local LaTeX draws diagrams. */
+export const DIAGRAM_INSTRUCTIONS =
+  'Diagrams are drawn here too: for a figure, plot, molecule, circuit or commutative diagram, write TikZ (or pgfplots, chemfig, ' +
+  'circuitikz, tikz-cd) in a ```latex code block, a tikzpicture or similar environment with no preamble, and it is shown as a picture.'
+
+/** Where a diagram is drawn: the width prose wraps at, centred, MAX_PICTURE_ROWS tall at most, on the terminal's background. */
+export function pictureEnvFor(env: KittexEnv, columns = env.columns): PictureEnv {
+  return {
+    ...renderEnvFor(env, columns),
+    maxColumns: proseWidthFor(env, columns),
+    maxRows: MAX_PICTURE_ROWS,
+    ...(env.background ? { background: env.background } : {}),
+  }
+}
+
+/**
+ * Whether a segment waits for TeX: one TeX would draw (texDocument) whose
+ * outcome TexBook doesn't know yet; its document is added to `pending`.
+ */
+function texPending(segment: Segment, env: StreamEnv, pending: TexDocument[]): boolean {
+  const document = texDocument(segment, env)
+  if (!document || texBook.known(document)) return false
+  pending.push(document)
+  return true
+}
+
+/**
+ * The document TeX would draw a segment as, in a stream with these options:
+ * a diagram that draws something, or math MathJax refuses (not merely too
+ * wide, nor a character its font lacks).
+ */
+export function texDocument(segment: Segment, env: StreamEnv): TexDocument | undefined {
+  if (segment.kind !== 'math' || !env.tex || !env.images || leftRaw(segment, env.math)) return undefined
+  if (segment.diagram !== undefined) {
+    if (!env.tex.block || env.math?.block === 'unicode') return undefined
+    const job = diagramJob(segment.tex, segment.diagram)
+    return job && 'document' in job ? job.document : undefined
+  }
+  if (segment.display) {
+    if (!env.tex.block || env.math?.block === 'unicode') return undefined
+    try {
+      measureDisplay(segment.tex, renderEnvFor(env))
+      return undefined
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+      return refusedByMathJax(segment.tex, true) ? mathJob(segment.tex, true) : undefined
+    }
+  }
+  if (!env.tex.inline || !env.inline || measureInline(segment.tex, inlineEnvFor(env)) !== null) return undefined
+  return refusedByMathJax(segment.tex, false) ? mathJob(segment.tex, false) : undefined
+}
+
+/** Whether MathJax refuses a formula outright (an unknown macro or environment), not for its size or a glyph it lacks. */
+function refusedByMathJax(tex: string, display: boolean): boolean {
+  if (tex.length > MAX_TEX_LENGTH) return false
+  try {
+    typeset(tex, { display })
+    return false
+  } catch (error) {
+    if (!(error instanceof TexError)) throw error
+    return !(error instanceof GlyphError)
+  }
+}
+
+/** A display formula MathJax refused, as TeX drew it: the rows its image takes, TeX's error, or undefined (not drawn by TeX). */
+function texDisplay(tex: string, env: RenderEnv): { rows: number } | { error: string } | undefined {
+  const document = mathJob(tex, true)
+  const outcome = document ? texBook.known(document) : undefined
+  if (!outcome) return undefined
+  if (!outcome.ok) return outcome.lasting ? { error: outcome.error } : undefined
+  try {
+    return { rows: measureDisplayResult(texResult(outcome.picture), env).rows }
+  } catch (error) {
+    if (!(error instanceof TexError)) throw error
+    return { error: reasonOf(error) }
+  }
+}
+
+/**
+ * The preview of an inline formula MathJax refused and TeX drew: as
+ * inlinePreview's, its Unicode read with the macros MathJax doesn't know
+ * dropped (\unit{m/s^2} as m/s²), padded to the TeX image's cells.
+ */
+export function texInlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxColumns): InlinePreview | null {
+  const document = mathJob(tex, false)
+  const outcome = document ? texBook.known(document) : undefined
+  if (!outcome?.ok) return null
+  const box = measureInlineResult(texResult(outcome.picture), env)
+  if (!box) return null
+  let unicode = relaxedUnicode(tex)?.trim()
+  if (unicode && TAG_OPEN.test(unicode)) return null
+  if (unicode) unicode = ungroupScripts(unicode, tex)
+  if (!unicode || /[\\\s]/.test(unicode.replaceAll(' ', ''))) return null
+  const width = textWidth(unicode)
+  if (width < 1) return null
+  const columns = Math.max(box.columns, width)
+  if (columns > Math.min(255, env.maxColumns, rowWidth)) return null
+  const body = escapeInline(unicode.replaceAll(' ', INLINE_JOIN))
+  const mark = columns === width && !unicode.includes(' ') ? INLINE_MARK : ''
+  return { markdown: body + mark + INLINE_PAD.repeat(columns - width), tex, columns }
+}
+
+/** A formula's one-line Unicode with the control sequences MathJax doesn't know taken out, their arguments kept; null where there is none. */
+export function relaxedUnicode(tex: string): string | null {
+  let source = tex
+  for (let pass = 0; pass < 8; pass++) {
+    const unicode = previewInline(source, undefined, { tight: true })
+    if (unicode !== null) return unicode
+    const reason = inlineTexError(source)
+    const unknown = reason === undefined ? undefined : /Undefined control sequence (\\[A-Za-z]+)/.exec(reason)?.[1]
+    if (unknown === undefined) return null
+    source = source.replace(new RegExp(`${unknown.replace(/\\/g, '\\\\')}(?![A-Za-z])`, 'g'), ' ')
+  }
+  return null
+}
+
+/**
+ * Writes a diagram for TeX. Drawn (TexBook knows its picture), its
+ * placeholder: as many rows as the picture's image, a word for what it is in
+ * the middle one, recorded so the landing draws the picture there; refused or
+ * failed for good, the block as written with a `not rendered` line under it;
+ * anything else (no TeX here, LaTeX that draws nothing, TeX too slow, inside
+ * a quote or a list item), the block exactly as written.
+ */
+function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
+  const kind = segment.diagram!
+  const drawn = env.images && env.tex?.block && env.math?.block !== 'unicode' && writer.quoteDepth() === 0
+  const nested = drawn && itemIndent(writer.recent().slice(plan.anchor), proseWidthFor(env), linkModeOf(env)) !== undefined
+  const job = drawn && !nested ? diagramJob(segment.tex, kind) : undefined
+  if (!job) return writer.text(segment.raw)
+  const { maxColumns } = renderEnvFor(env)
+  const failed = (reason: string) => {
+    const preview = writer.block([...segment.raw.split('\n'), '', '*' + escapeMarkdown(notRenderedText(reason, maxColumns)) + '*'])
+    records.push({ preview, tex: segment.tex, rows: 0, error: reason, diagram: kind })
+    plan.cut(writer.recent().length)
+  }
+  if ('refused' in job) return failed(job.refused)
+  const outcome = texBook.known(job.document)
+  if (!outcome || (!outcome.ok && !outcome.lasting)) {
+    // Too slow (or no TeX after all): shown as written, and left so when its block lands.
+    texBook.markShownAsSource(job.document)
+    return writer.text(segment.raw)
+  }
+  if (!outcome.ok) return failed(outcome.error)
+  const pictureEnv = pictureEnvFor(env)
+  let rows: number
+  try {
+    rows = measurePicture(outcome.picture, pictureEnv).rows
+  } catch (error) {
+    if (!(error instanceof TexError)) throw error
+    return failed(reasonOf(error))
+  }
+  const preview = writer.block(diagramPlaceholder(job.label, rows, pictureEnv.maxColumns))
+  records.push({ preview, tex: segment.tex, rows, diagram: kind })
+  plan.cut(writer.recent().length)
+}
+
+/** A diagram's placeholder lines while it waits to land: `rows` rows, its label in the middle one, centred in `maxColumns`. */
+export function diagramPlaceholder(label: string, rows: number, maxColumns: number): string[] {
+  const lines = Array.from({ length: Math.max(1, rows) }, () => '')
+  lines[Math.floor((lines.length - 1) / 2)] = oneLine(`· ${label} ·`, previewColumns(maxColumns))
+  return previewMarkdownLines(lines, maxColumns)
 }
