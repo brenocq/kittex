@@ -466,6 +466,22 @@ describe('the format, the shading retry, the budget', () => {
   })
 })
 
+describe('flushes dispatched together', () => {
+  test("a message's flushes are rewritten in their order, whatever order their hooks start in", async ($, on) => {
+    await startSession($, on)
+    const flush = (index: number, delta: string, final = false) => $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index, final, delta })
+    // The engine does not wait for one flush's hook before the next (measured live while one waited for TeX).
+    const later = flush(1, 'E = mc^2\n$$\n')
+    const first = flush(0, 'Energy:\n\n$$\n')
+    const last = flush(2, '\nDone.\n', true)
+    const [a, b, c] = await Promise.all([first, later, last])
+    const shown = [a, b, c].map((result, i) => result.displayContent ?? ['Energy:\n\n$$\n', 'E = mc^2\n$$\n', '\nDone.\n'][i]).join('')
+    expect(shown.startsWith('Energy:\n\n')).toBe(true)
+    expect(shown).not.toContain('$$')
+    expect(shown.endsWith('Done.\n')).toBe(true)
+  })
+})
+
 describe('instructions to the model', () => {
   test('one line on diagrams, only where TeX was found', async ($, on) => {
     await startSession($, on, KITTY, 'dark', CELL, argv => ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version' ? { exitCode: 0, stdout: `${argv[0]} 1.0\n` } : undefined))
