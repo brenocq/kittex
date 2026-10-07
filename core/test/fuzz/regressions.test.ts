@@ -31,6 +31,27 @@ describe('fuzz regressions', () => {
     await init()
   })
 
+  // The driver's TeX book outlived its case: a formula MathJax refuses,
+  // compiled by the stand-in TeX in a case with the local TeX, was then read
+  // at landing and after --resume in a later case without it (no session can:
+  // the book is the process's), so the resumed drawing showed the earlier
+  // case's picture where the live one showed MathJax's note. Seeds 3353,
+  // 4812, 5803, 6013, 7819 and 8674 of the 10000-case run; they surfaced once
+  // the math documents changed (9eedf8e) and the stand-in's outcomes, keyed by
+  // the document's text, moved.
+  test("a case without the local TeX reads nothing an earlier case's TeX drew", () => {
+    const cases: [string, Partial<Shape>][] = [
+      ['$$\n\\foo{x} + 1\n$$\n', { columns: 40, terminal: 'ghostty' }],
+      ['$$\na \\hfill b\n$$\n', { block: 'unicode' }],
+      ['$$\n\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}\n$$\n', { columns: 40 }],
+    ]
+    for (const [md, shape] of cases) {
+      // The same reply with the local TeX first (it compiles the formula), then without it.
+      runCase(md, { ...BASE, ...shape, tex: true })
+      expect(failures(md, shape, ['resumed'])).toEqual([])
+    }
+  })
+
   // FUZZ-1 (live). planLanded cuts a list at a display image and hands the
   // rest of the list to the engine as a text of its own. Inside the list the
   // engine puts no blank row between an item's last paragraph and the next

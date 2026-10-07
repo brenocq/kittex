@@ -349,6 +349,9 @@ export function runCase(markdown: string, shape: Shape, options: { partial?: boo
     stats: { inline: 0, inlineImages: 0, display: 0, displayImages: 0, pushMs: 0, landMs: 0, resumeMs: 0 },
   }
   const ctx = contextFor(shape)
+  // Each case is a session of its own, as register.tsx's book is: no outcome an earlier case's TeX left (a
+  // shape without the local TeX read those at landing and after --resume, which no session can).
+  texBook.reset()
 
   let streamed: Streamed
   try {
