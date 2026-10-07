@@ -246,6 +246,8 @@ const REFUSED_COMMANDS = [
   // Raw and indirect reads.
   'input', 'include', 'includeonly', 'InputIfFileExists', 'VerbatimInput', 'BVerbatimInput', 'LVerbatimInput', 'includepdf', 'pgfplotstabletypeset', 'IfFileExists', 'verbatiminput', 'lstinputlisting', 'inputminted', 'includegraphics',
   'includestandalone', 'import', 'subimport', 'inputfrom', 'subinputfrom', 'graphicspath', 'pgfimage', 'pgfdeclareimage', 'filecontents',
+  // \font loads a file by any path (a TFM, or a probe for whether a file exists); \fontsize, \selectfont... are other names.
+  'font',
   'tikzexternalize', 'pgfplotstableread', 'DTLloaddb', 'DTLloadrawdb', 'csvreader', 'csvautotabular', 'detokenize',
   // Names out of characters.
   'csname', 'ifcsname', 'catcode', 'scantokens', 'everyeof', 'endlinechar', 'ExplSyntaxOn', 'makeatletter', 'UseName', 'ExpandArgs',
@@ -257,7 +259,7 @@ const REFUSED_PATTERN = new RegExp(String.raw`\\(?:${REFUSED_COMMANDS.map(name =
 
 /** Packages that run programs, read files or switch catcodes for the source (refused in \usepackage). */
 const REFUSED_PACKAGES = new Set([
-  'shellesc', 'minted', 'pythontex', 'sagetex', 'bashful', 'gnuplottex', 'svg', 'epstopdf', 'auto-pst-pdf', 'pst-pdf', 'luacode', 'luatextra',
+  'shellesc', 'minted', 'pythontex', 'sagetex', 'bashful', 'gnuplottex', 'asymptote', 'svg', 'epstopdf', 'auto-pst-pdf', 'pst-pdf', 'luacode', 'luatextra',
   'luapackageloader', 'fontspec', 'filecontents', 'catchfile', 'verbatim', 'fancyvrb', 'listings', 'import', 'standalone', 'datatool', 'csvsimple',
   'readarray', 'pgfplotstable', 'xstring', 'docmute', 'subfiles', 'embedfile', 'attachfile', 'attachfile2', 'write18', 'pstricks', 'pst-node',
 ])
@@ -285,7 +287,7 @@ export function unsafeTex(source: string): string | undefined {
   // @-names are LaTeX's internals (\input@path, \@input, \@@input): out of reach without \makeatletter, refused anyway.
   const internal = /\\[A-Za-z]*@[A-Za-z@]*/.exec(source)
   if (internal) return `uses ${internal[0]}`
-  if (/\\begin\{(?:luacode\*?|filecontents\*?|verbatimwrite|VerbatimOut|lstlisting|minted|pycode|sagesilent|sageblock|bash)\}/.test(source)) return 'uses an environment that runs code or writes files'
+  if (/\\begin\{(?:luacode\*?|filecontents\*?|verbatimwrite|VerbatimOut|lstlisting|minted|pycode|sagesilent|sageblock|bash|asy|asydef)\}/.test(source)) return 'uses an environment that runs code or writes files'
   for (const match of source.matchAll(FILE_COMMAND)) {
     const names = (match[1] ?? match[2] ?? '').split(',')
     for (const raw of names) {

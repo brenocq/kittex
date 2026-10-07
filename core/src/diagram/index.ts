@@ -3,7 +3,7 @@ import { readSvg } from './svg.js'
 import { emPerUnit, type TexDocument } from './tex.js'
 
 export { adaptColor, assumedBackground, type Adapted, type PaperColors } from './color.js'
-export { MAX_PICTURE_OPS, readSvg, SvgError, type BaselineAt, type SvgReadOptions } from './svg.js'
+export { countNumbers, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, MAX_PICTURE_OPS, readSvg, SvgError, type BaselineAt, type SvgReadOptions } from './svg.js'
 export {
   bwrapProbe,
   confined,

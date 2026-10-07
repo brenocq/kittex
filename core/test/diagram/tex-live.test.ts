@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { bwrapProbe, confined, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
+import { bwrapProbe, confined, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
 import type { Confinement, DiagramLang, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture } from '../../src/index.ts'
 
@@ -139,4 +139,24 @@ describe.skipIf(!TEX)('the local TeX', () => {
       process.stderr.write(`${name}: without ${runs.map(run => run.ms.toFixed(0)).join(' / ')} ms, drawn ${(performance.now() - started).toFixed(0)} ms, ${box.columns}x${box.rows} cells (${confinement.bwrap ? 'bwrap' : 'no bwrap'}, ${confinement.prlimit ? 'prlimit' : 'no prlimit'})\n`)
     }
   }, 120_000)
+
+  // The heaviest pictures kittex is asked for, measured against the SVG reader's path limits (security review):
+  // each must stay at least ten times inside them (8000 samples, near TeX's own memory limit, makes a 145 000-character path).
+  test('the largest real pictures are far inside the path-data limits', { timeout: 120_000 }, () => {
+    const heavy: [string, string, DiagramLang][] = [
+      ['flat surface 40 x 40', '\\begin{tikzpicture}\\begin{axis}[view={60}{30}]\\addplot3[surf, shader=flat, samples=40, domain=-2:2] {exp(-x^2-y^2)};\\end{axis}\\end{tikzpicture}', 'latex'],
+      ['interp surface 60 x 60 (drawn flat)', '\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader=interp, samples=60, domain=-2:2] {sin(deg(x*y))};\\end{axis}\\end{tikzpicture}', 'latex'],
+      ['1000-sample plot', '\\begin{tikzpicture}\\begin{axis}\\addplot[samples=1000, domain=0:10] {sin(deg(x))*x};\\end{axis}\\end{tikzpicture}', 'latex'],
+      ['chemfig', '\\chemfig{*6((-OH)-=-(-[:30]*6(-=-=-=))=(-COOH)-=)}', 'latex'],
+      ['circuitikz', '\\begin{circuitikz}\\draw (0,0) to[battery1, l=$V$] (0,2) to[R, l=$R_1$] (3,2) to[L, l=$L$] (6,2) to[C, l=$C$] (6,0) to[D] (3,0) -- (0,0);\\end{circuitikz}', 'env'],
+    ]
+    for (const [name, source, lang] of heavy) {
+      const document = diagramDocument(source, lang)
+      const { svg, error } = compile(document)
+      expect(error, name).toBeUndefined()
+      const picture = texPicture(svg!, document)
+      expect(Math.max(...picture.ops.map(op => op.d.length)), name).toBeLessThan(MAX_PATH_DATA / 10)
+      expect(picture.ops.reduce((sum, op) => sum + countNumbers(op.d), 0), name).toBeLessThan(MAX_PICTURE_NUMBERS / 10)
+    }
+  })
 })
