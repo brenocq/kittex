@@ -147,6 +147,8 @@ describe.skipIf(!TEX)('the local TeX', () => {
       ['flat surface 40 x 40', '\\begin{tikzpicture}\\begin{axis}[view={60}{30}]\\addplot3[surf, shader=flat, samples=40, domain=-2:2] {exp(-x^2-y^2)};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['interp surface 60 x 60 (drawn flat)', '\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader=interp, samples=60, domain=-2:2] {sin(deg(x*y))};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['1000-sample plot', '\\begin{tikzpicture}\\begin{axis}\\addplot[samples=1000, domain=0:10] {sin(deg(x))*x};\\end{axis}\\end{tikzpicture}', 'latex'],
+      // A reply's surface: faceted interp shading (drawn faceted), a colorbar (drawn sampled), groups nested thousands deep.
+      ['faceted interp surface 46 x 46 with a horizontal colorbar', '\\begin{tikzpicture}\\begin{axis}[view={35}{38}, colormap/viridis, colorbar horizontal, domain=-10:10, y domain=-10:10, samples=46, trig format plots=rad, z buffer=sort]\\addplot3[surf, shader=faceted interp, draw opacity=0.25] {sin(sqrt(x^2+y^2))/sqrt(x^2+y^2)};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['chemfig', '\\chemfig{*6((-OH)-=-(-[:30]*6(-=-=-=))=(-COOH)-=)}', 'latex'],
       ['circuitikz', '\\begin{circuitikz}\\draw (0,0) to[battery1, l=$V$] (0,2) to[R, l=$R_1$] (3,2) to[L, l=$L$] (6,2) to[C, l=$C$] (6,0) to[D] (3,0) -- (0,0);\\end{circuitikz}', 'env'],
     ]

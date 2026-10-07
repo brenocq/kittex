@@ -141,8 +141,14 @@ const PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usep
  * \usepackage lines moved up there.
  */
 export function diagramDocument(source: string, lang: DiagramLang): TexDocument {
-  // pgfplots' interpolated shading needs PostScript or PDF, which the SVG driver has neither of: drawn flat (a colour per facet).
-  const trimmed = source.replace(/^\s*\n/, '').replace(/\s+$/, '').replace(/shader\s*=\s*interp\b/g, 'shader=flat')
+  // pgfplots' interpolated shading needs PostScript or PDF, which the SVG driver has neither of: drawn flat (a colour
+  // per facet), and `faceted interp` as `faceted` (the same, with the facets' edges). A colorbar is drawn with that
+  // shading too (one flat colour here), so it is drawn sampled, pgfplots' own way for such drivers.
+  const trimmed = source
+    .replace(/^\s*\n/, '')
+    .replace(/\s+$/, '')
+    .replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g, (_, brace?: string, faceted?: string) => `shader=${brace ? '{' : ''}${faceted ? 'faceted' : 'flat'}`)
+    .replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g, (_, side?: string) => (side ? `colorbar${side}, colorbar sampled` : 'colorbar sampled'))
   if (lang === 'latex' && isDocument(trimmed)) {
     const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed)
     const body = hasClass ? trimmed : `\\documentclass[dvisvgm,border=1pt]{standalone}\n${trimmed}`
