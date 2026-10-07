@@ -72,6 +72,14 @@ describe('documents', () => {
     expect(diagramDocument('\\addplot3[surf, shader = {faceted  interp}] {x};', 'tikz').text).toContain('shader={faceted}')
     expect(diagramDocument('\\pgfplotsset{every axis plot/.append style={shader=interp}}', 'tikz').text).toContain('{shader=flat}')
     expect(diagramDocument('\\addplot3[surf, shader=flat corner] {x};', 'tikz').text).toContain('shader=flat corner')
+    // A 3D curve in one variable is sampled once, not as a samples × samples grid; a surface is left alone.
+    const curve = '\\addplot3[domain=0:360, samples=150, mesh, point meta=x]\n  ({sin(x)+2*sin(2*x)}, {cos(x)-2*cos(2*x)}, {-sin(3*x)});'
+    expect(diagramDocument(curve, 'tikz').text).toContain('point meta=x, samples y=0]')
+    expect(diagramDocument('\\addplot3+ ({cos(\\t)}, {sin(\\t)}, {\\t/10});', 'tikz').text).toContain('\\addplot3+[samples y=0] ({cos')
+    expect(diagramDocument('\\addplot3[] ({cos(x)}, {sin(x)}, {x});', 'tikz').text).toContain('\\addplot3[samples y=0] (')
+    expect(diagramDocument('\\addplot3[surf] ({x}, {y}, {x*y});', 'tikz').text).not.toContain('samples y')
+    expect(diagramDocument('\\addplot3[surf] {sin(x)};', 'tikz').text).not.toContain('samples y')
+    expect(diagramDocument('\\addplot3[samples y=5] ({cos(x)}, {sin(x)}, {x});', 'tikz').text).toContain('[samples y=5] (')
     // A colorbar is shaded the same way: drawn sampled.
     expect(diagramDocument('\\begin{axis}[colormap/viridis, colorbar, view={35}{38}]', 'tikz').text).toContain('[colormap/viridis, colorbar sampled, view')
     expect(diagramDocument('\\begin{axis}[colorbar horizontal]', 'tikz').text).toContain('[colorbar horizontal, colorbar sampled]')
