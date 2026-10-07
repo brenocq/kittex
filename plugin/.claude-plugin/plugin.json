@@ -34,6 +34,12 @@
       "description": "Math inside a sentence ($…$): image, unicode or raw (same meanings).",
       "options": ["image", "unicode", "raw"],
       "default": "image"
+    },
+    "cache": {
+      "type": "boolean",
+      "title": "Cache equation images",
+      "description": "Keep rendered equations on disk (~/.cache/kittex) so resumed sessions draw them instantly.",
+      "default": true
     }
   }
 }

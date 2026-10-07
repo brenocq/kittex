@@ -10,7 +10,8 @@
 // held up. MathJax and the font tables sit behind a lazy require
 // (bundle.mjs): loading the mod evaluates none of them. No dynamic import():
 // the engine refuses a module holding one.
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { bundleCore } from './bundle.mjs'
 import { splitModule } from './split.mjs'
@@ -22,7 +23,16 @@ const MAX_FILE_BYTES = 900 * 1024
 /** AST nodes per part: about 10 ms of the engine's scan each. */
 const PART_NODES = 9000
 
-const code = await bundleCore()
+const bundled = await bundleCore()
+// The build's id (core's BUILD_ID): a hash of the bundle and of the hooks that
+// plan a drawing with it, so a cached drawing (plugin/hooks/cache.ts) from
+// another build is never read.
+const hooks = readdirSync(OUT).filter(name => /\.(ts|tsx)$/.test(name)).sort()
+const digest = createHash('sha256').update(bundled)
+for (const name of hooks) digest.update(`\n${name}\n`).update(readFileSync(join(OUT, name)))
+const PLACEHOLDER = '"kittex-build:dev"'
+if (!bundled.includes(PLACEHOLDER)) throw new Error('build: no BUILD_ID placeholder in the bundle')
+const code = bundled.replace(PLACEHOLDER, `"kittex-build:${digest.digest('hex').slice(0, 16)}"`)
 // The legal comments esbuild gathered at the end, after the export list.
 const legal = code.slice(code.lastIndexOf('export{')).replace(/^export\{[^}]*\};?/, '').trim()
 const { entry, parts } = splitModule(code, { budget: PART_NODES, dir: `./${PARTS}` })

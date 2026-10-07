@@ -72,7 +72,7 @@ describe('image budget', () => {
     expect(MAX_IMAGE_BYTES).toBe(2 * 1024 * 1024)
   })
 
-  test('a resumed block of large formulas past 2 MiB draws what fits, the rest as text in the same rows', { timeoutMs: 120_000 }, async ($: Engine, on) => {
+  test('a resumed block of large formulas past 2 MiB draws what fits, the rest keep their text in the same rows', { timeoutMs: 120_000 }, async ($: Engine, on) => {
     const session = await startSession($, on)
     // A font zoom: the window is now 120 columns of 26×52 px cells (the render measures them).
     Object.assign(session.screen, { columns: 120, cellWidth: 26, cellHeight: 52 })
@@ -92,10 +92,10 @@ describe('image budget', () => {
     })
     expect(bytes).toBeLessThanOrEqual(2 * 1024 * 1024)
     expect(images).toBeGreaterThan(0)
-    expect(images + boxes.length).toBe(15)
-    expect(boxes.length).toBeGreaterThan(0)
-    // The text stands in its image's rows.
+    // Some are left out: an overlay leaves the preview under it, an image piece its Unicode in a box its size.
+    expect(images).toBeLessThan(15)
+    expect(images + boxes.length).toBeLessThanOrEqual(15)
     const rows = measureDisplay(matrix(14), { cellWidth: 26, cellHeight: 52, maxColumns: 118, emPx: emPxForCell({ cellWidth: 26, cellHeight: 52 }), ink: { r: 0, g: 0, b: 0 } }).rows
-    expect(boxes.at(-1)).toBe(rows)
+    for (const height of boxes) expect(height).toBe(rows)
   })
 })

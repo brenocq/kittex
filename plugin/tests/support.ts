@@ -64,11 +64,15 @@ export async function startSession(
   terminal: Record<string, string> = KITTY,
   theme = 'dark',
   cell: { cellWidth: number; cellHeight: number } = CELL,
+  /** Answers a process run first (the cache's `rm`); undefined leaves it to the probes' answers. */
+  run?: (argv: readonly string[]) => { exitCode: number; stdout: string } | undefined,
 ): Promise<{ cellProbes: () => number; screen: Screen; renders: () => number }> {
   mock.env(on, terminal)
   const screen: Screen = { rows: 50, columns: COLUMNS, ...cell }
   let cellProbes = 0
   on('process.run', ($, e) => {
+    const answer = run?.(e.argv)
+    if (answer) return { value: { ...answer, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     const isCellProbe = e.argv.join('\0') === cellProbe.argv.join('\0')
     if (isCellProbe) cellProbes += 1
     const { rows, columns, cellWidth, cellHeight } = screen

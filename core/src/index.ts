@@ -82,6 +82,13 @@ export interface RenderedImage extends CellBox {
   png: Uint8Array
 }
 
+/**
+ * Which build of kittex this is: the build (scripts/build.mjs) writes a hash
+ * of the bundle and the mod's hooks in its place, so a cache of drawings from
+ * another build is never read. `dev` from source.
+ */
+export const BUILD_ID: string = 'kittex-build:dev'
+
 /** Formulas longer than this are refused before MathJax sees them. */
 export const MAX_TEX_LENGTH = 4096
 

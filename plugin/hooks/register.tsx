@@ -32,6 +32,7 @@ import {
   renderInline,
   strokeWeight,
   toBase64,
+  BUILD_ID,
 } from './core.js'
 import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
 import {
@@ -73,7 +74,9 @@ import {
   withoutTextOverride,
 } from './math.ts'
 import { altText, fallbackLines, overBudget } from './budget.ts'
-import type { InlineSlot, KittexEnv, MathOptions, Piece, PreviewRecord, StreamedBlock } from './math.ts'
+import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
+import { newestFirst } from './schedule.ts'
+import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock } from './math.ts'
 
 type $ = EngineInterface
 
@@ -81,6 +84,8 @@ const ENV = { plugin: 'kittex', key: 'env' } as const
 const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
 const REQUESTS = { plugin: 'kittex', key: 'requests' } as const
 const RECENT = { plugin: 'kittex', key: 'recent' } as const
+/** How long a render waits for session.start's kittex.env before it draws without kittex. */
+const ENV_WAIT_MS = 1500
 
 // Module state that drawing never reads (a hot reload resets it, and
 // session.start runs again then).
@@ -122,14 +127,33 @@ let instructByContext = false
 let contextPending = false
 /** The cell probes, bound to the `$` session.start received. */
 let cells: Cells | undefined
-/** Runs a function on session.start's clock once the current dispatch resolves (a hook's `$` belongs to its one dispatch). */
-let later: ((fn: () => void) => void) | undefined
+/** Runs a function on session.start's clock once the current dispatch resolves, or `ms` later (a hook's `$` belongs to its one dispatch). */
+let later: ((fn: () => void, ms?: number) => void) | undefined
+/** Writes a file with session.start's `$` (a render's may not): the cache's entries. */
+let writeFile: ((path: string, text: string) => Promise<void>) | undefined
+/** Where the cache's entries go (cache.ts), from XDG_CACHE_HOME or HOME; undefined without either. */
+let cacheFolder: string | undefined
+/**
+ * Settles once session.start has stored kittex.env (or given up). After
+ * --resume the engine asks for the transcript's drawings before it raises
+ * session.start: a render that comes first waits for it.
+ */
+let envSettled: (() => void) | undefined
+let envReady: Promise<void> = new Promise(resolve => {
+  envSettled = resolve
+})
+/** kittex.env as the last session stored it, for renders before session.start (read once). */
+let rememberedEnv: Promise<KittexEnv | undefined> | undefined
+const REMEMBERED = 'env'
+/** The `cache` option: drawings of resumed blocks kept on disk (cache.ts). */
+let cacheOn = true
 
 export const register: Register = (on, options) => {
   /** The `block` and `inline` options: how each kind of math is shown (image, unicode or raw). */
   const math = mathOptions(options)
   // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model).
   if (math.block === 'raw' && math.inline === 'raw') return
+  cacheOn = options.cache !== false
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -138,11 +162,25 @@ export const register: Register = (on, options) => {
     cells?.stop()
     cells = cellsFor($)
     later = laterFor($)
+    writeFile = (path, text) => $.fs.write(path, text)
+    let settled = false
+    void envReady.then(() => (settled = true))
+    await Promise.resolve()
+    if (settled) {
+      // A second session in this process (a hot reload): its own wait.
+      envReady = new Promise(resolve => {
+        envSettled = resolve
+      })
+    }
     try {
       await setUp($, e.surface)
     } catch {
       await $.state.set(ENV, null).catch(() => undefined)
+    } finally {
+      envSettled?.()
     }
+    if (cacheOn) soon(() => void pruneCache($).catch(() => undefined))
+    if (unwritten.size > 0) soon(flushEntries)
     return started
   })
 
@@ -308,7 +346,14 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
   if (e.props.isSummary) return next(e)
   try {
     let env = await readEnv($)
-    if (!env) return next(e)
+    if (!env) {
+      // A resumed session asks for its blocks before session.start has
+      // measured the terminal: draw with what the last session measured in
+      // this terminal, else wait for session.start, rather than draw nothing
+      // of kittex's now and everything later (which moves rows twice).
+      env = (await (rememberedEnv ??= readRemembered($))) ?? (await within(envReady, ENV_WAIT_MS, clockOf($)), await readEnv($))
+      if (!env) return next(e)
+    }
     const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
     if (seen !== undefined && seen !== env.columns) {
       // The window changed width since the cells were measured, and a font
@@ -332,7 +377,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     const records = images ? (found.block?.records ?? []) : []
     const renderEnv = renderEnvFor(env, columns)
     const inlineEnv = inlineEnvFor(env, columns)
-    const plan = planLanded(e.props.text, records, {
+    const planOptions: PlanOptions = {
       ...(streamed ? { streamed: found.block?.raw === undefined ? {} : { raw: found.block.raw } } : {}),
       mode: { hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences },
       columns,
@@ -345,7 +390,25 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
         inlineImages
           ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences }
           : undefined,
-    })
+    }
+    // A block read back as LaTeX (a resumed session) may be on disk already
+    // (cache.ts); one off screen in the fullscreen layout (`onScreen` null:
+    // the engine lays out blocks around the view) gets its rows only, its
+    // images once it is on screen; every other is typeset in its turn, the
+    // newest first (schedule.ts).
+    const resumed = e.surface === 'terminal' && images && !streamed && records.length === 0
+    const key = resumed && cacheOn && cacheFolder ? entryKey(e.props.text, cacheFacts(env, columns, math, BUILD_ID)) : undefined
+    let plan: LandedPlan | undefined = key ? await readEntry($, key) : undefined
+    if (!plan) {
+      const offScreen = resumed && e.viewport?.isFullscreen === true && (e.props as { onScreen?: unknown }).onScreen === null
+      const release = await turns.take(() => $.state.get(ENV))
+      try {
+        plan = planLanded(e.props.text, records, offScreen ? reservedOptions(planOptions, renderEnv) : planOptions)
+      } finally {
+        release()
+      }
+      if (key && !offScreen) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
+    }
     if (!plan.changed) return next(e)
     if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
       return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
@@ -359,7 +422,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // where the preview's first line had it.
     const { pieces } = plan
     // One answer holds at most 2 MiB of Image source: past it, the rest keep their Unicode (budget.ts).
-    const left = overBudget(pieces)
+    const over = overBudget(pieces)
+    /** An image not drawn: past the budget, or only its rows reserved (off screen). */
+    const left = { has: (image: RenderedImage) => image.png.length === 0 || over.has(image) }
     if (images) cells?.poll()
     const { Box, Button, Image, Text } = $.ui.resolve(e as Extract<LandedEvent, { surface: 'terminal' }>)
     const indentOf = (isFirstOfReply: boolean) => (isFirstOfReply ? REPLY_INDENT : 0)
@@ -493,6 +558,7 @@ function instructs(env: KittexEnv | null): boolean {
 async function setUp($: $, surface: string | null): Promise<void> {
   // MathJax is not loaded here: the first formula loads it (core's typeset is lazy).
   processEnv = await readProcessEnv($)
+  cacheFolder = cacheDir(processEnv)
   terminal = detectTerminal(processEnv)
   const [cell, uname] = await Promise.all([probeCell($), probeSystem($), resolveTheme($)])
   const cellAdjust = terminalColors?.cellAdjust
@@ -512,6 +578,9 @@ async function setUp($: $, surface: string | null): Promise<void> {
     ...(terminalColors?.fontWeight ? { weight: strokeWeight(terminalColors.fontWeight) } : {}),
   }
   await $.state.set(ENV, env)
+  envSettled?.()
+  // For the next session's first renders, which come before its session.start.
+  await $.store.set(REMEMBERED, { id: terminalId(processEnv), env }).catch(() => undefined)
 
   // Self-check: a policy plugin (cc-plugin-sec-default on Team/Enterprise or
   // managed machines) may skip installed plugins' prompt.compose hooks; then
@@ -563,6 +632,7 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
     $.env.get('HOME'),
     $.env.get('XDG_CONFIG_HOME'),
     $.env.get('XDG_CONFIG_DIRS'),
+    $.env.get('XDG_CACHE_HOME'),
     $.env.get('FORCE_HYPERLINK'),
     $.env.get('TERMINAL_EMULATOR'),
     $.env.get('WT_SESSION'),
@@ -598,6 +668,7 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
     'HOME',
     'XDG_CONFIG_HOME',
     'XDG_CONFIG_DIRS',
+    'XDG_CACHE_HOME',
     'FORCE_HYPERLINK',
     'TERMINAL_EMULATOR',
     'WT_SESSION',
@@ -964,9 +1035,9 @@ function after(fn: () => void): void {
   }
 }
 
-function laterFor($: $): (fn: () => void) => void {
-  return fn => {
-    $.clock.after(0, fn)
+function laterFor($: $): (fn: () => void, ms?: number) => void {
+  return (fn, ms = 0) => {
+    $.clock.after(ms, fn)
   }
 }
 
@@ -997,4 +1068,185 @@ function base64Of(png: Uint8Array): string {
     base64Cache.set(png, base64)
   }
   return base64
+}
+
+// ─── Resume: the order, the waits, the rows of off-screen blocks ─────────────
+
+/** Landed blocks to typeset, newest first (schedule.ts), each in a dispatch of its own. */
+const turns = newestFirst()
+
+/** A clock for `within`: this dispatch's own, or session.start's. */
+function clockOf($: $): (fn: () => void, ms: number) => void {
+  return (fn, ms) => {
+    try {
+      $.clock.after(ms, fn)
+    } catch {
+      later?.(fn, ms)
+    }
+  }
+}
+
+/** The terminal a remembered env was measured in. */
+function terminalId(variables: Readonly<Record<string, string | undefined>>): string {
+  return [variables.TERM, variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION, variables.TMUX ? 'tmux' : ''].join('|')
+}
+
+/** The env the last session stored, when it was this terminal's (a render's $: three variables and a store read). */
+async function readRemembered($: $): Promise<KittexEnv | undefined> {
+  try {
+    const [stored, TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX, XDG_CACHE_HOME, HOME] = await Promise.all([
+      $.store.get(REMEMBERED),
+      $.env.get('TERM'),
+      $.env.get('TERM_PROGRAM'),
+      $.env.get('TERM_PROGRAM_VERSION'),
+      $.env.get('TMUX'),
+      $.env.get('XDG_CACHE_HOME'),
+      $.env.get('HOME'),
+    ])
+    // The cache is read from the first render on (session.start sets it again).
+    cacheFolder ??= cacheDir({ XDG_CACHE_HOME, HOME })
+    const entry = stored as { id?: unknown; env?: KittexEnv } | undefined
+    if (!entry || entry.id !== terminalId({ TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX }) || typeof entry.env?.cellWidth !== 'number') return undefined
+    return entry.env
+  } catch {
+    return undefined
+  }
+}
+
+/** Settles as `promise` does, or with undefined after `ms` (no wait longer than that), never rejecting. */
+function within<T>(promise: Promise<T>, ms: number, clock?: (fn: () => void, ms: number) => void): Promise<T | undefined> {
+  return new Promise(resolve => {
+    let done = false
+    const finish = (value: T | undefined) => {
+      if (done) return
+      done = true
+      resolve(value)
+    }
+    promise.then(finish, () => finish(undefined))
+    try {
+      if (clock) clock(() => finish(undefined), ms)
+      else later?.(() => finish(undefined), ms)
+    } catch {
+      // no clock: the promise alone
+    }
+  })
+}
+
+const NO_PNG = new Uint8Array(0)
+
+/**
+ * A plan's options for a block off screen: every formula measured (its rows
+ * and its slot reserved, as the full drawing has them) and none drawn; an
+ * image with no PNG is drawn as its Unicode (budget.ts's fallback), and an
+ * inline one leaves its preview, until the block comes on screen.
+ */
+function reservedOptions(options: PlanOptions, renderEnv: RenderEnv): PlanOptions {
+  return {
+    ...options,
+    ...(options.draw
+      ? {
+          draw: (tex: string, rows?: number, maxColumns?: number) => {
+            const box = measureDisplay(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns })
+            return { columns: box.columns, rows: rows ?? box.rows, scale: box.scale, png: NO_PNG }
+          },
+        }
+      : {}),
+    ...(options.inline ? { inline: { ...options.inline, draw: (_tex: string, columns: number) => ({ columns, rows: 1, scale: 1, png: NO_PNG }) } } : {}),
+  }
+}
+
+// ─── The image cache (the `cache` option, cache.ts) ─────────────────────────
+
+/** Drawings read or planned this session, by key (a re-render reuses the same PNGs: no new transmission). */
+const entries = new Map<string, LandedPlan>()
+const ENTRY_MEMORY = 256
+
+function remembered(key: string, plan: LandedPlan): LandedPlan {
+  entries.delete(key)
+  entries.set(key, plan)
+  while (entries.size > ENTRY_MEMORY) entries.delete(entries.keys().next().value!)
+  return plan
+}
+
+/** A block's drawing from memory or disk; undefined on a miss, a bad file, or a read slower than CACHE_READ_MS. */
+async function readEntry($: $, key: string): Promise<LandedPlan | undefined> {
+  const known = entries.get(key)
+  if (known) return remembered(key, known)
+  if (!cacheFolder) return undefined
+  const text = await within(
+    $.fs.read(entryPath(cacheFolder, key)).then(value => (typeof value === 'string' ? value : undefined)),
+    CACHE_READ_MS,
+  )
+  if (text === undefined) return undefined
+  const pieces = decodeEntry(text, key, (png, base64) => base64Cache.set(png, base64))
+  return pieces ? remembered(key, { pieces, changed: true }) : undefined
+}
+
+/** Entries waiting to be written, by session.start's clock (a render may not write). */
+const unwritten = new Map<string, string>()
+
+/**
+ * Keeps a block's drawing in memory, and on disk: written by the render
+ * itself (`write`, its own $), else, where that is refused, by session.start's
+ * clock once it runs (a resume's first renders come before it).
+ */
+function keepEntry(key: string, plan: LandedPlan, write: (path: string, text: string) => Promise<void>): void {
+  remembered(key, plan)
+  const folder = cacheFolder
+  if (!plan.changed || !folder) return
+  let text: string
+  try {
+    text = encodeEntry(key, plan.pieces, base64Of)
+  } catch {
+    return
+  }
+  write(entryPath(folder, key), text).catch(() => {
+    unwritten.set(key, text)
+    if (unwritten.size === 1 && writeFile) soon(flushEntries)
+  })
+}
+
+function flushEntries(): void {
+  const folder = cacheFolder
+  const write = writeFile
+  if (!folder || !write) return
+  const [key, text] = unwritten.entries().next().value ?? []
+  if (key === undefined || text === undefined) return
+  unwritten.delete(key)
+  // One write a tick: rendering goes first. A failed write is a later miss.
+  write(entryPath(folder, key), text)
+    .catch(() => undefined)
+    .finally(() => {
+      if (unwritten.size > 0) soon(flushEntries)
+    })
+}
+
+/** Runs `fn` on session.start's clock, or now without one. */
+function soon(fn: () => void): void {
+  try {
+    if (!later) throw new Error('no clock')
+    later(fn)
+  } catch {
+    fn()
+  }
+}
+
+/** How many entries one `rm` removes. */
+const PRUNE_BATCH = 200
+
+/** Holds the cache folder under its cap: the oldest entries go (cache.ts's pruneList), by `rm` (the sandbox's fs removes nothing). */
+async function pruneCache($: $): Promise<void> {
+  const folder = cacheFolder
+  if (!folder) return
+  let files: Awaited<ReturnType<typeof $.fs.list>>
+  try {
+    files = await $.fs.list(folder)
+  } catch {
+    return // no folder yet
+  }
+  const names = pruneList(files).filter(name => ENTRY_NAME.test(name))
+  for (let i = 0; i < names.length; i += PRUNE_BATCH) {
+    const paths = names.slice(i, i + PRUNE_BATCH).map(name => `${folder}/${name}`)
+    await $.process.run(['rm', '-f', '--', ...paths], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => undefined)
+  }
 }
