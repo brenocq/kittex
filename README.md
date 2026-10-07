@@ -66,6 +66,8 @@ Each one is `image` (the default), `unicode` or `raw`:
 
 Set both to `raw` to turn kittex off.
 
+**Local LaTeX** (`auto` or `off`): with `auto`, diagrams (TikZ, pgfplots, chemfig, circuitikz) and math MathJax can't render are drawn with your TeX install, when `latex` and `dvisvgm` are on your PATH.
+
 ## FAQ
 
 <details>
