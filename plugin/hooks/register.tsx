@@ -222,7 +222,7 @@ export const register: Register = (on, options) => {
   const math = mathOptions(options)
   // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model) but its doctor.
   const off = math.block === 'raw' && math.inline === 'raw'
-  cacheOn = options.cache !== false
+  cacheOn = options.cache !== 'off' && options.cache !== false
   /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
   const latex = options.latex === 'off' ? 'off' : 'auto'
   texAllowed = !off && latex === 'auto' && math.block !== 'unicode'
@@ -234,6 +234,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await startDoctor($, e.surface, await next(e))
+    await migrateCacheOption($)
     if (off) return started
     if (e.surface !== 'terminal') {
       // A -p run or the SDK (Claude Code for VS Code, the desktop app): no
@@ -1771,6 +1772,27 @@ function texRefusal(tex: string, display: boolean): TexError | undefined {
 
 /** The surface session.start reported, for the doctor (null: a -p run or the SDK; undefined: not seen). */
 let doctorSurface: string | null | undefined
+
+/**
+ * The `cache` option was a boolean (0.1.0), which /config doesn't list; it is
+ * an `on`/`off` picker now. A stored `false` no longer fits it, so the engine
+ * hands the default `on`: read as stored, it turns the cache off, and is
+ * written again as `off` (as the person would in /config), once.
+ */
+async function migrateCacheOption($: $): Promise<void> {
+  try {
+    const configs = (await $.settings.read()).pluginConfigs
+    if (typeof configs !== 'object' || configs === null) return
+    const old = Object.entries(configs as Record<string, { options?: { cache?: unknown } } | null>).some(
+      ([key, config]) => (key === 'kittex' || key.startsWith('kittex@')) && config?.options?.cache === false,
+    )
+    if (!old) return
+    cacheOn = false
+    await $.config.set({ key: 'kittex.cache', value: 'off' })
+  } catch {
+    // left as it reads
+  }
+}
 
 /** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
 async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {

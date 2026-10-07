@@ -177,13 +177,40 @@ describe('the cache through the engine', () => {
     expect(disk.files.has(`${FOLDER}/keep.txt`)).toBe(true)
   })
 
-  test('with the option off nothing is read, written or pruned', { options: { cache: false } }, async ($, on) => {
+  test('with the option off nothing is read, written or pruned', { options: { cache: 'off' } }, async ($, on) => {
     const disk = fakeDisk(on)
     await startSession($, on, ENV)
     const drawn = images(await (await resumedMount($, 'Off: $x_1 + x_2$ now.\n')).drawn())
     expect(drawn).toHaveLength(1)
     expect(disk.reads.filter(path => path.startsWith('/cache'))).toEqual([])
     expect(disk.writes.filter(path => path.startsWith('/cache'))).toEqual([])
+  })
+
+  test("0.1.0's boolean false still turns the cache off, and is written again as off", async ($, on) => {
+    const disk = fakeDisk(on)
+    // The settings as stored: the old boolean, which the picker reads as its default, on.
+    on('settings.read', () => ({ value: { pluginConfigs: { 'kittex@kittex': { options: { cache: false } } } } }) as never)
+    const set: unknown[] = []
+    on('config.set', ($, e) => {
+      set.push({ key: e.key, value: e.value })
+      return { value: e.value }
+    })
+    await startSession($, on, ENV)
+    expect(set).toEqual([{ key: 'kittex.cache', value: 'off' }])
+    await (await resumedMount($, 'Old: $x_1 + x_2$ now.\n')).drawn()
+    expect(disk.writes.filter(path => path.startsWith('/cache'))).toEqual([])
+  })
+
+  test('a stored true, or no setting, leaves the cache on and nothing written', async ($, on) => {
+    fakeDisk(on)
+    on('settings.read', () => ({ value: { pluginConfigs: { 'kittex@kittex': { options: { cache: true } } } } }) as never)
+    const set: unknown[] = []
+    on('config.set', ($, e) => {
+      set.push(e.key)
+      return { value: e.value }
+    })
+    await startSession($, on, ENV)
+    expect(set).toEqual([])
   })
 
   test("what TeX drew is pruned on its own cap; the TeX format is never counted or removed", async ($, on) => {

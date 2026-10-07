@@ -43,10 +43,11 @@
       "default": "auto"
     },
     "cache": {
-      "type": "boolean",
+      "type": "string",
       "title": "Cache equation images",
-      "description": "Keep rendered equations on disk (~/.cache/kittex by default) so resumed sessions draw them instantly.",
-      "default": true
+      "description": "Keep rendered equations on disk (~/.cache/kittex by default) so resumed sessions draw them instantly: on or off.",
+      "options": ["on", "off"],
+      "default": "on"
     }
   }
 }
