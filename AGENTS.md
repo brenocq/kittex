@@ -54,7 +54,7 @@ Only the integration on `main` commits them: before committing on a branch,
 This machine has 31 GB of RAM and agents often run side by side; parallel fuzz
 shards once filled it and the swap, and the OOM killer took down the desktop.
 
-- Fuzz only through `npm run fuzz -- <cases> [findings dir]` (scripts/fuzz.sh):
+- Fuzz only through `npm run fuzz -- <cases> [findings dir]` (.github/scripts/fuzz.sh):
   8 shards at once, one fuzz run machine-wide at a time (a lock), and the
   whole run capped at 12 GB with no swap, so it dies alone if it grows.
   Never start fuzz shards as background jobs yourself.
