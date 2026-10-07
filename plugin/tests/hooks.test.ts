@@ -156,14 +156,10 @@ describe('AssistantMessage', () => {
     expect(await ui.drawn()).toEqual({ type: 'Text', children: ['Just prose, costs 5 dollars.'] })
   })
 
-  test('a surface without images gets the Unicode preview in the text', async ($, on) => {
+  test('a remote surface draws the reply its own way, as written', async ($, on) => {
     await startSession($, on)
     const ui = await mountReply($, REPLY, 'desktop')
-    const drawn = await ui.drawn()
-    expect(drawn).toMatchObject({ type: 'Text' })
-    const text = JSON.stringify(drawn)
-    expect(text).not.toContain('$$')
-    expect(text).toContain(PREVIEW_PAD)
+    expect(await ui.drawn()).toEqual({ type: 'Text', children: [REPLY] })
   })
 
   test('a terminal without images gets the Unicode preview in the text', async ($, on) => {
