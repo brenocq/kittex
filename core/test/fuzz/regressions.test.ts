@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest'
 import { init, previewInline } from '../../../plugin/hooks/core.js'
 import { performance } from 'node:perf_hooks'
 
-import { MessageStream, RECORD_LIMIT } from '../../../plugin/hooks/math.js'
+import { BLOCK_LIMIT, MessageStream } from '../../../plugin/hooks/math.js'
 import { envFor, land, remember, runCase, streamReply } from './drive.js'
 import type { CheckName, Shape } from './drive.js'
 
@@ -58,7 +58,8 @@ describe('fuzz regressions', () => {
   // then `which gives y.` and `2. Norm.`: the note lands at the reply's edge
   // instead of the item's, and `2. Norm.` a row lower). A list whose display
   // formula is not drawn (refused, or kept as its preview) is still cut there.
-  test.skip('FUZZ-1: a list holding a display formula that is not drawn is not cut', () => {
+  // Fixed: a refused note or a kept preview in a list item stays in the item, as it streamed.
+  test('FUZZ-1: a list holding a display formula that is not drawn is not cut', () => {
     const md = '* integral\n  \\[\n\\sum_{\\begin{subarray}{l} < n \\end{subarray}}\n\\]\n  $$\nT_{\\mu\\nu}\n$$\n  $[0, 1)$ gives that sum!\n'
     expect(failures(md, { columns: 21 }, ['moved'])).toEqual([])
   })
@@ -78,12 +79,13 @@ describe('fuzz regressions', () => {
   // preview's lines (lead pads + formula) wrap while streaming, and the image,
   // as tall as the unwrapped preview, lands with the text below moving up.
   // Fix: lay previews (and notes) out in proseWidthFor, or pad to its rows.
-  test.skip('FUZZ-2: with maxProseWidth, a display preview takes the rows its image takes', () => {
+  // Fixed: renderEnvFor's maxColumns is proseWidthFor, streaming and landing alike.
+  test('FUZZ-2: with maxProseWidth, a display preview takes the rows its image takes', () => {
     const md = 'The roots are\n\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n\nfor any $a \\ne 0$.\n'
     expect(failures(md, { columns: 120, maxProseWidth: 60 }, ['moved', 'overPreview'])).toEqual([])
   })
 
-  test.skip('FUZZ-2: with maxProseWidth, a refused formula\'s note takes one row', () => {
+  test('FUZZ-2: with maxProseWidth, a refused formula\'s note takes one row', () => {
     const md = '\\[\n\\def\\a{\\b\\b}\\def\\b{\\c\\c}\\def\\c{\\d\\d}\\def\\d{\\e\\e}\\def\\e{\\f\\f}\\def\\f{xx} \\a\\a\\a\\a\n\\]\n'
     expect(failures(md, { maxProseWidth: 55 }, ['moved'])).toEqual([])
   })
@@ -147,7 +149,9 @@ describe('fuzz regressions', () => {
   // and \frac12 are both `½`, A^T and A^\top both `Aᵀ`) both land with the
   // later one's image (and the records outlive the reply: a later reply can
   // change an earlier one's image when it redraws).
-  test.skip('FUZZ-7: formulas with the same preview keep their own images', () => {
+  // Fixed: records carry where their preview was written (`at`), kept per block; a landed block is linked to
+  // its stream by its row (plugin/tests/blocks.test.ts).
+  test('FUZZ-7: formulas with the same preview keep their own images', () => {
     expect(failures('$\\tfrac{1}{2}$\n\n$\\frac{1}{2}$\n', {}, ['impure', 'inlineImage'])).toEqual([])
     expect(failures('$A^\\top$\n$A^T$\n', {}, ['impure', 'inlineImage'])).toEqual([])
   })
@@ -155,14 +159,16 @@ describe('fuzz regressions', () => {
   // FUZZ-8 (live; stress report F15). SOURCE_PATTERN and planLanded's
   // pre-check know `$`, `\(`, `\[` and `\begin{`, not a ```math fence: a reply
   // whose only math is one is drawn live but stays a code block after --resume.
-  test.skip('FUZZ-8: a ```math fence lands as an image after --resume', () => {
+  // Fixed: MATH_FENCE in SOURCE_PATTERN, LANDED_PATTERN and planLanded's check.
+  test('FUZZ-8: a ```math fence lands as an image after --resume', () => {
     expect(failures('```math\ne^{i\\pi} + 1 = 0\n```\n', {}, ['resumed'])).toEqual([])
   })
 
   // FUZZ-9. Display math two quotes deep is never measured (drawn only at
   // depth 1): with no Unicode form that fits it stays raw LaTeX; one MathJax
   // refuses there gets no note.
-  test.skip('FUZZ-9: display math in a nested quote is drawn or noted', () => {
+  // Fixed: measured and drawn at any depth where the quote so far is followed.
+  test('FUZZ-9: display math in a nested quote is drawn or noted', () => {
     expect(failures('> > > \\begin{aligned}\n> > > \\pmod{p}\n> > > \\end{aligned}\n', {}, ['rawLatex'])).toEqual([])
   })
 
@@ -185,7 +191,9 @@ describe('fuzz regressions', () => {
   // its escapes and entities show: `\$5`, which the instructions tell the
   // model to write, streams as `$5` (the whole text is markdown) and lands as
   // `\$5`.
-  test.skip('FUZZ-11: escapes in a piece after an image are read as in the whole', () => {
+  // Fixed: images lie over the streamed text, so a piece is cut only where rows aren't known, and a cut piece
+  // with no markdown of its own gets MARKDOWN_TAIL, so the engine reads it as markdown.
+  test('FUZZ-11: escapes in a piece after an image are read as in the whole', () => {
     expect(failures('The area is\n\n$$\nA = \\pi r^2\n$$\n\nand it costs \\$5 per m.\n', {}, ['moved'])).toEqual([])
   })
 
@@ -220,17 +228,20 @@ describe('fuzz regressions', () => {
     expect(failures(md, { columns: 118, cellWidth: 10, cellHeight: 20 }, ['overlap', 'resumed'])).toEqual([])
   })
 
-  // FUZZ-14. remember() keeps the newest RECORD_LIMIT (512) previews for the
-  // whole session: once a session has streamed more distinct previews, an
+  // FUZZ-14. remember() kept the newest RECORD_LIMIT (512) previews for the
+  // whole session: once a session had streamed more distinct previews, an
   // earlier block that redraws (a resize, a theme change, scrolling in the
-  // fullscreen layout) finds none of its records and loses its images, its
-  // pads left as gaps.
-  test.skip('FUZZ-14: an early reply keeps its images after many later formulas', () => {
+  // fullscreen layout) found none of its records and lost its images, its
+  // pads left as gaps. Records are kept per block now (kittex.blocks, by
+  // message, the oldest dropped past BLOCK_LIMIT blocks): a block lands with
+  // its own records whatever streamed after it (plugin/tests/blocks.test.ts
+  // drives the store itself through register.tsx).
+  test('FUZZ-14: an early reply keeps its images after many later formulas', () => {
     const first = streamReply('Take $x_{0}$ and $y$.\n', BASE)
-    let store = first.store
-    for (let k = 1; k <= RECORD_LIMIT; k++) store = remember(store, streamReply(`Then $z_{${k}}$.\n`, BASE, store).written)
-    const images = (records: typeof store) => land(first.shown, records, BASE).pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
-    expect(images(first.store)).toHaveLength(2)
-    expect(images(store)).toHaveLength(2)
+    const later = Array.from({ length: 600 }, (_, k) => streamReply(`Then $z_{${k}}$.\n`, BASE))
+    expect(later.every(reply => reply.store.length === 1)).toBe(true)
+    expect(BLOCK_LIMIT).toBeGreaterThan(later.length)
+    const images = land(first.shown, first.store, BASE).pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
+    expect(images.map(image => image.tex)).toEqual(['x_{0}', 'y'])
   })
 })
