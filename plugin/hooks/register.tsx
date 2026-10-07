@@ -53,7 +53,8 @@ import {
   blockMatches,
   BULLET,
   bulletFor,
-  CELL_POLL_MS,
+  CELL_IDLE_MS,
+  CELL_REFRESH_MS,
   cellOrFallback,
   COPY_LABEL,
   copiedFormula,
@@ -571,7 +572,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     const over = overBudget(pieces)
     /** An image not drawn: past the budget, or only its rows reserved (off screen). */
     const left = { has: (image: RenderedImage) => image.png.length === 0 || over.has(image) }
-    if (images) cells?.poll()
+    if (images) cells?.watch()
     // Each Image's alt: its formula for a screen reader where Claude Code draws the pictures (or hasn't
     // said); where it doesn't, the text already under it, so the preview stays as it streamed (BLANK_ALT).
     const shownAlt = graphics.state === 'yes' || graphics.state === 'unknown'
@@ -988,8 +989,10 @@ async function refreshInk($: $, setting: string): Promise<void> {
 }
 
 /**
- * The cell probes after setup: for a render that sees a new width, once a
- * resize settles, and periodically. Each measures the terminal's own
+ * The cell probes after setup: for a render that sees a new width (a font
+ * zoom changes the width in cells too), once a resize settles, for a drawing
+ * with images when the last probe is a while old, and rarely while idle (a
+ * move to a monitor of another scale may keep the width). Each measures the terminal's own
  * TIOCGWINSZ (its columns and pixels); the timers store what they find in
  * kittex.env when it changed, which redraws every block that read it.
  */
@@ -1002,8 +1005,13 @@ interface Cells {
    * render saw, kept when the probe can't tell the columns.
    */
   settle(seen?: number): void
-  /** Starts the periodic probe (once): a change of the cells' pixels alone draws nothing by itself. */
-  poll(): void
+  /**
+   * A drawing with images: probes (on the clock, not holding the drawing up)
+   * when the last probe is older than CELL_REFRESH_MS, and starts the idle
+   * probe every CELL_IDLE_MS (once): a change of the cells' pixels alone
+   * draws nothing by itself.
+   */
+  watch(): void
   stop(): void
 }
 
@@ -1018,8 +1026,23 @@ function cellsFor($: $): Cells {
   let stores: Promise<void> = Promise.resolve()
   let settleTimer: Timer | undefined
   let pollTimer: Timer | undefined
+  /** When the last probe that stores ran, on the clock ($.clock.now): setup's, made as these are (session.start). */
+  let probed = -Infinity
+  void $.clock.now().then(
+    now => (probed = Math.max(probed, now)),
+    () => undefined,
+  )
   const store = (seen?: number) => {
-    stores = stores.then(async () => storeCells($, await probeCell($), seen)).catch(() => undefined)
+    stores = stores
+      .then(async () => {
+        probed = await $.clock.now().catch(() => probed)
+        await storeCells($, await probeCell($), seen)
+      })
+      .catch(() => undefined)
+  }
+  const refresh = async () => {
+    const now = await $.clock.now()
+    if (now - probed >= CELL_REFRESH_MS) store()
   }
   return {
     probe() {
@@ -1038,12 +1061,15 @@ function cellsFor($: $): Cells {
         settleTimer = undefined
       }
     },
-    poll() {
+    watch() {
+      try {
+        $.clock.after(0, () => void refresh().catch(() => undefined))
+      } catch {
+        // no clock: the width change and the idle probe still measure
+      }
       if (pollTimer) return
       try {
-        pollTimer = $.clock.every(CELL_POLL_MS, () => {
-          store()
-        })
+        pollTimer = $.clock.every(CELL_IDLE_MS, () => void refresh().catch(() => undefined))
       } catch {
         pollTimer = undefined
       }

@@ -252,11 +252,14 @@ export const PROBE_TIMEOUT_MS = 2000
  */
 export const RESIZE_SETTLE_MS = 400
 /**
- * How often the cell size is probed once an image has been drawn: a move to a
- * monitor of another scale changes the cells' pixels and may keep the width,
- * so no render says so. A probe is one short process.
+ * A drawing with images probes the cell size when the last probe is older
+ * than this: a move to a monitor of another scale changes the cells' pixels
+ * and may keep the width, so no render says so, but the next reply does. (A
+ * font zoom changes the width in cells, which every render sees.)
  */
-export const CELL_POLL_MS = 2500
+export const CELL_REFRESH_MS = 10_000
+/** How often the cell size is probed while images are on screen and nothing draws (one short process): a monitor move with no reply after it. */
+export const CELL_IDLE_MS = 60_000
 /** Formula images kept drawn, by formula and geometry (a long reply holds hundreds, inline ones included). */
 export const IMAGE_LIMIT = 1024
 /**
