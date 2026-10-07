@@ -93,7 +93,9 @@ describe('the fuzz driver against register.tsx', () => {
         if (index === 0 && delta === '' && final) break
         const result = await $.classic.MessageDisplay({ turn_id: 't', message_id: `m${seed}`, index, final, delta })
         shown += result.displayContent ?? delta
-        const rewrite = stream.push(delta, final, streamEnvFor(envFor(shape), mathOf(shape)))
+        // With both kinds raw kittex registers no hook: every flush shows as written.
+        const off = block === 'raw' && inline === 'raw'
+        const rewrite = off ? { text: delta, records: [] } : stream.push(delta, final, streamEnvFor(envFor(shape), mathOf(shape)))
         expected += rewrite.text
         records = remember(records, rewrite.records)
       }

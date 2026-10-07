@@ -593,7 +593,9 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
     const raw = segment.raw.trim()
     if (raw.length < 3 || reported.has(raw)) continue
     const asMath = segments.filter(other => other.kind === 'math' && other.raw.trim() === raw).length
-    if (count(landedText, raw) <= count(markdown, raw) - asMath) continue
+    // The same source as math of a kind left raw (inline `$$…$$` and a display formula alike) stays.
+    const keptRaw = segments.filter(other => other.kind === 'math' && other.raw.trim() === raw && (other.display ? shape.block : shape.inline) === 'raw').length
+    if (count(landedText, raw) <= count(markdown, raw) - asMath + keptRaw) continue
     reported.add(raw)
     const why = segment.display ? 'display' : inlineText(segment.tex) === null ? 'inline-no-unicode' : 'inline'
     fail('rawLatex', why, `${segment.display ? 'display' : 'inline'} ${JSON.stringify(raw.slice(0, 70))} is left as written`)
