@@ -438,6 +438,8 @@ describe('the format, the shading retry, the budget', () => {
     expect(dump).toEqual(expect.arrayContaining(['-no-shell-escape', '&latex', 'mylatexformat.ltx', `${name}.tex`]))
     expect(fake.writes.get(`/tmp/kittex-tex.AbCdEfGhIj/${name}.tex`)).toContain('\\usepackage{pgfplots}')
     expect(fake.runs.some(argv => argv[0] === 'mv' && argv.at(-1) === `/home/u/.cache/kittex/tex/fmt/${name}.fmt`)).toBe(true)
+    // The formats it supersedes go, and nothing else in the folder (a copy in flight is `<name>.fmt.<job>`).
+    expect(fake.runs.find(argv => argv[0] === 'find')).toEqual(['find', '/home/u/.cache/kittex/tex/fmt', '-maxdepth', '1', '-type', 'f', '-name', 'kittex-*.fmt', '!', '-name', `${name}.fmt`, '-delete'])
     // The next session finds it: no TeX run.
     const before = fake.runs.length
     const again = { ...fake.setup }

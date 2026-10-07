@@ -170,7 +170,7 @@ function fakeHost(options: FakeOptions = {}) {
         case 'rm':
           return result(0)
         case 'du':
-          return result(0, `2048\t${args[1]}\n`)
+          return result(0, args.slice(1).map(path => `${path.endsWith('/fmt') ? 1024 : path.endsWith('/tex') ? 1536 : 2048}\t${path}\n`).join(''))
         case 'find':
           return result(0, `${args[0]}/tex/a.json\n${args[0]}/tex/fmt/x.fmt\n${args[0]}/b.json\n`)
         default:
@@ -265,7 +265,14 @@ describe('the probes', () => {
 
   test('the cache: its size and files', async () => {
     const { host } = fakeHost()
-    expect(await probeCache(host, ENV)).toEqual({ dir: '/home/u/.cache/kittex', bytes: 2048 * 1024, files: 3 })
+    expect(await probeCache(host, ENV)).toEqual({
+      dir: '/home/u/.cache/kittex',
+      bytes: 2048 * 1024,
+      files: 3,
+      images: { bytes: 512 * 1024, files: 1 },
+      tex: { bytes: 512 * 1024, files: 1 },
+      format: { bytes: 1024 * 1024, files: 1 },
+    })
     expect(await probeCache(host, { HOME: '/home/v' })).toEqual({ dir: '/home/v/.cache/kittex' })
     expect(await probeCache(host, {})).toEqual({})
   })
@@ -317,6 +324,14 @@ describe('the report', () => {
     expect(text).toMatch(/✓ trial picture: drawn in \d\.\d\d s/)
     expect(text).toContain('– `~/.cache/kittex`: 3.1 MB in 154 files')
     expect(text).not.toContain('To enable diagrams')
+    // The parts, when the probe tells them apart: the TeX format apart from the images it never counts against.
+    const parts = formatDoctor(facts(await allThere(), {
+      cache: { dir: '/home/u/.cache/kittex', bytes: 14_000_000, files: 160, images: { bytes: 2_900_000, files: 150 }, tex: { bytes: 300_000, files: 9 }, format: { bytes: 10_800_000, files: 1 } },
+    }))
+    expect(parts).toContain('– `~/.cache/kittex`: 14.0 MB in 160 files')
+    expect(parts).toContain('– images of resumed replies: 2.9 MB in 150 files (the oldest go past 50 MiB)')
+    expect(parts).toContain('– pictures TeX drew: 300 kB in 9 files (the oldest go past 20 MiB)')
+    expect(parts).toContain('– TeX format: 10.8 MB in 1 file (kept; replaced when TeX changes)')
     expect(text).not.toContain('$')
     expect(text).not.toContain('✗')
   })

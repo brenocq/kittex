@@ -92,7 +92,7 @@ import {
   withoutTextOverride,
 } from './math.ts'
 import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
-import { CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList } from './cache.ts'
+import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { EngineGraphics, InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
 import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
@@ -1617,9 +1617,17 @@ function soon(fn: () => void): void {
 /** How many entries one `rm` removes. */
 const PRUNE_BATCH = 200
 
-/** Holds the cache folder under its cap: the oldest entries go (cache.ts's pruneList), by `rm` (the sandbox's fs removes nothing). */
+/**
+ * Holds the caches under their caps: the oldest images of resumed replies
+ * (cache.ts's pruneList) and the oldest of what TeX drew, by `rm` (the
+ * sandbox's fs removes nothing). The TeX format is never among them.
+ */
 async function pruneCache($: $): Promise<void> {
-  const folder = cacheFolder
+  await pruneFolder($, cacheFolder, CACHE_LIMIT_BYTES, ENTRY_NAME)
+  await pruneFolder($, texCacheDir(processEnv), TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME)
+}
+
+async function pruneFolder($: $, folder: string | undefined, limit: number, name: RegExp): Promise<void> {
   if (!folder) return
   let files: Awaited<ReturnType<typeof $.fs.list>>
   try {
@@ -1627,9 +1635,9 @@ async function pruneCache($: $): Promise<void> {
   } catch {
     return // no folder yet
   }
-  const names = pruneList(files).filter(name => ENTRY_NAME.test(name))
+  const names = pruneList(files, limit, name).filter(one => name.test(one))
   for (let i = 0; i < names.length; i += PRUNE_BATCH) {
-    const paths = names.slice(i, i + PRUNE_BATCH).map(name => `${folder}/${name}`)
+    const paths = names.slice(i, i + PRUNE_BATCH).map(one => `${folder}/${one}`)
     await $.process.run(['rm', '-f', '--', ...paths], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => undefined)
   }
 }

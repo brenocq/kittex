@@ -146,8 +146,10 @@ macOS has neither, so there TeX can read the files you can: choose `off` if that
 <summary><b>Cache equation images</b>: keep rendered equations on disk for instant resumes</summary>
 <br>
 
-- `on` (default): resumed sessions draw their equations from the cache, in `${XDG_CACHE_HOME:-~/.cache}/kittex` (at most 50 MB, oldest removed first).
-- `off`: every equation is typeset again on each resume; nothing is written.
+- `true` (default): resumed sessions draw their equations from the cache, in `~/.cache/kittex` (or `$XDG_CACHE_HOME/kittex`), at most 50 MiB, the oldest removed first.
+- `false`: every equation is typeset again on each resume; nothing is written.
+
+With your TeX, the same folder also keeps the pictures it drew (at most 20 MiB) and its format (about 11 MB, replaced when TeX is updated).
 
 </details>
 

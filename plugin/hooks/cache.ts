@@ -30,6 +30,14 @@ export const CACHE_READ_MS = 150
 
 /** An entry's file name: its key and `.json`; nothing else in the folder is ever read or removed. */
 export const ENTRY_NAME = /^[0-9a-z]{26}\.json$/
+/**
+ * What TeX drew (tex.ts): `<cache>/kittex/tex/<sha-256>.json`, pruned on its
+ * own past TEX_CACHE_LIMIT_BYTES. Its `fmt/` folder (the TeX format, about
+ * 11 MB) is neither counted nor removed here: prepareFormat replaces it when
+ * TeX's version changes.
+ */
+export const TEX_ENTRY_NAME = /^[0-9a-f]{64}\.json$/
+export const TEX_CACHE_LIMIT_BYTES = 20 * 1024 * 1024
 
 /** The folder entries go in: XDG_CACHE_HOME (absolute), else ~/.cache; undefined without either. */
 export function cacheDir(env: { XDG_CACHE_HOME?: string | undefined; HOME?: string | undefined }): string | undefined {
@@ -151,10 +159,11 @@ export interface CacheFile {
 /**
  * The entries to remove so the folder holds at most `limit` bytes: none
  * while it fits, else the oldest (by mtime) until it holds CACHE_PRUNE_TO of
- * it. Only entry files (ENTRY_NAME) count and are ever named.
+ * it. Only entry files (`name`: ENTRY_NAME, or TEX_ENTRY_NAME in TeX's
+ * folder) count and are ever named: never a folder, never the TeX format.
  */
-export function pruneList(files: readonly CacheFile[], limit = CACHE_LIMIT_BYTES): string[] {
-  const entries = files.filter(file => file.kind === 'file' && ENTRY_NAME.test(file.name))
+export function pruneList(files: readonly CacheFile[], limit = CACHE_LIMIT_BYTES, name: RegExp = ENTRY_NAME): string[] {
+  const entries = files.filter(file => file.kind === 'file' && name.test(file.name))
   let total = entries.reduce((sum, file) => sum + file.size, 0)
   if (total <= limit) return []
   const out: string[] = []

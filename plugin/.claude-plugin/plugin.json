@@ -45,7 +45,7 @@
     "cache": {
       "type": "boolean",
       "title": "Cache equation images",
-      "description": "Keep rendered equations on disk (~/.cache/kittex) so resumed sessions draw them instantly.",
+      "description": "Keep rendered equations on disk (~/.cache/kittex by default) so resumed sessions draw them instantly.",
       "default": true
     }
   }
