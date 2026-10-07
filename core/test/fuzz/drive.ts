@@ -26,18 +26,19 @@ import {
   proseWidthFor,
   renderEnvFor,
   REPLY_INDENT,
-  SOURCE_PATTERN,
+  sourcePattern,
   STREAMED_PATTERN,
+  streamEnvFor,
 } from '../../../plugin/hooks/math.js'
 import type { LandedPlan, Piece, PreviewRecord, StreamEnv } from '../../../plugin/hooks/math.js'
-import { envFor, flushesOf, remember } from '../../../plugin/tests/fuzz/shape.ts'
+import { envFor, flushesOf, mathOf, remember } from '../../../plugin/tests/fuzz/shape.ts'
 import type { Shape } from '../../../plugin/tests/fuzz/shape.ts'
 import { missingInline, padCause, rowCause } from './diagnose.js'
 import type { CaseContext } from './diagnose.js'
 import { cellsOf, engineRows, landedDrawing } from './screen.js'
 import type { DrawContext, Drawing, Placed, Row } from './screen.js'
 
-export { CELLS, describeShape, envFor, flushesOf, remember, shapeFor, variablesFor } from '../../../plugin/tests/fuzz/shape.ts'
+export { CELLS, describeShape, envFor, flushesOf, mathOf, remember, shapeFor, variablesFor } from '../../../plugin/tests/fuzz/shape.ts'
 export type { Shape } from '../../../plugin/tests/fuzz/shape.ts'
 
 // ─── Images (the real renderers, kept by formula and geometry) ───────────────
@@ -101,9 +102,12 @@ export interface Streamed {
 
 export function streamReply(markdown: string, shape: Shape, store: readonly PreviewRecord[] = []): Streamed {
   const env = envFor(shape)
-  const streamEnv: StreamEnv = { ...env, inline: shape.inline && env.images }
+  const math = mathOf(shape)
+  const streamEnv: StreamEnv = streamEnvFor(env, math)
   const stream = new MessageStream()
   const flushes = flushesOf(markdown, shape.flushSeed)
+  // register.tsx: with both kinds raw kittex registers no hook, and every flush shows as written.
+  if (math.block === 'raw' && math.inline === 'raw') return { shown: flushes.join(''), written: [], store: [...store], flushes: flushes.length, maxPushMs: 0 }
   let shown = ''
   let records = [...store]
   const written: PreviewRecord[] = []
@@ -139,20 +143,25 @@ export interface Landed {
 export function land(text: string, store: readonly PreviewRecord[], shape: Shape): Landed {
   const env = envFor(shape)
   const columns = shape.columns
-  // The four registrations' matchers (terminal): streamed previews, or LaTeX as written.
-  const hooked = STREAMED_PATTERN.test(text) || SOURCE_PATTERN.test(text)
+  const math = mathOf(shape)
+  // The four registrations' matchers (terminal): streamed previews, or LaTeX as written; none with both kinds raw.
+  const registered = math.block !== 'raw' || math.inline !== 'raw'
+  const hooked = registered && (STREAMED_PATTERN.test(text) || sourcePattern(math).test(text))
   if (!hooked) return { hooked, plan: null, pieces: [{ kind: 'prose', text, gap: false }], ms: 0 }
-  const images = env.images
+  const blockImages = env.images && math.block === 'image'
+  const inlineImages = env.images && math.inline === 'image'
+  const images = blockImages || inlineImages
   const records = images && /&nbsp;|```| |⠀|͏/.test(text) ? store : []
   const renderEnv = renderEnvFor(env, columns)
   const inlineEnv = inlineEnvFor(env, columns)
   const start = performance.now()
   const plan = planLanded(text, records, {
     maxColumns: renderEnv.maxColumns,
-    draw: images ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
+    draw: blockImages ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
     width: proseWidthFor(env, columns),
     measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
-    inline: images && shape.inline ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
+    math,
+    inline: inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
   })
   const ms = performance.now() - start
   let pieces: Piece[]
@@ -568,6 +577,8 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
   const reported = new Set<string>()
   for (const segment of segments) {
     if (segment.kind !== 'math') continue
+    // A kind its option leaves as written.
+    if ((segment.display ? shape.block : shape.inline) === 'raw') continue
     let error: string | undefined
     try {
       measureDisplay(segment.tex, renderEnv)
@@ -587,7 +598,7 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
     const why = segment.display ? 'display' : inlineText(segment.tex) === null ? 'inline-no-unicode' : 'inline'
     fail('rawLatex', why, `${segment.display ? 'display' : 'inline'} ${JSON.stringify(raw.slice(0, 70))} is left as written`)
   }
-  if (live.hooked && live.plan && refused > 0 && notes === 0 && env.images) {
+  if (live.hooked && live.plan && refused > 0 && notes === 0 && env.images && shape.block === 'image') {
     fail('rawLatex', 'note', `${refused} display formula(s) MathJax refused landed with no dim note`)
   }
 }

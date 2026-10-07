@@ -17,7 +17,7 @@ import { MessageStream, RECORD_LIMIT } from '../../../plugin/hooks/math.js'
 import { envFor, land, remember, runCase, streamReply } from './drive.js'
 import type { CheckName, Shape } from './drive.js'
 
-const BASE: Shape = { columns: 80, cellWidth: 13, cellHeight: 26, terminal: 'kitty', inline: true, links: 'osc8', flushSeed: 1, trimLanded: false }
+const BASE: Shape = { columns: 80, cellWidth: 13, cellHeight: 26, terminal: 'kitty', block: 'image', inline: 'image', links: 'osc8', flushSeed: 1, trimLanded: false }
 
 /** The failures of these checks in a reply landed in a terminal of this shape. */
 function failures(markdown: string, shape: Partial<Shape>, checks: CheckName[]) {
@@ -197,7 +197,7 @@ describe('fuzz regressions', () => {
     // Live (the streamed text landed with no records, as with `inline` off): the two rows land as one,
     // `$100 per seat, or † and [$` drawn as a formula.
     const md = 'The fee is $100 per seat, or\n$\\dagger$ and [$\\begin{pmatrix} 1 \\\\ 0 \\end{pmatrix}$] for both.\n'
-    expect(failures(md, { inline: false }, ['phantom', 'moved'])).toEqual([])
+    expect(failures(md, { inline: 'unicode' }, ['phantom', 'moved'])).toEqual([])
   })
 
   // FUZZ-13. The Unicode renderer drops the parentheses of a fraction's

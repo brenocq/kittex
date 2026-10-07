@@ -5,7 +5,7 @@
 import { drawsEmojiSequences, emPxForCell, fontCell } from '../../hooks/core.js'
 import type { CellAdjust, TerminalInfo } from '../../hooks/core.js'
 import { linkEnv, RECORD_LIMIT } from '../../hooks/math.ts'
-import type { KittexEnv, PreviewRecord } from '../../hooks/math.ts'
+import type { KittexEnv, MathMode, MathOptions, PreviewRecord } from '../../hooks/math.ts'
 import { Rng } from './rng.ts'
 
 // ─── Terminal shapes ─────────────────────────────────────────────────────────
@@ -15,8 +15,10 @@ export interface Shape {
   cellWidth: number
   cellHeight: number
   terminal: 'kitty' | 'ghostty'
-  /** The `inline` option. */
-  inline: boolean
+  /** The `block` option: display math as images, Unicode, or left as written. */
+  block: MathMode
+  /** The `inline` option, likewise for inline math. */
+  inline: MathMode
   /** How the engine draws links: FORCE_HYPERLINK unset (osc8 in kitty and Ghostty), `0` (text), `` (unknown). */
   links: 'osc8' | 'text' | 'unknown'
   maxProseWidth?: number
@@ -40,18 +42,38 @@ export function shapeFor(seed: number): Shape {
   const r = new Rng(seed ^ 0x5eed)
   const columns = r.weighted<number>([[3, r.int(20, 60)], [6, r.int(60, 130)], [2, r.int(130, 200)], [2, r.pick([80, 100, 120])]])
   const [cellWidth, cellHeight] = r.pick(CELLS)
+  // Drawn in the order they always were, so a seed keeps its terminal.
+  const terminal = r.chance(0.7) ? 'kitty' : 'ghostty'
+  const inlineImages = r.chance(0.85)
   return {
     columns,
     cellWidth,
     cellHeight,
-    terminal: r.chance(0.7) ? 'kitty' : 'ghostty',
-    inline: r.chance(0.85),
+    terminal,
+    ...mathModes(seed, inlineImages),
     links: r.weighted([[6, 'osc8'], [1, 'text'], [1, 'unknown']]),
     ...(r.chance(0.2) ? { maxProseWidth: r.int(40, 120) } : {}),
     flushSeed: r.int(0, 2 ** 30),
     trimLanded: r.chance(0.3),
     ...ghosttyOptions(r),
   }
+}
+
+/**
+ * The two options, from a source of their own (a seed's terminal is the one it
+ * had before they were drawn): mostly `image`, now and then `unicode` or `raw`
+ * (both raw now and then: kittex then does nothing).
+ */
+function mathModes(seed: number, inlineImages: boolean): MathOptions {
+  const r = new Rng(seed ^ 0x0b10c)
+  const block = r.weighted<MathMode>([[14, 'image'], [3, 'unicode'], [3, 'raw']])
+  const inline: MathMode = r.chance(0.12) ? 'raw' : inlineImages ? 'image' : 'unicode'
+  return { block, inline }
+}
+
+/** The options of a shape, as register receives them. */
+export function mathOf(shape: Shape): MathOptions {
+  return { block: shape.block, inline: shape.inline }
 }
 
 /** Ghostty's settings that change the drawing (drawn for every shape, kept for Ghostty ones). */
@@ -101,7 +123,7 @@ export function envFor(shape: Shape): KittexEnv {
 export function describeShape(shape: Shape): string {
   const mpw = shape.maxProseWidth !== undefined ? ` maxProseWidth=${shape.maxProseWidth}` : ''
   const ghostty = shape.terminal !== 'ghostty' ? '' : `${shape.graphemeLegacy ? ' grapheme-width-method=legacy' : ''}${shape.cellAdjust ? ` cell adjust ${JSON.stringify(shape.cellAdjust)}` : ''}`
-  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}${ghostty}, inline ${shape.inline ? 'on' : 'off'}, links ${shape.links}${mpw}`
+  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}${ghostty}, block ${shape.block}, inline ${shape.inline}, links ${shape.links}${mpw}`
 }
 
 /** MessageDisplay flushes for a reply: whole-line batches, the last final (it may end mid-line, or be empty). */
