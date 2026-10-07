@@ -75,7 +75,8 @@ export async function launch({ executable = process.env.CHROME } = {}) {
     try { await send('Browser.close') } catch { /* already gone */ }
     child.kill()
     await exited
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    // Best effort: Chrome can still be writing its profile as it exits.
+    try { rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch { /* left in tmp */ }
   }
   return { send, once, evaluate, close }
 }
