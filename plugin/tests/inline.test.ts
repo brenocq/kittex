@@ -495,6 +495,7 @@ describe('narrow formulas next to punctuation', () => {
     expect(ungroupScripts('x_(ab)', 'x_{(ab)}')).toBe('x_(ab)')
     expect(ungroupScripts('y_(w,i)', 'y_{w,i}')).toBe('y_(w,i)')
     expect(ungroupScripts('x_(k|k−1)', 'x_{k|k-1}')).toBe('x_(k|k−1)')
+    expect(ungroupScripts('x^(xˣ)', 'x^{x^{x}}')).toBe('x^(xˣ)')
     // Streamed and landed alike.
     const { landed, records } = streamed(['under $\\pi_{\\text{ref}}$ and $D_{KL}$, the loss.\n'])
     expect(places(plan(landed, records).pieces).map(([tex]) => tex)).toEqual(['\\pi_{\\text{ref}}', 'D_{KL}'])
@@ -510,14 +511,22 @@ describe('where the blank of a wide slot goes', () => {
     expect(inkPlaceBeside(' ', ',')).toBe('end')
     expect(inkPlaceBeside(' ', ':')).toBe('end')
     expect(inkPlaceBeside(' ', ')')).toBe('end')
-    expect(inkPlaceBeside(undefined, '.')).toBe('end')
+    expect(inkPlaceBeside(' ', '-')).toBe('end')
     expect(inkPlaceBeside('(', ' ')).toBe('start')
-    expect(inkPlaceBeside('“', undefined)).toBe('start')
+    expect(inkPlaceBeside('-', ' ')).toBe('start')
     expect(inkPlaceBeside('(', ')')).toBe('center')
     expect(inkPlaceBeside(' ', ' ')).toBe('center')
-    expect(inkPlaceBeside(undefined, undefined)).toBe('center')
     expect(inkPlaceBeside(' ', 's')).toBe('center')
     expect(inkPlaceBeside('a', ',')).toBe('center')
+  })
+
+  // A formula starting a row looked indented by its blank: "  x̂ₖ is".
+  test('flush with the text column at the start of a row, against the right edge at its end', () => {
+    expect(inkPlaceBeside(undefined, ' ')).toBe('start')
+    expect(inkPlaceBeside(undefined, '.')).toBe('start')
+    expect(inkPlaceBeside(undefined, undefined)).toBe('start')
+    expect(inkPlaceBeside(' ', undefined)).toBe('end')
+    expect(inkPlaceBeside('“', undefined)).toBe('start')
   })
 
   test('the cells beside a slot, wide characters and zero-width marks counted as drawn', () => {
@@ -525,6 +534,12 @@ describe('where the blank of a wide slot goes', () => {
     expect(cellsBeside('xyz, c', 0, 3)).toEqual([undefined, ','])
     expect(cellsBeside('a (xy', 3, 2)).toEqual(['(', undefined])
     expect(cellsBeside('漢 xy͏z!', 3, 3)).toEqual([' ', '!'])
+    // The text's ends: past a list marker, a quote bar or indentation, and before trailing blanks.
+    expect(cellsBeside('- xy is', 2, 2)).toEqual([undefined, ' '])
+    expect(cellsBeside('12. xy is', 4, 2)).toEqual([undefined, ' '])
+    expect(cellsBeside('▎ ▎ xy', 4, 2)).toEqual([undefined, undefined])
+    expect(cellsBeside('    xy, b', 4, 2)).toEqual([undefined, ','])
+    expect(cellsBeside('a xy   ', 2, 2)).toEqual([' ', undefined])
   })
 
   test('each lands with its ink placed by its row, the same cells streamed and landed', async () => {

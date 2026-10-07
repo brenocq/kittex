@@ -192,3 +192,13 @@ describe('ink past the row', () => {
     expect(measureInline('\\frac{a}{b}', at(13, 26))).toBeNull()
   })
 })
+
+describe('the stroke weight', () => {
+  test('an env weight (strokeWeight of the terminal font) draws the same formula heavier, cached apart', async () => {
+    await init()
+    const plain = renderInline('x_i', env, 2)
+    const medium = renderInline('x_i', { ...env, weight: 20 }, 2)
+    expect(medium.png).not.toEqual(plain.png)
+    expect(renderInline('x_i', env, 2).png).toEqual(plain.png)
+  })
+})

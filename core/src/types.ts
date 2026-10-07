@@ -225,6 +225,12 @@ export interface TerminalColors {
   cellAdjust?: CellAdjust
   /** Ghostty's `grapheme-width-method`, read with its colours, when its config sets it (Ghostty's default is `unicode`). */
   graphemeWidth?: 'unicode' | 'legacy'
+  /**
+   * The weight (CSS, 100 to 900) of the terminal's text font, from the
+   * family, style and variation its config gives it, when they say one
+   * (strokeWeight draws the math to match).
+   */
+  fontWeight?: number
 }
 
 /** A change to one cell metric: a factor (Ghostty's `20%` is 1.2) or whole pixels added. */

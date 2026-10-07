@@ -33,6 +33,8 @@ export type KittexEnv = {
   hyperlinks?: boolean
   /** Whether the terminal draws emoji sequences (an emoji with U+FE0F or a skin tone, joiner chains, flags, keycaps) two cells wide, as the engine counts them; absent: they keep their paragraph's math Unicode. */
   emojiSequences?: boolean
+  /** The stroke weight the math is drawn with, matched to the terminal font's weight (strokeWeight); absent when that weight isn't known (the default weight). */
+  weight?: number
 }
 
 /** One preview written while a reply streamed (display, or inline when `inline`), and the TeX it stands for (kittex.records). */
