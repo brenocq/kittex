@@ -1,7 +1,7 @@
 <div align="center">
   <img alt="kittex: a tuxedo kitten with an integral sign for a tail, next to raw LaTeX turning into typeset equations" src="https://github.com/brenocq/kittex/raw/assets/banner.svg" width="880">
 
-  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#options">Options</a>
+  <a href="#install">Install</a> · <a href="#what-you-get">What you get</a> · <a href="#terminals">Terminals</a> · <a href="#config">Config</a> · <a href="#faq">FAQ</a>
 
   <a href="https://github.com/brenocq/kittex/actions/workflows/tests.yml"><img src="https://github.com/brenocq/kittex/actions/workflows/tests.yml/badge.svg" alt="🧪 Tests"/></a>
 </div>
@@ -49,7 +49,7 @@ Derive the quadratic formula step by step
   <img alt="kitty and Ghostty show typeset images; every other terminal (WezTerm, iTerm2, Terminal.app, Windows Terminal, Alacritty, tmux) shows Unicode math." src="https://github.com/brenocq/kittex/raw/assets/terminals.svg" width="100%">
 </p>
 
-## Options
+## Config
 
 Two pickers in `/config`, one for each kind of math:
 
@@ -66,8 +66,10 @@ Each one is `image` (the default), `unicode` or `raw`:
 
 Set both to `raw` to turn kittex off.
 
+## FAQ
+
 <details>
-<summary><b>How it works</b></summary>
+<summary><b>How does it work?</b></summary>
 <br>
 
 While a reply streams, kittex rewrites each line's math into a Unicode preview
@@ -80,13 +82,27 @@ size and colours.
 </details>
 
 <details>
-<summary><b>Using it with other mods</b></summary>
+<summary><b>Does it work with other mods?</b></summary>
 <br>
 
-Install kittex before any mod that redraws whole replies, such as prismantis:
+Yes. Install kittex before any mod that redraws whole replies, such as prismantis:
 the first plugin installed is the outermost one, and kittex only sees a reply
 when it sits outside such a mod (it then hands each piece of prose to it). If
 prismantis is already installed, reinstall it after kittex.
+
+</details>
+
+<details>
+<summary><b>Do I need to change my CLAUDE.md?</b></summary>
+<br>
+
+No. kittex adds a short note to Claude's system prompt asking it to write math
+as LaTeX: `$…$` inside a sentence and `$$…$$` on a line of its own. Where Claude
+Code doesn't let plugins change the system prompt (Team and Enterprise plans),
+kittex sends the same note along with your first message instead, and again
+after `/clear` or a compaction. Either way Claude writes LaTeX without being
+asked, and nothing is added to your CLAUDE.md. Setting both Block math and
+Inline math to `raw` stops the note too.
 
 </details>
 
