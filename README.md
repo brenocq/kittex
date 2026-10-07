@@ -14,7 +14,7 @@
 
 ## Install
 
-Type this in Claude Code, answer `y` to add the marketplace, and that's it:
+Type this in Claude Code (2.1.290 or newer), answer `y` to add the marketplace, and that's it:
 
 ```
 /plugin install kittex --marketplace brenocq/kittex

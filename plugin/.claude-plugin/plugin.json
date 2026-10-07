@@ -6,6 +6,19 @@
     "name": "Breno Cunha Queiroz"
   },
   "license": "MIT",
+  "homepage": "https://github.com/brenocq/kittex",
+  "repository": "https://github.com/brenocq/kittex",
+  "keywords": [
+    "latex",
+    "math",
+    "mathjax",
+    "equations",
+    "typesetting",
+    "kitty",
+    "ghostty",
+    "terminal",
+    "unicode"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "enabled": {
