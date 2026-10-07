@@ -121,6 +121,29 @@ export class Coverage {
     }
   }
 
+  /**
+   * The coverage under the even-odd rule, as bytes: a winding of 2 is a hole,
+   * and the accumulated area w covers |w| folded into [0, 1] (the distance to
+   * the nearest even number), which is exact for areas no two edges of a
+   * pixel overlap in.
+   */
+  toAlphaEvenOdd(): Uint8Array {
+    const { width: w, height: h, stride, acc } = this
+    const out = new Uint8Array(w * h)
+    for (let row = 0; row < h; row++) {
+      let sum = 0
+      const from = row * stride
+      const to = row * w
+      for (let x = 0; x < w; x++) {
+        sum += acc[from + x]!
+        let c = (sum < 0 ? -sum : sum) % 2
+        if (c > 1) c = 2 - c
+        out[to + x] = (c * 255 + 0.5) | 0
+      }
+    }
+    return out
+  }
+
   /** The coverage as bytes (0 to 255), row-major, through `curve` (256 entries) when given. */
   toAlpha(curve?: Uint8Array): Uint8Array {
     const { width: w, height: h, stride, acc } = this

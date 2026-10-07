@@ -10,9 +10,11 @@ import { Scanner } from './scanner.js'
  * `\begin{env}…\end{env}` for the usual display environments, or a ```math
  * fence. Inline math is `$…$` by Pandoc's rules (so `$5 and $10` is prose),
  * `$$…$$` with other text on its line, or `\(…\)`. `\$` is a literal dollar.
+ * With `diagrams`, ```latex, ```tex and ```tikz fences and bare tikzpicture,
+ * tikzcd and circuitikz environments are display segments marked `diagram`.
  */
-export function scan(markdown: string): Segment[] {
-  return new Scanner(Infinity).push(markdown, true)
+export function scan(markdown: string, options: Pick<LineScannerOptions, 'diagrams'> = {}): Segment[] {
+  return new Scanner(Infinity, options.diagrams === true, Infinity).push(markdown, true)
 }
 
 /**
@@ -31,6 +33,6 @@ export function scan(markdown: string): Segment[] {
  * however it was split into batches, unless the hold limit released something.
  */
 export function createLineScanner(options: LineScannerOptions = {}): LineScanner {
-  const scanner = new Scanner(Math.max(1, options.maxHeldLines ?? 40))
+  const scanner = new Scanner(Math.max(1, options.maxHeldLines ?? 40), options.diagrams === true, Math.max(1, options.maxDiagramLines ?? 400))
   return { push: (delta, final) => scanner.push(delta, final) }
 }

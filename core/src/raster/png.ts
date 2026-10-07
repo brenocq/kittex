@@ -43,6 +43,66 @@ export function encodeAlphaPng(alpha: Uint8Array, width: number, height: number,
 }
 
 /**
+ * Encodes straight-alpha RGBA pixels (a picture in several colours, see
+ * paint.ts) as a truecolour PNG with alpha (colour type 6, 8 bits), each row
+ * filtered by the usual heuristic (the filter whose output bytes have the
+ * least absolute sum). No ancillary chunks, as encodeAlphaPng.
+ */
+export function encodeRgbaPng(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const ihdr = new Uint8Array(13)
+  const view = new DataView(ihdr.buffer)
+  view.setUint32(0, width)
+  view.setUint32(4, height)
+  ihdr.set([8, 6, 0, 0, 0], 8) // bit depth 8, colour type 6 (RGBA), deflate, filter method 0, no interlace
+  return concat([SIGNATURE, chunk('IHDR', ihdr), chunk('IDAT', zlibSync(filterRgba(rgba, width, height), { level: 6 })), chunk('IEND', new Uint8Array(0))])
+}
+
+/** Rows of 4-byte pixels, each prefixed with the filter (None, Sub, Up or Paeth) that leaves the smallest absolute sum. */
+function filterRgba(rgba: Uint8Array, w: number, h: number): Uint8Array {
+  const stride = w * 4
+  const out = new Uint8Array(h * (stride + 1))
+  const trial = [new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride)]
+  const cost = (row: Uint8Array) => {
+    let sum = 0
+    for (let i = 0; i < row.length; i++) sum += row[i]! < 128 ? row[i]! : 256 - row[i]!
+    return sum
+  }
+  for (let y = 0; y < h; y++) {
+    const at = y * stride
+    const up = y > 0 ? at - stride : -1
+    const [none, sub, upRow, paeth] = trial as [Uint8Array, Uint8Array, Uint8Array, Uint8Array]
+    for (let i = 0; i < stride; i++) {
+      const x = rgba[at + i]!
+      const a = i >= 4 ? rgba[at + i - 4]! : 0
+      const b = up >= 0 ? rgba[up + i]! : 0
+      const c = up >= 0 && i >= 4 ? rgba[up + i - 4]! : 0
+      none[i] = x
+      sub[i] = (x - a) & 255
+      upRow[i] = (x - b) & 255
+      // Math.abs is a global lookup per call in the sandbox's context: kept out of this loop.
+      const p = a + b - c
+      const pa = p > a ? p - a : a - p
+      const pb = p > b ? p - b : b - p
+      const pc = p > c ? p - c : c - p
+      paeth[i] = (x - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255
+    }
+    let best = 0
+    let bestCost = Infinity
+    for (let f = 0; f < 4; f++) {
+      const c = cost(trial[f]!)
+      if (c < bestCost) {
+        bestCost = c
+        best = f
+      }
+    }
+    const filterType = [0, 1, 2, 4][best]!
+    out[y * (stride + 1)] = filterType
+    out.set(trial[best]!, y * (stride + 1) + 1)
+  }
+  return out
+}
+
+/**
  * The same PNG in another ink colour (and alpha correction, see
  * encodeAlphaPng): only the PLTE and tRNS chunks are rewritten. Throws if
  * `png` is not one of encodePng's.

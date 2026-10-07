@@ -64,6 +64,8 @@ export async function startSession(
   terminal: Record<string, string> = KITTY,
   theme = 'dark',
   cell: { cellWidth: number; cellHeight: number } = CELL,
+  /** How the host answers a command other than the cell probe (by default it fails). */
+  command: (argv: readonly string[]) => { exitCode: number; stdout: string } | undefined = () => undefined,
 ): Promise<{ cellProbes: () => number; screen: Screen; renders: () => number }> {
   mock.env(on, terminal)
   const screen: Screen = { rows: 50, columns: COLUMNS, ...cell }
@@ -73,6 +75,8 @@ export async function startSession(
     if (isCellProbe) cellProbes += 1
     const { rows, columns, cellWidth, cellHeight } = screen
     const stdout = isCellProbe ? `${rows} ${columns} ${columns * cellWidth} ${rows * cellHeight}\n` : ''
+    const other = isCellProbe ? undefined : command(e.argv)
+    if (other) return { value: { ...other, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     return { value: { exitCode: isCellProbe ? 0 : 1, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('config.list', () => ({

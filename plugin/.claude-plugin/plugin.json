@@ -34,6 +34,13 @@
       "description": "Math inside a sentence ($…$): image, unicode or raw (same meanings).",
       "options": ["image", "unicode", "raw"],
       "default": "image"
+    },
+    "latex": {
+      "type": "string",
+      "title": "Local LaTeX",
+      "description": "Draw diagrams and math MathJax can't render with your TeX install",
+      "options": ["auto", "off"],
+      "default": "auto"
     }
   }
 }

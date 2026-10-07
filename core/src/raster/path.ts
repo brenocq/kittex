@@ -17,6 +17,32 @@ const FLATNESS = 0.05
  */
 export function flattenPath(d: string, m: Matrix): Contour[] {
   const contours: Contour[] = []
+  walkPath(d, m, FLATNESS, points => {
+    if (points.length >= 6) contours.push(points)
+  })
+  return contours
+}
+
+/** A subpath flattened to a polyline in pixels: open, or closed by a `Z` (its closing edge implied). */
+export interface Subpath {
+  points: number[]
+  closed: boolean
+}
+
+/**
+ * Parses SVG path data as flattenPath does, keeping each subpath (of two
+ * points or more) as drawn: open, or closed by a `Z`, for a stroke.
+ * `flatness`: the largest distance, in pixels, from a curve to its polyline.
+ */
+export function flattenSubpaths(d: string, m: Matrix, flatness = FLATNESS): Subpath[] {
+  const out: Subpath[] = []
+  walkPath(d, m, flatness, (points, closed) => {
+    if (points.length >= 4) out.push({ points, closed })
+  })
+  return out
+}
+
+function walkPath(d: string, m: Matrix, flatness: number, emit: (points: number[], closed: boolean) => void): void {
   let contour: Contour = []
   const [a, b, c, dd, e, f] = m
   const px = (x: number, y: number) => a * x + c * y + e
@@ -31,8 +57,8 @@ export function flattenPath(d: string, m: Matrix): Contour[] {
   let ctrlY = 0
   let prev = ''
 
-  const finish = () => {
-    if (contour.length >= 6) contours.push(contour)
+  const finish = (closed = false) => {
+    if (contour.length > 0) emit(contour, closed)
     contour = []
   }
   const begin = () => {
@@ -51,7 +77,7 @@ export function flattenPath(d: string, m: Matrix): Contour[] {
     const p2x = px(nx, ny), p2y = py(nx, ny)
     const ddx = p0x - 2 * p1x + p2x
     const ddy = p0y - 2 * p1y + p2y
-    const n = Math.min(100, Math.ceil(Math.sqrt(Math.hypot(ddx, ddy) / (4 * FLATNESS))))
+    const n = Math.min(100, Math.ceil(Math.sqrt(Math.hypot(ddx, ddy) / (4 * flatness))))
     for (let i = 1; i < n; i++) {
       const t = i / n
       const u = 1 - t
@@ -69,7 +95,7 @@ export function flattenPath(d: string, m: Matrix): Contour[] {
     const p3x = px(nx, ny), p3y = py(nx, ny)
     const dd1 = Math.hypot(p0x - 2 * p1x + p2x, p0y - 2 * p1y + p2y)
     const dd2 = Math.hypot(p1x - 2 * p2x + p3x, p1y - 2 * p2y + p3y)
-    const n = Math.min(100, Math.ceil(Math.sqrt((0.75 * Math.max(dd1, dd2)) / FLATNESS)))
+    const n = Math.min(100, Math.ceil(Math.sqrt((0.75 * Math.max(dd1, dd2)) / flatness)))
     for (let i = 1; i < n; i++) {
       const t = i / n
       const u = 1 - t
@@ -103,7 +129,7 @@ export function flattenPath(d: string, m: Matrix): Contour[] {
     let cx = NaN
     let cy = NaN
     if (upper === 'Z') {
-      finish()
+      finish(true)
       x = startX
       y = startY
     } else if (upper === 'M') {
@@ -184,7 +210,6 @@ export function flattenPath(d: string, m: Matrix): Contour[] {
     prev = upper
   }
   finish()
-  return contours
 }
 
 /** Reads SVG path data: command letters, numbers ("1.5.5-2e3"), and arc flags ("01"). */

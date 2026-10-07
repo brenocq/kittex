@@ -37,11 +37,29 @@ export type Segment =
       delimiter: MathDelimiter
       start: number
       end: number
+      /**
+       * Set only with LineScannerOptions.diagrams: the block is a drawing for
+       * TeX, not math: a ```latex or ```tex fence (`latex`), a ```tikz fence
+       * (`tikz`), or a bare tikzpicture, tikzcd or circuitikz environment
+       * (`env`). `tex` is the fence's content (the environment whole), `raw`
+       * the block as written.
+       */
+      diagram?: 'latex' | 'tikz' | 'env'
     }
 
 export interface LineScannerOptions {
   /** Lines an open display block may hold before it is released as text. Default 40. */
   maxHeldLines?: number
+  /**
+   * Also hold diagrams for TeX (see the math segment's `diagram`): ```latex,
+   * ```tex and ```tikz fences and bare tikzpicture, tikzcd and circuitikz
+   * environments, each held until it closes (released as text past
+   * maxDiagramLines) and returned as a display segment marked `diagram`.
+   * Off by default: they are code and prose as before.
+   */
+  diagrams?: boolean
+  /** Lines an open diagram may hold before it is released as text. Default 400. */
+  maxDiagramLines?: number
 }
 
 /** Scans a reply as it streams in, in batches of whole lines (MessageDisplay deltas). */
@@ -83,6 +101,51 @@ export interface TypesetResult {
   height: number
   depth: number
   ops: DrawOp[]
+}
+
+// ─── diagram ─────────────────────────────────────────────────────────────────
+
+/** A colour to paint with: sRGB and an opacity from 0 to 1. */
+export interface Paint {
+  color: RGB
+  opacity: number
+}
+
+/** How a path is stroked (SVG's stroke properties), lengths in the path's own units. */
+export interface StrokeStyle {
+  width: number
+  cap: 'butt' | 'round' | 'square'
+  join: 'miter' | 'round' | 'bevel'
+  miterLimit: number
+  /** Dash lengths, on and off in turn; absent for a solid line. */
+  dash?: readonly number[]
+  dashOffset?: number
+}
+
+/**
+ * One painting operation of a picture, in em (as DrawOp: origin at the left
+ * end of the baseline, y down, `d` mapped by `transform`), painted over what
+ * came before it. `clip` indexes Picture.clips. `glyph`: the outline of a
+ * character (text in the picture), drawn with the font's stroke weight as the
+ * math is.
+ */
+export type PictureOp =
+  | { type: 'fill'; d: string; transform: Matrix; rule: 'nonzero' | 'evenodd'; paint: Paint; glyph?: boolean; clip?: number }
+  | { type: 'stroke'; d: string; transform: Matrix; style: StrokeStyle; paint: Paint; clip?: number }
+
+/** A clip region: the union of its paths, intersected with the clip it was set inside (`within`). */
+export interface PictureClip {
+  paths: { d: string; transform: Matrix; rule: 'nonzero' | 'evenodd' }[]
+  within?: number
+}
+
+/** A drawing from TeX (dvisvgm's SVG): its box in em and the paint that fills it. */
+export interface Picture {
+  width: number
+  height: number
+  depth: number
+  ops: PictureOp[]
+  clips: PictureClip[]
 }
 
 // ─── raster ──────────────────────────────────────────────────────────────────

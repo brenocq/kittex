@@ -35,6 +35,8 @@ export type KittexEnv = {
   emojiSequences?: boolean
   /** The stroke weight the math is drawn with, matched to the terminal font's weight (strokeWeight); absent when that weight isn't known (the default weight). */
   weight?: number
+  /** The terminal's background, when its colours were read: TeX's white becomes it, and diagrams' colours are kept legible on it. */
+  background?: { r: number; g: number; b: number }
   /** With `inkOver`: kitty's text curve (text_composition_strategy) the ink's alpha follows instead of the gamma-blend correction. */
   inkCurve?: { gamma: number; contrast: number }
   /** kitty's modify_font changes to its cells; absent when none is set. */
@@ -89,6 +91,13 @@ export type KittexPreview = {
    * text width); its image lies over it in the item once landed.
    */
   indent?: number
+  /**
+   * A diagram for the local TeX (a ```latex, ```tex or ```tikz block, or a
+   * bare picture environment), `tex` its source: the preview is its
+   * placeholder, `rows` tall, drawn over by its picture once landed (with
+   * `error`: the block as written and its `not rendered` line).
+   */
+  diagram?: 'latex' | 'tikz' | 'env'
 }
 
 /** One text block kittex streamed (kittex.blocks, by MessageDisplay's message_id). */

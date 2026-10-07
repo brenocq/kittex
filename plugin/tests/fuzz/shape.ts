@@ -30,6 +30,8 @@ export interface Shape {
   graphemeLegacy?: boolean
   /** Ghostty only: adjust-cell-height / adjust-font-baseline, as its config probe reads them. */
   cellAdjust?: CellAdjust
+  /** The local TeX was found (the `latex` option on): diagrams and the math MathJax refuses go to it. */
+  tex?: boolean
 }
 
 /** Cell sizes: kitty's at common fonts and scales, Ghostty's (10×21, 9×19 at 1x), and odd ones. */
@@ -56,6 +58,8 @@ export function shapeFor(seed: number): Shape {
     flushSeed: r.int(0, 2 ** 30),
     trimLanded: r.chance(0.3),
     ...ghosttyOptions(r),
+    // From a source of its own: a seed keeps the terminal it had.
+    ...(new Rng(seed ^ 0x7e70).chance(0.5) ? { tex: true } : {}),
   }
 }
 
@@ -123,7 +127,7 @@ export function envFor(shape: Shape): KittexEnv {
 export function describeShape(shape: Shape): string {
   const mpw = shape.maxProseWidth !== undefined ? ` maxProseWidth=${shape.maxProseWidth}` : ''
   const ghostty = shape.terminal !== 'ghostty' ? '' : `${shape.graphemeLegacy ? ' grapheme-width-method=legacy' : ''}${shape.cellAdjust ? ` cell adjust ${JSON.stringify(shape.cellAdjust)}` : ''}`
-  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}${ghostty}, block ${shape.block}, inline ${shape.inline}, links ${shape.links}${mpw}`
+  return `${shape.columns} columns, ${shape.cellWidth}×${shape.cellHeight} px cells, ${shape.terminal}${ghostty}, block ${shape.block}, inline ${shape.inline}, links ${shape.links}${mpw}${shape.tex ? ', local TeX' : ''}`
 }
 
 /** MessageDisplay flushes for a reply: whole-line batches, the last final (it may end mid-line, or be empty). */
