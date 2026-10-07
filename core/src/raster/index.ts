@@ -2,10 +2,10 @@ import type { CellBox, DrawOp, Matrix, Picture, Raster, RasterOptions, RGB, Type
 import { Coverage } from './fill.js'
 import { Canvas } from './paint.js'
 import { type Contour, flattenPath, flattenSubpaths } from './path.js'
-import { encodeAlphaPng, encodeRgbaPng, inkAlpha, recolorPng } from './png.js'
+import { encodeAlphaPng, encodeQuantizedPng, encodeRgbaPng, inkAlpha, recolorPng } from './png.js'
 import { snapStroke, strokeOutlines } from './stroke.js'
 
-export { encodeRgbaPng, inkAlpha, recolorPng }
+export { encodeQuantizedPng, encodeRgbaPng, inkAlpha, recolorPng }
 
 /*
  * Draw ops (em) -> anti-aliased coverage over whole terminal cells.
@@ -453,12 +453,14 @@ export interface PictureOptions {
   emPx: number
   cellWidth: number
   cellHeight: number
-  /** Cells across, 1 to 255: the image spans them, the picture centred, shrunk to fit. */
+  /** Cells across, 1 to 255: the picture is shrunk to fit them; its image is as many whole cells wide as it needs. */
   maxColumns: number
   /** Rows the picture may take, 1 to 255: a taller one is shrunk to fit. */
   maxRows: number
   /** Reserve at least this many rows (a streaming placeholder's); the picture is centred vertically. */
   minRows?: number
+  /** At least this many columns wide (the picture centred across them). */
+  minColumns?: number
   /** Stroke darkening, as RasterOptions.weight: glyphs, fills and lines grow by this many thousandths of an em. */
   weight?: number
   /** The colour a picture's colour is drawn in (`line`: a stroke or a glyph), or `erase` for none. */
@@ -487,8 +489,10 @@ function pictureLayout(picture: Picture, options: PictureOptions): Layout {
   const pad = Math.ceil((weight / 1000) * emPx - 1e-9)
   const room = maxRows * options.cellHeight - 2 * pad
   if (boxHeight * emPx > room) emPx = Math.max(1e-6, room) / boxHeight
-  const placed = layout(box, { emPx, cellWidth: options.cellWidth, cellHeight: options.cellHeight, maxColumns: options.maxColumns, align: 'center', minRows: options.minRows, weight })
-  return { ...placed, scale: (placed.scale * emPx) / options.emPx }
+  // As wide as the picture (whole cells), not the column: the caller centres it. Less to send, and never wider than it must be.
+  const placed = layout(box, { emPx, cellWidth: options.cellWidth, cellHeight: options.cellHeight, maxColumns: options.maxColumns, align: 'left', minRows: options.minRows, ...(options.minColumns !== undefined ? { minColumns: options.minColumns } : {}), weight })
+  const originX = Math.round((placed.widthPx - box.width * placed.k) / 2)
+  return { ...placed, originX, scale: (placed.scale * emPx) / options.emPx }
 }
 
 /** The cells a picture takes under `options`, without drawing it (`scale`: against the size its em would give it). */
@@ -626,7 +630,7 @@ function contourPath(c: Contour): string {
   return d + 'Z'
 }
 
-/** A picture's pixels as a PNG (straight alpha, its colours as drawn). */
+/** A picture's pixels as a PNG: an indexed one with its colours quantized (encodeQuantizedPng), its colours as drawn. */
 export function encodePicturePng(raster: PictureRaster): Uint8Array {
-  return encodeRgbaPng(raster.rgba, raster.widthPx, raster.heightPx)
+  return encodeQuantizedPng(raster.rgba, raster.widthPx, raster.heightPx)
 }

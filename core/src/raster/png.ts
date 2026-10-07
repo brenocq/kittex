@@ -57,9 +57,108 @@ export function encodeRgbaPng(rgba: Uint8Array, width: number, height: number): 
   return concat([SIGNATURE, chunk('IHDR', ihdr), chunk('IDAT', zlibSync(filterRgba(rgba, width, height), { level: 6 })), chunk('IEND', new Uint8Array(0))])
 }
 
+/**
+ * Straight-alpha RGBA pixels (a TeX picture) as an indexed PNG, at most 256
+ * palette entries, most compressed: a picture has few colours, so each
+ * pixel is its nearest of up to MAX_INKS colours (the most covered first,
+ * one per distinct colour) at one of the alpha levels the rest of the
+ * palette leaves, so anti-aliasing stays. Exact where the picture has at most
+ * 255 colour and alpha pairs. A tenth or less of encodeRgbaPng's bytes.
+ */
+export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const n = width * height
+  // The colour and alpha pairs, with how much ink each colour carries.
+  const pairs = new Map<number, number>()
+  const weight = new Map<number, number>()
+  for (let i = 0; i < n; i++) {
+    const a = rgba[4 * i + 3]!
+    if (a === 0) continue
+    const rgb = (rgba[4 * i]! << 16) | (rgba[4 * i + 1]! << 8) | rgba[4 * i + 2]!
+    if (pairs.size <= 256) pairs.set(rgb * 256 + a, 0)
+    weight.set(rgb, (weight.get(rgb) ?? 0) + a)
+  }
+  const index = new Uint8Array(n)
+  let plte: number[] = [0, 0, 0]
+  let trns: number[] = [0]
+  if (pairs.size <= 255) {
+    const slot = new Map<number, number>()
+    for (const key of pairs.keys()) {
+      slot.set(key, slot.size + 1)
+      const rgb = Math.floor(key / 256)
+      plte.push((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
+      trns.push(key % 256)
+    }
+    for (let i = 0; i < n; i++) {
+      const a = rgba[4 * i + 3]!
+      if (a === 0) continue
+      const rgb = (rgba[4 * i]! << 16) | (rgba[4 * i + 1]! << 8) | rgba[4 * i + 2]!
+      index[i] = slot.get(rgb * 256 + a)!
+    }
+  } else {
+    // The inks: the most covered colours, each one far enough from those before it (an edge's blends are not inks).
+    const inks: [number, number, number][] = []
+    for (const [rgb] of [...weight].sort((a, b) => b[1] - a[1])) {
+      const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
+      if (inks.every(ink => distance(ink, c) > INK_DISTANCE)) inks.push(c)
+      if (inks.length >= MAX_INKS) break
+    }
+    const levels = Math.floor(255 / inks.length)
+    plte = [0, 0, 0]
+    trns = [0]
+    for (const ink of inks) {
+      for (let l = 1; l <= levels; l++) {
+        plte.push(...ink)
+        trns.push(Math.round((255 * l) / levels))
+      }
+    }
+    const nearest = new Map<number, number>()
+    for (let i = 0; i < n; i++) {
+      const a = rgba[4 * i + 3]!
+      if (a === 0) continue
+      const rgb = (rgba[4 * i]! << 16) | (rgba[4 * i + 1]! << 8) | rgba[4 * i + 2]!
+      let k = nearest.get(rgb)
+      if (k === undefined) {
+        const c: [number, number, number] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255]
+        k = 0
+        for (let j = 1; j < inks.length; j++) if (distance(inks[j]!, c) < distance(inks[k]!, c)) k = j
+        nearest.set(rgb, k)
+      }
+      const level = Math.max(1, Math.round((a * levels) / 255))
+      index[i] = 1 + k * levels + level - 1
+    }
+  }
+  const ihdr = new Uint8Array(13)
+  const view = new DataView(ihdr.buffer)
+  view.setUint32(0, width)
+  view.setUint32(4, height)
+  ihdr.set([8, 3, 0, 0, 0], 8)
+  return concat([
+    SIGNATURE,
+    chunk('IHDR', ihdr),
+    chunk('PLTE', Uint8Array.from(plte)),
+    chunk('tRNS', Uint8Array.from(trns)),
+    chunk('IDAT', zlibSync(filterBytes(index, width, height, 1), { level: 9 })),
+    chunk('IEND', new Uint8Array(0)),
+  ])
+}
+
+/** The most colours a quantized picture keeps (each with 255 / MAX_INKS alpha levels: 31 at 8). */
+const MAX_INKS = 8
+/** How far apart (squared RGB distance) two inks are. */
+const INK_DISTANCE = 40 * 40
+
+function distance(a: readonly number[], b: readonly number[]): number {
+  return (a[0]! - b[0]!) ** 2 + (a[1]! - b[1]!) ** 2 + (a[2]! - b[2]!) ** 2
+}
+
 /** Rows of 4-byte pixels, each prefixed with the filter (None, Sub, Up or Paeth) that leaves the smallest absolute sum. */
 function filterRgba(rgba: Uint8Array, w: number, h: number): Uint8Array {
-  const stride = w * 4
+  return filterBytes(rgba, w, h, 4)
+}
+
+/** Rows of `bpp`-byte pixels, each prefixed with the filter (None, Sub, Up or Paeth) that leaves the smallest absolute sum. */
+function filterBytes(rgba: Uint8Array, w: number, h: number, bpp: number): Uint8Array {
+  const stride = w * bpp
   const out = new Uint8Array(h * (stride + 1))
   const trial = [new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride)]
   const cost = (row: Uint8Array) => {
@@ -73,9 +172,9 @@ function filterRgba(rgba: Uint8Array, w: number, h: number): Uint8Array {
     const [none, sub, upRow, paeth] = trial as [Uint8Array, Uint8Array, Uint8Array, Uint8Array]
     for (let i = 0; i < stride; i++) {
       const x = rgba[at + i]!
-      const a = i >= 4 ? rgba[at + i - 4]! : 0
+      const a = i >= bpp ? rgba[at + i - bpp]! : 0
       const b = up >= 0 ? rgba[up + i]! : 0
-      const c = up >= 0 && i >= 4 ? rgba[up + i - 4]! : 0
+      const c = up >= 0 && i >= bpp ? rgba[up + i - bpp]! : 0
       none[i] = x
       sub[i] = (x - a) & 255
       upRow[i] = (x - b) & 255

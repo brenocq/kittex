@@ -17,7 +17,11 @@ export {
   diagramFence,
   drawsPicture,
   dvisvgmArgv,
+  FORMAT_SOURCE,
+  formatArgv,
+  formatName,
   isJobDir,
+  latexArgv,
   JOB_NAME,
   jobDirTemplate,
   LATEX_ARGV,
@@ -453,17 +457,15 @@ export const MAX_PICTURE_ROWS = 30
 /** Pictures that would have to shrink below this to fit are refused (TexError): their text would be unreadable. */
 export const MIN_PICTURE_SCALE = 0.3
 
-/** The largest PNG an Image takes (2 MiB). */
-export const MAX_PNG_BYTES = 2 * 1024 * 1024
-
 function pictureOptions(env: PictureEnv, minRows?: number) {
   const paper = { ink: env.ink, background: env.background ?? assumedBackground(env.ink) }
   return {
     emPx: env.emPx,
     cellWidth: env.cellWidth,
     cellHeight: env.cellHeight,
-    maxColumns: Math.max(1, Math.min(255, env.maxColumns)),
-    maxRows: Math.max(1, Math.min(255, env.maxRows ?? MAX_PICTURE_ROWS)),
+    // Never a side past MAX_IMAGE_SIDE pixels: at large cells, fewer columns and rows.
+    maxColumns: imageColumns(env),
+    maxRows: Math.max(1, Math.min(255, env.maxRows ?? MAX_PICTURE_ROWS, Math.floor(MAX_IMAGE_SIDE / env.cellHeight))),
     ...(minRows !== undefined ? { minRows } : {}),
     ...(env.weight !== undefined ? { weight: env.weight } : {}),
     ...(env.inkOver ? { over: env.inkOver } : {}),
@@ -483,15 +485,23 @@ export function measurePicture(picture: Picture, env: PictureEnv): CellBox {
   return box
 }
 
-/** Draws a TeX picture in its colours (adaptColor), at least `minRows` tall. Throws TexError. */
-export function renderPicture(picture: Picture, env: PictureEnv, minRows?: number): RenderedImage {
-  const options = pictureOptions(env, minRows)
-  const box = pictureCells(picture, options)
+/**
+ * Draws a TeX picture in its colours (adaptColor), at least `minRows` tall,
+ * as many whole cells wide as it needs (centre it in its column). `density`
+ * below 1 draws it with that fraction of the cells' pixels each way (the
+ * terminal scales the image to its cells): the same cells for a quarter of
+ * the bytes at a half, to fit what one drawing may send. Throws TexError.
+ */
+export function renderPicture(picture: Picture, env: PictureEnv, minRows?: number, density = 1): RenderedImage {
+  const box = pictureCells(picture, pictureOptions(env, minRows))
+  const d = Math.min(1, Math.max(0.1, density))
+  // Fewer pixels, the same cells: as many columns and rows as at full density.
+  const options = d === 1 ? pictureOptions(env, minRows) : { ...pictureOptions({ ...env, cellWidth: env.cellWidth * d, cellHeight: env.cellHeight * d, emPx: env.emPx * d }, box.rows), minColumns: box.columns }
   if (box.scale < MIN_PICTURE_SCALE) throw new TexError(`picture too large to draw legibly (it would be drawn at ${Math.round(box.scale * 100)}% size)`)
   if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS) throw new TexError('picture too large to draw')
   const raster = rasterizePicture(picture, options)
   const png = encodePicturePng(raster)
-  if (png.length > MAX_PNG_BYTES) throw new TexError('picture too large to send to the terminal')
+  if (png.length > MAX_IMAGE_BYTES) throw new TexError('picture too large to send to the terminal')
   return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
 }
 
