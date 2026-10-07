@@ -183,6 +183,10 @@ const ATTACKS: [string, string][] = [
   ['usepackage parent', '\\usepackage{../evil}'],
   ['shellesc package', '\\usepackage{shellesc}'],
   ['minted', '\\usepackage{minted}'],
+  // asymptote runs its external renderer through shell escape, like minted/pythontex/gnuplottex above.
+  ['asymptote package', '\\usepackage{asymptote}\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}'],
+  ['asy environment', '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\\begin{asy}\nfile f = input("/home/u/secret");\n\\end{asy}'],
+  ['asydef environment', '\\begin{asydef}\nimport os;\n\\end{asydef}'],
   ['includegraphics', '\\includegraphics{/home/u/photo.png}'],
   ['graphicspath', '\\graphicspath{{/home/u/}}'],
   ['pgfplots table by path', '\\begin{axis}\\addplot table {/home/u/data.csv};\\end{axis}'],
