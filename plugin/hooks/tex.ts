@@ -398,6 +398,14 @@ async function compileOnce(host: TexHost, setup: TexSetup, document: TexDocument
   }
 }
 
+/**
+ * One compile of `document` outside the book: nothing remembered, nothing
+ * cached (/kittex-doctor's trial picture), within `timeoutMs`.
+ */
+export function compileTrial(host: TexHost, setup: TexSetup, document: TexDocument, timeoutMs: number): Promise<TexOutcome> {
+  return compileOnce(host, setup, document, Date.now() + timeoutMs, timeoutMs).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
+}
+
 function firstLine(text: string): string {
   return (text.split('\n').find(line => line.trim() !== '') ?? '').replace(/^\s*(?:ERROR|WARNING):?\s*/i, '').trim().slice(0, 200)
 }

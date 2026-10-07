@@ -94,6 +94,8 @@ import { newestFirst } from './schedule.ts'
 import type { InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
 import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
+import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
+import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 
 type $ = EngineInterface
 
@@ -206,17 +208,21 @@ let redraw: (() => void) | undefined
 export const register: Register = (on, options) => {
   /** The `block` and `inline` options: how each kind of math is shown (image, unicode or raw). */
   const math = mathOptions(options)
-  // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model).
-  if (math.block === 'raw' && math.inline === 'raw') return
+  // Both left as Claude wrote them: kittex does nothing (no rewrite, no instructions to the model) but its doctor.
+  const off = math.block === 'raw' && math.inline === 'raw'
   cacheOn = options.cache !== false
   /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
   const latex = options.latex === 'off' ? 'off' : 'auto'
-  texAllowed = latex === 'auto' && math.block !== 'unicode'
+  texAllowed = !off && latex === 'auto' && math.block !== 'unicode'
+
+  // /kittex-doctor (doctor.ts), whatever the options.
+  on('command.run', { command: 'kittex-doctor' }, $ => runDoctor($, options))
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
   on('session.start', async ($, e, next) => {
-    const started = await next(e)
+    const started = await startDoctor($, e.surface, await next(e))
+    if (off) return started
     cells?.stop()
     cells = cellsFor($)
     later = laterFor($)
@@ -252,6 +258,7 @@ export const register: Register = (on, options) => {
     }
     return started
   })
+  if (off) return
 
   on('config.set', { key: 'theme' }, async ($, e, next) => {
     const result = await next(e)
@@ -1612,4 +1619,120 @@ function texRefusal(tex: string, display: boolean): TexError | undefined {
   const document = mathJob(tex, display)
   const outcome = document ? texBook.known(document) : undefined
   return outcome && !outcome.ok && outcome.lasting ? new TexError(outcome.error) : undefined
+}
+
+// ─── /kittex-doctor (doctor.ts) ──────────────────────────────────────────────
+
+/** The surface session.start reported, for the doctor. */
+let doctorSurface: string | undefined
+
+/** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
+async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {
+  doctorSurface = surface ?? undefined
+  await $.command.register({ name: 'kittex-doctor', description: DOCTOR_DESCRIPTION }).catch(() => undefined)
+  return started
+}
+
+/** The answer to /kittex-doctor: the report, or why there is none. */
+async function runDoctor($: $, options: Parameters<Register>[1]): Promise<{ text: string }> {
+  try {
+    return { text: formatDoctor(await doctorFacts($, options)) }
+  } catch (error) {
+    return { text: `kittex doctor failed: ${plain(String(error))}` }
+  }
+}
+
+/** Everything the doctor reports: what setup found (or the same read again when kittex is off), and the probes. */
+async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<DoctorFacts> {
+  const math = mathOptions(options)
+  const off = math.block === 'raw' && math.inline === 'raw'
+  const variables = processEnv.TERM !== undefined || processEnv.HOME !== undefined ? processEnv : await readProcessEnv($)
+  const [PATH, TMPDIR, XDG_CACHE_HOME] = await Promise.all([$.env.get('PATH'), $.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME')])
+  const run = (argv: readonly string[]) => $.process.run(argv, { timeoutMs: DOCTOR_PROBE_MS }).catch(() => undefined)
+  const host: DoctorHost = {
+    run: (argv, init) => $.process.run(argv, init),
+    write: (path, text) => $.fs.write(path, text),
+    read: async path => ((await $.fs.exists(path).catch(() => false)) ? $.fs.read(path).catch(() => undefined) : undefined),
+    exists: path => $.fs.exists(path),
+    size: path => $.fs.stat(path).then(stat => stat.size, () => undefined),
+  }
+  const [uname, osRelease, version, manifest, env, policy] = await Promise.all([
+    platform ?? run(['uname', '-s']).then(out => (out?.exitCode === 0 ? out.stdout : undefined)),
+    $.fs.read('/etc/os-release').catch(() => undefined),
+    $.session.version().catch(() => undefined),
+    $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`).catch(() => undefined),
+    readEnv($).catch(() => null),
+    $.settings.read({ source: 'policy' }).catch(() => undefined),
+  ])
+  const os = osFacts(uname, typeof osRelease === 'string' ? osRelease : undefined)
+  const info = terminal ?? detectTerminal(variables)
+  const surface = doctorSurface
+  const drawn = !off && surface === 'terminal' && (env?.images ?? info.images) && math.block === 'image'
+  const env2 = { PATH, HOME: variables.HOME, TMPDIR, XDG_CACHE_HOME }
+  // The section the setup looked for: still there now?
+  let section: boolean | undefined
+  if (!off && surface === 'terminal' && instructs(env)) {
+    section = await $.prompt.compose({ surfaces: ['terminal'] }).then(composed => composed.sections.some(one => one.id === SECTION_ID), () => undefined)
+  }
+  const [diagrams, cache, font] = await Promise.all([
+    probeDiagrams(host, { option: options.latex === 'off' ? 'off' : 'auto', drawn, found: texBook.ready, os, env: env2, hide: hiddenDirs(variables.HOME, TMPDIR) }),
+    probeCache(host, env2),
+    doctorFont($, env),
+  ])
+  const hex = (c: { r: number; g: number; b: number } | undefined) => (c ? `#${[c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}` : undefined)
+  const program = [variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION].filter(Boolean).join(' ')
+  const terminalFacts: TerminalFacts = {
+    kind: info.kind,
+    images: info.images,
+    ...(info.multiplexer ? { multiplexer: info.multiplexer } : {}),
+    ...(info.ssh ? { ssh: true } : {}),
+    ...(variables.TERM ? { term: variables.TERM } : {}),
+    ...(program ? { program } : {}),
+    ...(env ? { cell: { width: env.cellWidth, height: env.cellHeight, measured: env.measured } } : {}),
+    ...(font ? { font } : {}),
+    ...(env ? { ink: hex(env.ink) } : {}),
+    ...(env?.background ? { background: hex(env.background) } : {}),
+    colors: terminalColors?.foreground ? 'terminal' : 'theme',
+  }
+  const pluginVersion = typeof manifest === 'string' ? (JSON.parse(manifest) as { version?: unknown }).version : undefined
+  const optionText = (value: unknown, fallback: string) => (value === undefined ? fallback : typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value))
+  return {
+    kittex: { ...(typeof pluginVersion === 'string' ? { version: pluginVersion } : {}), build: BUILD_ID.replace(/^kittex-build:/, '') },
+    ...(version ? { claudeCode: version.version } : {}),
+    ...(surface ? { surface } : {}),
+    ...(off ? {} : { terminal: terminalFacts }),
+    streaming: { off, streamed: streams.size, unstreamed: pendingRows.length, ...(section !== undefined ? { section } : {}), managed: policy !== undefined && Object.keys(policy).length > 0 },
+    options: {
+      block: math.block,
+      inline: math.inline,
+      latex: options.latex === 'off' ? 'off' : 'auto',
+      ...('cache' in options ? { cache: optionText(options.cache, 'on') } : {}),
+    },
+    diagrams,
+    cache,
+    os,
+    ...(variables.HOME ? { home: variables.HOME } : {}),
+  }
+}
+
+/** The text font as kittex reads it (loadFont's sources, in its order), for the doctor. */
+async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['font'] | undefined> {
+  const named = terminalColors?.font
+  const metrics = env?.font !== undefined
+  if (!named && !metrics) return undefined
+  let file = named?.file
+  let source: NonNullable<TerminalFacts['font']>['source'] = file ? 'kitty' : undefined
+  if (!file && named?.family) {
+    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
+    if (found && matchesFamily(found, named.family)) [file, source] = [found.file, 'fontconfig']
+  }
+  if (!file && terminal?.kind === 'ghostty') source = 'ghostty'
+  return {
+    ...(named?.family ? { family: named.family } : {}),
+    ...(named?.style ? { style: named.style } : {}),
+    ...(named?.sizePt ? { sizePt: named.sizePt } : env?.font?.sizePt ? { sizePt: env.font.sizePt } : {}),
+    ...(file ? { file } : {}),
+    ...(source ? { source } : {}),
+    metrics,
+  }
 }
