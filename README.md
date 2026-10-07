@@ -32,12 +32,12 @@ Derive the quadratic formula step by step
 
 <table>
   <tr>
-    <td width="50%"><b>Live.</b> Readable previews while Claude streams; real equations the moment each block lands, and not one line jumps.</td>
-    <td width="50%"><b>Real TeX.</b> MathJax 4 with New Computer Modern, the font of LaTeX papers, drawn in your terminal's own colours.</td>
+    <td width="50%"><b>Live.</b> Readable math while Claude writes, real equations the moment each part is done. Nothing jumps around.</td>
+    <td width="50%"><b>Real TeX.</b> Typeset like a LaTeX paper, in your terminal's own colours.</td>
   </tr>
   <tr>
-    <td><b>Inline too.</b> <code>$x_k$</code> in a sentence, a list, a heading, a quote or a table sits on the text's baseline, sized to the font around it.</td>
-    <td><b>Copy.</b> Hover an equation and click <code>⧉ copy LaTeX</code> to grab its source.</td>
+    <td><b>Inline too.</b> Math in the middle of a sentence sits right on the line, at the size of your text.</td>
+    <td><b>Copy.</b> Hover an equation to copy its LaTeX.</td>
   </tr>
 </table>
 
