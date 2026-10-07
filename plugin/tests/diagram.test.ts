@@ -127,10 +127,14 @@ describe('diagrams while streaming', () => {
   })
 
   test('the placeholder is a block of pads, its label centred, no line empty', () => {
-    const placeholder = diagramPlaceholder('plot', 5, 40)
+    const placeholder = diagramPlaceholder('plot', 5, 40, '\\draw (0,0);')
     expect(placeholder).toHaveLength(5)
     expect(placeholder[2]).toMatch(/^(?:&nbsp;)+· plot ·$/)
     for (const line of placeholder) expect(line.startsWith(PREVIEW_PAD)).toBe(true)
+    // Its last row: blank cells that tag the source, so two placeholders of one size never read alike.
+    expect(placeholder[4]!.replace(/^(?:&nbsp;)+/, '').replaceAll('\u034f', '')).toBe('\u2800'.repeat(16))
+    expect(diagramPlaceholder('plot', 5, 40, '\\draw (1,1);')[4]).not.toBe(placeholder[4])
+    expect(diagramPlaceholder('plot', 5, 40, '\\draw (0,0);')).toEqual(placeholder)
   })
 
   test("TeX's error leaves the block as written, with a not-rendered line naming it", async () => {

@@ -2347,14 +2347,32 @@ function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
     if (!(error instanceof TexError)) throw error
     return failed(reasonOf(error))
   }
-  const preview = writer.block(diagramPlaceholder(job.label, rows, pictureEnv.maxColumns))
+  const preview = writer.block(diagramPlaceholder(job.label, rows, pictureEnv.maxColumns, segment.tex))
   records.push({ preview, tex: segment.tex, rows, diagram: kind })
   plan.cut(writer.recent().length)
 }
 
-/** A diagram's placeholder lines while it waits to land: `rows` rows, its label in the middle one, centred in `maxColumns`. */
-export function diagramPlaceholder(label: string, rows: number, maxColumns: number): string[] {
+/**
+ * A diagram's placeholder lines while it waits to land: `rows` rows, its
+ * label in the middle one, centred in `maxColumns`. Its last row ends with a
+ * tag of its source (PLACEHOLDER_TAG blank cells, each followed by
+ * INLINE_MARK or not, by the source's hash): two diagrams of the same size
+ * would otherwise write the same placeholder, and a landed block finds each
+ * preview by its text.
+ */
+export function diagramPlaceholder(label: string, rows: number, maxColumns: number, source = ''): string[] {
   const lines = Array.from({ length: Math.max(1, rows) }, () => '')
   lines[Math.floor((lines.length - 1) / 2)] = oneLine(`· ${label} ·`, previewColumns(maxColumns))
-  return previewMarkdownLines(lines, maxColumns)
+  const out = previewMarkdownLines(lines, maxColumns)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < source.length; i++) hash = Math.imul(hash ^ source.charCodeAt(i), 0x01000193)
+  let tag = ''
+  // Never as wide as the column: a line that wraps takes another row.
+  for (let bit = 0; bit < Math.min(PLACEHOLDER_TAG, maxColumns - 3); bit++) tag += BLANK_CELL + ((hash >>> bit) & 1 ? INLINE_MARK : '')
+  const last = out.length - 1
+  out[last] = out[last]!.replace(new RegExp(`${BLANK_CELL}$`), '') + tag
+  return out
 }
+
+/** Cells in a diagram placeholder's tag: 2^16 tags, as wide as the shortest reply column leaves room for. */
+const PLACEHOLDER_TAG = 16

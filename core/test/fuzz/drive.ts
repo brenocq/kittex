@@ -9,19 +9,28 @@
 import { performance } from 'node:perf_hooks'
 
 import {
+  createLineScanner,
   GlyphError,
   measureDisplay,
+  measureDisplayResult,
   renderDisplay,
+  renderDisplayResult,
   renderInline,
+  renderInlineResult,
+  renderPicture,
   scan,
   TexError,
+  texPicture,
 } from '../../../plugin/hooks/core.js'
-import type { InkPlace, InlineEnv, RenderedImage, RenderEnv } from '../../../plugin/hooks/core.js'
+import type { InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TexDocument } from '../../../plugin/hooks/core.js'
+import { diagramJob, mathJob, texBook, texResult } from '../../../plugin/hooks/tex.ts'
+import type { DiagramKind, TexOutcome } from '../../../plugin/hooks/tex.ts'
 import {
   inlineEnvFor,
   inlineText,
   joinProse,
   MessageStream,
+  pictureEnvFor,
   planLanded,
   proseWidthFor,
   renderEnvFor,
@@ -79,12 +88,92 @@ function geometry(env: RenderEnv): string {
 }
 
 function displayImage(tex: string, env: RenderEnv, rows?: number): ImageInfo {
-  const height = rows ?? measureDisplay(tex, env).rows
-  return cached(`d\n${geometry(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
+  try {
+    const height = rows ?? measureDisplay(tex, env).rows
+    return cached(`d\n${geometry(env)}\n${height}\n${tex}`, () => renderDisplay(tex, env, height))
+  } catch (error) {
+    // register.tsx: what MathJax refused, TeX's drawing where the local LaTeX made one.
+    const result = error instanceof TexError ? texDrawn(tex, true) : undefined
+    if (!result) throw error
+    const height = rows ?? measureDisplayResult(result, env).rows
+    return cached(`t\n${geometry(env)}\n${height}\n${tex}`, () => renderDisplayResult(result, env, height))
+  }
+}
+
+function displayRows(tex: string, env: RenderEnv): number {
+  try {
+    return measureDisplay(tex, env).rows
+  } catch (error) {
+    const result = error instanceof TexError ? texDrawn(tex, true) : undefined
+    if (!result) throw error
+    return measureDisplayResult(result, env).rows
+  }
 }
 
 function inlineImage(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): ImageInfo {
-  return cached(`i\n${geometry(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
+  try {
+    return cached(`i\n${geometry(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInline(tex, env, columns, place))
+  } catch (error) {
+    const result = error instanceof TexError ? texDrawn(tex, false) : undefined
+    if (!result) throw error
+    return cached(`ti\n${geometry(env)},${env.baselinePx}\n${columns},${place}\n${tex}`, () => renderInlineResult(result, env, columns, place))
+  }
+}
+
+// ─── The local TeX (a stand-in: tex.ts's book, filled with outcomes by the document's hash) ─
+
+function hash(text: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
+/**
+ * What TeX gives for a document, decided by its hash: mostly a picture of a
+ * size of its own (a diagram from 40 to 500 big points wide and 20 to 400
+ * high, a formula on its baseline), now and then an error, now and then too
+ * slow. The same document always gives the same outcome.
+ */
+function fakeTex(document: TexDocument): TexOutcome {
+  const h = hash(document.text)
+  const roll = h % 20
+  if (roll === 0) return { ok: false, error: 'Undefined control sequence \\nope (line 2)', lasting: true }
+  if (roll === 1) return { ok: false, error: 'TeX took longer than 3 s', lasting: false }
+  const w = 40 + ((h >>> 5) % 460)
+  const ht = 20 + ((h >>> 13) % 380)
+  const svg =
+    document.baseline === 'origin'
+      ? `<svg viewBox='0 -7 ${10 + (w % 40)} 10'><path d='M0 -6H${10 + (w % 40)}V2H0Z'/></svg>`
+      : `<svg viewBox='0 0 ${w} ${ht}'><path d='M0 0L${w} ${ht}' stroke='#f00' stroke-width='0.8' fill='none'/><rect x='2' y='2' width='${w / 2}' height='${ht / 3}' fill='#ccf'/><path d='M1 1H${w - 1}V${ht - 1}H1Z' fill='none' stroke='#000' stroke-width='0.4'/></svg>`
+  return { ok: true, picture: texPicture(svg, document) }
+}
+
+/** Resolves the documents a stream waits for, as register.tsx's compile would (synchronously, from the stand-in). */
+function compileFake(documents: readonly TexDocument[]): void {
+  for (const document of documents) if (!texBook.known(document)) texBook.remember(document, fakeTex(document))
+}
+
+/** A formula MathJax refused, as TeX drew it (register.tsx's texDrawn). */
+function texDrawn(tex: string, display: boolean) {
+  const document = mathJob(tex, display)
+  const outcome = document ? texBook.known(document) : undefined
+  return outcome?.ok ? texResult(outcome.picture) : undefined
+}
+
+/** A diagram's image (register.tsx's diagramImage), from the book. */
+function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number): ImageInfo | { error: string } | null {
+  const job = diagramJob(source, kind)
+  if (!job) return null
+  if ('refused' in job) return { error: job.refused }
+  const outcome = texBook.known(job.document)
+  if (!outcome || (!outcome.ok && !outcome.lasting)) return null
+  if (!outcome.ok) return { error: outcome.error }
+  try {
+    return cached(`p\n${geometry(env)}\n${rows ?? ''}\n${job.document.text}`, () => renderPicture(outcome.picture, env, rows))
+  } catch (error) {
+    if (error instanceof TexError) return { error: error.message }
+    throw error
+  }
 }
 
 // ─── Streaming ───────────────────────────────────────────────────────────────
@@ -103,8 +192,9 @@ export interface Streamed {
 export function streamReply(markdown: string, shape: Shape, store: readonly PreviewRecord[] = []): Streamed {
   const env = envFor(shape)
   const math = mathOf(shape)
-  const streamEnv: StreamEnv = streamEnvFor(env, math)
-  const stream = new MessageStream()
+  const tex = shape.tex ? { block: math.block === 'image', inline: math.inline === 'image' } : undefined
+  const streamEnv: StreamEnv = { ...streamEnvFor(env, math), ...(tex && (tex.block || tex.inline) ? { tex } : {}) }
+  const stream = new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true }))
   const flushes = flushesOf(markdown, shape.flushSeed)
   // register.tsx: with both kinds raw kittex registers no hook, and every flush shows as written.
   if (math.block === 'raw' && math.inline === 'raw') return { shown: flushes.join(''), written: [], store: [...store], flushes: flushes.length, maxPushMs: 0 }
@@ -116,13 +206,20 @@ export function streamReply(markdown: string, shape: Shape, store: readonly Prev
     const final = index === flushes.length - 1
     // register.tsx: a message whose first flush is empty and final is not streamed.
     if (index === 0 && delta === '' && final) break
-    const start = performance.now()
-    const rewrite = stream.push(delta, final, streamEnv)
-    maxPushMs = Math.max(maxPushMs, performance.now() - start)
-    shown += rewrite.text
-    if (rewrite.records.length > 0) {
-      written.push(...rewrite.records)
-      records = remember(records, rewrite.records)
+    let start = performance.now()
+    let rewrite = stream.push(delta, final, streamEnv)
+    // register.tsx's withTex: TeX answers what the flush waits for, then the stream resumes.
+    for (let round = 0; ; round++) {
+      maxPushMs = Math.max(maxPushMs, performance.now() - start)
+      shown += rewrite.text
+      if (rewrite.records.length > 0) {
+        written.push(...rewrite.records)
+        records = remember(records, rewrite.records)
+      }
+      if (!rewrite.pending?.length || round >= 64) break
+      compileFake(rewrite.pending)
+      start = performance.now()
+      rewrite = stream.resume(streamEnv)
     }
   }
   return { shown, written, store: records, flushes: flushes.length, maxPushMs }
@@ -146,7 +243,7 @@ export function land(text: string, store: readonly PreviewRecord[], shape: Shape
   const math = mathOf(shape)
   // The four registrations' matchers (terminal): streamed previews, or LaTeX as written; none with both kinds raw.
   const registered = math.block !== 'raw' || math.inline !== 'raw'
-  const hooked = registered && (STREAMED_PATTERN.test(text) || sourcePattern(math).test(text))
+  const hooked = registered && (STREAMED_PATTERN.test(text) || sourcePattern(math, shape.tex === true).test(text))
   if (!hooked) return { hooked, plan: null, pieces: [{ kind: 'prose', text, gap: false }], ms: 0 }
   const blockImages = env.images && math.block === 'image'
   const inlineImages = env.images && math.inline === 'image'
@@ -155,11 +252,13 @@ export function land(text: string, store: readonly PreviewRecord[], shape: Shape
   const renderEnv = renderEnvFor(env, columns)
   const inlineEnv = inlineEnvFor(env, columns)
   const start = performance.now()
+  const pictureEnv = pictureEnvFor(env, columns)
   const plan = planLanded(text, records, {
     maxColumns: renderEnv.maxColumns,
     draw: blockImages ? (tex, rows, maxColumns) => displayImage(tex, maxColumns === undefined ? renderEnv : { ...renderEnv, maxColumns }, rows) : undefined,
     width: proseWidthFor(env, columns),
-    measure: (tex, maxColumns) => measureDisplay(tex, { ...renderEnv, maxColumns }).rows,
+    measure: (tex, maxColumns) => displayRows(tex, { ...renderEnv, maxColumns }),
+    ...(shape.tex && blockImages ? { diagram: (source: string, kind: DiagramKind, rows?: number) => diagramImage(source, kind, pictureEnv, rows) } : {}),
     math,
     inline: inlineImages ? { env: inlineEnv, width: proseWidthFor(env, columns), columns, draw: (tex, cells, place) => inlineImage(tex, inlineEnv, cells, place), hyperlinks: env.hyperlinks, emojiSequences: env.emojiSequences } : undefined,
   })
@@ -363,8 +462,8 @@ export function runCase(markdown: string, shape: Shape, options: { store?: Previ
   // Raw LaTeX left at landing.
   rawLatex(markdown, live, shape, fail)
 
-  // Formulas the reply never had (the landed text is scanned again).
-  const own = new Set(scan(markdown).flatMap(segment => (segment.kind === 'math' ? [segment.tex] : [])))
+  // Formulas (and diagrams) the reply never had (the landed text is scanned again).
+  const own = new Set(scan(markdown, { diagrams: shape.tex === true }).flatMap(segment => (segment.kind === 'math' ? [segment.tex] : [])))
   const phantoms = liveDrawing.images.filter(image => !own.has(image.tex))
   if (phantoms.length > 0) fail('phantom', 'rescan', `drawn at landing, not in the reply: ${phantoms.slice(0, 3).map(image => JSON.stringify(image.tex)).join(', ')}`, { tex: phantoms[0]!.tex })
 
@@ -587,7 +686,10 @@ function rawLatex(markdown: string, live: Landed, shape: Shape, fail: Fail): voi
       error = e instanceof GlyphError ? undefined : e.message
     }
     if (error !== undefined) {
-      refused += segment.display ? 1 : 0
+      // One the local TeX drew needs no note.
+      const document = shape.tex ? mathJob(segment.tex, segment.display) : undefined
+      const drawn = document ? texBook.known(document)?.ok === true : false
+      refused += segment.display && !drawn ? 1 : 0
       continue
     }
     const raw = segment.raw.trim()
