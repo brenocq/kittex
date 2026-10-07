@@ -65,7 +65,6 @@ import {
   INSTRUCT_WITHOUT_IMAGES,
   inlineFlow,
   joinProse,
-  LANDED_PATTERN,
   STREAMED_PATTERN,
   linkEnv,
   locatePreviews,
@@ -223,6 +222,17 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await startDoctor($, e.surface, await next(e))
     if (off) return started
+    if (e.surface !== 'terminal') {
+      // A -p run or the SDK (Claude Code for VS Code, the desktop app): no
+      // terminal draws here, and MessageDisplay's rewrite would become the
+      // reply's text in the SDK's output. Nothing is probed or rewritten.
+      cells?.stop()
+      cells = undefined
+      await $.state.set(ENV, null).catch(() => undefined)
+      envKnown = true
+      envSettled?.()
+      return started
+    }
     cells?.stop()
     cells = cellsFor($)
     later = laterFor($)
@@ -251,7 +261,7 @@ export const register: Register = (on, options) => {
     // The first session keeps what renders before it read from TeX's cache (a resume's diagrams).
     if (sessions > 1) texBook.reset()
     texProbe = undefined
-    if (latex === 'auto' && e.surface === 'terminal' && math.block !== 'unicode') {
+    if (latex === 'auto' && math.block !== 'unicode') {
       redraw = () => $.ui.invalidate('ui.render')
       // Not awaited: a few short commands (each with its time limit) that settle meanwhile.
       texProbe = setUpTex($)
@@ -372,13 +382,15 @@ export const register: Register = (on, options) => {
   // streamed one whatever else it holds (a reply's `$100` stays as written in
   // it). LaTeX as written (after --resume) is hooked from the first render (its
   // own drawing would show the source), as is every block on the main screen,
-  // which reports no `onScreen`. The four matchers never select the same
-  // render, so kittex runs once per render.
+  // which reports no `onScreen`. The three matchers never select the same
+  // render, so kittex runs once per render. A remote surface (desktop, vscode,
+  // mobile) is not hooked: it has no kitty graphics and draws the text it
+  // holds as markdown (and math) its own way, where a formula's Unicode laid
+  // out in rows would run together on one line.
   const landed = { component: 'AssistantMessage' } as const
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: [{}, null] } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
   on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { ...landed, surface: ['desktop', 'mobile', 'vscode'], props: { text: LANDED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
 }
 
 /** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
@@ -438,7 +450,7 @@ async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { me
  * `unicode` gets no image, one set to `raw` is left as written).
  */
 async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, math: MathOptions): Promise<RenderElement> {
-  if (e.props.isSummary) return next(e)
+  if (e.props.isSummary || e.surface !== 'terminal') return next(e)
   try {
     let env = await readEnv($)
     if (!env) {
@@ -1624,12 +1636,12 @@ function texRefusal(tex: string, display: boolean): TexError | undefined {
 
 // ─── /kittex-doctor (doctor.ts) ──────────────────────────────────────────────
 
-/** The surface session.start reported, for the doctor. */
-let doctorSurface: string | undefined
+/** The surface session.start reported, for the doctor (null: a -p run or the SDK; undefined: not seen). */
+let doctorSurface: string | null | undefined
 
 /** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
 async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {
-  doctorSurface = surface ?? undefined
+  doctorSurface = surface
   await $.command.register({ name: 'kittex-doctor', description: DOCTOR_DESCRIPTION }).catch(() => undefined)
   return started
 }
@@ -1668,7 +1680,10 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
   ])
   const os = osFacts(uname, typeof osRelease === 'string' ? osRelease : undefined)
   const info = terminal ?? detectTerminal(variables)
-  const surface = doctorSurface
+  // Where the session draws now: session.start's surface, else (a -p run or the SDK) the clients attached since.
+  const attached = await $.session.surfaces().catch(() => [] as const)
+  const clients = attached.filter(one => one !== 'terminal')
+  const surface = doctorSurface === null ? (clients[0] ?? 'none') : doctorSurface
   const drawn = !off && surface === 'terminal' && (env?.images ?? info.images) && math.block === 'image'
   const env2 = { PATH, HOME: variables.HOME, TMPDIR, XDG_CACHE_HOME }
   // The section the setup looked for: still there now?
@@ -1702,6 +1717,7 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
     kittex: { ...(typeof pluginVersion === 'string' ? { version: pluginVersion } : {}), build: BUILD_ID.replace(/^kittex-build:/, '') },
     ...(version ? { claudeCode: version.version } : {}),
     ...(surface ? { surface } : {}),
+    ...(surface === 'terminal' && clients.length > 0 ? { clients } : {}),
     ...(off ? {} : { terminal: terminalFacts }),
     streaming: { off, streamed: streams.size, unstreamed: pendingRows.length, ...(section !== undefined ? { section } : {}), managed: policy !== undefined && Object.keys(policy).length > 0 },
     options: {

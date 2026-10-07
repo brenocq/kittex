@@ -531,7 +531,10 @@ export interface StreamingFacts {
 export interface DoctorFacts {
   kittex: { version?: string; build?: string }
   claudeCode?: string
+  /** Where the session draws: `terminal`, a remote surface, or `none` (a -p run or the SDK with no client attached). */
   surface?: string
+  /** The remote surfaces drawing beside the terminal (a phone attached), when there are any. */
+  clients?: readonly string[]
   terminal?: TerminalFacts
   streaming: StreamingFacts
   /** The options as set, by name, shown as given. */
@@ -583,14 +586,17 @@ export function formatDoctor(facts: DoctorFacts): string {
   // The row reads `kittex: ` first (the engine names the plugin that answered).
   const head = [`${facts.kittex.version ?? 'version unknown'}${facts.kittex.build ? ` (build ${facts.kittex.build})` : ''}`]
   if (facts.claudeCode) head.push(`Claude Code ${plain(facts.claudeCode)}`)
-  if (facts.surface) head.push(`${facts.surface} surface`)
+  if (facts.surface) head.push(facts.surface === 'none' ? 'no surface' : `${facts.surface} surface`)
   out.push(head.join(' · '))
 
   // Terminal
   section('Terminal')
   const t = facts.terminal
-  if (facts.surface && facts.surface !== 'terminal') {
-    line(INFO, `the ${facts.surface} surface: kittex writes math as Unicode text here (images need kitty or Ghostty).`)
+  const elsewhere = facts.surface !== undefined && facts.surface !== 'terminal'
+  if (facts.surface === 'none') {
+    line(INFO, 'no terminal (a -p run or the SDK): kittex leaves replies as Claude wrote them (images need kitty or Ghostty, in a terminal).')
+  } else if (elsewhere) {
+    line(INFO, `the ${facts.surface} surface: kittex leaves replies to its own drawing here (images need kitty or Ghostty, in a terminal).`)
   } else if (t) {
     const name = TERMINAL_NAMES[t.kind]
     const program = t.program && t.program.toLowerCase() !== name.toLowerCase() ? (t.program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? t.program.slice(name.length + 1) : t.program) : undefined
@@ -620,6 +626,7 @@ export function formatDoctor(facts: DoctorFacts): string {
   } else {
     line(INFO, 'not set up (kittex is off)')
   }
+  if (!elsewhere && facts.clients?.length) line(INFO, `also drawn on ${facts.clients.join(', ')}: kittex leaves replies to that surface's own drawing there`)
 
   // Streaming
   section('Drawing while streaming')
@@ -627,6 +634,8 @@ export function formatDoctor(facts: DoctorFacts): string {
   const fix = "Fix: ask an admin to deploy kittex through Claude Code's managed settings."
   if (s.off) {
     line(INFO, 'kittex is off: Block math and Inline math are both raw')
+  } else if (elsewhere) {
+    line(INFO, 'not a terminal: replies pass as Claude wrote them, and Claude gets no instructions about math')
   } else if (s.streamed > 0) {
     line(OK, 'live: replies reach kittex as they stream')
   } else if (s.unstreamed > 0) {

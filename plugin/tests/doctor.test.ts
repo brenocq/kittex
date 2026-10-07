@@ -391,7 +391,7 @@ describe('the report', () => {
     const wez = formatDoctor(facts(d, { terminal: { kind: 'wezterm', images: false, program: 'WezTerm 20240203', colors: 'theme' } }))
     expect(wez).toContain('✗ WezTerm (20240203): WezTerm has no kitty Unicode placeholders.')
     const desktop = formatDoctor(facts(d, { surface: 'desktop' }))
-    expect(desktop).toContain('– the desktop surface: kittex writes math as Unicode text here')
+    expect(desktop).toContain('– the desktop surface: kittex leaves replies to its own drawing here')
   })
 
   test("host text can't change the markdown", () => {
