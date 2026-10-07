@@ -335,6 +335,7 @@ export function previewColumns(maxColumns: number): number {
 export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
   const renderEnv: RenderEnv = { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: replyColumns(columns), emPx: env.emPx, ink: env.ink }
   if (env.inkOver) renderEnv.inkOver = env.inkOver
+  if (env.weight !== undefined) renderEnv.weight = env.weight
   return renderEnv
 }
 

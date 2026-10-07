@@ -1,5 +1,5 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng } from './raster/index.js'
+import { encodePng, INK_EDGE, inkAlpha, measure, rasterize, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from './typeset/index.js'
 import type { CellBox, RasterOptions, RGB, TypesetResult, UnicodeResult } from './types.js'
@@ -24,7 +24,7 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ColorProbeOptions, ConfigReadOptions, FileReader, InkSources } from './terminal/index.js'
-export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, TexError, texToMathML, toUnicode, typeset }
+export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
 
@@ -45,6 +45,11 @@ export interface RenderEnv {
    * blend alike.
    */
   inkOver?: RGB
+  /**
+   * The stroke weight to draw with (RasterOptions.weight), to match the
+   * terminal font's (strokeWeight); absent for the default.
+   */
+  weight?: number
 }
 
 /** Where an inline formula is drawn: one text row. */
@@ -143,7 +148,7 @@ function tooSmall(scale: number): string {
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
 export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): RenderedImage {
   // Cached without its colour: a palette PNG changes colour by rewriting its palette alone.
-  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, minRows ?? 0, tex].join('\n')
+  const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', minRows ?? 0, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetDisplay(tex, env)
@@ -243,7 +248,7 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
  * it; `start`: after it), to join a space the slot already has there.
  */
 export function renderInline(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
-  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.baselinePx, columns, place, tex].join('\n')
+  const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.weight ?? '', env.baselinePx, columns, place, tex].join('\n')
   let image = remember(imageCache, key)
   if (!image) {
     const result = typesetInline(tex)
@@ -337,6 +342,7 @@ function inlineOptions(env: InlineEnv, columns: number, align: 'left' | 'center'
     centerInk: align === 'left',
     minScale: MIN_INLINE_SCALE,
     overflowPx: Math.max(1, Math.round(env.cellHeight * INLINE_OVERFLOW)),
+    ...(env.weight !== undefined ? { weight: env.weight } : {}),
   }
 }
 
@@ -348,6 +354,7 @@ function rasterOptions(env: RenderEnv, minRows?: number): RasterOptions {
     maxColumns: Math.max(1, Math.min(255, env.maxColumns)),
     align: 'center',
     minRows,
+    ...(env.weight !== undefined ? { weight: env.weight } : {}),
   }
 }
 

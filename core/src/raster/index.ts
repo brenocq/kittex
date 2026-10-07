@@ -54,6 +54,42 @@ export { inkAlpha, recolorPng }
  */
 export const DEFAULT_WEIGHT = 15
 
+/**
+ * Stroke weights that match terminal text of a CSS font weight: Light,
+ * Regular, Medium, SemiBold and Bold. Set by eye in the README demo's
+ * renderer at 13 × 26 px cells, math beside Roboto Mono of each weight (and
+ * Source Code Pro, DejaVu Sans Mono): Regular keeps DEFAULT_WEIGHT, which
+ * already reads as heavy as its text; Medium needs 20, where 24 reads bold.
+ * By the QA's stroke metric (2 × area / perimeter of the letters, ink over
+ * 110) Medium text measures 2.06 px and the math 1.75 px at 15, 1.88 px at
+ * 20: Computer Modern's thin hairlines keep its mean below a monoline font's
+ * at any weight that doesn't fill its counters.
+ */
+const WEIGHT_STEPS: readonly (readonly [fontWeight: number, weight: number])[] = [
+  [300, 12],
+  [400, DEFAULT_WEIGHT],
+  [500, 20],
+  [600, 23],
+  [700, 26],
+]
+
+/**
+ * The stroke weight (RasterOptions.weight) that matches text in a font of
+ * this CSS weight (TerminalColors.fontWeight), interpolated between the
+ * steps above and held at their ends; DEFAULT_WEIGHT when not known.
+ */
+export function strokeWeight(fontWeight: number | undefined): number {
+  if (fontWeight === undefined || !Number.isFinite(fontWeight)) return DEFAULT_WEIGHT
+  const first = WEIGHT_STEPS[0]!
+  const last = WEIGHT_STEPS.at(-1)!
+  if (fontWeight <= first[0]) return first[1]
+  if (fontWeight >= last[0]) return last[1]
+  const i = WEIGHT_STEPS.findIndex(([w]) => w >= fontWeight)
+  const [w0, s0] = WEIGHT_STEPS[i - 1]!
+  const [w1, s1] = WEIGHT_STEPS[i]!
+  return Math.round(s0 + ((s1 - s0) * (fontWeight - w0)) / (w1 - w0))
+}
+
 /** How far an inline formula's baseline may move from the font's, as a fraction of the cell height (at least a pixel). */
 export const BASELINE_SHIFT = 0.04
 

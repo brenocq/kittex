@@ -30,6 +30,7 @@ import {
   readTerminalColors,
   renderDisplay,
   renderInline,
+  strokeWeight,
   toBase64,
 } from './core.js'
 import type { CellSize, InkPlace, InlineEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo } from './core.js'
@@ -414,6 +415,8 @@ async function setUp($: $, surface: string | null): Promise<void> {
     maxProseWidth: await readProseWidth($),
     ...linkEnv(processEnv),
     emojiSequences: drawsEmojiSequences(terminal, terminalColors),
+    // Strokes as heavy as the terminal's text, when its font's weight is known.
+    ...(terminalColors?.fontWeight ? { weight: strokeWeight(terminalColors.fontWeight) } : {}),
   }
   await $.state.set(ENV, env)
 
@@ -751,7 +754,7 @@ function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
 
 function geometryKey(env: RenderEnv): string {
   const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b] : []
-  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
 }
 
 /** A display formula's image, `rows` tall (measured when not given). Throws TexError. */

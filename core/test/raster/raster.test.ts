@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { DEFAULT_WEIGHT, INK_EDGE, measure, rasterize } from '../../src/raster/index.js'
+import { DEFAULT_WEIGHT, INK_EDGE, measure, rasterize, strokeWeight } from '../../src/raster/index.js'
 import type { DrawOp, Raster, RasterOptions, TypesetResult } from '../../src/types.js'
 
 const FIXTURES = join(import.meta.dirname, 'fixtures')
@@ -315,5 +315,25 @@ describe('inline placement (baselinePx)', () => {
     expect([r.columns, r.widthPx]).toEqual([4, 52])
     const { x0, x1 } = inkBox(r)
     expect(Math.abs(x0 + x1 - 52)).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('strokeWeight', () => {
+  // Matched by eye to Roboto Mono of each weight at 13×26 px cells (Medium measured 17% heavier than the default).
+  test('Regular text keeps the default, Medium and heavier draw heavier, Light lighter', () => {
+    expect(strokeWeight(undefined)).toBe(DEFAULT_WEIGHT)
+    expect(strokeWeight(400)).toBe(DEFAULT_WEIGHT)
+    expect(strokeWeight(500)).toBe(20)
+    expect(strokeWeight(450)).toBe(18)
+    expect(strokeWeight(700)).toBe(26)
+    expect(strokeWeight(900)).toBe(26)
+    expect(strokeWeight(300)).toBe(12)
+    expect(strokeWeight(100)).toBe(12)
+  })
+
+  test('a heavier weight darkens the same glyphs', () => {
+    const glyph = box(0.5, 0.5, 0)
+    const ink = (weight: number) => rasterize(glyph, { ...base, align: 'left', weight }).alpha.reduce((s, a) => s + a, 0)
+    expect(ink(strokeWeight(500))).toBeGreaterThan(ink(strokeWeight(400)))
   })
 })
