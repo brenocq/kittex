@@ -76,10 +76,10 @@ describe('emoji sequences where the terminal agrees with the engine', () => {
     const placed = images(plan(shown, records, env(true)).pieces)
     expect(placed.map(image => [image.tex, image.row, image.col])).toEqual([
       ['\\hat{x}_{k|k-1} = F_k \\hat{x}_{k-1|k-1}', 0, 54],
-      ['K_k = P_{k|k-1} H_k^\\top S_k^{-1}', 1, 5],
-      ['z_k', 1, 53],
-      ['\\sigma^2 = 4', 1, 90],
-      ['\\sigma^2 \\approx 0.8', 2, 3],
+      ['K_k = P_{k|k-1} H_k^\\top S_k^{-1}', 1, 0],
+      ['z_k', 1, 45],
+      ['\\sigma^2 = 4', 1, 82],
+      ['\\sigma^2 \\approx 0.8', 2, 0],
     ])
     for (const [k, image] of placed.entries()) expect(image.image.columns).toBe(records[k]!.columns)
     // Read back after --resume, the LaTeX is laid out the same way.

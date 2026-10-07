@@ -1,6 +1,7 @@
 import type { Probe, RGB, TerminalColors } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
+import { fontWeightOf } from './font.js'
 
 // kitty's built-in colours (kitty/options/types.py defaults, 0.49.1).
 export const KITTY_DEFAULT_FOREGROUND: RGB = { r: 0xdd, g: 0xdd, b: 0xdd }
@@ -20,6 +21,8 @@ const AUTO_THEMES = { dark: 'dark-theme.auto.conf', light: 'light-theme.auto.con
 // next to kitty.conf) replace all colours when the desktop is in that mode; the
 // GUI picks one from the desktop's appearance, which a child can't ask, so each
 // existing one is printed too, prefixed "dark:", "light:" or "no_preference:".
+// Then the text font as configured (font_family: its family, style, names and
+// variation axes) as a "font_spec" line holding a JSON list of strings.
 // Needs no terminal and no window; takes about 50 ms.
 const KITTY_COLORS_PY = String.raw`
 from kitty.cli import create_default_opts
@@ -31,6 +34,17 @@ print('foreground', h(o.foreground))
 print('background', h(o.background))
 for i in range(16):
     print('color%d' % i, h(o.color_table[i]))
+try:
+    import json
+    f = o.font_family
+    if isinstance(f, str):
+        names = [f]
+    else:
+        names = [str(a) for a in (getattr(f, 'axes', None) or ())]
+        names += [getattr(f, k, None) for k in ('style', 'full_name', 'postscript_name', 'family', 'created_from_string')]
+    print('font_spec', json.dumps([n for n in names if isinstance(n, str) and n]))
+except Exception:
+    pass
 try:
     from kitty.colors import theme_colors
     theme_colors.refresh()
@@ -53,7 +67,12 @@ except Exception:
 export function parseKittyColors(stdout: string, scheme?: Scheme): TerminalColors | undefined {
   const base = new Map<string, RGB>()
   const variants = new Map<string, Map<string, RGB>>()
+  let fontWeight: number | undefined
   for (const line of stdout.split('\n')) {
+    if (line.startsWith('font_spec ')) {
+      fontWeight = fontWeightOf(fontNames(line.slice(10)))
+      continue
+    }
     const m = /^\s*(?:(dark|light|no_preference):)?([a-z_0-9]+)\s+(\S+)\s*$/.exec(line)
     if (!m) continue
     const color = parseColorValue(m[3]!)
@@ -63,7 +82,17 @@ export function parseKittyColors(stdout: string, scheme?: Scheme): TerminalColor
   }
   const chosen = (scheme && variants.get(scheme)) || base
   if (!chosen.has('foreground') && !chosen.has('background')) return undefined
-  return kittyColors(chosen)
+  return { ...kittyColors(chosen), ...(fontWeight ? { fontWeight } : {}) }
+}
+
+/** The names in a font_spec line's JSON list, axes first, as the probe prints them. */
+function fontNames(json: string): string[] {
+  try {
+    const names: unknown = JSON.parse(json)
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 function kittyColors(values: ReadonlyMap<string, RGB>): TerminalColors {
@@ -133,7 +162,10 @@ export async function readKittyColors(read: FileReader, options: ConfigReadOptio
     const theme = new Map<string, RGB>()
     if (await loadKittyFile({ ...ctx, seen: new Set(), values: theme }, `${configDir}/${AUTO_THEMES[options.scheme]}`)) return kittyColors(theme)
   }
-  return found ? kittyColors(values) : undefined
+  if (!found) return undefined
+  // font_family as written: `family="Roboto Mono" style="Medium"` or a bare name (`Roboto Mono Medium`).
+  const fontWeight = ctx.font === undefined ? undefined : fontWeightOf([/\bstyle\s*=\s*"([^"]*)"/.exec(ctx.font)?.[1], ctx.font])
+  return { ...kittyColors(values), ...(fontWeight ? { fontWeight } : {}) }
 }
 
 interface KittyParse {
@@ -142,6 +174,8 @@ interface KittyParse {
   platform: string | undefined
   seen: Set<string>
   values: Map<string, RGB>
+  /** The last font_family value. */
+  font?: string
 }
 
 const KITTY_COLOR_KEY = /^(foreground|background|color(?:[0-9]|1[0-5]))$/
@@ -174,6 +208,8 @@ async function loadKittyLines(ctx: KittyParse, text: string, base: string, depth
     } else if (KITTY_COLOR_KEY.test(key)) {
       const color = parseColorValue(value)
       if (color) ctx.values.set(key, color)
+    } else if (key === 'font_family') {
+      ctx.font = value.trim()
     }
   }
 }

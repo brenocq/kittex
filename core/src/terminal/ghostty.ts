@@ -1,6 +1,7 @@
 import type { CellAdjust, MetricAdjust, Probe, RGB, TerminalColors } from '../types.js'
 import type { Env } from './detect.js'
 import { type ConfigReadOptions, dirname, type FileReader, homeOf, parseColorValue, resolvePath, tryRead, xdgConfigHome } from './color.js'
+import { fontWeightOf } from './font.js'
 
 // Ghostty's built-in colours (src/config/Config.zig, src/terminal/color.zig;
 // the same in 1.2.3, 1.3.1 and main as of 2026-10).
@@ -49,6 +50,8 @@ interface GhosttyColors {
   palette: Map<number, RGB>
   alphaBlending?: TerminalColors['alphaBlending']
   adjust: CellAdjust
+  /** font-variation, font-style and the first font-family, as last set. */
+  font: { variation?: string; style?: string; family?: string }
 }
 
 /** Ghostty's options that set its cells off the font's own metrics, and the CellAdjust field each sets. */
@@ -70,7 +73,7 @@ export function parseMetricAdjust(value: string): MetricAdjust | undefined {
 }
 
 function emptyColors(): GhosttyColors {
-  return { values: new Map(), palette: new Map(), adjust: {} }
+  return { values: new Map(), palette: new Map(), adjust: {}, font: {} }
 }
 
 /** An `alpha-blending` value (Ghostty 1.1 and later). */
@@ -91,6 +94,11 @@ function applyColor(into: GhosttyColors, key: string, value: string): void {
     const adjust = value ? parseMetricAdjust(value) : undefined
     if (adjust) into.adjust[field] = adjust
     else delete into.adjust[field]
+  } else if (key === 'font-family' || key === 'font-style' || key === 'font-variation') {
+    // Repeated font-family lines add fallbacks: the first is the text font (an empty one resets the list).
+    const field = key === 'font-family' ? 'family' : key === 'font-style' ? 'style' : 'variation'
+    if (!value) delete into.font[field]
+    else if (field !== 'family' || into.font.family === undefined) into.font[field] = value
   } else if (key === 'alpha-blending') {
     // An empty value resets it to the default, which depends on the platform.
     into.alphaBlending = parseAlphaBlending(value)
@@ -126,6 +134,11 @@ function toTerminalColors(...layers: GhosttyColors[]): TerminalColors {
   if (blending) colors.alphaBlending = blending
   const adjust: CellAdjust = Object.assign({}, ...layers.map(l => l.adjust))
   if (Object.keys(adjust).length > 0) colors.cellAdjust = adjust
+  const font = Object.assign({}, ...layers.map(l => l.font)) as GhosttyColors['font']
+  // `default` and `true` keep the family's regular face; with no family, Ghostty's own (JetBrains Mono) Regular.
+  const style = font.style === undefined || ['default', 'true', 'false'].includes(font.style) ? undefined : font.style
+  const fontWeight = fontWeightOf([font.variation, style, font.family]) ?? (font.family === undefined && style === undefined ? 400 : undefined)
+  if (fontWeight) colors.fontWeight = fontWeight
   return colors
 }
 

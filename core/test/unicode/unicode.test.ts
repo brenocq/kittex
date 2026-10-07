@@ -7,6 +7,7 @@ const display = (tex: string, maxWidth?: number) => toUnicode(mathml(tex, true),
 const inline = (tex: string, maxWidth?: number) => toUnicode(mathml(tex, false), { display: false, maxWidth })
 const lines = (tex: string) => display(tex)?.lines
 const line = (tex: string) => inline(tex)?.lines[0]
+const tight = (tex: string) => toUnicode(mathml(tex, false), { display: false, tight: true })?.lines[0]
 
 describe('results', () => {
   test('every line is padded to the width', () => {
@@ -67,6 +68,19 @@ describe('scripts', () => {
 
   test('inline falls back to ^ and _ with parentheses', () => {
     expect(line(String.raw`e^{i\pi} + T_{\text{eff}} + x^{y^z}`)).toBe('e^(iπ) + T_(eff) + x^(yᶻ)')
+  })
+
+  // A tight preview sets the width of its image's slot: every cell it is wider shows as blank.
+  test('as narrow as reads right: a bar between script characters, sans-serif letters, bare words in a tight form', () => {
+    expect(line(String.raw`\hat{x}_{k|k-1} + P_{k\mid k-1} + A^{\mathsf{T}} + B^\intercal`)).toBe('x̂ₖ|ₖ₋₁ + Pₖ|ₖ₋₁ + Aᵀ + Bᵀ')
+    // A bar only between two script characters (|ₐ| would read as an absolute value).
+    expect(line(String.raw`x_{|a|}`)).toBe('x_(|a|)')
+    expect(tight(String.raw`\pi_{\text{ref}} + \Gamma^\lambda_{\mu\nu} + T_{eff}`)).toBe('π_ref+Γ_μν^λ+T_eff')
+    // A letter after a bare script would join it, and a parenthesis a bare word: a space parts them.
+    expect(tight(String.raw`F_{\mu\nu} = \partial_\mu A_\nu`)).toBe('F_μν=∂_μ A_ν')
+    expect(tight(String.raw`D_{KL}(p \| q) + x_y(t)`)).toBe('D_KL (p‖q)+x_y(t)')
+    // A word before a superscript character stays grouped (x_ab² would read as one script).
+    expect(tight(String.raw`x_{ab}^2`)).toBe('x_(ab)²')
   })
 
   test('display places scripts above and below', () => {

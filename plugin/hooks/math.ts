@@ -335,6 +335,7 @@ export function previewColumns(maxColumns: number): number {
 export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
   const renderEnv: RenderEnv = { cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: replyColumns(columns), emPx: env.emPx, ink: env.ink }
   if (env.inkOver) renderEnv.inkOver = env.inkOver
+  if (env.weight !== undefined) renderEnv.weight = env.weight
   return renderEnv
 }
 
@@ -427,8 +428,9 @@ export function inlinePreview(tex: string, env: InlineEnv, rowWidth = env.maxCol
  * A script written as letters or digits with no Unicode script form, which
  * the Unicode renderer groups as `_(…)` or `^(…)`, when nothing that could
  * read as part of it (a letter, a digit, a mark, another script) follows.
+ * Script characters (`^(xˣ)`, a script of its own) are no such letters.
  */
-const GROUPED_SCRIPT = /([_^])\(([\p{L}\p{N}]+)\)(?![\p{L}\p{N}\p{M}_^])/gu
+const GROUPED_SCRIPT = /([_^])\(((?:(?![\u00b2\u00b3\u00b9\u02b0-\u02ff\u1d2c-\u1dbf\u2070-\u209f\u2c7c\u2c7d])[\p{L}\p{N}])+)\)(?![\p{L}\p{N}\p{M}_^])/gu
 
 /**
  * An inline preview's scripts without the parentheses the Unicode renderer
@@ -441,43 +443,62 @@ export function ungroupScripts(unicode: string, tex: string): string {
   return /\(|\\lparen/.test(tex) ? unicode : unicode.replace(GROUPED_SCRIPT, '$1$2')
 }
 
-/** What may open a phrase right before a formula: an opening bracket or quote. */
-const OPENS = /^[\p{Ps}\p{Pi}"'`]$/u
-/** What may close one right after it: a closing bracket or quote, or punctuation (`,`, `:`, `.`). */
-const CLOSES = /^[\p{Pe}\p{Pf}\p{Po}]$/u
+/** What may open a phrase right before a formula: an opening bracket, a quote or a dash (`non-$x$`). */
+const OPENS = /^[\p{Ps}\p{Pi}\p{Pd}"'`]$/u
+/** What may close one right after it: a closing bracket or quote, punctuation (`,`, `:`, `.`) or a dash (`$x$-axis`). */
+const CLOSES = /^[\p{Pe}\p{Pf}\p{Po}\p{Pd}]$/u
 
 /**
  * Where an inline formula's ink goes in a slot wider than it, from the
  * characters drawn in the cells right before and after the slot (undefined at
- * the row's start or end): against the slot's right edge when a space (or the
- * row's start) is before it and punctuation or a closing bracket after it
- * (`y_l,`: the blank joins the space before), against its left edge in the
+ * the start or end of the row's text): flush with the text column at its
+ * start (`start`) and against the slot's right edge at its end (`end`, unless
+ * a bracket opens right before it); against the right edge when a space is
+ * before it and punctuation, a dash or a closing bracket after it (`y_l,`,
+ * `x-axis`: the blank joins the space before), against its left edge in the
  * mirror case (`(x_k `), centred otherwise (`(y_w)`, `a x b`).
  */
 export function inkPlaceBeside(before: string | undefined, after: string | undefined): InkPlace {
-  const blankBefore = before === undefined || /^\s$/u.test(before)
-  const blankAfter = after === undefined || /^\s$/u.test(after)
-  if (blankBefore && !blankAfter && CLOSES.test(after!)) return 'end'
-  if (blankAfter && !blankBefore && OPENS.test(before!)) return 'start'
+  if (before === undefined) return 'start'
+  if (after === undefined) return OPENS.test(before) ? 'start' : 'end'
+  const blankBefore = /^\s$/u.test(before)
+  const blankAfter = /^\s$/u.test(after)
+  if (blankBefore && !blankAfter && CLOSES.test(after)) return 'end'
+  if (blankAfter && !blankBefore && OPENS.test(before)) return 'start'
   return 'center'
 }
 
 /**
+ * What a row may hold before its text: indentation, quote bars, and a list
+ * item's marker (`-`, `•`, `1.`, `a.`, `iv.`) with the space after it.
+ */
+const TEXT_START = /^[\s▎]*(?:(?:[-*+•◦▪‣]|\d{1,9}[.)]|[a-z]{1,6}[.)])\s+)?$/u
+
+/**
  * The characters drawn in the cell before column `col` of a row and in the
  * cell after the `columns` from it (zero-width marks skipped; undefined past
- * the row's ends).
+ * the ends of the row's text: before its first character, a list marker or
+ * quote bar not counted, and after its last).
  */
 export function cellsBeside(line: string, col: number, columns: number): [string | undefined, string | undefined] {
+  const chars = [...line]
   let at = 0
   let before: string | undefined
-  for (const char of line) {
+  let prefix = ''
+  for (const [i, char] of chars.entries()) {
     const cells = cellsOf(char)
     if (cells === 0) continue
-    if (at + cells <= col) before = char
-    else if (at >= col + columns) return [col === 0 ? undefined : before, char]
+    if (at + cells <= col) {
+      before = char
+      prefix += char
+    } else if (at >= col + columns) {
+      // Blanks to the row's end are past its text.
+      const after = /^\s*$/u.test(chars.slice(i).join('')) ? undefined : char
+      return [TEXT_START.test(prefix) ? undefined : before, after]
+    }
     at += cells
   }
-  return [col === 0 ? undefined : before, undefined]
+  return [TEXT_START.test(prefix) ? undefined : before, undefined]
 }
 
 // ─── Markdown forms ──────────────────────────────────────────────────────────
