@@ -30,8 +30,10 @@ itself, and tells Claude to write its math as LaTeX, so you never have to ask.
 Then ask Claude something with math in it:
 
 ```
-Derive the quadratic formula step by step
+Derive the Fourier transform of a Gaussian step by step, then plot the Gaussian and its transform side by side
 ```
+
+The plot is drawn when LaTeX is installed (see **Diagrams** below); without it, everything else still renders.
 
 <details>
 <summary><b>Diagrams</b> (optional): install LaTeX to draw TikZ, pgfplots, tikz-cd, circuitikz and chemfig</summary>
