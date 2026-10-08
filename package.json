@@ -18,7 +18,8 @@
     "readme:demo:record": "python3 .github/scripts/demo/record.py",
     "readme:features": "node .github/scripts/features/build.mjs",
     "readme:features:preview": "node .github/scripts/features/build.mjs && node .github/scripts/features/preview.mjs",
-    "readme:social": "node .github/scripts/social/build.mjs"
+    "readme:social": "node .github/scripts/social/build.mjs",
+    "plugin:icon": "node .github/scripts/icon/build.mjs"
   },
   "devDependencies": {
     "@mathjax/mathjax-newcm-font": "^4.1.3",
