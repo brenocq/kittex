@@ -41,7 +41,7 @@
  */
 
 /** Bump when a document below changes what any picture looks like: it keys the disk cache. */
-export const PREAMBLE_VERSION = 3
+export const PREAMBLE_VERSION = 4
 
 /** The job file's name in the job directory, and its outputs'. */
 export const JOB_NAME = 'kittex'
@@ -121,7 +121,8 @@ const FRAGMENT_PREAMBLE = [
   `\\usetikzlibrary{${TIKZ_LIBRARIES}}`,
   '\\usepackage{pgfplots}',
   '\\pgfplotsset{compat=1.18}',
-  '\\usepgfplotslibrary{fillbetween}',
+  // pgfplots' own libraries: polar axes, groups of plots, box plots, more colormaps, patch plots and ternary axes.
+  '\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary}',
   '\\usepackage{chemfig}',
   '\\usepackage{circuitikz}',
   '\\usepackage{tikz-cd}',
@@ -130,6 +131,59 @@ const FRAGMENT_PREAMBLE = [
 
 /** Lines a fragment may carry that belong in the preamble (they are moved there). */
 const PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usepgfplotslibrary|usepgflibrary|usegdlibrary)\b[^\n]*$/gm
+
+/**
+ * A 3D curve, `\addplot3 (x(t), y(t), z(t))` in one variable, gets `samples y=0`: pgfplots samples an \addplot3 in
+ * both directions unless told so, so the curve became a grid of samples × samples points (150 samples: 22 500, past
+ * TeX's memory after 13 s) instead of a line. A triple naming `y` is a surface's, and one whose options set `samples
+ * y`, `y domain` or `variable y` says what it wants: both are left alone.
+ */
+function curvesSampledOnce(source: string): string {
+  const start = /\\addplot3\s*\+?/g
+  let out = ''
+  let from = 0
+  for (let match = start.exec(source); match; match = start.exec(source)) {
+    let at = skipBlanks(source, match.index + match[0].length)
+    let options: { open: number; close: number } | undefined
+    if (source[at] === '[') {
+      const close = matchingBracket(source, at, '[', ']')
+      if (close < 0) continue
+      options = { open: at, close }
+      at = skipBlanks(source, close + 1)
+    }
+    if (source[at] !== '(') continue
+    const close = matchingBracket(source, at, '(', ')')
+    if (close < 0) continue
+    const triple = source.slice(at + 1, close)
+    const optionText = options ? source.slice(options.open + 1, options.close) : ''
+    if (/(?:^|[^A-Za-z\\])y(?![A-Za-z])|\\y(?![A-Za-z])/.test(triple) || /samples\s+y|y\s+domain|variable\s+y/.test(optionText)) continue
+    if (options) {
+      const separator = optionText.trim() === '' ? '' : ', '
+      out += `${source.slice(from, options.close)}${separator}samples y=0`
+      from = options.close
+    } else {
+      const end = match.index + match[0].length
+      out += `${source.slice(from, end)}[samples y=0]`
+      from = end
+    }
+  }
+  return out + source.slice(from)
+}
+
+function skipBlanks(text: string, at: number): number {
+  while (at < text.length && /\s/.test(text[at]!)) at++
+  return at
+}
+
+/** The index of the bracket closing the one at `open`, counting nested pairs of the same kind; -1 when unclosed. */
+function matchingBracket(text: string, open: number, opening: string, closing: string): number {
+  let depth = 0
+  for (let at = open; at < text.length; at++) {
+    if (text[at] === opening) depth++
+    else if (text[at] === closing && --depth === 0) return at
+  }
+  return -1
+}
 
 /**
  * The document a diagram is compiled as. A whole document (`\documentclass`)
@@ -144,11 +198,13 @@ export function diagramDocument(source: string, lang: DiagramLang): TexDocument 
   // pgfplots' interpolated shading needs PostScript or PDF, which the SVG driver has neither of: drawn flat (a colour
   // per facet), and `faceted interp` as `faceted` (the same, with the facets' edges). A colorbar is drawn with that
   // shading too (one flat colour here), so it is drawn sampled, pgfplots' own way for such drivers.
-  const trimmed = source
-    .replace(/^\s*\n/, '')
-    .replace(/\s+$/, '')
-    .replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g, (_, brace?: string, faceted?: string) => `shader=${brace ? '{' : ''}${faceted ? 'faceted' : 'flat'}`)
-    .replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g, (_, side?: string) => (side ? `colorbar${side}, colorbar sampled` : 'colorbar sampled'))
+  const trimmed = curvesSampledOnce(
+    source
+      .replace(/^\s*\n/, '')
+      .replace(/\s+$/, '')
+      .replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g, (_, brace?: string, faceted?: string) => `shader=${brace ? '{' : ''}${faceted ? 'faceted' : 'flat'}`)
+      .replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g, (_, side?: string) => (side ? `colorbar${side}, colorbar sampled` : 'colorbar sampled')),
+  )
   if (lang === 'latex' && isDocument(trimmed)) {
     const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed)
     const body = hasClass ? trimmed : `\\documentclass[dvisvgm,border=1pt]{standalone}\n${trimmed}`

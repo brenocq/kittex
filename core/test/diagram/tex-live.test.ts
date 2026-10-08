@@ -147,6 +147,10 @@ describe.skipIf(!TEX)('the local TeX', () => {
       ['flat surface 40 x 40', '\\begin{tikzpicture}\\begin{axis}[view={60}{30}]\\addplot3[surf, shader=flat, samples=40, domain=-2:2] {exp(-x^2-y^2)};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['interp surface 60 x 60 (drawn flat)', '\\begin{tikzpicture}\\begin{axis}\\addplot3[surf, shader=interp, samples=60, domain=-2:2] {sin(deg(x*y))};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['1000-sample plot', '\\begin{tikzpicture}\\begin{axis}\\addplot[samples=1000, domain=0:10] {sin(deg(x))*x};\\end{axis}\\end{tikzpicture}', 'latex'],
+      // A reply's polar axis, which needs pgfplots' polar library (now loaded with the others).
+      ['polar rose curves', '\\begin{tikzpicture}\\begin{polaraxis}[width=9cm, grid=both, yticklabels={}, title={Rose curves $r=\\cos(k\\theta)$}]\\addplot[domain=0:360, samples=200, blue, thick] {cos(2*x)};\\addplot[domain=0:180, samples=200, red, thick] {cos(3*x)};\\addplot[domain=0:720, samples=300, teal, thick] {cos(2.5*x)};\\end{polaraxis}\\end{tikzpicture}', 'latex'],
+      // A reply's 3D curve: 150 samples, which pgfplots took as a 150 × 150 grid (TeX's memory ran out after 13 s) until it was sampled once.
+      ['trefoil knot, a 3D curve', '\\begin{tikzpicture}\\begin{axis}[view={60}{30}, axis lines=none]\\addplot3[domain=0:360, samples=150, line width=1.6pt, mesh, colormap/hot, point meta=x] ({sin(x)+2*sin(2*x)}, {cos(x)-2*cos(2*x)}, {-sin(3*x)});\\end{axis}\\end{tikzpicture}', 'latex'],
       // A reply's surface: faceted interp shading (drawn faceted), a colorbar (drawn sampled), groups nested thousands deep.
       ['faceted interp surface 46 x 46 with a horizontal colorbar', '\\begin{tikzpicture}\\begin{axis}[view={35}{38}, colormap/viridis, colorbar horizontal, domain=-10:10, y domain=-10:10, samples=46, trig format plots=rad, z buffer=sort]\\addplot3[surf, shader=faceted interp, draw opacity=0.25] {sin(sqrt(x^2+y^2))/sqrt(x^2+y^2)};\\end{axis}\\end{tikzpicture}', 'latex'],
       ['chemfig', '\\chemfig{*6((-OH)-=-(-[:30]*6(-=-=-=))=(-COOH)-=)}', 'latex'],
