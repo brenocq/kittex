@@ -1,7 +1,15 @@
-// The kitty: a flat, rounded tuxedo kitten sitting on the ground, drawn in its
-// own coordinates (origin on the ground under the middle of its body, y down,
+// The kitty: a flat, rounded kitten sitting on the ground, drawn in its own
+// coordinates (origin on the ground under the middle of its body, y down,
 // about 190 units tall), with the New Computer Modern integral sign as its tail.
 // Kitten proportions: a big head and eyes on a small body.
+//
+// Its coat is the author's cat's: a brown-grey mackerel tabby with white
+// below, marked as she is (sides as the viewer sees them): an M on the
+// forehead, dark-rimmed eyes, a white blaze over the nose bridge rising to a
+// point between the eyes, the white muzzle reaching out under the right eye
+// while the left cheek stays tabby down to the mouth; a white chest, belly,
+// legs and paws, the darker tabby of the right flank biting into the belly;
+// and a ringed tabby tail, dark towards its end, with a white tip.
 //
 // The parts that move carry classes the banner's stylesheet animates:
 // `tail` (swishes around its root), `j1`…`j3` with `tip` and `flick` inside
@@ -10,36 +18,42 @@
 // (blink), `ear-l` (twitches) and `pupils` (glance toward the formula).
 
 /**
- * The colours that follow the page, as CSS custom properties: the fur is a true
- * near-black on a light page; on GitHub's dark page (where black would vanish)
- * a soft charcoal with a lighter rim, so the silhouette reads. `line` draws the
- * folds inside the fur; `whisker` shows against the page itself.
+ * The colours that follow the page, as CSS custom properties. The tabby is a
+ * warm brown-grey that reads on both pages (`fur` on the head and tail,
+ * `flank` a shade darker on the body); `rim` outlines the head and body, so
+ * the white parts hold their shape on a white page; `stripe` draws the tabby's
+ * stripes and rings and `line` the folds in the fur. The tail's dark end
+ * (`tail`) is a true near-black on a light page and, on GitHub's dark page
+ * (where black would vanish), a soft charcoal with a lighter rim. `whisker`
+ * shows against the page itself.
  */
 export const CAT_THEMES = {
-  light: { fur: '#1c1d21', rim: '#3a3d45', line: '#4a4e57', whisker: '#59636e' },
-  dark: { fur: '#2c3139', rim: '#5a6370', line: '#59626e', whisker: '#8b949e' },
+  light: { fur: '#796b5f', flank: '#594b40', rim: '#3d3229', stripe: '#2a211b', line: '#43382f', tail: '#211b17', 'tail-rim': '#3d3229', whisker: '#59636e' },
+  dark: { fur: '#796b5f', flank: '#594b40', rim: '#3a3029', stripe: '#2a211b', line: '#43382f', tail: '#2e2a28', 'tail-rim': '#625a55', whisker: '#8b949e' },
 }
 
 /**
  * The classes that paint with those colours (presentation attributes cannot
- * take var()): fur filled and rimmed, fur or rim alone as fill or stroke.
+ * take var()): fur filled and rimmed, fur, flank or rim alone, stripes and
+ * folds, and the tail's dark end and its rim as fill or stroke.
  */
 export const CAT_CSS = [
-  `.fr{fill:var(--fur);stroke:var(--rim)}`,
-  `.ff{fill:var(--fur)}.fs{stroke:var(--fur)}`,
-  `.rf{fill:var(--rim)}.rs{stroke:var(--rim)}`,
-  `.ln{stroke:var(--line)}.wh{stroke:var(--whisker)}`,
+  `.fr{fill:var(--fur);stroke:var(--rim)}.ff{fill:var(--fur)}.fs{stroke:var(--fur)}.fl{fill:var(--flank)}.rf{fill:var(--rim)}.rs{stroke:var(--rim)}`,
+  `.st{stroke:var(--stripe)}.ln{stroke:var(--line)}.wh{stroke:var(--whisker)}`,
+  `.tf{fill:var(--tail)}.ts{stroke:var(--tail)}.trf{fill:var(--tail-rim)}.trs{stroke:var(--tail-rim)}`,
 ].join('')
 
 const C = {
   white: '#f8f6f1',
-  pink: '#f2a5ad',
-  nose: '#ec7f8a',
-  iris: '#f2a516',
-  irisRim: '#d27c0a',
+  shade: '#cdc7bf', // creases in the white fur
+  pink: '#efa3a8',
+  bean: '#e58f98',
+  nose: '#e9939b',
+  iris: '#c2b84a',
+  irisRim: '#221b16',
   pupil: '#141414',
   mouth: '#3a2a2a',
-  lid: '#c3c8cf',
+  lid: '#2f2b27',
 }
 
 /** Where the tail's root is, in cat units: the pivot it sways around. */
@@ -64,33 +78,53 @@ const WHISKERS = [
   [[54, -94], [64, -95], [73, -96], [83, -97]],
 ]
 
+const HEAD = 'M0 -170 C40 -170 70 -154 73 -124 C76 -94 54 -70 0 -70 C-54 -70 -76 -94 -73 -124 C-70 -154 -40 -170 0 -170 Z'
+const BODY = 'M-27 -76 C-39 -60 -48 -36 -48 -17 C-48 -5 -41 0 -31 0 L31 0 C41 0 48 -5 48 -17 C48 -36 39 -60 27 -76 Z'
+
 /**
  * The cat as SVG markup. `integral` is the ∫ glyph `{ d, box: [x0, y0, x1, y1] }`
  * in font units with y up. Colours that follow the page are classes from
- * CAT_CSS, painted by the custom properties in CAT_THEMES.
+ * CAT_CSS, painted by the custom properties in CAT_THEMES. `id` prefixes the
+ * clip paths' ids, for pages that hold more than one cat.
  */
-export function cat({ integral }) {
+export function cat({ integral, id = 'cat' }) {
   const furred = `class="fr" stroke-width="${RIM}" stroke-linejoin="round"`
+  const outline = d => `<path d="${d}" class="rs" fill="none" stroke-width="${RIM}" stroke-linejoin="round"/>`
+  const stripes = (d, width) => `<path d="${d}" class="st" fill="none" stroke-width="${width}" stroke-linecap="round"/>`
 
   // The tail: the ∫ outline about 80 units tall, its lower end tucked behind
   // the body and its upper hook curling away from the cat. It is cut into
   // segments at joints up the stem; each segment turns around the joint below
   // it, carried by the ones lower down, and a disc centred on each joint (the
   // same at every angle) closes the seam. Rims first, then the fur over them.
+  // It is a tabby tail: dark rings up the stem, and dark from the last joint
+  // to the end of the hook, with a white dot at the very tip.
   const t = tailGeometry(integral)
-  // `paint` is "r" (the rim, drawn first and wider) or "f" (the fur over it).
-  const glyph = (paint, width) => `<path class="ff ${paint}s" d="${integral.d}" transform="matrix(${r(t.s, 5)} 0 0 ${r(-t.s, 5)} ${r(t.x)} ${r(t.y)})" stroke-width="${r(width / t.s, 0)}" stroke-linejoin="round"/>`
-  // A white tip on the ∫'s upper terminal, rimmed in fur like the socks; it
-  // rides on the last segment.
+  const last = t.joints.length
+  const place = `d="${integral.d}" transform="matrix(${r(t.s, 5)} 0 0 ${r(-t.s, 5)} ${r(t.x)} ${r(t.y)})"`
+  const glyph = (cls, width) => `<path class="${cls}" ${place} stroke-width="${r(width / t.s, 0)}" stroke-linejoin="round"/>`
   const [tipX, tipY, tipR] = t.tip
-  const whiteTip = `<circle cx="${r(tipX)}" cy="${r(tipY)}" r="${r(tipR + 1.4)}" class="fs" fill="${C.white}" stroke-width="2.4"/>`
-  const layer = (paint, width, rim) => {
+  const whiteTip = `<circle cx="${r(tipX)}" cy="${r(tipY)}" r="${r(tipR + 1.4)}" class="ts" fill="${C.white}" stroke-width="2.4"/>`
+  // The rings, square to the stem, kept to the tail's shape by a mask (it
+  // rides with each segment, so the rings bend with the tail).
+  const ringsOn = k => {
+    const lines = t.rings.filter(ring => ring.segment === k).map(({ x, y, halfWidth, normal: [nx, ny] }) => {
+      const h = halfWidth + 2
+      return `M${r(x - nx * h)} ${r(y - ny * h)}L${r(x + nx * h)} ${r(y + ny * h)}`
+    })
+    return lines.length ? `<path d="${lines.join('')}" class="st" stroke-width="3.6" mask="url(#${id}-tail-shape)"/>` : ''
+  }
+  // `rim` is the rim layer (drawn first and wider) or 0 for the fur over it.
+  const layer = (width, rim) => {
     let markup = ''
-    for (let k = t.joints.length; k >= 0; k--) {
-      let segment = `<g clip-path="url(#tail-${k})">${glyph(paint, width)}</g>`
-      if (k === t.joints.length && rim === 0) segment += whiteTip
-      const above = k < t.joints.length ? `<g class="j${k + 1}"><g class="tip"><g class="flick">${markup}</g></g></g>` : ''
-      const disc = k < t.joints.length ? `<circle cx="${r(t.joints[k].x)}" cy="${r(t.joints[k].y)}" r="${r(t.joints[k].halfWidth + rim)}" class="${paint}f"/>` : ''
+    for (let k = last; k >= 0; k--) {
+      const dark = k === last
+      const cls = rim ? (dark ? 'tf trs' : 'ff rs') : dark ? 'tf ts' : 'ff fs'
+      let segment = `<g clip-path="url(#${id}-tail-${k})">${glyph(cls, width)}${rim ? '' : ringsOn(k)}</g>`
+      if (dark && rim === 0) segment += whiteTip
+      const above = k < last ? `<g class="j${k + 1}"><g class="tip"><g class="flick">${markup}</g></g></g>` : ''
+      const discClass = rim ? (k === last - 1 ? 'trf' : 'rf') : k === last - 1 ? 'tf' : 'ff'
+      const disc = k < last ? `<circle cx="${r(t.joints[k].x)}" cy="${r(t.joints[k].y)}" r="${r(t.joints[k].halfWidth + rim)}" class="${discClass}"/>` : ''
       markup = segment + above + disc
     }
     return markup
@@ -100,9 +134,11 @@ export function cat({ integral }) {
   const clips = bands.slice(0, -1).map((lower, k) => {
     const y0 = Math.max(bands[k + 1] - 0.5, -300)
     const y1 = Math.min(lower + 0.5, 300)
-    return `<clipPath id="tail-${k}"><rect x="-100" y="${r(y0)}" width="300" height="${r(y1 - y0)}"/></clipPath>`
+    return `<clipPath id="${id}-tail-${k}"><rect x="-100" y="${r(y0)}" width="300" height="${r(y1 - y0)}"/></clipPath>`
   })
-  const tail = `<defs>${clips.join('')}</defs><g class="tail">${layer('r', TAIL_THICKEN + 2 * RIM, RIM)}${layer('f', TAIL_THICKEN, 0)}</g>`
+  clips.push(`<clipPath id="${id}-head"><path d="${HEAD}"/></clipPath>`, `<clipPath id="${id}-body"><path d="${BODY}"/></clipPath>`)
+  const mask = `<mask id="${id}-tail-shape" maskUnits="userSpaceOnUse" x="-100" y="-300" width="400" height="400"><path ${place} fill="#fff" stroke="#fff" stroke-width="${r(TAIL_THICKEN / t.s, 0)}" stroke-linejoin="round"/></mask>`
+  const tail = `<defs>${clips.join('')}${mask}</defs><g class="tail">${layer(TAIL_THICKEN + 2 * RIM, RIM)}${layer(TAIL_THICKEN, 0)}</g>`
 
   const ear = (k, cls) => {
     const outer = `M${k * 64} -122 C${k * 66} -152 ${k * 64} -174 ${k * 57} -187 C${k * 54} -193 ${k * 48} -193 ${k * 44} -189 C${k * 34} -178 ${k * 22} -167 ${k * 10} -158 Z`
@@ -110,32 +146,46 @@ export function cat({ integral }) {
     return `<g class="${cls}"><path d="${outer}" ${furred}/><path d="${inner}" fill="${C.pink}"/></g>`
   }
 
+  // The body: tabby sides with mackerel stripes, then the white front over
+  // them (chest, belly and front legs; the right side's tabby bites into the
+  // belly), the white haunches and back feet, and the outline on top.
   const body = [
-    // A small pear of a body.
-    `<path d="M-27 -76 C-39 -60 -48 -36 -48 -17 C-48 -5 -41 0 -31 0 L31 0 C41 0 48 -5 48 -17 C48 -36 39 -60 27 -76 Z" ${furred}/>`,
+    `<path d="${BODY}" class="fl"/>`,
+    `<g clip-path="url(#${id}-body)">`,
+    stripes('M-47 -58 C-41 -56 -35 -53 -29 -48 M-49 -52 C-44 -50 -39 -47 -33 -42 M-51 -36 C-45 -34 -39 -31 -34 -26 M-51 -21 C-46 -19 -42 -16 -38 -12 M47 -58 C41 -56 34 -52 28 -47 M50 -43 C42 -41 33 -38 24 -36 M50 -28 C44 -26 38 -23 33 -18', 3.2),
     // Haunch folds.
     `<path d="M-43 -8 C-45 -22 -40 -34 -30 -40 M43 -8 C45 -22 40 -34 30 -40" class="ln" fill="none" stroke-width="2.4" stroke-linecap="round"/>`,
-    // White shirt front.
-    `<path d="M-17 -74 C-25 -56 -23 -36 -15 -24 C-8 -15 8 -15 15 -24 C23 -36 25 -56 17 -74 Z" fill="${C.white}"/>`,
-    // White socks, rimmed in fur so they hold their shape on a white page.
-    `<path d="M-27 -1 C-29 -12 -23 -18 -14.5 -18 C-6 -18 -1 -12 -2 -1 Z M27 -1 C29 -12 23 -18 14.5 -18 C6 -18 1 -12 2 -1 Z" class="fs" fill="${C.white}" stroke-width="2.4" stroke-linejoin="round"/>`,
-    `<path d="M-18.5 -2.5 L-18.5 -7.5 M-10.5 -2.5 L-10.5 -7.5 M18.5 -2.5 L18.5 -7.5 M10.5 -2.5 L10.5 -7.5" stroke="#c4c2bc" stroke-width="2" stroke-linecap="round"/>`,
+    `<path d="M-26 -82 L24 -82 C29 -68 30 -58 27 -51 C22 -45 15 -42 15 -33 C15 -24 22 -17 30 -11 L31 2 L-29 2 C-30 -12 -32 -28 -31 -42 C-30 -56 -26 -68 -22 -82 Z" fill="${C.white}"/>`,
+    `<path d="M-50 2 C-50 -9 -45 -19 -36 -21 C-31 -22 -28 -16 -28 2 Z M48 2 C49 -7 44 -15 37 -16 C31 -17 28 -10 28 2 Z" fill="${C.white}"/>`,
+    `<ellipse cx="-40" cy="-3.4" rx="3.4" ry="2.3" fill="${C.bean}"/><ellipse cx="40" cy="-3.4" rx="3.4" ry="2.3" fill="${C.bean}"/>`,
+    `</g>`,
+    outline(BODY),
+    // The front paws, outlined softly on the white legs, the legs parted by a crease.
+    `<path d="M0 -46 L0 -17" stroke="${C.shade}" stroke-width="1.8" stroke-linecap="round"/>`,
+    `<path d="M-27 -1 C-29 -12 -23 -18 -14.5 -18 C-6 -18 -1 -12 -2 -1 Z M27 -1 C29 -12 23 -18 14.5 -18 C6 -18 1 -12 2 -1 Z" fill="${C.white}" stroke="${C.shade}" stroke-width="1.8" stroke-linejoin="round"/>`,
+    `<path d="M-18.5 -2.5 L-18.5 -7.5 M-10.5 -2.5 L-10.5 -7.5 M18.5 -2.5 L18.5 -7.5 M10.5 -2.5 L10.5 -7.5" stroke="${C.shade}" stroke-width="2" stroke-linecap="round"/>`,
+    outline('M-31 0 L31 0'),
   ].join('')
 
   const eye = x =>
-    `<circle cx="${x}" cy="-118" r="12.2" fill="${C.irisRim}"/><circle cx="${x}" cy="-118" r="11" fill="${C.iris}"/>` +
-    `<ellipse cx="${x}" cy="-117" rx="6.4" ry="8.4" fill="${C.pupil}"/>` +
+    `<circle cx="${x}" cy="-118" r="13" fill="${C.irisRim}"/><circle cx="${x}" cy="-118" r="10.6" fill="${C.iris}"/>` +
+    `<ellipse cx="${x}" cy="-117" rx="6.2" ry="8.2" fill="${C.pupil}"/>` +
     `<circle cx="${x + 3.6}" cy="-122.6" r="3.6" fill="#fff"/><circle cx="${x - 3.8}" cy="-112.6" r="1.6" fill="#fff" opacity=".85"/>`
 
   const head = [
     // A big, soft head: flat-ish crown, full cheeks.
-    `<path d="M0 -170 C40 -170 70 -154 73 -124 C76 -94 54 -70 0 -70 C-54 -70 -76 -94 -73 -124 C-70 -154 -40 -170 0 -170 Z" ${furred}/>`,
-    // White blaze up the nose, muzzle and chin.
-    `<path d="M0 -146 C3 -146 5 -136 8 -124 C10 -116 12 -110 13 -105 L-13 -105 C-12 -110 -10 -116 -8 -124 C-5 -136 -3 -146 0 -146 Z" fill="${C.white}"/>`,
-    `<path d="M0 -105 C8 -113 28 -113 30 -98 C31 -88 24 -81 14 -80 C10 -74 -10 -74 -14 -80 C-24 -81 -31 -88 -30 -98 C-28 -113 -8 -113 0 -105 Z" fill="${C.white}"/>`,
-    // Blush.
-    `<ellipse cx="-47" cy="-97" rx="8.5" ry="5" fill="${C.pink}" opacity=".6"/><ellipse cx="47" cy="-97" rx="8.5" ry="5" fill="${C.pink}" opacity=".6"/>`,
-    // Eyes: amber irises, round kitten pupils, highlights.
+    `<path d="${HEAD}" class="ff"/>`,
+    `<g clip-path="url(#${id}-head)">`,
+    // Tabby stripes: an M of bars on the forehead converging on the blaze, and
+    // dark lines sweeping back from the outer corners of the eyes.
+    stripes('M-34 -163 Q-28 -153 -21 -144 M-20 -170 Q-14 -159 -6 -150 M-6 -172 Q-4 -162 -1 -153 M7 -172 Q7 -162 5 -153 M20 -170 Q15 -159 10 -150 M34 -163 Q28 -153 22 -144', 3),
+    stripes('M-41 -116 C-50 -116 -58 -114 -68 -109 M-40 -103 C-47 -98 -55 -95 -66 -95 M-46 -86 C-51 -82 -56 -80 -64 -80 M41 -116 C50 -116 58 -114 68 -109 M47 -101 C54 -98 61 -97 70 -98', 3.4),
+    // The white: a blaze filling the nose bridge between the eyes and rising
+    // to a point, the muzzle and chin, reaching out under the right eye.
+    `<path d="M2 -147 C6 -141 11 -133 13 -125 C15 -117 15 -108 19 -102 C28 -98 44 -98 56 -95 C62 -90 62 -80 56 -72 L40 -62 L-50 -62 C-44 -70 -36 -78 -26 -84 C-18 -89 -15 -95 -14 -102 C-13 -108 -13 -116 -12 -124 C-10 -133 -4 -141 2 -147 Z" fill="${C.white}"/>`,
+    `</g>`,
+    outline(HEAD),
+    // Eyes: olive-amber irises ringed in black, round kitten pupils, highlights.
     `<g class="eye"><g class="pupils">${eye(-29)}${eye(29)}</g></g>`,
     // Closed lids, shown only mid-blink.
     `<path class="lids" d="M-40 -119 Q-29 -110 -18 -119 M18 -119 Q29 -110 40 -119" fill="none" stroke="${C.lid}" stroke-width="2.8" stroke-linecap="round" opacity="0"/>`,
@@ -152,6 +202,8 @@ export function cat({ integral }) {
 
 /** The joints, as fractions of the tail's height from the ground: the tail bends at each. */
 export const JOINTS = [0.4, 0.56, 0.72]
+/** The tabby tail's dark rings, as fractions of its height; above the last joint it is dark to the tip. */
+const RINGS = [0.17, 0.28, 0.48, 0.64]
 
 /**
  * Where the ∫ goes (its lower-left terminal at the tail's root, behind the
@@ -165,8 +217,10 @@ export function tailGeometry(integral) {
   const x = TAIL_ROOT[0] - 6 - gx0 * s
   const y = TAIL_ROOT[1] + 5 + gy0 * s
   const outline = flattenOutline(integral.d).map(([px, py]) => [x + px * s, y - py * s])
-  const joints = JOINTS.map(fraction => {
-    // The stem crosses the joint's height twice (its two edges): the joint is between them.
+  // A point on the stem's centre line at a fraction of the tail's height,
+  // with the stem's half width there.
+  const across = fraction => {
+    // The stem crosses that height twice (its two edges): the point is between them.
     const jy = y - (gy0 + fraction * (gy1 - gy0)) * s
     const crossings = []
     for (let i = 0; i + 1 < outline.length; i++) {
@@ -175,9 +229,19 @@ export function tailGeometry(integral) {
       if (ay === by || (ay - jy) * (by - jy) > 0) continue
       crossings.push(ax + ((jy - ay) / (by - ay)) * (bx - ax))
     }
-    if (crossings.length !== 2) throw new Error(`a tail joint should cross the stem twice, not ${crossings.length} times`)
+    if (crossings.length !== 2) throw new Error(`the tail at ${fraction} of its height should cross the stem twice, not ${crossings.length} times`)
     const [left, right] = crossings.sort((a, b) => a - b)
     return { x: (left + right) / 2, y: jy, halfWidth: (right - left) / 2 + TAIL_THICKEN / 2 }
+  }
+  const joints = JOINTS.map(across)
+  // The rings: across the stem, square to its centre line there; `segment`
+  // is the piece of the tail each lies on (segment k is above k joints).
+  const rings = RINGS.map(fraction => {
+    const c = across(fraction)
+    const [a, b] = [across(fraction - 0.02), across(fraction + 0.02)]
+    const length = Math.hypot(b.x - a.x, b.y - a.y)
+    const normal = [-(b.y - a.y) / length, (b.x - a.x) / length]
+    return { ...c, normal, segment: JOINTS.filter(j => j < fraction).length }
   })
   // The upper terminal is a ball at the glyph's right end: from its rightmost
   // point, across to its left side at the same height.
@@ -187,7 +251,7 @@ export function tailGeometry(integral) {
   const ball = (xr - xl) / 2
   if (!(ball > 25 && ball < 80)) throw new Error(`the ∫'s upper terminal is not where it should be (radius ${ball})`)
   const tip = [x + (xr - ball) * s, y - yr * s, ball * s + TAIL_THICKEN / 2]
-  return { s, x, y, outline, joints, tip }
+  return { s, x, y, outline, joints, rings, tip }
 }
 
 /** The glyph's outline (absolute M, L, C and Z only, as MathJax's fonts write them) as points in font units. */
