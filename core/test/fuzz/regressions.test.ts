@@ -231,9 +231,11 @@ describe('fuzz regressions', () => {
   // part out once with all its formulas (again only for one that didn't fit),
   // from the start of the block it ends in, and a formula's forms are worked
   // out once per terminal: guards.
-  // Shared CI runners are about 4× slower than a desktop (138 ms there for ~35 ms here); the bug took seconds.
-  const SLOW = process.env.CI ? 3 : 1
-  test('FUZZ-10: one flush of a long list stays well under the budget', () => {
+  // Shared CI runners are slow and noisy (138 ms to over 1 s for ~35 ms here), so there the guards only catch the bug
+  // itself, which took seconds per flush.
+  const SLOW = process.env.CI ? 10 : 1
+  const TIMEOUT = process.env.CI ? 30_000 : 5_000
+  test('FUZZ-10: one flush of a long list stays well under the budget', { timeout: TIMEOUT }, () => {
     const item = Array.from({ length: 10 }, (_, k) => `word $x_{${k}}$ and $\\alpha^{${k}}$ more`).join(' ')
     const list = Array.from({ length: 40 }, (_, i) => `- item ${i} ${item}`).join('\n') + '\n'
     const env = { ...envFor(BASE), inline: true }
@@ -242,7 +244,7 @@ describe('fuzz regressions', () => {
     expect(performance.now() - start).toBeLessThan(300 * SLOW)
   })
 
-  test('FUZZ-10: every flush of a 200-item list takes less than 100 ms, whole or line by line', () => {
+  test('FUZZ-10: every flush of a 200-item list takes less than 100 ms, whole or line by line', { timeout: TIMEOUT }, () => {
     const item = Array.from({ length: 10 }, (_, k) => `word $x_{${k}}$ and $\\alpha^{${k}}$ more`).join(' ')
     const lines = Array.from({ length: 200 }, (_, i) => `- item ${i} ${item}\n`)
     const env = { ...envFor(BASE), inline: true }
