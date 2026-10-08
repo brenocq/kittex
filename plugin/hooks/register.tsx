@@ -199,6 +199,8 @@ let envKnown = false
 let envReady: Promise<void> = new Promise(resolve => {
   envSettled = resolve
 })
+/** kittex.env as this process last stored it (writeEnv): what a new session in the process starts with (readEnv). */
+let lastEnv: KittexEnv | null | undefined
 /** kittex.env as the last session stored it, for renders before session.start (read once). */
 let rememberedEnv: Promise<KittexEnv | undefined> | undefined
 const REMEMBERED = 'env'
@@ -242,7 +244,7 @@ export const register: Register = (on, options) => {
       // reply's text in the SDK's output. Nothing is probed or rewritten.
       cells?.stop()
       cells = undefined
-      await $.state.set(ENV, null).catch(() => undefined)
+      await writeEnv($, null).catch(() => undefined)
       envKnown = true
       envSettled?.()
       return started
@@ -267,7 +269,7 @@ export const register: Register = (on, options) => {
     try {
       await setUp($, e.surface)
     } catch {
-      await $.state.set(ENV, null).catch(() => undefined)
+      await writeEnv($, null).catch(() => undefined)
     } finally {
       envKnown = true
       envSettled?.()
@@ -305,7 +307,7 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     try {
-      const env = await readEnv($)
+      const env = await readEnv($, true)
       if (!e.surfaces.includes('terminal') || !instructs(env)) return composed
       if (composed.sections.some(section => section.id === SECTION_ID)) return composed
       return { sections: [...composed.sections, { id: SECTION_ID, text: await instructions(env, math), scope: 'session' as const }] }
@@ -317,7 +319,7 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     if (!instructByContext || !contextPending) return next(e)
     contextPending = false
-    const entered = await next({ ...e, context: [...(e.context ?? []), await instructions(await readEnv($), math)] })
+    const entered = await next({ ...e, context: [...(e.context ?? []), await instructions(await readEnv($, true), math)] })
     if (entered.drop !== undefined) contextPending = true
     return entered
   }).catch(($, e, next) => next(e))
@@ -332,6 +334,8 @@ export const register: Register = (on, options) => {
 
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e)
+    // A new session's state starts empty: kittex.env is stored again for it (readEnv).
+    await readEnv($, true).catch(() => null)
     if (e.source === 'clear' || e.source === 'compact') contextPending = instructByContext
     return result
   }).catch(($, e, next) => next(e))
@@ -416,7 +420,7 @@ async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { me
   let entry: Streaming | undefined
   let before = 0
   try {
-    const env = await readEnv($)
+    const env = await readEnv($, true)
     if (!env) return below
     entry = streams.get(e.message_id)
     if (entry?.done) entry = undefined
@@ -710,8 +714,25 @@ type LandedEvent = Parameters<MatchedHook<'ui.render', { component: 'AssistantMe
 
 // ─── Helpers that take $ ─────────────────────────────────────────────────────
 
-async function readEnv($: $): Promise<KittexEnv | null> {
-  return (await $.state.get(ENV)).value ?? null
+/**
+ * kittex.env as this conversation holds it. `$.state` is the session's, and a
+ * new session in this process (/clear, /resume of another conversation)
+ * starts without it while session.start does not run again: the env the
+ * setup stored last stands in, and with `reseed` (not from a render, which
+ * may not write) is stored again.
+ */
+async function readEnv($: $, reseed = false): Promise<KittexEnv | null> {
+  const held = (await $.state.get(ENV)).value
+  if (held !== undefined) return held
+  if (!envKnown || lastEnv === undefined) return null
+  if (reseed && lastEnv !== null) await $.state.set(ENV, lastEnv).catch(() => undefined)
+  return lastEnv
+}
+
+/** Stores kittex.env, and keeps it for a new session in this process (readEnv). */
+async function writeEnv($: $, env: KittexEnv | null): Promise<void> {
+  lastEnv = env
+  await $.state.set(ENV, env)
 }
 
 /** Whether the model is told to write LaTeX: kittex is set up and draws math on this terminal. */
@@ -754,7 +775,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
   const known = remembered?.id === terminalId(processEnv) && remembered.env?.font && remembered.env.cellWidth === env.cellWidth && remembered.env.cellHeight === env.cellHeight ? remembered.env : undefined
   const withFont = known ? { ...env, font: known.font, ...(env.weight === undefined && known.weight !== undefined ? { weight: known.weight } : {}) } : env
   const start: KittexEnv = known ? { ...withFont, emPx: mathEmPxFor(withFont, withFont) } : env
-  await $.state.set(ENV, start)
+  await writeEnv($, start)
   envSettled?.()
   // For the next session's first renders, which come before its session.start.
   await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: start }).catch(() => undefined)
@@ -973,7 +994,7 @@ async function refreshProseWidth($: $): Promise<void> {
   const env = await readEnv($)
   if (!env) return
   const maxProseWidth = await readProseWidth($)
-  if (maxProseWidth !== env.maxProseWidth) await $.state.set(ENV, { ...env, maxProseWidth })
+  if (maxProseWidth !== env.maxProseWidth) await writeEnv($, { ...env, maxProseWidth })
 }
 
 /** The theme changed: the formulas' ink may follow it. */
@@ -986,7 +1007,7 @@ async function refreshInk($: $, setting: string): Promise<void> {
   const back = backgroundNow()
   if (sameColor(ink, env.ink) && sameColor(over.inkOver, env.inkOver) && sameCurve(over.inkCurve, env.inkCurve) && sameColor(back.background, env.background)) return
   const { inkOver: _, inkCurve: __, background: ___, ...rest } = env
-  await $.state.set(ENV, { ...rest, ink, ...over, ...back })
+  await writeEnv($, { ...rest, ink, ...over, ...back })
 }
 
 /**
@@ -1130,7 +1151,7 @@ async function loadFont($: $): Promise<void> {
   const measured = { ...next, emPx: mathEmPxFor(next, next) }
   // As setUp started from (the last session's reading): nothing to redraw.
   if (JSON.stringify(env.font) === JSON.stringify(font) && env.weight === measured.weight && env.emPx === measured.emPx) return
-  await $.state.set(ENV, measured)
+  await writeEnv($, measured)
   // The next session's first renders draw with the font too (their cache keys hold it).
   await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: measured }).catch(() => undefined)
   $.ui.invalidate('ui.render')
@@ -1166,7 +1187,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
   const measured = cell ? cellEnv(cell, env) : undefined
   const same = measured === undefined || (measured.cellWidth === env.cellWidth && measured.cellHeight === env.cellHeight)
   if (same && columns === env.columns) return
-  await $.state.set(ENV, { ...env, ...measured, columns })
+  await writeEnv($, { ...env, ...measured, columns })
   // Every landed block draws for the new cells, those off screen included.
   if (!same) $.ui.invalidate('ui.render')
 }
@@ -1442,7 +1463,7 @@ async function checkGraphics($: $): Promise<EngineGraphics> {
   if (read) graphics = read
   if (graphics.state === 'no') {
     const env = await readEnv($)
-    if (env?.images) await $.state.set(ENV, { ...env, images: false })
+    if (env?.images) await writeEnv($, { ...env, images: false })
   }
   // The alts follow the answer (and with a no, every block goes Unicode).
   if (graphics.state !== before && (before === 'pending' || graphics.state !== 'yes')) $.ui.invalidate('ui.render')
