@@ -45,7 +45,7 @@ claude plugin validate plugin
 
 `plugin/hooks/core.js` and `plugin/hooks/core-parts/` are build outputs,
 committed for installs from git. Claude Code refuses to read any plugin file
-over 1 MiB, so the build splits the bundle and fails if a file passes 900 KiB.
+over 1 MiB, so the build splits the bundle and fails if a file passes 256 KiB (the plugin directory inspects nothing larger).
 Only the integration on `main` commits them: before committing on a branch,
 `git checkout plugin/hooks/core.js plugin/hooks/core-parts` if the build changed them.
 
