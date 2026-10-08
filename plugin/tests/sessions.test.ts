@@ -9,7 +9,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { init, measureDisplay } from '../hooks/core.js'
-import { DIAGRAM_INSTRUCTIONS, MATH_INSTRUCTIONS, PREVIEW_PAD, renderEnvFor, SECTION_ID } from '../hooks/math.ts'
+import { DIAGRAM_INSTRUCTIONS, INSTRUCTED_LIMIT, instructionsKey, instructionsNeeded, MATH_INSTRUCTIONS, PREVIEW_PAD, recordInstructed, renderEnvFor, SECTION_ID, UPDATED_INSTRUCTIONS } from '../hooks/math.ts'
 import { CELL, COLUMNS, COMPOSE, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
@@ -111,5 +111,111 @@ describe('a new session in the same process', () => {
     await $.classic.SessionStart({ source: 'clear' })
     expect((await submit('after clear')).context).toEqual([all])
     expect((await submit('again')).context ?? []).toEqual([])
+  })
+})
+
+/**
+ * The host beneath kittex for the instructions' bookkeeping: the session's
+ * id and whether its conversation has messages yet, and kittex's $.store.
+ */
+function host(on: On, start: { session?: string; messages?: number; store?: Record<string, unknown>; drop?: boolean } = {}) {
+  const world = { session: start.session ?? 'one', messages: start.messages ?? 0, store: new Map(Object.entries(start.store ?? {})) }
+  on('session.id', () => ({ value: world.session }))
+  on('session.messages', () => ({ value: Array.from({ length: world.messages }, () => ({ role: 'user', text: 'earlier', toolUses: [] })) }) as never)
+  on('store.get', ($, e) => ({ value: world.store.get(e.key) }))
+  on('store.set', ($, e) => {
+    world.store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('prompt.submit', ($, e) => (start.drop ? { drop: 'blocked by a settings hook' } : { text: e.text, context: e.context }))
+  on('classic.SessionStart', () => ({}))
+  return world
+}
+
+const submit = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } }).then(entered => entered.context ?? [])
+
+/** A plugin above kittex that fills the facts a test's prompt.compose call leaves out (the engine fills them from the session). */
+const facts = {
+  name: 'facts',
+  tier: 'prepend' as const,
+  register(on: On) {
+    on('prompt.compose', ($, e, next) => next({ ...e, promptModel: e.promptModel ?? 'claude', tools: e.tools ?? [], outputStyle: e.outputStyle ?? null, traits: e.traits ?? [] }))
+  },
+}
+
+describe("a conversation whose system prompt holds older instructions, or none", () => {
+  const ALL = `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`
+
+  test('a new conversation is composed with them: no context, and it is recorded', { plugins: [facts] }, async ($, on) => {
+    const world = host(on)
+    await startSession($, on)
+    expect(await submit($, 'first')).toEqual([])
+    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(MATH_INSTRUCTIONS) })
+    world.messages = 2
+    expect(await submit($, 'second')).toEqual([])
+  })
+
+  test('resumed from a kittex that never recorded it (or a session without kittex): the first prompt carries them, once', { plugins: [facts] }, async ($, on) => {
+    host(on, { messages: 4 })
+    await startSession($, on, KITTY, 'dark', CELL, withTex)
+    expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${ALL}`])
+    expect(await submit($, 'second')).toEqual([])
+  })
+
+  test('resumed with the same instructions recorded: nothing to add', { plugins: [facts] }, async ($, on) => {
+    host(on, { messages: 4, store: { instructed: { one: instructionsKey(ALL) } } })
+    await startSession($, on, KITTY, 'dark', CELL, withTex)
+    expect(await submit($, 'first')).toEqual([])
+  })
+
+  test('recorded with older ones (kittex upgraded or reloaded, TeX found since): the next prompt brings them up to date', { plugins: [facts] }, async ($, on) => {
+    const world = host(on, { messages: 4, store: { instructed: { one: instructionsKey(MATH_INSTRUCTIONS) } } })
+    await startSession($, on, KITTY, 'dark', CELL, withTex)
+    expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${ALL}`])
+    expect((world.store.get('instructed') as Record<string, string>).one).toBe(instructionsKey(ALL))
+    expect(await submit($, 'second')).toEqual([])
+  })
+
+  test('after /clear or compaction the system prompt is composed anew: no context, even where the conversation had older ones', { plugins: [facts] }, async ($, on) => {
+    const world = host(on, { messages: 4, store: { instructed: { one: 'older' } } })
+    await startSession($, on)
+    await $.classic.SessionStart({ source: 'compact' })
+    expect(await submit($, 'after compaction')).toEqual([])
+    world.session = 'two'
+    await $.classic.SessionStart({ source: 'clear' })
+    world.messages = 0
+    expect(await submit($, 'after clear')).toEqual([])
+    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(MATH_INSTRUCTIONS), two: instructionsKey(MATH_INSTRUCTIONS) })
+  })
+
+  test('another conversation resumed from inside the session: its own record decides', { plugins: [facts] }, async ($, on) => {
+    const world = host(on)
+    await startSession($, on)
+    expect(await submit($, 'first')).toEqual([])
+    world.session = 'other'
+    world.messages = 6
+    await $.classic.SessionStart({ source: 'resume' })
+    expect(await submit($, 'in the resumed one')).toEqual([`${UPDATED_INSTRUCTIONS} ${MATH_INSTRUCTIONS}`])
+  })
+
+  test('a prompt that does not enter records nothing', { plugins: [facts] }, async ($, on) => {
+    const world = host(on, { messages: 4, drop: true })
+    await startSession($, on)
+    await submit($, 'dropped').catch(() => [])
+    expect(world.store.get('instructed')).toBeUndefined()
+  })
+
+  test('the record: newest last, bounded, keyed by the text', () => {
+    expect(instructionsKey(MATH_INSTRUCTIONS)).toMatch(/^[0-9a-f]{8}$/)
+    expect(instructionsKey(MATH_INSTRUCTIONS)).not.toBe(instructionsKey(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`))
+    let record = {}
+    for (let i = 0; i < INSTRUCTED_LIMIT + 5; i++) record = recordInstructed(record, `s${i}`, 'k')
+    expect(Object.keys(record)).toHaveLength(INSTRUCTED_LIMIT)
+    expect(Object.keys(record)[0]).toBe('s5')
+    expect(Object.keys(recordInstructed(record, 's5', 'k2')).at(-1)).toBe('s5')
+    expect(instructionsNeeded({ fresh: true, byContext: false, held: undefined, key: 'k' })).toBe(false)
+    expect(instructionsNeeded({ fresh: true, byContext: true, held: 'k', key: 'k' })).toBe(true)
+    expect(instructionsNeeded({ fresh: false, byContext: false, held: 'j', key: 'k' })).toBe(true)
+    expect(instructionsNeeded({ fresh: false, byContext: true, held: 'k', key: 'k' })).toBe(false)
   })
 })

@@ -2699,6 +2699,51 @@ export const DIAGRAM_INSTRUCTIONS =
   "asked, don't compile or test a diagram, look for TeX or its packages, write .tex files or read kittex's files; a diagram needs no " +
   'tool. Keep sample counts moderate (about 100 for a curve, 25×25 for a surface) so each picture compiles in a second or two.'
 
+/**
+ * What a conversation's model was last given of kittex's instructions, by
+ * session id (in $.store): a key of the text (instructionsKey). Its system
+ * prompt is composed at the conversation's first request and again after
+ * compaction, then sent unchanged, a resumed one's as it was saved (measured
+ * on 2.1.293): a kittex upgraded or reloaded since, or the local TeX found
+ * since, leaves it holding older instructions, or none.
+ */
+export type InstructedSessions = Readonly<Record<string, string>>
+
+/** Conversations remembered in InstructedSessions; past this the oldest is dropped. */
+export const INSTRUCTED_LIMIT = 200
+
+/** What a prompt's context opens with when it brings a conversation's instructions up to date. */
+export const UPDATED_INSTRUCTIONS = "kittex's instructions have changed; these replace any earlier ones about math and diagrams in this conversation:"
+
+/** A short key of an instructions text (32-bit FNV-1a, hex): what a conversation is recorded as holding. */
+export function instructionsKey(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
+/**
+ * Whether a prompt carries the instructions as context. `fresh`: its request
+ * composes the system prompt anew (a new conversation, /clear, compaction),
+ * which then holds the current text unless a policy drops the section
+ * (`byContext`). Otherwise the conversation holds what was recorded (`held`,
+ * undefined for one kittex never instructed: resumed from an older kittex or
+ * from a session without it), and the text is sent when that differs.
+ */
+export function instructionsNeeded(facts: { fresh: boolean; byContext: boolean; held: string | undefined; key: string }): boolean {
+  return facts.fresh ? facts.byContext : facts.held !== facts.key
+}
+
+/** `record` with `session` holding `key`, as its newest entry; the oldest dropped past INSTRUCTED_LIMIT. */
+export function recordInstructed(record: InstructedSessions, session: string, key: string): InstructedSessions {
+  const entries = Object.entries(record).filter(([id]) => id !== session)
+  entries.push([session, key])
+  return Object.fromEntries(entries.slice(-INSTRUCTED_LIMIT))
+}
+
 /** Where a diagram is drawn: the width prose wraps at, centred, MAX_PICTURE_ROWS tall at most, on the terminal's background. */
 export function pictureEnvFor(env: KittexEnv, columns = env.columns): PictureEnv {
   return {

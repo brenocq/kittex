@@ -67,6 +67,8 @@ import {
   inlineEnvFor,
   mathEmPxFor,
   INSTRUCT_WITHOUT_IMAGES,
+  instructionsKey,
+  instructionsNeeded,
   inlineFlow,
   joinProse,
   STREAMED_PATTERN,
@@ -77,6 +79,7 @@ import {
   mathOptions,
   pictureEnvFor,
   planLanded,
+  recordInstructed,
   PROBE_TIMEOUT_MS,
   proseWidthFor,
   displayColumns,
@@ -89,12 +92,13 @@ import {
   sourcePattern,
   STREAM_LIMIT,
   streamEnvFor,
+  UPDATED_INSTRUCTIONS,
   withoutTextOverride,
 } from './math.ts'
 import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
-import type { EngineGraphics, InlineSlot, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
+import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
 import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
@@ -178,8 +182,15 @@ let theme: string | undefined
 let customTheme: string | undefined
 /** prompt.compose's section did not reach the prompt: instructions ride prompt.submit's context. */
 let instructByContext = false
-/** The next prompt carries the instructions (first of a conversation, after /clear or compaction). */
-let contextPending = false
+/** setUp found the model is instructed here (a terminal kittex draws math on). */
+let instructWanted = false
+/** The next request composes its conversation's system prompt anew (/clear, compaction): the current instructions are in it. */
+let composesFresh = false
+/** InstructedSessions in $.store, and as this process last wrote it (where the store can't be read). */
+const INSTRUCTED = 'instructed'
+let instructedHere: InstructedSessions = {}
+/** The session's key in InstructedSessions where the host can't name it. */
+const THIS_SESSION = 'this'
 /** The cell probes, bound to the `$` session.start received. */
 let cells: Cells | undefined
 /** Runs a function on session.start's clock once the current dispatch resolves, or `ms` later (a hook's `$` belongs to its one dispatch). */
@@ -316,11 +327,37 @@ export const register: Register = (on, options) => {
     }
   })
 
+  // The instructions as context, once, where the conversation lacks the
+  // current ones: the section was dropped (policy), or the system prompt the
+  // conversation was composed with holds older ones or none (a resume, a
+  // kittex reloaded or upgraded since, TeX found since).
   on('prompt.submit', async ($, e, next) => {
-    if (!instructByContext || !contextPending) return next(e)
-    contextPending = false
-    const entered = await next({ ...e, context: [...(e.context ?? []), await instructions(await readEnv($, true), math)] })
-    if (entered.drop !== undefined) contextPending = true
+    let update: { record: InstructedSessions; session: string; key: string } | undefined
+    let note: string | undefined
+    try {
+      const env = await readEnv($, true)
+      if (instructWanted && instructs(env)) {
+        const text = await instructions(env, math)
+        const key = instructionsKey(text)
+        const session = await $.session.id().catch(() => THIS_SESSION)
+        const record = await readInstructed($)
+        // A conversation with nothing in it yet is composed with this text too (a new session, a hot reload before its first prompt).
+        const fresh = composesFresh || (record[session] !== key && (await $.session.messages().catch(() => [])).length === 0)
+        if (instructionsNeeded({ fresh, byContext: instructByContext, held: record[session], key })) note = fresh ? text : `${UPDATED_INSTRUCTIONS} ${text}`
+        update = { record, session, key }
+      }
+    } catch {
+      update = undefined
+      note = undefined
+    }
+    const entered = await next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
+    if (update && entered.drop === undefined) {
+      composesFresh = false
+      if (update.record[update.session] !== update.key) {
+        instructedHere = recordInstructed(update.record, update.session, update.key)
+        await $.store.set(INSTRUCTED, instructedHere).catch(() => undefined)
+      }
+    }
     return entered
   }).catch(($, e, next) => next(e))
 
@@ -328,7 +365,7 @@ export const register: Register = (on, options) => {
   // drops the turn that carried the instructions). The hooks only observe: a
   // failure (here and at the other gating sites) lets the event go on as is.
   on('session.end', ($, e, next) => {
-    if (e.reason === 'clear') contextPending = instructByContext
+    if (e.reason === 'clear') composesFresh = true
     return next(e)
   })
 
@@ -336,13 +373,15 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     // A new session's state starts empty: kittex.env is stored again for it (readEnv).
     await readEnv($, true).catch(() => null)
-    if (e.source === 'clear' || e.source === 'compact') contextPending = instructByContext
+    if (e.source === 'clear' || e.source === 'compact') composesFresh = true
+    // Another conversation resumed: it holds what it was composed with (recorded, or not).
+    if (e.source === 'resume') composesFresh = false
     return result
   }).catch(($, e, next) => next(e))
 
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined) contextPending = instructByContext
+    if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined) composesFresh = true
     return result
   }).catch(($, e, next) => next(e))
 
@@ -735,6 +774,12 @@ async function writeEnv($: $, env: KittexEnv | null): Promise<void> {
   await $.state.set(ENV, env)
 }
 
+/** InstructedSessions as $.store holds it, else as this process last wrote it. */
+async function readInstructed($: $): Promise<InstructedSessions> {
+  const value = await $.store.get(INSTRUCTED).catch(() => undefined)
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as InstructedSessions) : instructedHere
+}
+
 /** Whether the model is told to write LaTeX: kittex is set up and draws math on this terminal. */
 function instructs(env: KittexEnv | null): boolean {
   return env !== null && (env.images || INSTRUCT_WITHOUT_IMAGES)
@@ -795,8 +840,8 @@ async function setUp($: $, surface: string | null): Promise<void> {
       present = false
     }
   }
+  instructWanted = wanted
   instructByContext = wanted && !present
-  contextPending = instructByContext
 }
 
 /**
