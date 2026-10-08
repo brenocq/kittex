@@ -231,13 +231,15 @@ describe('fuzz regressions', () => {
   // part out once with all its formulas (again only for one that didn't fit),
   // from the start of the block it ends in, and a formula's forms are worked
   // out once per terminal: guards.
+  // Shared CI runners are about 4× slower than a desktop (138 ms there for ~35 ms here); the bug took seconds.
+  const SLOW = process.env.CI ? 3 : 1
   test('FUZZ-10: one flush of a long list stays well under the budget', () => {
     const item = Array.from({ length: 10 }, (_, k) => `word $x_{${k}}$ and $\\alpha^{${k}}$ more`).join(' ')
     const list = Array.from({ length: 40 }, (_, i) => `- item ${i} ${item}`).join('\n') + '\n'
     const env = { ...envFor(BASE), inline: true }
     const start = performance.now()
     new MessageStream().push(list, true, env)
-    expect(performance.now() - start).toBeLessThan(300)
+    expect(performance.now() - start).toBeLessThan(300 * SLOW)
   })
 
   test('FUZZ-10: every flush of a 200-item list takes less than 100 ms, whole or line by line', () => {
@@ -250,7 +252,7 @@ describe('fuzz regressions', () => {
       new MessageStream().push(lines.join(''), true, env)
       return performance.now() - start
     }))
-    expect(whole).toBeLessThan(100)
+    expect(whole).toBeLessThan(100 * SLOW)
     const stream = new MessageStream()
     let slowest = 0
     for (const [k, line] of lines.entries()) {
@@ -258,7 +260,7 @@ describe('fuzz regressions', () => {
       stream.push(line, k === lines.length - 1, env)
       slowest = Math.max(slowest, performance.now() - start)
     }
-    expect(slowest).toBeLessThan(100)
+    expect(slowest).toBeLessThan(100 * SLOW)
   })
 
   // FUZZ-11 (live). A prose piece cut out at an image is drawn by the engine
