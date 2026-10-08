@@ -1,7 +1,15 @@
 // The one ES module of core, as the mod's build (build.mjs) and the sandbox
-// check (sandbox-check.mjs) bundle it: minified, with MathJax behind a lazy
-// require (typeset/load.ts), so the bundle evaluates MathJax's modules and the
-// font tables when the first formula needs them.
+// check (sandbox-check.mjs) bundle it, with MathJax behind a lazy require
+// (typeset/load.ts), so the bundle evaluates MathJax's modules and the font
+// tables when the first formula needs them.
+//
+// Not minified: the plugin directory reviews the files a mod ships, so the
+// bundle keeps the sources' names, layout and a comment naming each source
+// file (the engine's load cost follows AST nodes, which minifying barely
+// changes). Written in UTF-8, so a name is spelled in its own characters
+// (split.mjs escapes the ones a reader cannot see). MathJax looks for its host
+// through `window`, `process` and `exports`; the mod sandbox has none of
+// them, so each is `undefined` here, as `typeof` already found it there.
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -38,7 +46,9 @@ export async function bundleCore(options = {}) {
     mainFields: ['module', 'main'],
     conditions: ['import', 'default'],
     target: 'es2022',
-    minify: true,
+    minify: false,
+    charset: 'utf8',
+    define: { window: 'undefined', process: 'undefined', exports: 'undefined' },
     legalComments: 'eof',
     logLevel: 'warning',
     write: false,

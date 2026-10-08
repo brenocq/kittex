@@ -1,62 +1,1740 @@
-import{M,S1,o6,$2,Q1,d0,R,r1,r6,G2,X,r5,g,q1,e3,j1,K1,A2,j2,L1,f,_,c6,t1,H,A,m1,$1,H2,w1,t3,a1,I1,d2,T2,s6,s1,h2,t2,x1,Q,qe,v4,F4,h6,K0,B4,O8,i2,a6,L2,D2,_3,C6,a2,x5}from'./p12.js';export*from'./p12.js';
-var s2;
-var Al;
-var f1;
-var P4=M(()=>{S1();o6();$2();Q1();d0();(function(e){e.NEW_DELIMITER="new-Delimiter",e.NEW_COMMAND="new-Command",e.NEW_ENVIRONMENT="new-Environment"})(s2||(s2={}));Al=-100,f1={GetCSname(e,C){if(e.GetNext()!=="\\")throw new R("MissingCS","%1 must be followed by a control sequence",C);let L=r1.trimSpaces(e.GetArgument(C)).substring(1);return this.checkProtectedMacros(e,L),L},GetCsNameArgument(e,C){let t=r1.trimSpaces(e.GetArgument(C));if(t.charAt(0)==="\\"&&(t=t.substring(1)),!t.match(/^(.|[a-z]+)$/i))throw new R("IllegalControlSequenceName","Illegal control sequence name for %1",C);return this.checkProtectedMacros(e,t),t},GetArgCount(e,C){let t=e.GetBrackets(C);if(t&&(t=r1.trimSpaces(t),!t.match(/^[0-9]+$/)))throw new R("IllegalParamNumber","Illegal number of parameters specified in %1",C);return t},GetTemplate(e,C,t){let L=e.GetNext(),n=[],i=0,s=e.i;for(;e.i<e.string.length;){if(L=e.GetNext(),L==="#"){if(s!==e.i&&(n[i]=e.string.substring(s,e.i)),L=e.string.charAt(++e.i),!L.match(/^[1-9]$/))throw new R("CantUseHash2","Illegal use of # in template for %1",t);if(parseInt(L)!==++i)throw new R("SequentialParam","Parameters for %1 must be numbered sequentially",t);s=e.i+1}else if(L==="{")return s!==e.i&&(n[i]=e.string.substring(s,e.i),n[i].replace(/^ +/,"")===""&&n.slice(0,i).join("")==="")?i:n.length>0?[i.toString()].concat(n):i;e.i++}throw new R("MissingReplacementString","Missing replacement string for definition of %1",C)},GetParameter(e,C,t){if(t==null)return e.GetArgument(C);let L=e.i,n=0,i=!1;for(;e.i<e.string.length;){let s=e.string.charAt(e.i);if(s==="{")i=e.i===L,e.GetArgument(C),n=e.i-L;else{if(this.MatchParam(e,t))return i&&(L++,n-=2),e.string.substring(L,L+n);if(s==="\\"){e.i++,n++,i=!1;let r=e.string.substring(e.i).match(/[a-z]+|./i);r&&(e.i+=r[0].length,n=e.i-L)}else e.i++,n++,i=!1}}throw new R("RunawayArgument","Runaway argument for %1?",C)},MatchParam(e,C){return e.string.substring(e.i,e.i+C.length)!==C||C.match(/\\[a-z]+$/i)&&e.string.charAt(e.i+C.length).match(/[a-z]/i)?0:(e.i+=C.length,1)},checkGlobal(e,C,t){return e.stack.env.isGlobal?e.configuration.packageData.get("begingroup").stack.checkGlobal(C,t):t.map(L=>e.configuration.handlers.retrieve(L))},checkProtectedMacros(e,C){var t;if(!((t=e.options.protectedMacros)===null||t===void 0)&&t.includes(C))throw new R("ProtectedMacro","The control sequence %1 can't be redefined",`\\${C}`)},addDelimiter(e,C,t,L){let n=C.substring(1);this.checkProtectedMacros(e,n);let[i,s]=f1.checkGlobal(e,[n,C],[s2.NEW_COMMAND,s2.NEW_DELIMITER]);n!==C&&i.remove(n),s.add(C,new r6(C,t,L)),delete e.stack.env.isGlobal},addMacro(e,C,t,L,n=""){this.checkProtectedMacros(e,C);let i=f1.checkGlobal(e,[C],[s2.NEW_COMMAND])[0];this.undefineDelimiter(e,"\\"+C),i.add(C,new G2(n||C,t,L)),delete e.stack.env.isGlobal},addEnvironment(e,C,t,L){f1.checkGlobal(e,[C],[s2.NEW_ENVIRONMENT])[0].add(C,new G2(C,t,L)),delete e.stack.env.isGlobal},undefineMacro(e,C){let t=f1.checkGlobal(e,[C],[s2.NEW_COMMAND])[0];t.remove(C),e.configuration.handlers.get(X.MACRO).applicable(C)&&(t.add(C,new G2(C,()=>r5.FALLBACK,[])),this.undefineDelimiter(e,"\\"+C)),delete e.stack.env.isGlobal},undefineDelimiter(e,C){let t=f1.checkGlobal(e,[C],[s2.NEW_DELIMITER])[0];t.remove(C),e.configuration.handlers.get(X.DELIMITER).applicable(C)&&t.add(C,new r6(C,null,{})),delete e.stack.env.isGlobal}}});
-function El(e){if(!e||e.isInferred&&e.childNodes.length===0)return[null,null];if(e.isKind("msubsup")&&bl(e))return[e,null];let C=g.getChildAt(e,0);return e.isInferred&&C&&bl(C)?(e.childNodes.splice(0,1),[C,e]):[null,e]}
-function bl(e){let C=e.childNodes[0];return C&&C.isKind("mi")&&C.getText()===""}
-var Y;
-var Q0=M(()=>{q1();$2();e3();j1();K1();A2();Q1();j2();j2();L1();P4();Y={AmsEqnArray(e,C,t,L,n,i,s,r){let o=e.GetBrackets("\\begin{"+C.getName()+"}"),a=f.EqnArray(e,C,t,L,n,i,s,r);return _.setArrayAlign(a,o,e)},AlignAt(e,C,t,L){let n=C.getName(),i,s="",r="",o=[];L||(i=e.GetBrackets("\\begin{"+n+"}"));let a=e.GetArgument("\\begin{"+n+"}");if(a.match(/[^0-9]/))throw new R("PositiveIntegerArg","Argument to %1 must be a positive integer","\\begin{"+n+"}");let l=parseInt(a,10);for(;l>0;)s+="rl",r+="bt",o.push("0em 0em"),l--;let u=o.join(" ");if(L)return Y.EqnArray(e,C,t,L,s,r,u);let x=Y.EqnArray(e,C,t,L,s,r,u);return _.setArrayAlign(x,i,e)},Multline(e,C,t){_.checkEqnEnv(e),e.Push(C);let L=e.options.ams.multlineIndent,n=e.itemFactory.create("multline",t,e.stack);return n.arraydef={displaystyle:!0,rowspacing:".5em",columnspacing:"100%",width:e.options.ams.multlineWidth,side:e.options.tagSide,minlabelspacing:e.options.tagIndent,"data-array-padding":`${L} ${L}`,"data-width-includes-label":!0},n},XalignAt(e,C,t,L){let n=e.GetArgument("\\begin{"+C.getName()+"}");if(n.match(/[^0-9]/))throw new R("PositiveIntegerArg","Argument to %1 must be a positive integer","\\begin{"+C.getName()+"}");let i=L?"crl":"rlc",s=L?"mbt":"btm",r=L?"fit auto auto":"auto auto fit",o=Y.FlalignArray(e,C,t,L,!1,i,s,r,!0);return o.setProperty("xalignat",2*parseInt(n)),o},FlalignArray(e,C,t,L,n,i,s,r,o=!1){_.checkEqnEnv(e),e.Push(C),i=i.split("").join(" ").replace(/r/g,"right").replace(/l/g,"left").replace(/c/g,"center"),s=c6(s);let a=e.itemFactory.create("flalign",C.getName(),t,L,n,e.stack);return a.arraydef={width:"100%",displaystyle:!0,columnalign:i,columnspacing:"0em",columnwidth:r,rowspacing:"3pt","data-break-align":s,side:e.options.tagSide,minlabelspacing:o?"0":e.options.tagIndent,"data-width-includes-label":!0},a.setProperty("zeroWidthLabel",o),a},HandleDeclareOp(e,C){let t=e.GetStar()?"*":"",L=f1.GetCsNameArgument(e,C),n=e.GetArgument(C);f1.addMacro(e,L,Y.Macro,[`\\operatorname${t}{${n}}`]),e.Push(e.itemFactory.create("null"))},HandleOperatorName(e,C){let t=e.GetStar(),L=r1.trimSpaces(e.GetArgument(C)),n=new t1(L,Object.assign(Object.assign({},e.stack.env),{font:H.Variant.NORMAL,multiLetterIdentifiers:e.options.ams.operatornamePattern,operatorLetters:!0,noAutoOP:!0}),e.configuration).mml();if(n.isKind("mi")?n.removeProperty("autoOP"):n=e.create("node","TeXAtom",[n]),g.setProperties(n,{movesupsub:t,movablelimits:!0,texClass:A.OP}),!t){let i=e.GetNext(),s=e.i;i==="\\"&&++e.i&&e.GetCS()!=="limits"&&(e.i=s)}e.Push(e.itemFactory.create("fn",n))},SideSet(e,C){let[t,L]=El(e.ParseArg(C)),[n,i]=El(e.ParseArg(C)),s=e.ParseArg(C),r=s;t&&(L?t.replaceChild(e.create("node","mphantom",[e.create("node","mpadded",[_.copyNode(s,e)],{width:0})]),g.getChildAt(t,0)):(r=e.create("node","mmultiscripts",[s]),n&&g.appendChildren(r,[g.getChildAt(n,1)||e.create("node","none"),g.getChildAt(n,2)||e.create("node","none")]),g.setProperty(r,"scriptalign","left"),g.appendChildren(r,[e.create("node","mprescripts"),g.getChildAt(t,1)||e.create("node","none"),g.getChildAt(t,2)||e.create("node","none")]))),n&&r===s&&(n.replaceChild(s,g.getChildAt(n,0)),r=n);let o=e.create("node","TeXAtom",[],{texClass:A.OP,movesupsub:!0,movablelimits:!0});L&&(t&&o.appendChild(t),o.appendChild(L)),o.appendChild(r),i&&o.appendChild(i),e.Push(o)},operatorLetter(e,C){return e.stack.env.operatorLetters?m1.variable(e,C):!1},MultiIntegral(e,C,t){let L=e.GetNext();if(L==="\\"){let n=e.i;L=e.GetArgument(C),e.i=n,L==="\\limits"&&(t="\\!\\!\\mathop{\\,\\,"+t+"}")}e.string=t+" "+e.string.slice(e.i),e.i=0},xArrow(e,C,t,L,n,i=0){let s={width:"+"+r1.em((L+n)/18),lspace:r1.em(L/18)},r=e.GetBrackets(C),o=e.ParseArg(C),a=e.create("node","mspace",[],{depth:".2em"}),l=e.create("token","mo",{stretchy:!0,texClass:A.ORD},String.fromCodePoint(t));i&&l.attributes.set("minsize",r1.em(i)),l=e.create("node","mstyle",[l],{scriptlevel:0});let u=e.create("node","munderover",[l]),x=e.create("node","mpadded",[o,a],s);if(g.setAttribute(x,"voffset","-.2em"),g.setAttribute(x,"height","-.2em"),g.setChild(u,u.over,x),r){let p=new t1(r,e.stack.env,e.configuration).mml(),h=e.create("node","mspace",[],{height:".75em"});x=e.create("node","mpadded",[p,h],s),g.setAttribute(x,"voffset",".15em"),g.setAttribute(x,"depth","-.15em"),g.setChild(u,u.under,x)}g.setProperty(u,"subsupOK",!0),e.Push(e.create("node","TeXAtom",[e.create("node","TeXAtom",[],{texClass:A.NONE}),u],{texClass:A.REL}))},HandleShove(e,C,t){let L=e.stack.Top();if(L.kind!=="multline")throw new R("CommandOnlyAllowedInEnv","%1 only allowed in %2 environment",e.currentCS,"multline");if(L.Size())throw new R("CommandAtTheBeginingOfLine","%1 must come at the beginning of the line",e.currentCS);L.setProperty("shove",t)},CFrac(e,C){let t=r1.trimSpaces(e.GetBrackets(C,"")),L=e.GetArgument(C),n=e.GetArgument(C),i={l:H.Align.LEFT,r:H.Align.RIGHT,"":""},s=new t1("\\strut\\textstyle{"+L+"}",e.stack.env,e.configuration).mml(),r=new t1("\\strut\\textstyle{"+n+"}",e.stack.env,e.configuration).mml(),o=e.create("node","mfrac",[s,r]);if(t=i[t],t==null)throw new R("IllegalAlign","Illegal alignment specified in %1",e.currentCS);t&&g.setProperties(o,{numalign:t,denomalign:t}),e.Push(o)},Genfrac(e,C,t,L,n,i){t==null&&(t=e.GetDelimiterArg(C)),L==null&&(L=e.GetDelimiterArg(C)),n==null&&(n=e.GetArgument(C)),i==null&&(i=r1.trimSpaces(e.GetArgument(C)));let s=e.ParseArg(C),r=e.ParseArg(C),o=e.create("node","mfrac",[s,r]);if(n!==""&&g.setAttribute(o,"linethickness",n),(t||L)&&(g.setProperty(o,"withDelims",!0),o=_.fixedFence(e.configuration,t,o,L)),i!==""){let a=parseInt(i,10),l=["D","T","S","SS"][a];if(l==null)throw new R("BadMathStyleFor","Bad math style for %1",e.currentCS);o=e.create("node","mstyle",[o]),l==="D"?g.setProperties(o,{displaystyle:!0,scriptlevel:0}):g.setProperties(o,{displaystyle:!1,scriptlevel:a-1})}e.Push(o)},HandleTag(e,C){if(!e.tags.currentTag.taggable&&e.tags.env)throw new R("CommandNotAllowedInEnv","%1 not allowed in %2 environment",e.currentCS,e.tags.env);if(e.tags.currentTag.tag)throw new R("MultipleCommand","Multiple %1",e.currentCS);let t=e.GetStar(),L=r1.trimSpaces(e.GetArgument(C));e.tags.tag(L,t),e.Push(e.itemFactory.create("null"))},HandleNoTag:f.HandleNoTag,HandleRef:f.HandleRef,Macro:f.Macro,Accent:f.Accent,Tilde:f.Tilde,Array:f.Array,Spacer:f.Spacer,NamedOp:f.NamedOp,EqnArray:f.EqnArray,Equation:f.Equation}});
-var Dl=M(()=>{Q0();$1();K1();e3();q1();L1();H2();new w1("AMSmath-mathchar0mo",m1.mathchar0mo,{iiiint:["\u2A0C",{texClass:A.OP}]});new t3("AMSmath-operatorLetter",Y.operatorLetter,/[-*]/i);new a1("AMSmath-macros",{mathring:[Y.Accent,"02DA"],nobreakspace:Y.Tilde,negmedspace:[Y.Spacer,I1.negativemediummathspace],negthickspace:[Y.Spacer,I1.negativethickmathspace],idotsint:[Y.MultiIntegral,"\\int\\cdots\\int"],dddot:[Y.Accent,"20DB"],ddddot:[Y.Accent,"20DC"],sideset:Y.SideSet,boxed:[Y.Macro,"\\fbox{$\\displaystyle{#1}$}",1],tag:Y.HandleTag,notag:Y.HandleNoTag,eqref:[Y.HandleRef,!0],substack:[Y.Macro,"\\begin{subarray}{c}#1\\end{subarray}",1],injlim:[Y.NamedOp,"inj&thinsp;lim"],projlim:[Y.NamedOp,"proj&thinsp;lim"],varliminf:[Y.Macro,"\\mathop{\\underline{\\mmlToken{mi}{lim}}}"],varlimsup:[Y.Macro,"\\mathop{\\overline{\\mmlToken{mi}{lim}}}"],varinjlim:[Y.Macro,"\\mathop{\\underrightarrow{\\mmlToken{mi}{lim}}}"],varprojlim:[Y.Macro,"\\mathop{\\underleftarrow{\\mmlToken{mi}{lim}}}"],DeclareMathOperator:Y.HandleDeclareOp,operatorname:Y.HandleOperatorName,genfrac:Y.Genfrac,frac:[Y.Genfrac,"","","",""],tfrac:[Y.Genfrac,"","","","1"],dfrac:[Y.Genfrac,"","","","0"],binom:[Y.Genfrac,"(",")","0",""],tbinom:[Y.Genfrac,"(",")","0","1"],dbinom:[Y.Genfrac,"(",")","0","0"],cfrac:Y.CFrac,shoveleft:[Y.HandleShove,H.Align.LEFT],shoveright:[Y.HandleShove,H.Align.RIGHT],xrightarrow:[Y.xArrow,8594,5,10],xleftarrow:[Y.xArrow,8592,10,5]});new d2("AMSmath-environment",m1.environment,{"equation*":[Y.Equation,null,!1],"eqnarray*":[Y.EqnArray,null,!1,!0,"rcl","bmt",_.cols(0,I1.thickmathspace),".5em"],align:[Y.EqnArray,null,!0,!0,"rl","bt",_.cols(0,2)],"align*":[Y.EqnArray,null,!1,!0,"rl","bt",_.cols(0,2)],multline:[Y.Multline,null,!0],"multline*":[Y.Multline,null,!1],split:[Y.EqnArray,null,!1,!1,"rl","bt",_.cols(0)],gather:[Y.EqnArray,null,!0,!0,"c","m"],"gather*":[Y.EqnArray,null,!1,!0,"c","m"],alignat:[Y.AlignAt,null,!0,!0],"alignat*":[Y.AlignAt,null,!1,!0],alignedat:[Y.AlignAt,null,!1,!1],aligned:[Y.AmsEqnArray,null,null,null,"rl","bt",_.cols(0,2),".5em","D"],gathered:[Y.AmsEqnArray,null,null,null,"c","m",null,".5em","D"],xalignat:[Y.XalignAt,null,!0,!0],"xalignat*":[Y.XalignAt,null,!1,!0],xxalignat:[Y.XalignAt,null,!1,!1],flalign:[Y.FlalignArray,null,!0,!1,!0,"rlc","btm","auto auto fit"],"flalign*":[Y.FlalignArray,null,!1,!1,!0,"rlc","btm","auto auto fit"],subarray:[Y.Array,null,null,null,null,_.cols(0),"0.1em","S",!0],smallmatrix:[Y.Array,null,null,null,"c",_.cols(1/3),".2em","S",!0],matrix:[Y.Array,null,null,null,"c"],pmatrix:[Y.Array,null,"(",")","c"],bmatrix:[Y.Array,null,"[","]","c"],Bmatrix:[Y.Array,null,"\\{","\\}","c"],vmatrix:[Y.Array,null,"\\vert","\\vert","c"],Vmatrix:[Y.Array,null,"\\Vert","\\Vert","c"],cases:[Y.Array,null,"\\{",".","ll",null,".2em","T"]});new T2("AMSmath-delimiter",m1.delimiter,{"\\lvert":["|",{texClass:A.OPEN}],"\\rvert":["|",{texClass:A.CLOSE}],"\\lVert":["\u2016",{texClass:A.OPEN}],"\\rVert":["\u2016",{texClass:A.CLOSE}]});new w1("AMSsymbols-mathchar0mi",m1.mathchar0mi,{digamma:"\u03DD",varkappa:"\u03F0",varGamma:["\u0393",{mathvariant:H.Variant.ITALIC}],varDelta:["\u0394",{mathvariant:H.Variant.ITALIC}],varTheta:["\u0398",{mathvariant:H.Variant.ITALIC}],varLambda:["\u039B",{mathvariant:H.Variant.ITALIC}],varXi:["\u039E",{mathvariant:H.Variant.ITALIC}],varPi:["\u03A0",{mathvariant:H.Variant.ITALIC}],varSigma:["\u03A3",{mathvariant:H.Variant.ITALIC}],varUpsilon:["\u03A5",{mathvariant:H.Variant.ITALIC}],varPhi:["\u03A6",{mathvariant:H.Variant.ITALIC}],varPsi:["\u03A8",{mathvariant:H.Variant.ITALIC}],varOmega:["\u03A9",{mathvariant:H.Variant.ITALIC}],beth:"\u2136",gimel:"\u2137",daleth:"\u2138",backprime:["\u2035",{variantForm:!0}],hslash:"\u210F",varnothing:["\u2205",{variantForm:!0}],blacktriangle:"\u25B4",triangledown:["\u25BD",{variantForm:!0}],blacktriangledown:"\u25BE",square:"\u25FB",Box:"\u25FB",blacksquare:"\u25FC",lozenge:"\u25CA",Diamond:"\u25CA",blacklozenge:"\u29EB",circledS:["\u24C8",{mathvariant:H.Variant.NORMAL}],bigstar:"\u2605",sphericalangle:"\u2222",measuredangle:"\u2221",nexists:"\u2204",complement:"\u2201",mho:"\u2127",eth:["\xF0",{mathvariant:H.Variant.NORMAL}],Finv:"\u2132",diagup:"\u2571",Game:"\u2141",diagdown:"\u2572",Bbbk:["k",{mathvariant:H.Variant.DOUBLESTRUCK}],yen:"\xA5",circledR:"\xAE",checkmark:"\u2713",maltese:"\u2720"});new w1("AMSsymbols-mathchar0mo",m1.mathchar0mo,JSON.parse('{"dotplus":"∔","ltimes":"⋉","smallsetminus":["∖",{"variantForm":true}],"rtimes":"⋊","Cap":"⋒","doublecap":"⋒","leftthreetimes":"⋋","Cup":"⋓","doublecup":"⋓","rightthreetimes":"⋌","barwedge":"⊼","curlywedge":"⋏","veebar":"⊻","curlyvee":"⋎","doublebarwedge":"⩞","boxminus":"⊟","circleddash":"⊝","boxtimes":"⊠","circledast":"⊛","boxdot":"⊡","circledcirc":"⊚","boxplus":"⊞","centerdot":["⋅",{"variantForm":true}],"divideontimes":"⋇","intercal":"⊺","leqq":"≦","geqq":"≧","leqslant":"⩽","geqslant":"⩾","eqslantless":"⪕","eqslantgtr":"⪖","lesssim":"≲","gtrsim":"≳","lessapprox":"⪅","gtrapprox":"⪆","approxeq":"≊","lessdot":"⋖","gtrdot":"⋗","lll":"⋘","llless":"⋘","ggg":"⋙","gggtr":"⋙","lessgtr":"≶","gtrless":"≷","lesseqgtr":"⋚","gtreqless":"⋛","lesseqqgtr":"⪋","gtreqqless":"⪌","doteqdot":"≑","Doteq":"≑","eqcirc":"≖","risingdotseq":"≓","circeq":"≗","fallingdotseq":"≒","triangleq":"≜","backsim":"∽","thicksim":["∼",{"variantForm":true}],"backsimeq":"⋍","thickapprox":["≈",{"variantForm":true}],"subseteqq":"⫅","supseteqq":"⫆","Subset":"⋐","Supset":"⋑","sqsubset":"⊏","sqsupset":"⊐","preccurlyeq":"≼","succcurlyeq":"≽","curlyeqprec":"⋞","curlyeqsucc":"⋟","precsim":"≾","succsim":"≿","precapprox":"⪷","succapprox":"⪸","vartriangleleft":"⊲","lhd":"⊲","vartriangleright":"⊳","rhd":"⊳","trianglelefteq":"⊴","unlhd":"⊴","trianglerighteq":"⊵","unrhd":"⊵","vDash":"⊨","Vdash":"⊩","Vvdash":"⊪","smallsmile":["⌣",{"variantForm":true}],"shortmid":["∣",{"variantForm":true}],"smallfrown":["⌢",{"variantForm":true}],"shortparallel":["∥",{"variantForm":true}],"bumpeq":"≏","between":"≬","Bumpeq":"≎","pitchfork":"⋔","varpropto":["∝",{"variantForm":true}],"backepsilon":"∍","blacktriangleleft":"◂","blacktriangleright":"▸","therefore":"∴","because":"∵","eqsim":"≂","vartriangle":["△",{"variantForm":true}],"Join":"⋈","nless":"≮","ngtr":"≯","nleq":"≰","ngeq":"≱","nleqslant":["⪇",{"variantForm":true}],"ngeqslant":["⪈",{"variantForm":true}],"nleqq":["≰",{"variantForm":true}],"ngeqq":["≱",{"variantForm":true}],"lneq":"⪇","gneq":"⪈","lneqq":"≨","gneqq":"≩","lvertneqq":["≨",{"variantForm":true}],"gvertneqq":["≩",{"variantForm":true}],"lnsim":"⋦","gnsim":"⋧","lnapprox":"⪉","gnapprox":"⪊","nprec":"⊀","nsucc":"⊁","npreceq":["⋠",{"variantForm":true}],"nsucceq":["⋡",{"variantForm":true}],"precneqq":"⪵","succneqq":"⪶","precnsim":"⋨","succnsim":"⋩","precnapprox":"⪹","succnapprox":"⪺","nsim":"≁","ncong":"≇","nshortmid":["∤",{"variantForm":true}],"nshortparallel":["∦",{"variantForm":true}],"nmid":"∤","nparallel":"∦","nvdash":"⊬","nvDash":"⊭","nVdash":"⊮","nVDash":"⊯","ntriangleleft":"⋪","ntriangleright":"⋫","ntrianglelefteq":"⋬","ntrianglerighteq":"⋭","nsubseteq":"⊈","nsupseteq":"⊉","nsubseteqq":["⊈",{"variantForm":true}],"nsupseteqq":["⊉",{"variantForm":true}],"subsetneq":"⊊","supsetneq":"⊋","varsubsetneq":["⊊",{"variantForm":true}],"varsupsetneq":["⊋",{"variantForm":true}],"subsetneqq":"⫋","supsetneqq":"⫌","varsubsetneqq":["⫋",{"variantForm":true}],"varsupsetneqq":["⫌",{"variantForm":true}],"leftleftarrows":"⇇","rightrightarrows":"⇉","leftrightarrows":"⇆","rightleftarrows":"⇄","Lleftarrow":"⇚","Rrightarrow":"⇛","twoheadleftarrow":"↞","twoheadrightarrow":"↠","leftarrowtail":"↢","rightarrowtail":"↣","looparrowleft":"↫","looparrowright":"↬","leftrightharpoons":"⇋","rightleftharpoons":["⇌",{"variantForm":true}],"curvearrowleft":"↶","curvearrowright":"↷","circlearrowleft":"↺","circlearrowright":"↻","Lsh":"↰","Rsh":"↱","upuparrows":"⇈","downdownarrows":"⇊","upharpoonleft":"↿","upharpoonright":"↾","downharpoonleft":"⇃","restriction":"↾","multimap":"⊸","downharpoonright":"⇂","leftrightsquigarrow":"↭","rightsquigarrow":"⇝","leadsto":"⇝","dashrightarrow":"⇢","dashleftarrow":"⇠","nleftarrow":"↚","nrightarrow":"↛","nLeftarrow":"⇍","nRightarrow":"⇏","nleftrightarrow":"↮","nLeftrightarrow":"⇎"}'));new T2("AMSsymbols-delimiter",m1.delimiter,{"\\ulcorner":"\u231C","\\urcorner":"\u231D","\\llcorner":"\u231E","\\lrcorner":"\u231F"});new a1("AMSsymbols-macros",{implies:[Y.Macro,"\\;\\Longrightarrow\\;"],impliedby:[Y.Macro,"\\;\\Longleftarrow\\;"]})});
-var Z0;
-var yl=M(()=>{Q1();s6();Z0=class extends s1{get kind(){return"beginEnv"}get isOpen(){return!0}checkItem(C){if(C.isKind("end")){if(C.getName()!==this.getName())throw new R("EnvBadEnd","\\begin{%1} ended with \\end{%2}",this.getName(),C.getName());return[[this.factory.create("mml",this.toMml())],!0]}if(C.isKind("stop"))throw new R("EnvMissingEnd","Missing \\end{%1}",this.getName());return super.checkItem(C)}}});
-var f5;
-var H3;
-var Ue=M(()=>{S1();Q1();$1();j2();q1();$2();P4();f5={NewCommand(e,C){let t=f1.GetCsNameArgument(e,C),L=f1.GetArgCount(e,C),n=e.GetBrackets(C),i=e.GetArgument(C);f1.addMacro(e,t,f5.Macro,[i,L,n]),e.Push(e.itemFactory.create("null"))},NewEnvironment(e,C){let t=r1.trimSpaces(e.GetArgument(C)),L=f1.GetArgCount(e,C),n=e.GetBrackets(C),i=e.GetArgument(C),s=e.GetArgument(C);f1.addEnvironment(e,t,f5.BeginEnv,[!0,i,s,L,n]),e.Push(e.itemFactory.create("null"))},MacroDef(e,C){let t=f1.GetCSname(e,C),L=f1.GetTemplate(e,C,"\\"+t),n=e.GetArgument(C);L instanceof Array?f1.addMacro(e,t,f5.MacroWithTemplate,[n].concat(L)):f1.addMacro(e,t,f5.Macro,[n,L]),e.Push(e.itemFactory.create("null"))},Let(e,C){let t=f1.GetCSname(e,C),L=e.GetNext();L==="="&&(e.i++,L=e.GetNext());let n=e.configuration.handlers;if(e.Push(e.itemFactory.create("null")),L==="\\"){if(C=f1.GetCSname(e,C),t===C)return;let s=n.get(X.MACRO).applicable(C);if(s instanceof h2){let o=s.lookup(C);f1.addMacro(e,t,o.func,o.args,o.token);return}if(s instanceof w1&&!(s instanceof T2)){let o=s.lookup(C),a=l=>s.parser(l,o);f1.addMacro(e,t,a,[t,o.char]);return}let r=n.get(X.DELIMITER).lookup("\\"+C);if(r){f1.addDelimiter(e,"\\"+t,r.char,r.attributes);return}f1.checkProtectedMacros(e,t),f1.undefineMacro(e,t),f1.undefineDelimiter(e,"\\"+t);return}e.i++;let i=n.get(X.DELIMITER).lookup(L);if(i){f1.addDelimiter(e,"\\"+t,i.char,i.attributes);return}f1.addMacro(e,t,f5.Macro,[L])},MacroWithTemplate(e,C,t,L,...n){let i=parseInt(L,10);if(n.length){let s=[];if(e.GetNext(),n[0]&&!f1.MatchParam(e,n[0]))throw new R("MismatchUseDef","Use of %1 doesn't match its definition",C);if(i){for(let r=0;r<i;r++)s.push(f1.GetParameter(e,C,n[r+1]));t=_.substituteArgs(e,s,t)}}e.string=_.addArgs(e,t,e.string.slice(e.i)),e.i=0,_.checkMaxMacros(e)},BeginEnv(e,C,t,L,n,i){let s=C.getName();if(e.stack.env.closing===s){if(delete e.stack.env.closing,e.stack.global.beginEnv&&(e.stack.global.beginEnv--,L)){let o=e.string.slice(e.i);e.string=_.addArgs(e,e.string.substring(0,e.i),L),e.Parse(),e.string=o,e.i=0}return e.itemFactory.create("end").setProperty("name",s)}if(n){let r=[];if(i!=null){let o=e.GetBrackets(`\\begin{${s}}`);r.push(o??i)}for(let o=r.length;o<n;o++)r.push(e.GetArgument(`\\begin{${s}}`));t=_.substituteArgs(e,r,t),L=_.substituteArgs(e,[],L)}return e.string=_.addArgs(e,t,e.string.slice(e.i)),e.i=0,e.stack.global.beginEnv=(e.stack.global.beginEnv||0)+1,e.itemFactory.create("beginEnv").setProperty("name",s)},Macro:f.Macro},H3=f5});
-var kl=M(()=>{Ue();$1();new a1("Newcommand-macros",{newcommand:H3.NewCommand,renewcommand:H3.NewCommand,newenvironment:H3.NewEnvironment,renewenvironment:H3.NewEnvironment,def:H3.MacroDef,let:H3.Let})});
-function Y0(e,C){C.parseOptions.packageData.has("newcommand")||(C.parseOptions.packageData.set("newcommand",{}),new T2(s2.NEW_DELIMITER,m1.delimiter,{}),new a1(s2.NEW_COMMAND,{}),new d2(s2.NEW_ENVIRONMENT,m1.environment,{}),C.parseOptions.handlers.add({[X.CHARACTER]:[],[X.DELIMITER]:[s2.NEW_DELIMITER],[X.MACRO]:[s2.NEW_DELIMITER,s2.NEW_COMMAND],[X.ENVIRONMENT]:[s2.NEW_ENVIRONMENT]},{},Al))}
-var GP;
-var L9=M(()=>{S1();t2();yl();P4();kl();e3();$1();GP=x1.create("newcommand",{[Q.HANDLER]:{macro:["Newcommand-macros"]},[Q.ITEMS]:{[Z0.prototype.kind]:Z0},[Q.OPTIONS]:{maxMacros:1e3,protectedMacros:["begingroupSandbox"]},[Q.CONFIG]:Y0})});
-var Ve;
-var QP;
-var Bl=M(()=>{S1();t2();qe();v4();Dl();L9();Ve=class extends F4{},QP=x1.create("ams",{[Q.HANDLER]:{[X.CHARACTER]:["AMSmath-operatorLetter"],[X.DELIMITER]:["AMSsymbols-delimiter","AMSmath-delimiter"],[X.MACRO]:["AMSsymbols-mathchar0mi","AMSsymbols-mathchar0mo","AMSsymbols-delimiter","AMSsymbols-macros","AMSmath-mathchar0mo","AMSmath-macros","AMSmath-delimiter"],[X.ENVIRONMENT]:["AMSmath-environment"]},[Q.ITEMS]:{[h6.prototype.kind]:h6,[K0.prototype.kind]:K0},[Q.TAGS]:{ams:Ve},[Q.OPTIONS]:{multlineWidth:"",ams:{operatornamePattern:/^[-*a-zA-Z0-9]+/,multlineWidth:"100%",multlineIndent:"1em"}},[Q.CONFIG]:Y0})});
-function pm(e,C,t,L){let n=B4.createToken(e,C,t,L);return C!=="mtext"&&e.configuration.parser.stack.env.boldsymbol&&(g.setProperty(n,"fixBold",!0),e.configuration.addNode("fixBold",n)),n}
-function hm(e){for(let C of e.data.getList("fixBold"))if(g.getProperty(C,"fixBold")){let t=g.getAttribute(C,"mathvariant");g.setAttribute(C,"mathvariant",j3[t]||t),g.removeProperties(C,"fixBold")}}
-var j3;
-var xm;
-var n_;
-var wl=M(()=>{S1();t2();j1();K1();$1();O8();j3={};j3[H.Variant.NORMAL]=H.Variant.BOLD;j3[H.Variant.ITALIC]=H.Variant.BOLDITALIC;j3[H.Variant.FRAKTUR]=H.Variant.BOLDFRAKTUR;j3[H.Variant.SCRIPT]=H.Variant.BOLDSCRIPT;j3[H.Variant.SANSSERIF]=H.Variant.BOLDSANSSERIF;j3["-tex-calligraphic"]="-tex-bold-calligraphic";j3["-tex-oldstyle"]="-tex-bold-oldstyle";j3["-tex-mathit"]=H.Variant.BOLDITALIC;xm={Boldsymbol(e,C){let t=e.stack.env.boldsymbol;e.stack.env.boldsymbol=!0;let L=e.ParseArg(C);e.stack.env.boldsymbol=t,e.Push(L)}};new a1("boldsymbol",{boldsymbol:xm.Boldsymbol});n_=x1.create("boldsymbol",{[Q.HANDLER]:{[X.MACRO]:["boldsymbol"]},[Q.NODES]:{token:pm},[Q.POSTPROCESSORS]:[hm]})});
-var Fl;
-var J0;
-var vl=M(()=>{s6();L1();q1();H2();Fl=i2(I1.thinmathspace),J0=class extends s1{constructor(){super(...arguments),this.barNodes=[]}get kind(){return"braket"}get isOpen(){return!0}checkItem(C){return C.isKind("close")?C.getProperty("braketbar")?(this.barNodes.push(...super.toMml(!0,!0).childNodes),this.Clear(),s1.fail):[[this.factory.create("mml",this.toMml())],!0]:C.isKind("mml")?(this.Push(C.toMml()),this.getProperty("single")?[[this.toMml()],!0]:s1.fail):super.checkItem(C)}toMml(C=!0,t){let L=super.toMml(C,t);if(!C)return L;let n=this.getProperty("open"),i=this.getProperty("close");if(this.barNodes.length&&(L=this.create("node","inferredMrow",[...this.barNodes,L])),this.getProperty("stretchy"))return this.getProperty("space")&&(L=this.create("node","inferredMrow",[this.create("token","mspace",{width:Fl}),L,this.create("token","mspace",{width:Fl})])),_.fenced(this.factory.configuration,n,L,i);let s={fence:!0,stretchy:!1,symmetric:!0,texClass:A.OPEN},r=this.create("token","mo",s,n);s.texClass=A.CLOSE;let o=this.create("token","mo",s,i);return this.create("node","mrow",[r,L,o],{open:n,close:i})}}});
-var dm;
-var I2;
-var Sl=M(()=>{j2();L1();dm={Braket(e,C,t,L,n,i,s=!1){let r=e.i;e.GetArgument(C),e.i=r;let o=e.GetNext(),a=!0;o==="{"&&(e.i++,a=!1);let l=e.itemFactory.create("braket");l.setProperties({barcount:0,barmax:i,open:t,close:L,stretchy:n,single:a,space:s}),e.Push(l),l.env.braketItem=e.stack.height-1},Bar(e,C){let t=C==="|"?"|":"\u2016",L=e.stack.height-e.stack.env.braketItem,n=e.stack.Top(L);if(!n||!n.isKind("braket")||n.getProperty("barcount")>=n.getProperty("barmax"))return!1;if(t==="|"&&e.GetNext()==="|"&&(e.i++,t="\u2016"),!n.getProperty("stretchy")){let s=e.create("token","mo",{stretchy:!1,"data-braketbar":!0,texClass:A.ORD},t);return e.Push(s),!0}let i=e.itemFactory.create("close").setProperty("braketbar",!0);return e.Push(i),n.barNodes.push(e.create("node","TeXAtom",[],{texClass:A.CLOSE}),e.create("token","mo",{stretchy:!0,"data-braketbar":!0,texClass:A.BIN},t),e.create("node","TeXAtom",[],{texClass:A.OPEN})),n.setProperty("barcount",n.getProperty("barcount")+1),!0},Macro:f.Macro},I2=dm});
-var Rl=M(()=>{$1();Sl();new a1("Braket-macros",{bra:[I2.Macro,"{\\langle {#1} \\vert}",1],ket:[I2.Macro,"{\\vert {#1} \\rangle}",1],braket:[I2.Braket,"\u27E8","\u27E9",!1,1/0],set:[I2.Braket,"{","}",!1,1],Bra:[I2.Macro,"{\\left\\langle {#1} \\right\\vert}",1],Ket:[I2.Macro,"{\\left\\vert {#1} \\right\\rangle}",1],Braket:[I2.Braket,"\u27E8","\u27E9",!0,1/0],Set:[I2.Braket,"{","}",!0,1,!0],ketbra:[I2.Macro,"{\\vert {#1} \\rangle\\langle {#2} \\vert}",2],Ketbra:[I2.Macro,"{\\left\\vert {#1} \\right\\rangle\\left\\langle {#2} \\right\\vert}",2],"|":I2.Bar});new h2("Braket-characters",{"|":I2.Bar})});
-var M_;
-var Tl=M(()=>{S1();t2();vl();Rl();M_=x1.create("braket",{[Q.HANDLER]:{[X.CHARACTER]:["Braket-characters"],[X.MACRO]:["Braket-macros"]},[Q.ITEMS]:{[J0.prototype.kind]:J0},[Q.PRIORITY]:3})});
-var n9;
-var fm;
-var k_;
-var Nl=M(()=>{S1();t2();$1();q1();n9={"data-arrowhead":1,color:1,mathcolor:1,background:1,mathbackground:1,"data-padding":1,"data-thickness":1},fm={Enclose(e,C){let t=e.GetArgument(C).replace(/,/g," "),L=e.GetBrackets(C,""),n=e.ParseArg(C),i=_.keyvalOptions(L,n9);i.notation=t,e.Push(e.create("node","menclose",[n],i))}};new a1("enclose",{enclose:fm.Enclose});k_=x1.create("enclose",{[Q.HANDLER]:{[X.MACRO]:["enclose"]}})});
-var i9;
-var N_;
-var Ol=M(()=>{S1();t2();K1();$1();q1();Nl();i9={Cancel(e,C,t){let L=e.GetBrackets(C,""),n=e.ParseArg(C),i=_.keyvalOptions(L,n9);i.notation=t,e.Push(e.create("node","menclose",[n],i))},CancelTo(e,C){let t=e.GetBrackets(C,""),L=e.ParseArg(C),n=e.ParseArg(C),i=_.keyvalOptions(t,n9);i.notation=[H.Notation.UPDIAGONALSTRIKE,H.Notation.UPDIAGONALARROW,H.Notation.NORTHEASTARROW].join(" "),L=e.create("node","mpadded",[L],{depth:"-.1em",height:"+.1em",voffset:".1em"}),e.Push(e.create("node","msup",[e.create("node","menclose",[n],i),L]))}};new a1("cancel",{cancel:[i9.Cancel,H.Notation.UPDIAGONALSTRIKE],bcancel:[i9.Cancel,H.Notation.DOWNDIAGONALSTRIKE],xcancel:[i9.Cancel,H.Notation.UPDIAGONALSTRIKE+" "+H.Notation.DOWNDIAGONALSTRIKE],cancelto:i9.CancelTo});N_=x1.create("cancel",{[Q.HANDLER]:{[X.MACRO]:["cancel"]}})});
-function Il(e){let C=`+${e}`,t=e.replace(/^.*?([a-z]*)$/,"$1");return{width:`+${2*parseFloat(C)}${t}`,height:C,depth:C,lspace:e}}
-var m5;
-var Pl=M(()=>{j1();q1();m5={Color(e,C){let t=e.GetBrackets(C,""),L=e.GetArgument(C),i=e.configuration.packageData.get("color").model.getColor(t,L),s=e.itemFactory.create("style").setProperties({styles:{mathcolor:i}});e.stack.env.color=i,e.Push(s)},TextColor(e,C){let t=e.GetBrackets(C,""),L=e.GetArgument(C),i=e.configuration.packageData.get("color").model.getColor(t,L),s=e.stack.env.color;e.stack.env.color=i;let r=e.ParseArg(C);s?e.stack.env.color=s:delete e.stack.env.color;let o=e.create("node","mstyle",[r],{mathcolor:i});e.Push(o)},DefineColor(e,C){let t=e.GetArgument(C),L=e.GetArgument(C),n=e.GetArgument(C);e.configuration.packageData.get("color").model.defineColor(L,t,n),e.Push(e.itemFactory.create("null"))},ColorBox(e,C){let t=e.GetBrackets(C,""),L=e.GetArgument(C),n=_.internalMath(e,e.GetArgument(C)),i=e.configuration.packageData.get("color").model,s=e.create("node","mpadded",n,{mathbackground:i.getColor(t,L)});g.setProperties(s,Il(e.options.color.padding)),e.Push(s)},FColorBox(e,C){let t=e.GetBrackets(C,""),L=e.GetArgument(C),n=e.GetBrackets(C,t),i=e.GetArgument(C),s=_.internalMath(e,e.GetArgument(C)),r=e.options.color,o=e.configuration.packageData.get("color").model,a=e.create("node","mpadded",s,{mathbackground:o.getColor(n,i),style:`border: ${r.borderWidth} solid ${o.getColor(t,L)}`});g.setProperties(a,Il(r.padding)),e.Push(a)}}});
-var Xe;
-var _l=M(()=>{Xe=new Map(JSON.parse('[["Apricot","#FBB982"],["Aquamarine","#00B5BE"],["Bittersweet","#C04F17"],["Black","#221E1F"],["Blue","#2D2F92"],["BlueGreen","#00B3B8"],["BlueViolet","#473992"],["BrickRed","#B6321C"],["Brown","#792500"],["BurntOrange","#F7921D"],["CadetBlue","#74729A"],["CarnationPink","#F282B4"],["Cerulean","#00A2E3"],["CornflowerBlue","#41B0E4"],["Cyan","#00AEEF"],["Dandelion","#FDBC42"],["DarkOrchid","#A4538A"],["Emerald","#00A99D"],["ForestGreen","#009B55"],["Fuchsia","#8C368C"],["Goldenrod","#FFDF42"],["Gray","#949698"],["Green","#00A64F"],["GreenYellow","#DFE674"],["JungleGreen","#00A99A"],["Lavender","#F49EC4"],["LimeGreen","#8DC73E"],["Magenta","#EC008C"],["Mahogany","#A9341F"],["Maroon","#AF3235"],["Melon","#F89E7B"],["MidnightBlue","#006795"],["Mulberry","#A93C93"],["NavyBlue","#006EB8"],["OliveGreen","#3C8031"],["Orange","#F58137"],["OrangeRed","#ED135A"],["Orchid","#AF72B0"],["Peach","#F7965A"],["Periwinkle","#7977B8"],["PineGreen","#008B72"],["Plum","#92268F"],["ProcessBlue","#00B0F0"],["Purple","#99479B"],["RawSienna","#974006"],["Red","#ED1B23"],["RedOrange","#F26035"],["RedViolet","#A1246B"],["Rhodamine","#EF559F"],["RoyalBlue","#0071BC"],["RoyalPurple","#613F99"],["RubineRed","#ED017D"],["Salmon","#F69289"],["SeaGreen","#3FBC9D"],["Sepia","#671800"],["SkyBlue","#46C5DD"],["SpringGreen","#C6DC67"],["Tan","#DA9D76"],["TealBlue","#00AEB3"],["Thistle","#D883B7"],["Turquoise","#00B4CE"],["Violet","#58429B"],["VioletRed","#EF58A0"],["White","#FFFFFF"],["WildStrawberry","#EE2967"],["Yellow","#FFF200"],["YellowGreen","#98CC70"],["YellowOrange","#FAA21A"]]'))});
-var C7;
-var s9;
-var zl=M(()=>{Q1();_l();C7=new Map,s9=class{constructor(){this.userColors=new Map}normalizeColor(C,t){if(!C||C==="named"){if(t.match(/;/))throw new R("BadColorValue","Invalid color value");return t}if(C7.has(C))return C7.get(C)(t);throw new R("UndefinedColorModel","Color model '%1' not defined",C)}getColor(C,t){return!C||C==="named"?this.getColorByName(t):this.normalizeColor(C,t)}getColorByName(C){if(this.userColors.has(C))return this.userColors.get(C);if(Xe.has(C))return Xe.get(C);if(C.match(/;/))throw new R("BadColorValue","Invalid color value");return C}defineColor(C,t,L){let n=this.normalizeColor(C,L);this.userColors.set(t,n)}};C7.set("rgb",function(e){let C=e.trim().split(/\s*,\s*/),t="#";if(C.length!==3)throw new R("ModelArg1","Color values for the %1 model require 3 numbers","rgb");for(let L of C){if(!L.match(/^(\d+(\.\d*)?|\.\d+)$/))throw new R("InvalidDecimalNumber","Invalid decimal number");let n=parseFloat(L);if(n<0||n>1)throw new R("ModelArg2","Color values for the %1 model must be between %2 and %3","rgb","0","1");let i=Math.floor(n*255).toString(16);i.length<2&&(i="0"+i),t+=i}return t});C7.set("RGB",function(e){let C=e.trim().split(/\s*,\s*/),t="#";if(C.length!==3)throw new R("ModelArg1","Color values for the %1 model require 3 numbers","RGB");for(let L of C){if(!L.match(/^\d+$/))throw new R("InvalidNumber","Invalid number");let n=parseInt(L);if(n>255)throw new R("ModelArg2","Color values for the %1 model must be between %2 and %3","RGB","0","255");let i=n.toString(16);i.length<2&&(i="0"+i),t+=i}return t});C7.set("gray",function(e){if(!e.match(/^\s*(\d+(\.\d*)?|\.\d+)\s*$/))throw new R("InvalidDecimalNumber","Invalid decimal number");let C=parseFloat(e);if(C<0||C>1)throw new R("ModelArg2","Color values for the %1 model must be between %2 and %3","gray","0","1");let t=Math.floor(C*255).toString(16);return t.length<2&&(t="0"+t),`#${t}${t}${t}`})});
-var mm;
-var X_;
-var Wl=M(()=>{S1();$1();t2();Pl();zl();new a1("color",{color:m5.Color,textcolor:m5.TextColor,definecolor:m5.DefineColor,colorbox:m5.ColorBox,fcolorbox:m5.FColorBox});mm=function(e,C){C.parseOptions.packageData.set("color",{model:new s9})},X_=x1.create("color",{[Q.HANDLER]:{[X.MACRO]:["color"]},[Q.OPTIONS]:{color:{padding:"5px",borderWidth:"2px"}},[Q.CONFIG]:mm})});
-var r2;
-var Ke=M(()=>{a6();$2();A2();Q1();L2();S1();P4();t7();r2={setDisplayLevel(e,C){if(!C)return;let[t,L]=D2(C,{"\\displaystyle":[!0,0],"\\textstyle":[!1,0],"\\scriptstyle":[!1,1],"\\scriptscriptstyle":[!1,2]},[null,null]);t!==null&&(e.attributes.set("displaystyle",t),e.attributes.set("scriptlevel",L))},checkAlignment(e,C){let t=e.stack.Top();if(t.kind!==_3.prototype.kind)throw new R("NotInAlignment","%1 can only be used in aligment environments",C);return t},addPairedDelims(e,C,t){if(e.configuration.handlers.get(X.MACRO).contains(C))throw new R("CommadExists","Command %1 already defined",`\\${C}`);f1.addMacro(e,C,O.PairedDelimiters,t)},spreadLines(e,C){if(!e.isKind("mtable"))return;let t=e.attributes.get("rowspacing"),L=r1.dimen2em(C);t=t.split(/ /).map(n=>r1.em(Math.max(0,r1.dimen2em(n)+L))).join(" "),e.attributes.set("rowspacing",t)},plusOrMinus(e,C){if(C=C.trim(),!C.match(/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/))throw new R("NotANumber","Argument to %1 is not a number",e);return C.match(/^[-+]/)?C:"+"+C},getScript(e,C,t){let L=r1.trimSpaces(e.GetArgument(C));if(L==="")return e.create("node","none");let n=e.options.mathtools[`prescript-${t}-format`];n&&(L=`${n}{${L}}`);let i=new t1(L,e.stack.env,e.configuration).mml();return i.isKind("TeXAtom")&&i.isEmpty?e.create("node","none"):i}}});
-var r9;
-var Qe;
-var O;
-var t7=M(()=>{q1();$2();Q0();j2();A2();Q1();j1();L1();H2();L2();S1();d0();P4();Ue();C6();Ke();r9={[X.MACRO]:["mathtools-legacycolonsymbols"]},Qe=a2.DEFAULTPRIORITY-1,O={MtMatrix(e,C,t,L){let n=e.GetBrackets(`\\begin{${C.getName()}}`,"c");return O.Array(e,C,t,L,n)},MtSmallMatrix(e,C,t,L,n){return n||(n=e.GetBrackets(`\\begin{${C.getName()}}`,e.options.mathtools["smallmatrix-align"])),O.Array(e,C,t,L,n,r1.em(1/3),".2em","S",1)},MtMultlined(e,C){let t=`\\begin{${C.getName()}}`,L=e.options.mathtools["multlined-pos"]||"c",n=e.options.mathtools["multlined-width"]||"";if(!e.nextIsSpace()){let s=e.GetBrackets(t,L);if(s.match(/^[ctb]$/)?(L=s,n=e.nextIsSpace()?"":e.GetBrackets(t,"")):n=s,n&&!r1.matchDimen(n)[0])throw new R("BadWidth","Width for %1 must be a dimension",t)}e.Push(C);let i=e.itemFactory.create("multlined",e,C);return i.arraydef={displaystyle:!0,rowspacing:".5em",width:n||"auto",columnwidth:"100%"},_.setArrayAlign(i,L)},HandleShove(e,C,t){let L=e.stack.Top();if(L.kind!=="multline"&&L.kind!=="multlined")throw new R("CommandInMultlined","%1 can only appear within the multline or multlined environments",C);if(L.Size())throw new R("CommandAtTheBeginingOfLine","%1 must come at the beginning of the line",C);L.setProperty("shove",t);let n=e.GetBrackets(C),i=e.ParseArg(C);if(n){let s=e.create("node","mrow",[]),r=e.create("node","mspace",[],{width:n});t==="left"?(s.appendChild(r),s.appendChild(i)):(s.appendChild(i),s.appendChild(r)),i=s}e.Push(i)},SpreadLines(e,C){if(e.stack.env.closing===C.getName()){delete e.stack.env.closing;let t=e.stack.Pop(),L=t.toMml(),n=t.getProperty("spread");if(L.isInferred)for(let i of g.getChildren(L))r2.spreadLines(i,n);else r2.spreadLines(L,n);e.Push(L)}else{let t=e.GetDimen(`\\begin{${C.getName()}}`);C.setProperty("spread",t),C.setProperty("nestStart",!0),_.checkEqnEnv(e),e.Push(C)}},Cases(e,C,t,L,n){let i=e.itemFactory.create("array").setProperty("casesEnv",C.getName());return i.arraydef={rowspacing:".2em",columnspacing:"1em",columnalign:"left"},n==="D"&&(i.arraydef.displaystyle=!0),i.setProperties({open:t,close:L}),e.Push(C),i},MathLap(e,C,t,L){let n=e.GetBrackets(C,"").trim(),i=e.create("node","mstyle",[e.create("node","mpadded",[e.ParseArg(C)],Object.assign({width:0},t==="r"?{}:{lspace:t==="l"?"-1width":"-.5width"}))],{"data-cramped":L});r2.setDisplayLevel(i,n),e.Push(e.create("node","TeXAtom",[i]))},Cramped(e,C){let t=e.GetBrackets(C,"").trim(),L=e.ParseArg(C),n=e.create("node","mstyle",[L],{"data-cramped":!0});r2.setDisplayLevel(n,t),e.Push(n)},MtLap(e,C,t){let L=_.internalMath(e,e.GetArgument(C),0),n=e.create("node","mpadded",L,{width:0});t!=="r"&&g.setAttribute(n,"lspace",t==="l"?"-1width":"-.5width"),e.Push(n)},MathMakeBox(e,C){let t=e.GetBrackets(C),L=e.GetBrackets(C,"c"),n=e.create("node","mpadded",[e.ParseArg(C)]);t&&g.setAttribute(n,"width",t);let i=D2(L.toLowerCase(),{c:"center",r:"right"},"");i&&g.setAttribute(n,"data-align",i),L.toLowerCase()!==L&&g.setAttribute(n,"data-overflow","linebreak"),e.Push(n)},MathMBox(e,C){e.Push(e.create("node","mrow",[e.ParseArg(C)]))},UnderOverBracket(e,C){let t=x5(e.GetBrackets(C,".1em"),.1),L=e.GetBrackets(C,".2em"),n=e.GetArgument(C),[i,s,r]=C.charAt(1)==="o"?["over","accent","bottom"]:["under","accentunder","top"],o=i2(t),a=new t1(n,e.stack.env,e.configuration).mml(),l=new t1(n,e.stack.env,e.configuration).mml(),u=e.create("node","mpadded",[e.create("node","mphantom",[l])],{style:`border: ${o} solid; border-${r}: none`,height:L,depth:0}),x=_.underOver(e,a,u,i,!0),p=g.getChildAt(g.getChildAt(x,0),0);g.setAttribute(p,s,!0),e.Push(x)},Aboxed(e,C,t="boxed",L=!0){let n=r2.checkAlignment(e,C);n.row.length%2===1&&n.row.push(e.create("node","mtd",[]));let i=e.GetArgument(C),s=e.string.substring(e.i);e.string=i+"&&\\endAboxed",e.i=0;let r=e.GetUpTo(C,"&"),o=e.GetUpTo(C,"&");e.GetUpTo(C,"\\endAboxed");let[a,l]=L?["",""]:["$\\displaystyle{","}$"],u=_.substituteArgs(e,[r,o],`\\rlap{\\${t}{${a}#1{}#2${l}}}\\kern.267em\\phantom{#1}&\\phantom{{}#2}\\kern.267em`);e.string=u+s,e.i=0},MakeAboxedCommand(e,C){let t=e.GetStar(),L=f1.GetCSname(e,C),n=f1.GetCSname(e,C+"\\"+L),i=e.configuration.handlers;if(i.get(X.MACRO).lookup(L))throw new R("AlreadyDefined","%1 is already defined","\\"+L);i.retrieve(s2.NEW_COMMAND).add(L,new G2(L,O.Aboxed,[n,t])),e.Push(e.itemFactory.create("null"))},ArrowBetweenLines(e,C){let t=r2.checkAlignment(e,C);if(t.Size()||t.row.length)throw new R("BetweenLines","%1 must be on a row by itself",C);let L=e.GetStar(),n=e.GetBrackets(C,"\\Updownarrow");L&&(t.EndEntry(),t.EndEntry());let i=L?"\\quad"+n:n+"\\quad",s=new t1(i,e.stack.env,e.configuration).mml();e.Push(s),t.EndEntry(),t.EndRow()},VDotsWithin(e,C){let t="\\mmlToken{mi}{}"+e.GetArgument(C)+"\\mmlToken{mi}{}",L=new t1(t,e.stack.env,e.configuration).mml(),n=e.create("node","mpadded",[e.create("node","mpadded",[e.create("node","mo",[e.create("text","\u22EE")])],{width:0,lspace:"-.5width"}),e.create("node","mphantom",[L])],{lspace:".5width"});e.Push(n)},ShortVDotsWithin(e,C){let t=e.stack.Top(),L=e.GetStar();t.EndEntry&&(O.FlushSpaceAbove(e,"\\MTFlushSpaceAbove"),L||t.EndEntry()),O.VDotsWithin(e,"\\vdotswithin"),t.EndEntry&&(L&&t.EndEntry(),O.FlushSpaceBelow(e,"\\MTFlushSpaceBelow"))},FlushSpaceAbove(e,C){let t=r2.checkAlignment(e,C);t.table&&(t.setProperty("flushspaceabove",t.table.length),t.addRowSpacing("-"+e.options.mathtools.shortvdotsadjustabove))},FlushSpaceBelow(e,C){let t=r2.checkAlignment(e,C);t.table&&(t.Size()&&t.EndEntry(),t.EndRow(),t.addRowSpacing("-"+e.options.mathtools.shortvdotsadjustbelow))},PairedDelimiters(e,C,t,L,n="#1",i=1,s="",r=""){let o=e.GetStar(),a=o?"":e.GetBrackets(C),[l,u,x]=o?["\\mathopen{\\left","\\right","}\\mathclose{}"]:a?[a+"l",a+"r",""]:["","",""],p=o?"\\middle":a||"";if(i){let h=[];for(let d=h.length;d<i;d++)h.push(e.GetArgument(C));s=_.substituteArgs(e,h,s),n=_.substituteArgs(e,h,n),r=_.substituteArgs(e,h,r)}n=n.replace(/\\delimsize/g,p),e.string=[s,l,t,n,u,L,x,r,e.string.substring(e.i)].reduce((h,d)=>_.addArgs(e,h,d),""),e.i=0,_.checkMaxMacros(e)},DeclarePairedDelimiter(e,C){let t=f1.GetCsNameArgument(e,C),L=e.GetArgument(C),n=e.GetArgument(C);r2.addPairedDelims(e,t,[L,n]),e.Push(e.itemFactory.create("null"))},DeclarePairedDelimiterX(e,C){let t=f1.GetCsNameArgument(e,C),L=f1.GetArgCount(e,C),n=e.GetArgument(C),i=e.GetArgument(C),s=e.GetArgument(C);r2.addPairedDelims(e,t,[n,i,s,L]),e.Push(e.itemFactory.create("null"))},DeclarePairedDelimiterXPP(e,C){let t=f1.GetCsNameArgument(e,C),L=f1.GetArgCount(e,C),n=e.GetArgument(C),i=e.GetArgument(C),s=e.GetArgument(C),r=e.GetArgument(C),o=e.GetArgument(C);r2.addPairedDelims(e,t,[i,s,o,L,n,r]),e.Push(e.itemFactory.create("null"))},CenterColon(e,C,t,L=!1,n=!1){let i=e.options.mathtools,s=e.create("token","mo",{},":");if(t&&(i.centercolon||L)){let r=i["centercolon-offset"];s=e.create("node","mpadded",[s],Object.assign({voffset:r,height:`+${r}`,depth:`-${r}`},n?{width:i["thincolon-dw"],lspace:i["thincolon-dx"]}:{}))}e.Push(s)},Relation(e,C,t,L){e.options.mathtools["use-unicode"]&&L?e.Push(e.create("token","mo",{texClass:A.REL},L)):(t="\\mathrel{"+t.replace(/:/g,"\\MTThinColon").replace(/-/g,"\\mathrel{-}")+"}",e.string=_.addArgs(e,t,e.string.substring(e.i)),e.i=0)},NArrow(e,C,t,L){e.Push(e.create("node","TeXAtom",[e.create("token","mtext",{},t),e.create("node","mpadded",[e.create("node","mpadded",[e.create("node","menclose",[e.create("node","mspace",[],{height:".2em",depth:0,width:".4em"})],{notation:"updiagonalstrike","data-thickness":".05em","data-padding":0})],{width:0,lspace:"-.5width",voffset:L}),e.create("node","mphantom",[e.create("token","mtext",{},t)])],{width:0,lspace:"-.5width"})],{texClass:A.REL}))},SplitFrac(e,C,t){let L=e.ParseArg(C),n=e.ParseArg(C);e.Push(e.create("node","mstyle",[e.create("node","mfrac",[e.create("node","mstyle",[L,e.create("token","mi"),e.create("token","mspace",{width:"1em"})],{scriptlevel:0}),e.create("node","mstyle",[e.create("token","mspace",{width:"1em"}),e.create("token","mi"),n],{scriptlevel:0})],{linethickness:0,numalign:"left",denomalign:"right"})],{displaystyle:t,scriptlevel:0}))},XMathStrut(e,C){let t=e.GetBrackets(C),L=e.GetArgument(C);L=r2.plusOrMinus(C,L),t=r2.plusOrMinus(C,t||L),e.Push(e.create("node","TeXAtom",[e.create("node","mpadded",[e.create("node","mphantom",[e.create("token","mo",{stretchy:!1},"(")])],{width:0,height:L+"height",depth:t+"depth"})],{texClass:A.ORD}))},Prescript(e,C){let t=r2.getScript(e,C,"sup"),L=r2.getScript(e,C,"sub"),n=r2.getScript(e,C,"arg");if(g.isType(t,"none")&&g.isType(L,"none")){e.Push(n);return}let i=e.create("node","mmultiscripts",[n]);g.getChildren(i).push(null,null),g.appendChildren(i,[e.create("node","mprescripts"),L,t]),i.setProperty("fixPrescript",!0),e.Push(i)},NewTagForm(e,C,t=!1){let L=e.tags;if(!("mtFormats"in L))throw new R("TagsNotMT","%1 can only be used with ams or mathtools tags",C);let n=e.GetArgument(C).trim();if(!n)throw new R("InvalidTagFormID","Tag form name can't be empty");let i=e.GetBrackets(C,""),s=e.GetArgument(C),r=e.GetArgument(C);if(!t&&L.mtFormats.has(n))throw new R("DuplicateTagForm","Duplicate tag form: %1",n);L.mtFormats.set(n,[s,r,i]),e.Push(e.itemFactory.create("null"))},UseTagForm(e,C){let t=e.tags;if(!("mtFormats"in t))throw new R("TagsNotMT","%1 can only be used with ams or mathtools tags",C);let L=e.GetArgument(C).trim();if(!L){t.mtCurrent=null,e.Push(e.itemFactory.create("null"));return}if(!t.mtFormats.has(L))throw new R("UndefinedTagForm","Undefined tag form: %1",L);t.mtCurrent=t.mtFormats.get(L),e.Push(e.itemFactory.create("null"))},SetOptions(e,C){let t=e.options.mathtools;if(!t["allow-mathtoolsset"])throw new R("ForbiddenMathtoolsSet","%1 is disabled",C);let L={};Object.keys(t).forEach(s=>{s!=="pariedDelimiters"&&s!=="tagforms"&&s!=="allow-mathtoolsset"&&(L[s]=1)});let n=e.GetArgument(C),i=_.keyvalOptions(n,L,!0);for(let s of Object.keys(i))s==="legacycolonsymbols"&&t[s]!==i[s]&&(t[s]?e.configuration.handlers.remove(r9,{}):e.configuration.handlers.add(r9,{},Qe)),t[s]=i[s];e.Push(e.itemFactory.create("null"))},Array:f.Array,Macro:f.Macro,xArrow:Y.xArrow,HandleRef:Y.HandleRef,AmsEqnArray:Y.AmsEqnArray,MacroWithTemplate:H3.MacroWithTemplate}});
-export{t7,O,Y0,s2,r9,Qe,L9,P4,Q0,Y,r2,f1,Bl,wl,Tl,Ol,Wl,Ke};
+import{TEXCLASS,__esm,init_MmlNode,AbstractMmlTokenNode}from'./p12.js';export*from'./p12.js';
+// node_modules/@mathjax/src/mjs/core/MmlTree/OperatorDictionary.js
+function OPDEF(lspace, rspace, texClass = TEXCLASS.BIN, properties = null) {
+  return [lspace, rspace, texClass, properties];
+}
+function getRange(text) {
+  const def2 = OPTABLE.infix[text] || OPTABLE.prefix[text] || OPTABLE.postfix[text];
+  if (def2) {
+    return [0, 0, def2[2], "mo"];
+  }
+  const n = text.codePointAt(0);
+  for (const range of RANGES) {
+    if (n <= range[1]) {
+      if (n >= range[0]) {
+        return range;
+      }
+      break;
+    }
+  }
+  return [0, 0, TEXCLASS.REL, "mo"];
+}
+var MO;
+var RANGES;
+var MMLSPACING;
+var OPTABLE;
+var init_OperatorDictionary = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/OperatorDictionary.js"() {
+    init_MmlNode();
+    MO = {
+      REL: OPDEF(5, 5, TEXCLASS.REL),
+      WIDEREL: OPDEF(5, 5, TEXCLASS.REL, { accent: true, stretchy: true }),
+      BIN4: OPDEF(4, 4, TEXCLASS.BIN),
+      RELSTRETCH: OPDEF(5, 5, TEXCLASS.REL, { stretchy: true }),
+      ORD: OPDEF(0, 0, TEXCLASS.ORD),
+      BIN3: OPDEF(3, 3, TEXCLASS.BIN),
+      OPEN: OPDEF(0, 0, TEXCLASS.OPEN, {
+        fence: true,
+        stretchy: true,
+        symmetric: true
+      }),
+      CLOSE: OPDEF(0, 0, TEXCLASS.CLOSE, {
+        fence: true,
+        stretchy: true,
+        symmetric: true
+      }),
+      INTEGRAL: OPDEF(3, 3, TEXCLASS.OP, { largeop: true, symmetric: true }),
+      ACCENT: OPDEF(0, 0, TEXCLASS.ORD, { accent: true }),
+      WIDEACCENT: OPDEF(0, 0, TEXCLASS.ORD, { accent: true, stretchy: true }),
+      OP: OPDEF(3, 3, TEXCLASS.OP, {
+        largeop: true,
+        movablelimits: true,
+        symmetric: true
+      }),
+      RELACCENT: OPDEF(5, 5, TEXCLASS.REL, { accent: true }),
+      BIN0: OPDEF(0, 0, TEXCLASS.BIN),
+      BIN5: OPDEF(5, 5, TEXCLASS.BIN),
+      FENCE: OPDEF(0, 0, TEXCLASS.ORD, {
+        fence: true,
+        stretchy: true,
+        symmetric: true
+      }),
+      INNER: OPDEF(1, 1, TEXCLASS.INNER),
+      ORD30: OPDEF(3, 0, TEXCLASS.ORD),
+      NONE: OPDEF(0, 0, TEXCLASS.NONE),
+      ORDSTRETCH0: OPDEF(0, 0, TEXCLASS.ORD, { stretchy: true }),
+      BINSTRETCH0: OPDEF(0, 0, TEXCLASS.BIN, { stretchy: true }),
+      RELSTRETCH0: OPDEF(0, 0, TEXCLASS.REL, { stretchy: true }),
+      CLOSE0: OPDEF(0, 0, TEXCLASS.CLOSE, { fence: true }),
+      ORD3: OPDEF(3, 3, TEXCLASS.ORD),
+      PUNCT03: OPDEF(0, 3, TEXCLASS.PUNCT, { linebreakstyle: "after" }),
+      OPEN0: OPDEF(0, 0, TEXCLASS.OPEN, { fence: true }),
+      STRETCH4: OPDEF(4, 4, TEXCLASS.BIN, { stretchy: true })
+    };
+    RANGES = [
+      [32, 127, TEXCLASS.REL, "mo"],
+      [160, 191, TEXCLASS.ORD, "mo"],
+      [192, 591, TEXCLASS.ORD, "mi"],
+      [688, 879, TEXCLASS.ORD, "mo"],
+      [880, 6688, TEXCLASS.ORD, "mi"],
+      [6832, 6911, TEXCLASS.ORD, "mo"],
+      [6912, 7615, TEXCLASS.ORD, "mi"],
+      [7616, 7679, TEXCLASS.ORD, "mo"],
+      [7680, 8191, TEXCLASS.ORD, "mi"],
+      [8192, 8303, TEXCLASS.ORD, "mo"],
+      [8304, 8351, TEXCLASS.ORD, "mo"],
+      [8448, 8527, TEXCLASS.ORD, "mi"],
+      [8528, 8591, TEXCLASS.ORD, "mn"],
+      [8592, 8703, TEXCLASS.REL, "mo"],
+      [8704, 8959, TEXCLASS.BIN, "mo"],
+      [8960, 9215, TEXCLASS.ORD, "mo"],
+      [9312, 9471, TEXCLASS.ORD, "mn"],
+      [9472, 10223, TEXCLASS.ORD, "mo"],
+      [10224, 10239, TEXCLASS.REL, "mo"],
+      [10240, 10495, TEXCLASS.ORD, "mtext"],
+      [10496, 10623, TEXCLASS.REL, "mo"],
+      [10624, 10751, TEXCLASS.ORD, "mo"],
+      [10752, 11007, TEXCLASS.BIN, "mo"],
+      [11008, 11055, TEXCLASS.ORD, "mo"],
+      [11056, 11087, TEXCLASS.REL, "mo"],
+      [11088, 11263, TEXCLASS.ORD, "mo"],
+      [11264, 11744, TEXCLASS.ORD, "mi"],
+      [11776, 11903, TEXCLASS.ORD, "mo"],
+      [11904, 12255, TEXCLASS.ORD, "mi", "normal"],
+      [12272, 12351, TEXCLASS.ORD, "mo"],
+      [12352, 42143, TEXCLASS.ORD, "mi", "normal"],
+      [42192, 43055, TEXCLASS.ORD, "mi"],
+      [43056, 43071, TEXCLASS.ORD, "mn"],
+      [43072, 55295, TEXCLASS.ORD, "mi"],
+      [63744, 64255, TEXCLASS.ORD, "mi", "normal"],
+      [64256, 65023, TEXCLASS.ORD, "mi"],
+      [65024, 65135, TEXCLASS.ORD, "mo"],
+      [65136, 65791, TEXCLASS.ORD, "mi"],
+      [65792, 65935, TEXCLASS.ORD, "mn"],
+      [65936, 74751, TEXCLASS.ORD, "mi", "normal"],
+      [74752, 74879, TEXCLASS.ORD, "mn"],
+      [74880, 113823, TEXCLASS.ORD, "mi", "normal"],
+      [113824, 119391, TEXCLASS.ORD, "mo"],
+      [119648, 119679, TEXCLASS.ORD, "mn"],
+      [119808, 120781, TEXCLASS.ORD, "mi"],
+      [120782, 120831, TEXCLASS.ORD, "mn"],
+      [122624, 129023, TEXCLASS.ORD, "mo"],
+      [129024, 129279, TEXCLASS.REL, "mo"],
+      [129280, 129535, TEXCLASS.ORD, "mo"],
+      [131072, 195103, TEXCLASS.ORD, "mi", "normal"]
+    ];
+    MMLSPACING = [
+      [0, 0],
+      [1, 2],
+      [3, 3],
+      [4, 4],
+      [0, 0],
+      [0, 0],
+      [0, 3],
+      [1, 1]
+    ];
+    OPTABLE = {
+      prefix: {
+        "!": MO.ORD,
+        "(": MO.OPEN,
+        "+": MO.BIN0,
+        "-": MO.BIN0,
+        "[": MO.OPEN,
+        "{": MO.OPEN,
+        "|": MO.OPEN,
+        "||": MO.BIN0,
+        "¬": MO.ORD,
+        "±": MO.BIN0,
+        "‖": MO.FENCE,
+        "‘": MO.OPEN0,
+        "“": MO.OPEN0,
+        "ⅅ": MO.ORD30,
+        "ⅆ": MO.ORD30,
+        "∀": MO.ORD,
+        "∁": MO.ORD,
+        "∂": MO.ORD30,
+        "∃": MO.ORD,
+        "∄": MO.ORD,
+        "∇": MO.ORD,
+        "∏": MO.OP,
+        "∐": MO.OP,
+        "∑": MO.OP,
+        "−": MO.BIN0,
+        "∓": MO.BIN0,
+        "√": [3, 0, TEXCLASS.ORD, { stretchy: true }],
+        "∛": MO.ORD30,
+        "∜": MO.ORD30,
+        "∟": MO.ORD,
+        "∠": MO.ORD,
+        "∡": MO.ORD,
+        "∢": MO.ORD,
+        "∫": MO.INTEGRAL,
+        "∬": MO.INTEGRAL,
+        "∭": MO.INTEGRAL,
+        "∮": MO.INTEGRAL,
+        "∯": MO.INTEGRAL,
+        "∰": MO.INTEGRAL,
+        "∱": MO.INTEGRAL,
+        "∲": MO.INTEGRAL,
+        "∳": MO.INTEGRAL,
+        "∴": MO.REL,
+        "∵": MO.REL,
+        "∼": [0, 0, TEXCLASS.REL, {}],
+        "⊾": MO.ORD,
+        "⊿": MO.ORD,
+        "⋀": MO.OP,
+        "⋁": MO.OP,
+        "⋂": MO.OP,
+        "⋃": MO.OP,
+        "⌈": MO.OPEN,
+        "⌊": MO.OPEN,
+        "⌐": MO.ORD,
+        "⌙": MO.ORD,
+        "❲": MO.OPEN,
+        "➕": MO.ORD,
+        "➖": MO.ORD,
+        "⟀": MO.ORD,
+        "⟦": MO.OPEN,
+        "⟨": MO.OPEN,
+        "⟪": MO.OPEN,
+        "⟬": MO.OPEN,
+        "⟮": MO.OPEN,
+        "⦀": MO.FENCE,
+        "⦃": MO.OPEN,
+        "⦅": MO.OPEN,
+        "⦇": MO.OPEN,
+        "⦉": MO.OPEN,
+        "⦋": MO.OPEN,
+        "⦍": MO.OPEN,
+        "⦏": MO.OPEN,
+        "⦑": MO.OPEN,
+        "⦓": MO.OPEN,
+        "⦕": MO.OPEN,
+        "⦗": MO.OPEN,
+        "⦙": MO.FENCE,
+        "⦛": MO.ORD,
+        "⦜": MO.ORD,
+        "⦝": MO.ORD,
+        "⦞": MO.ORD,
+        "⦟": MO.ORD,
+        "⦠": MO.ORD,
+        "⦡": MO.ORD,
+        "⦢": MO.ORD,
+        "⦣": MO.ORD,
+        "⦤": MO.ORD,
+        "⦥": MO.ORD,
+        "⦦": MO.ORD,
+        "⦧": MO.ORD,
+        "⦨": MO.ORD,
+        "⦩": MO.ORD,
+        "⦪": MO.ORD,
+        "⦫": MO.ORD,
+        "⦬": MO.ORD,
+        "⦭": MO.ORD,
+        "⦮": MO.ORD,
+        "⦯": MO.ORD,
+        "⧘": MO.OPEN,
+        "⧚": MO.OPEN,
+        "⧼": MO.OPEN,
+        "⨀": MO.OP,
+        "⨁": MO.OP,
+        "⨂": MO.OP,
+        "⨃": MO.OP,
+        "⨄": MO.OP,
+        "⨅": MO.OP,
+        "⨆": MO.OP,
+        "⨇": MO.OP,
+        "⨈": MO.OP,
+        "⨉": MO.OP,
+        "⨊": MO.OP,
+        "⨋": MO.INTEGRAL,
+        "⨌": MO.INTEGRAL,
+        "⨍": MO.INTEGRAL,
+        "⨎": MO.INTEGRAL,
+        "⨏": MO.INTEGRAL,
+        "⨐": MO.INTEGRAL,
+        "⨑": MO.INTEGRAL,
+        "⨒": MO.INTEGRAL,
+        "⨓": MO.INTEGRAL,
+        "⨔": MO.INTEGRAL,
+        "⨕": MO.INTEGRAL,
+        "⨖": MO.INTEGRAL,
+        "⨗": MO.INTEGRAL,
+        "⨘": MO.INTEGRAL,
+        "⨙": MO.INTEGRAL,
+        "⨚": MO.INTEGRAL,
+        "⨛": MO.INTEGRAL,
+        "⨜": MO.INTEGRAL,
+        "⨝": MO.OP,
+        "⨞": MO.OP,
+        "⫬": MO.ORD,
+        "⫭": MO.ORD,
+        "⫼": MO.OP,
+        "⫿": MO.OP,
+        "〈": MO.OPEN
+      },
+      postfix: {
+        "!!": MO.BIN0,
+        "!": MO.CLOSE0,
+        '"': MO.ORD,
+        "%": MO.ORD,
+        "&": MO.ORD,
+        "'": MO.ACCENT,
+        ")": MO.CLOSE,
+        "++": MO.BIN0,
+        "--": MO.BIN0,
+        "]": MO.CLOSE,
+        "^": MO.WIDEACCENT,
+        "_": MO.WIDEACCENT,
+        "`": MO.ACCENT,
+        "|": MO.CLOSE,
+        "||": MO.BIN0,
+        "}": MO.CLOSE,
+        "~": MO.WIDEACCENT,
+        "¨": MO.ACCENT,
+        "¯": MO.WIDEACCENT,
+        "°": MO.ACCENT,
+        "²": MO.ORD,
+        "³": MO.ORD,
+        "´": MO.ACCENT,
+        "¸": MO.ACCENT,
+        "¹": MO.ORD,
+        "ˆ": MO.WIDEACCENT,
+        "ˇ": MO.WIDEACCENT,
+        "ˉ": MO.WIDEACCENT,
+        "ˊ": MO.ACCENT,
+        "ˋ": MO.ACCENT,
+        "ˍ": MO.WIDEACCENT,
+        "˘": MO.ACCENT,
+        "˙": MO.ACCENT,
+        "˚": MO.ACCENT,
+        "˜": MO.WIDEACCENT,
+        "˝": MO.ACCENT,
+        "˷": MO.WIDEACCENT,
+        "\u0302": MO.WIDEACCENT,
+        "\u0311": MO.ACCENT,
+        "‖": MO.FENCE,
+        "’": MO.CLOSE0,
+        "‚": MO.ORD,
+        "‛": MO.ORD,
+        "”": MO.CLOSE0,
+        "„": MO.ORD,
+        "‟": MO.ORD,
+        "′": MO.ORD,
+        "″": MO.ORD,
+        "‴": MO.ORD,
+        "‵": MO.ORD,
+        "‶": MO.ORD,
+        "‷": MO.ORD,
+        "‾": MO.WIDEACCENT,
+        "⁗": MO.ORD,
+        "\u20DB": MO.ACCENT,
+        "\u20DC": MO.ACCENT,
+        "⌉": MO.CLOSE,
+        "⌋": MO.CLOSE,
+        "⌢": MO.RELSTRETCH0,
+        "⌣": MO.RELSTRETCH0,
+        "⎴": MO.WIDEACCENT,
+        "⎵": MO.WIDEACCENT,
+        "⏍": MO.ORD,
+        "⏜": MO.WIDEACCENT,
+        "⏝": MO.WIDEACCENT,
+        "⏞": MO.WIDEACCENT,
+        "⏟": MO.WIDEACCENT,
+        "⏠": MO.WIDEACCENT,
+        "⏡": MO.WIDEACCENT,
+        "❳": MO.CLOSE,
+        "⟧": MO.CLOSE,
+        "⟩": MO.CLOSE,
+        "⟫": MO.CLOSE,
+        "⟭": MO.CLOSE,
+        "⟯": MO.CLOSE,
+        "⦀": MO.FENCE,
+        "⦄": MO.CLOSE,
+        "⦆": MO.CLOSE,
+        "⦈": MO.CLOSE,
+        "⦊": MO.CLOSE,
+        "⦌": MO.CLOSE,
+        "⦎": MO.CLOSE,
+        "⦐": MO.CLOSE,
+        "⦒": MO.CLOSE,
+        "⦔": MO.CLOSE,
+        "⦖": MO.CLOSE,
+        "⦘": MO.CLOSE,
+        "⦙": MO.FENCE,
+        "⧙": MO.CLOSE,
+        "⧛": MO.CLOSE,
+        "⧽": MO.CLOSE,
+        "〉": MO.CLOSE,
+        "𞻰": MO.BINSTRETCH0,
+        "𞻱": MO.BINSTRETCH0
+      },
+      infix: {
+        "!": MO.ORD,
+        "!=": MO.BIN5,
+        "#": MO.ORD,
+        "$": MO.ORD,
+        "%": MO.ORD3,
+        "&&": MO.BIN4,
+        "**": MO.BIN3,
+        "*": MO.BIN3,
+        "*=": MO.BIN5,
+        "+": MO.BIN4,
+        "+=": MO.BIN5,
+        ",": MO.PUNCT03,
+        "": MO.ORD,
+        "-": MO.BIN4,
+        "-=": MO.BIN5,
+        "->": MO.BIN5,
+        ".": MO.ORD3,
+        "..": MO.BIN3,
+        "...": MO.INNER,
+        "/": [4, 4, TEXCLASS.ORD, {}],
+        "//": MO.BIN5,
+        "/=": MO.BIN5,
+        ":": [0, 3, TEXCLASS.REL, {}],
+        ":=": MO.BIN5,
+        ";": MO.PUNCT03,
+        "<": MO.REL,
+        "<=": MO.REL,
+        "<>": [3, 3, TEXCLASS.REL, {}],
+        "=": MO.REL,
+        "==": MO.REL,
+        ">": MO.REL,
+        ">=": MO.REL,
+        "?": [3, 3, TEXCLASS.CLOSE, { fence: true }],
+        "@": MO.ORD3,
+        "\\": MO.ORD,
+        "^": [3, 3, TEXCLASS.ORD, { accent: true, stretchy: true }],
+        "_": MO.WIDEACCENT,
+        "|": [5, 5, TEXCLASS.ORD, {}],
+        "||": MO.BIN5,
+        "±": MO.BIN4,
+        "·": MO.BIN3,
+        "×": MO.BIN3,
+        "÷": MO.BIN4,
+        "ʹ": MO.ORD,
+        "\u0300": MO.ACCENT,
+        "\u0301": MO.ACCENT,
+        "\u0303": MO.WIDEACCENT,
+        "\u0304": MO.ACCENT,
+        "\u0306": MO.ACCENT,
+        "\u0307": MO.ACCENT,
+        "\u0308": MO.ACCENT,
+        "\u030C": MO.ACCENT,
+        "\u0332": MO.WIDEACCENT,
+        "\u0338": MO.REL,
+        "϶": MO.REL,
+        "―": MO.ORDSTRETCH0,
+        "‗": MO.ORDSTRETCH0,
+        "†": MO.BIN3,
+        "‡": MO.BIN3,
+        "•": MO.BIN3,
+        "…": MO.INNER,
+        "⁃": MO.BIN3,
+        "⁄": MO.STRETCH4,
+        "\u2061": MO.NONE,
+        "\u2062": MO.NONE,
+        "\u2063": [0, 0, TEXCLASS.NONE, { linebreakstyle: "after" }],
+        "\u2064": MO.NONE,
+        "\u20D7": MO.ACCENT,
+        "ℑ": MO.ORD,
+        "ℓ": MO.ORD,
+        "℘": MO.ORD,
+        "ℜ": MO.ORD,
+        "←": MO.WIDEREL,
+        "↑": MO.RELSTRETCH,
+        "→": MO.WIDEREL,
+        "↓": MO.RELSTRETCH,
+        "↔": MO.WIDEREL,
+        "↕": MO.RELSTRETCH,
+        "↖": MO.REL,
+        "↗": MO.REL,
+        "↘": MO.REL,
+        "↙": MO.REL,
+        "↚": MO.WIDEREL,
+        "↛": MO.WIDEREL,
+        "↜": MO.WIDEREL,
+        "↝": MO.WIDEREL,
+        "↞": MO.WIDEREL,
+        "↟": MO.RELSTRETCH,
+        "↠": MO.WIDEREL,
+        "↡": MO.RELSTRETCH,
+        "↢": MO.WIDEREL,
+        "↣": MO.WIDEREL,
+        "↤": MO.WIDEREL,
+        "↥": MO.RELSTRETCH,
+        "↦": MO.WIDEREL,
+        "↧": MO.RELSTRETCH,
+        "↨": MO.RELSTRETCH,
+        "↩": MO.WIDEREL,
+        "↪": MO.WIDEREL,
+        "↫": MO.WIDEREL,
+        "↬": MO.WIDEREL,
+        "↭": MO.WIDEREL,
+        "↮": MO.WIDEREL,
+        "↯": MO.REL,
+        "↰": MO.RELSTRETCH,
+        "↱": MO.RELSTRETCH,
+        "↲": MO.RELSTRETCH,
+        "↳": MO.RELSTRETCH,
+        "↴": MO.RELSTRETCH,
+        "↵": MO.RELSTRETCH,
+        "↶": MO.REL,
+        "↷": MO.REL,
+        "↸": MO.REL,
+        "↹": MO.WIDEREL,
+        "↺": MO.REL,
+        "↻": MO.REL,
+        "↼": MO.WIDEREL,
+        "↽": MO.WIDEREL,
+        "↾": MO.RELSTRETCH,
+        "↿": MO.RELSTRETCH,
+        "⇀": MO.WIDEREL,
+        "⇁": MO.WIDEREL,
+        "⇂": MO.RELSTRETCH,
+        "⇃": MO.RELSTRETCH,
+        "⇄": MO.WIDEREL,
+        "⇅": MO.RELSTRETCH,
+        "⇆": MO.WIDEREL,
+        "⇇": MO.WIDEREL,
+        "⇈": MO.RELSTRETCH,
+        "⇉": MO.WIDEREL,
+        "⇊": MO.RELSTRETCH,
+        "⇋": MO.WIDEREL,
+        "⇌": MO.WIDEREL,
+        "⇍": MO.WIDEREL,
+        "⇎": MO.WIDEREL,
+        "⇏": MO.WIDEREL,
+        "⇐": MO.WIDEREL,
+        "⇑": MO.RELSTRETCH,
+        "⇒": MO.WIDEREL,
+        "⇓": MO.RELSTRETCH,
+        "⇔": MO.WIDEREL,
+        "⇕": MO.RELSTRETCH,
+        "⇖": MO.REL,
+        "⇗": MO.REL,
+        "⇘": MO.REL,
+        "⇙": MO.REL,
+        "⇚": MO.WIDEREL,
+        "⇛": MO.WIDEREL,
+        "⇜": MO.WIDEREL,
+        "⇝": MO.WIDEREL,
+        "⇞": MO.RELSTRETCH,
+        "⇟": MO.RELSTRETCH,
+        "⇠": MO.WIDEREL,
+        "⇡": MO.RELSTRETCH,
+        "⇢": MO.WIDEREL,
+        "⇣": MO.RELSTRETCH,
+        "⇤": MO.WIDEREL,
+        "⇥": MO.WIDEREL,
+        "⇦": MO.WIDEREL,
+        "⇧": MO.RELSTRETCH,
+        "⇨": MO.WIDEREL,
+        "⇩": MO.RELSTRETCH,
+        "⇪": MO.RELSTRETCH,
+        "⇫": MO.RELSTRETCH,
+        "⇬": MO.RELSTRETCH,
+        "⇭": MO.RELSTRETCH,
+        "⇮": MO.RELSTRETCH,
+        "⇯": MO.RELSTRETCH,
+        "⇰": MO.WIDEREL,
+        "⇱": MO.REL,
+        "⇲": MO.REL,
+        "⇳": MO.RELSTRETCH,
+        "⇴": MO.WIDEREL,
+        "⇵": MO.RELSTRETCH,
+        "⇶": MO.WIDEREL,
+        "⇷": MO.WIDEREL,
+        "⇸": MO.WIDEREL,
+        "⇹": MO.WIDEREL,
+        "⇺": MO.WIDEREL,
+        "⇻": MO.WIDEREL,
+        "⇼": MO.WIDEREL,
+        "⇽": MO.WIDEREL,
+        "⇾": MO.WIDEREL,
+        "⇿": MO.WIDEREL,
+        "∅": MO.ORD,
+        "∆": MO.ORD,
+        "∈": MO.REL,
+        "∉": MO.REL,
+        "∊": MO.REL,
+        "∋": MO.REL,
+        "∌": MO.REL,
+        "∍": MO.REL,
+        "−": MO.BIN4,
+        "∓": MO.BIN4,
+        "∔": MO.BIN4,
+        "∕": MO.STRETCH4,
+        "∖": MO.BIN4,
+        "∗": MO.BIN3,
+        "∘": MO.BIN3,
+        "∙": MO.BIN3,
+        "∝": MO.REL,
+        "∞": MO.ORD,
+        "∣": MO.REL,
+        "∤": MO.REL,
+        "∥": MO.REL,
+        "∦": MO.REL,
+        "∧": MO.BIN4,
+        "∨": MO.BIN4,
+        "∩": MO.BIN4,
+        "∪": MO.BIN4,
+        "∶": MO.BIN4,
+        "∷": MO.REL,
+        "∸": MO.BIN4,
+        "∹": MO.REL,
+        "∺": MO.REL,
+        "∻": MO.REL,
+        "∼": MO.REL,
+        "∽": MO.REL,
+        "∾": MO.REL,
+        "≀": MO.BIN3,
+        "≁": MO.REL,
+        "≂": MO.REL,
+        "≂\u0338": MO.REL,
+        "≃": MO.REL,
+        "≄": MO.REL,
+        "≅": MO.REL,
+        "≆": MO.REL,
+        "≇": MO.REL,
+        "≈": MO.REL,
+        "≉": MO.REL,
+        "≊": MO.REL,
+        "≋": MO.REL,
+        "≌": MO.REL,
+        "≍": MO.REL,
+        "≎": MO.REL,
+        "≏": MO.REL,
+        "≐": MO.REL,
+        "≑": MO.REL,
+        "≒": MO.REL,
+        "≓": MO.REL,
+        "≔": MO.REL,
+        "≕": MO.REL,
+        "≖": MO.REL,
+        "≗": MO.REL,
+        "≘": MO.REL,
+        "≙": MO.REL,
+        "≚": MO.REL,
+        "≛": MO.REL,
+        "≜": MO.REL,
+        "≝": MO.REL,
+        "≞": MO.REL,
+        "≟": MO.REL,
+        "≠": MO.REL,
+        "≡": MO.REL,
+        "≢": MO.REL,
+        "≣": MO.REL,
+        "≤": MO.REL,
+        "≥": MO.REL,
+        "≦": MO.REL,
+        "≦\u0338": MO.REL,
+        "≧": MO.REL,
+        "≧\u0338": MO.REL,
+        "≨": MO.REL,
+        "≩": MO.REL,
+        "≪": MO.REL,
+        "≪\u0338": MO.REL,
+        "≫": MO.REL,
+        "≫\u0338": MO.REL,
+        "≬": MO.REL,
+        "≭": MO.REL,
+        "≮": MO.REL,
+        "≯": MO.REL,
+        "≰": MO.REL,
+        "≱": MO.REL,
+        "≲": MO.REL,
+        "≳": MO.REL,
+        "≴": MO.REL,
+        "≵": MO.REL,
+        "≶": MO.REL,
+        "≷": MO.REL,
+        "≸": MO.REL,
+        "≹": MO.REL,
+        "≺": MO.REL,
+        "≻": MO.REL,
+        "≼": MO.REL,
+        "≽": MO.REL,
+        "≾": MO.REL,
+        "≾\u0338": MO.REL,
+        "≿": MO.REL,
+        "≿\u0338": MO.REL,
+        "⊀": MO.REL,
+        "⊁": MO.REL,
+        "⊂": MO.REL,
+        "⊃": MO.REL,
+        "⊄": MO.REL,
+        "⊅": MO.REL,
+        "⊆": MO.REL,
+        "⊇": MO.REL,
+        "⊈": MO.REL,
+        "⊉": MO.REL,
+        "⊊": MO.REL,
+        "⊋": MO.REL,
+        "⊌": MO.BIN4,
+        "⊍": MO.BIN4,
+        "⊎": MO.BIN4,
+        "⊏": MO.REL,
+        "⊏\u0338": MO.REL,
+        "⊐": MO.REL,
+        "⊐\u0338": MO.REL,
+        "⊑": MO.REL,
+        "⊒": MO.REL,
+        "⊓": MO.BIN4,
+        "⊔": MO.BIN4,
+        "⊕": MO.BIN4,
+        "⊖": MO.BIN4,
+        "⊗": MO.BIN3,
+        "⊘": MO.BIN4,
+        "⊙": MO.BIN3,
+        "⊚": MO.BIN3,
+        "⊛": MO.BIN3,
+        "⊜": MO.REL,
+        "⊝": MO.BIN4,
+        "⊞": MO.BIN4,
+        "⊟": MO.BIN4,
+        "⊠": MO.BIN3,
+        "⊡": MO.BIN3,
+        "⊢": MO.REL,
+        "⊣": MO.REL,
+        "⊤": MO.ORD,
+        "⊥": MO.ORD,
+        "⊦": MO.REL,
+        "⊧": MO.REL,
+        "⊨": MO.REL,
+        "⊩": MO.REL,
+        "⊪": MO.REL,
+        "⊫": MO.REL,
+        "⊬": MO.REL,
+        "⊭": MO.REL,
+        "⊮": MO.REL,
+        "⊯": MO.REL,
+        "⊰": MO.REL,
+        "⊱": MO.REL,
+        "⊲": MO.REL,
+        "⊳": MO.REL,
+        "⊴": MO.REL,
+        "⊵": MO.REL,
+        "⊶": MO.REL,
+        "⊷": MO.REL,
+        "⊸": MO.REL,
+        "⊺": MO.BIN3,
+        "⊻": MO.BIN4,
+        "⊼": MO.BIN4,
+        "⊽": MO.BIN4,
+        "⋄": MO.BIN3,
+        "⋅": MO.BIN3,
+        "⋆": MO.BIN3,
+        "⋇": MO.BIN3,
+        "⋈": MO.REL,
+        "⋉": MO.BIN3,
+        "⋊": MO.BIN3,
+        "⋋": MO.BIN3,
+        "⋌": MO.BIN3,
+        "⋍": MO.REL,
+        "⋎": MO.BIN4,
+        "⋏": MO.BIN4,
+        "⋐": MO.REL,
+        "⋑": MO.REL,
+        "⋒": MO.BIN4,
+        "⋓": MO.BIN4,
+        "⋔": MO.REL,
+        "⋕": MO.REL,
+        "⋖": MO.REL,
+        "⋗": MO.REL,
+        "⋘": MO.REL,
+        "⋙": MO.REL,
+        "⋚": MO.REL,
+        "⋛": MO.REL,
+        "⋜": MO.REL,
+        "⋝": MO.REL,
+        "⋞": MO.REL,
+        "⋟": MO.REL,
+        "⋠": MO.REL,
+        "⋡": MO.REL,
+        "⋢": MO.REL,
+        "⋣": MO.REL,
+        "⋤": MO.REL,
+        "⋥": MO.REL,
+        "⋦": MO.REL,
+        "⋧": MO.REL,
+        "⋨": MO.REL,
+        "⋩": MO.REL,
+        "⋪": MO.REL,
+        "⋫": MO.REL,
+        "⋬": MO.REL,
+        "⋭": MO.REL,
+        "⋮": MO.ORD,
+        "⋯": MO.INNER,
+        "⋰": MO.INNER,
+        "⋱": MO.INNER,
+        "⋲": MO.REL,
+        "⋳": MO.REL,
+        "⋴": MO.REL,
+        "⋵": MO.REL,
+        "⋶": MO.REL,
+        "⋷": MO.REL,
+        "⋸": MO.REL,
+        "⋹": MO.REL,
+        "⋺": MO.REL,
+        "⋻": MO.REL,
+        "⋼": MO.REL,
+        "⋽": MO.REL,
+        "⋾": MO.REL,
+        "⋿": MO.REL,
+        "⌁": MO.REL,
+        "⌅": MO.BIN3,
+        "⌆": MO.BIN3,
+        "〈": MO.OPEN,
+        "〉": MO.CLOSE,
+        "⍼": MO.REL,
+        "⎋": MO.REL,
+        "⎪": MO.ORD,
+        "⎯": MO.ORDSTRETCH0,
+        "⎰": MO.OPEN,
+        "⎱": MO.CLOSE,
+        "─": MO.ORD,
+        "△": MO.BIN3,
+        "▵": MO.BIN3,
+        "▹": MO.BIN3,
+        "▽": MO.BIN3,
+        "▿": MO.BIN3,
+        "◃": MO.BIN3,
+        "◯": MO.BIN3,
+        "♠": MO.ORD,
+        "♡": MO.ORD,
+        "♢": MO.ORD,
+        "♣": MO.ORD,
+        "♭": MO.ORD,
+        "♮": MO.ORD,
+        "♯": MO.ORD,
+        "❘": [5, 5, TEXCLASS.REL, { stretchy: true, symmetric: true }],
+        "➔": MO.WIDEREL,
+        "➕": MO.BIN4,
+        "➖": MO.BIN4,
+        "➗": MO.BIN4,
+        "➘": MO.REL,
+        "➙": MO.WIDEREL,
+        "➚": MO.REL,
+        "➛": MO.WIDEREL,
+        "➜": MO.WIDEREL,
+        "➝": MO.WIDEREL,
+        "➞": MO.WIDEREL,
+        "➟": MO.WIDEREL,
+        "➠": MO.WIDEREL,
+        "➡": MO.WIDEREL,
+        "➥": MO.WIDEREL,
+        "➦": MO.WIDEREL,
+        "➧": MO.RELACCENT,
+        "➨": MO.WIDEREL,
+        "➩": MO.WIDEREL,
+        "➪": MO.WIDEREL,
+        "➫": MO.WIDEREL,
+        "➬": MO.WIDEREL,
+        "➭": MO.WIDEREL,
+        "➮": MO.WIDEREL,
+        "➯": MO.WIDEREL,
+        "➱": MO.WIDEREL,
+        "➲": MO.RELACCENT,
+        "➳": MO.WIDEREL,
+        "➴": MO.REL,
+        "➵": MO.WIDEREL,
+        "➶": MO.REL,
+        "➷": MO.REL,
+        "➸": MO.WIDEREL,
+        "➹": MO.REL,
+        "➺": MO.WIDEREL,
+        "➻": MO.WIDEREL,
+        "➼": MO.WIDEREL,
+        "➽": MO.WIDEREL,
+        "➾": MO.WIDEREL,
+        "⟂": MO.REL,
+        "⟂\u0338": MO.REL,
+        "⟋": MO.BIN3,
+        "⟍": MO.BIN3,
+        "⟰": MO.RELSTRETCH,
+        "⟱": MO.RELSTRETCH,
+        "⟲": MO.REL,
+        "⟳": MO.REL,
+        "⟴": MO.RELSTRETCH,
+        "⟵": MO.WIDEREL,
+        "⟶": MO.WIDEREL,
+        "⟷": MO.WIDEREL,
+        "⟸": MO.WIDEREL,
+        "⟹": MO.WIDEREL,
+        "⟺": MO.WIDEREL,
+        "⟻": MO.WIDEREL,
+        "⟼": MO.WIDEREL,
+        "⟽": MO.WIDEREL,
+        "⟾": MO.WIDEREL,
+        "⟿": MO.WIDEREL,
+        "⤀": MO.WIDEREL,
+        "⤁": MO.WIDEREL,
+        "⤂": MO.WIDEREL,
+        "⤃": MO.WIDEREL,
+        "⤄": MO.WIDEREL,
+        "⤅": MO.WIDEREL,
+        "⤆": MO.WIDEREL,
+        "⤇": MO.WIDEREL,
+        "⤈": MO.RELSTRETCH,
+        "⤉": MO.RELSTRETCH,
+        "⤊": MO.RELSTRETCH,
+        "⤋": MO.RELSTRETCH,
+        "⤌": MO.WIDEREL,
+        "⤍": MO.WIDEREL,
+        "⤎": MO.WIDEREL,
+        "⤏": MO.WIDEREL,
+        "⤐": MO.WIDEREL,
+        "⤑": MO.WIDEREL,
+        "⤒": MO.RELSTRETCH,
+        "⤓": MO.RELSTRETCH,
+        "⤔": MO.WIDEREL,
+        "⤕": MO.WIDEREL,
+        "⤖": MO.WIDEREL,
+        "⤗": MO.WIDEREL,
+        "⤘": MO.WIDEREL,
+        "⤙": MO.WIDEREL,
+        "⤚": MO.WIDEREL,
+        "⤛": MO.WIDEREL,
+        "⤜": MO.WIDEREL,
+        "⤝": MO.WIDEREL,
+        "⤞": MO.WIDEREL,
+        "⤟": MO.WIDEREL,
+        "⤠": MO.WIDEREL,
+        "⤡": MO.REL,
+        "⤢": MO.REL,
+        "⤣": MO.REL,
+        "⤤": MO.REL,
+        "⤥": MO.REL,
+        "⤦": MO.REL,
+        "⤧": MO.REL,
+        "⤨": MO.REL,
+        "⤩": MO.REL,
+        "⤪": MO.REL,
+        "⤫": MO.REL,
+        "⤬": MO.REL,
+        "⤭": MO.REL,
+        "⤮": MO.REL,
+        "⤯": MO.REL,
+        "⤰": MO.REL,
+        "⤱": MO.REL,
+        "⤲": MO.REL,
+        "⤳": MO.RELACCENT,
+        "⤴": MO.RELSTRETCH,
+        "⤵": MO.RELSTRETCH,
+        "⤶": MO.RELSTRETCH,
+        "⤷": MO.RELSTRETCH,
+        "⤸": MO.REL,
+        "⤹": MO.REL,
+        "⤺": MO.RELACCENT,
+        "⤻": MO.RELACCENT,
+        "⤼": MO.RELACCENT,
+        "⤽": MO.RELACCENT,
+        "⤾": MO.REL,
+        "⤿": MO.REL,
+        "⥀": MO.REL,
+        "⥁": MO.REL,
+        "⥂": MO.WIDEREL,
+        "⥃": MO.WIDEREL,
+        "⥄": MO.WIDEREL,
+        "⥅": MO.RELSTRETCH,
+        "⥆": MO.RELSTRETCH,
+        "⥇": MO.WIDEREL,
+        "⥈": MO.WIDEREL,
+        "⥉": MO.RELSTRETCH,
+        "⥊": MO.WIDEREL,
+        "⥋": MO.WIDEREL,
+        "⥌": MO.RELSTRETCH,
+        "⥍": MO.RELSTRETCH,
+        "⥎": MO.WIDEREL,
+        "⥏": MO.RELSTRETCH,
+        "⥐": MO.WIDEREL,
+        "⥑": MO.RELSTRETCH,
+        "⥒": MO.WIDEREL,
+        "⥓": MO.WIDEREL,
+        "⥔": MO.RELSTRETCH,
+        "⥕": MO.RELSTRETCH,
+        "⥖": MO.WIDEREL,
+        "⥗": MO.WIDEREL,
+        "⥘": MO.RELSTRETCH,
+        "⥙": MO.RELSTRETCH,
+        "⥚": MO.WIDEREL,
+        "⥛": MO.WIDEREL,
+        "⥜": MO.RELSTRETCH,
+        "⥝": MO.RELSTRETCH,
+        "⥞": MO.WIDEREL,
+        "⥟": MO.WIDEREL,
+        "⥠": MO.RELSTRETCH,
+        "⥡": MO.RELSTRETCH,
+        "⥢": MO.WIDEREL,
+        "⥣": MO.RELSTRETCH,
+        "⥤": MO.WIDEREL,
+        "⥥": MO.RELSTRETCH,
+        "⥦": MO.WIDEREL,
+        "⥧": MO.WIDEREL,
+        "⥨": MO.WIDEREL,
+        "⥩": MO.WIDEREL,
+        "⥪": MO.WIDEREL,
+        "⥫": MO.WIDEREL,
+        "⥬": MO.WIDEREL,
+        "⥭": MO.WIDEREL,
+        "⥮": MO.RELSTRETCH,
+        "⥯": MO.RELSTRETCH,
+        "⥰": MO.WIDEREL,
+        "⥱": MO.WIDEREL,
+        "⥲": MO.WIDEREL,
+        "⥳": MO.WIDEREL,
+        "⥴": MO.WIDEREL,
+        "⥵": MO.WIDEREL,
+        "⥶": MO.RELACCENT,
+        "⥷": MO.RELACCENT,
+        "⥸": MO.RELACCENT,
+        "⥹": MO.RELACCENT,
+        "⥺": MO.RELACCENT,
+        "⥻": MO.RELACCENT,
+        "⥼": MO.WIDEREL,
+        "⥽": MO.WIDEREL,
+        "⥾": MO.RELSTRETCH,
+        "⥿": MO.RELSTRETCH,
+        "⦁": MO.REL,
+        "⦂": MO.REL,
+        "⦶": MO.REL,
+        "⦷": MO.REL,
+        "⦸": MO.BIN4,
+        "⦹": MO.REL,
+        "⦼": MO.BIN4,
+        "⧀": MO.REL,
+        "⧁": MO.REL,
+        "⧄": MO.BIN4,
+        "⧅": MO.BIN4,
+        "⧆": MO.BIN3,
+        "⧇": MO.BIN3,
+        "⧈": MO.BIN3,
+        "⧎": MO.REL,
+        "⧏": MO.REL,
+        "⧐": MO.REL,
+        "⧑": MO.REL,
+        "⧒": MO.REL,
+        "⧓": MO.REL,
+        "⧔": MO.BIN3,
+        "⧕": MO.BIN3,
+        "⧖": MO.BIN3,
+        "⧗": MO.BIN3,
+        "⧟": MO.REL,
+        "⧡": MO.REL,
+        "⧢": MO.BIN3,
+        "⧣": MO.REL,
+        "⧤": MO.REL,
+        "⧥": MO.REL,
+        "⧦": MO.REL,
+        "⧴": MO.REL,
+        "⧵": MO.BIN4,
+        "⧶": MO.BIN4,
+        "⧷": MO.BIN4,
+        "⧸": MO.BIN4,
+        "⧹": MO.BIN4,
+        "⧺": MO.BIN4,
+        "⧻": MO.BIN4,
+        "⨝": MO.BIN3,
+        "⨞": MO.BIN3,
+        "⨟": MO.BIN4,
+        "⨠": MO.BIN4,
+        "⨡": MO.BIN4,
+        "⨢": MO.BIN4,
+        "⨣": MO.BIN4,
+        "⨤": MO.BIN4,
+        "⨥": MO.BIN4,
+        "⨦": MO.BIN4,
+        "⨧": MO.BIN4,
+        "⨨": MO.BIN4,
+        "⨩": MO.BIN4,
+        "⨪": MO.BIN4,
+        "⨫": MO.BIN4,
+        "⨬": MO.BIN4,
+        "⨭": MO.BIN4,
+        "⨮": MO.BIN4,
+        "⨯": MO.BIN3,
+        "⨰": MO.BIN3,
+        "⨱": MO.BIN3,
+        "⨲": MO.BIN3,
+        "⨳": MO.BIN3,
+        "⨴": MO.BIN3,
+        "⨵": MO.BIN3,
+        "⨶": MO.BIN3,
+        "⨷": MO.BIN3,
+        "⨸": MO.BIN4,
+        "⨹": MO.BIN4,
+        "⨺": MO.BIN4,
+        "⨻": MO.BIN3,
+        "⨼": MO.BIN3,
+        "⨽": MO.BIN3,
+        "⨾": MO.BIN4,
+        "⨿": MO.BIN3,
+        "⩀": MO.BIN4,
+        "⩁": MO.BIN4,
+        "⩂": MO.BIN4,
+        "⩃": MO.BIN4,
+        "⩄": MO.BIN4,
+        "⩅": MO.BIN4,
+        "⩆": MO.BIN4,
+        "⩇": MO.BIN4,
+        "⩈": MO.BIN4,
+        "⩉": MO.BIN4,
+        "⩊": MO.BIN4,
+        "⩋": MO.BIN4,
+        "⩌": MO.BIN4,
+        "⩍": MO.BIN4,
+        "⩎": MO.BIN4,
+        "⩏": MO.BIN4,
+        "⩐": MO.BIN3,
+        "⩑": MO.BIN4,
+        "⩒": MO.BIN4,
+        "⩓": MO.BIN4,
+        "⩔": MO.BIN4,
+        "⩕": MO.BIN4,
+        "⩖": MO.BIN4,
+        "⩗": MO.BIN4,
+        "⩘": MO.BIN4,
+        "⩙": MO.BIN4,
+        "⩚": MO.BIN4,
+        "⩛": MO.BIN4,
+        "⩜": MO.BIN4,
+        "⩝": MO.BIN4,
+        "⩞": MO.BIN4,
+        "⩟": MO.BIN4,
+        "⩠": MO.BIN4,
+        "⩡": MO.BIN4,
+        "⩢": MO.BIN4,
+        "⩣": MO.BIN4,
+        "⩤": MO.BIN3,
+        "⩥": MO.BIN3,
+        "⩦": MO.REL,
+        "⩧": MO.REL,
+        "⩨": MO.REL,
+        "⩩": MO.REL,
+        "⩪": MO.REL,
+        "⩫": MO.REL,
+        "⩬": MO.REL,
+        "⩭": MO.REL,
+        "⩮": MO.REL,
+        "⩯": MO.REL,
+        "⩰": MO.REL,
+        "⩱": MO.REL,
+        "⩲": MO.REL,
+        "⩳": MO.REL,
+        "⩴": MO.REL,
+        "⩵": MO.REL,
+        "⩶": MO.REL,
+        "⩷": MO.REL,
+        "⩸": MO.REL,
+        "⩹": MO.REL,
+        "⩺": MO.REL,
+        "⩻": MO.REL,
+        "⩼": MO.REL,
+        "⩽": MO.REL,
+        "⩽\u0338": MO.REL,
+        "⩾": MO.REL,
+        "⩾\u0338": MO.REL,
+        "⩿": MO.REL,
+        "⪀": MO.REL,
+        "⪁": MO.REL,
+        "⪂": MO.REL,
+        "⪃": MO.REL,
+        "⪄": MO.REL,
+        "⪅": MO.REL,
+        "⪆": MO.REL,
+        "⪇": MO.REL,
+        "⪈": MO.REL,
+        "⪉": MO.REL,
+        "⪊": MO.REL,
+        "⪋": MO.REL,
+        "⪌": MO.REL,
+        "⪍": MO.REL,
+        "⪎": MO.REL,
+        "⪏": MO.REL,
+        "⪐": MO.REL,
+        "⪑": MO.REL,
+        "⪒": MO.REL,
+        "⪓": MO.REL,
+        "⪔": MO.REL,
+        "⪕": MO.REL,
+        "⪖": MO.REL,
+        "⪗": MO.REL,
+        "⪘": MO.REL,
+        "⪙": MO.REL,
+        "⪚": MO.REL,
+        "⪛": MO.REL,
+        "⪜": MO.REL,
+        "⪝": MO.REL,
+        "⪞": MO.REL,
+        "⪟": MO.REL,
+        "⪠": MO.REL,
+        "⪡": MO.REL,
+        "⪢": MO.REL,
+        "⪣": MO.REL,
+        "⪤": MO.REL,
+        "⪥": MO.REL,
+        "⪦": MO.REL,
+        "⪧": MO.REL,
+        "⪨": MO.REL,
+        "⪩": MO.REL,
+        "⪪": MO.REL,
+        "⪫": MO.REL,
+        "⪬": MO.REL,
+        "⪭": MO.REL,
+        "⪮": MO.REL,
+        "⪯": MO.REL,
+        "⪯\u0338": MO.REL,
+        "⪰": MO.REL,
+        "⪰\u0338": MO.REL,
+        "⪱": MO.REL,
+        "⪲": MO.REL,
+        "⪳": MO.REL,
+        "⪴": MO.REL,
+        "⪵": MO.REL,
+        "⪶": MO.REL,
+        "⪷": MO.REL,
+        "⪸": MO.REL,
+        "⪹": MO.REL,
+        "⪺": MO.REL,
+        "⪻": MO.REL,
+        "⪼": MO.REL,
+        "⪽": MO.REL,
+        "⪾": MO.REL,
+        "⪿": MO.REL,
+        "⫀": MO.REL,
+        "⫁": MO.REL,
+        "⫂": MO.REL,
+        "⫃": MO.REL,
+        "⫄": MO.REL,
+        "⫅": MO.REL,
+        "⫆": MO.REL,
+        "⫇": MO.REL,
+        "⫈": MO.REL,
+        "⫉": MO.REL,
+        "⫊": MO.REL,
+        "⫋": MO.REL,
+        "⫌": MO.REL,
+        "⫍": MO.REL,
+        "⫎": MO.REL,
+        "⫏": MO.REL,
+        "⫐": MO.REL,
+        "⫑": MO.REL,
+        "⫒": MO.REL,
+        "⫓": MO.REL,
+        "⫔": MO.REL,
+        "⫕": MO.REL,
+        "⫖": MO.REL,
+        "⫗": MO.REL,
+        "⫘": MO.REL,
+        "⫙": MO.REL,
+        "⫚": MO.REL,
+        "⫛": MO.BIN4,
+        "⫝": MO.BIN3,
+        "⫝\u0338": MO.REL,
+        "⫞": MO.REL,
+        "⫟": MO.REL,
+        "⫠": MO.REL,
+        "⫡": MO.REL,
+        "⫢": MO.REL,
+        "⫣": MO.REL,
+        "⫤": MO.REL,
+        "⫥": MO.REL,
+        "⫦": MO.REL,
+        "⫧": MO.REL,
+        "⫨": MO.REL,
+        "⫩": MO.REL,
+        "⫪": MO.REL,
+        "⫫": MO.REL,
+        "⫮": MO.REL,
+        "⫲": MO.REL,
+        "⫳": MO.REL,
+        "⫴": MO.REL,
+        "⫵": MO.REL,
+        "⫶": MO.BIN4,
+        "⫷": MO.REL,
+        "⫸": MO.REL,
+        "⫹": MO.REL,
+        "⫺": MO.REL,
+        "⫻": MO.BIN4,
+        "⫽": MO.BIN4,
+        "⫾": MO.BIN3,
+        "⬀": MO.REL,
+        "⬁": MO.REL,
+        "⬂": MO.REL,
+        "⬃": MO.REL,
+        "⬄": MO.WIDEREL,
+        "⬅": MO.WIDEREL,
+        "⬆": MO.RELSTRETCH,
+        "⬇": MO.RELSTRETCH,
+        "⬈": MO.REL,
+        "⬉": MO.REL,
+        "⬊": MO.REL,
+        "⬋": MO.REL,
+        "⬌": MO.WIDEREL,
+        "⬍": MO.RELSTRETCH,
+        "⬎": MO.RELSTRETCH,
+        "⬏": MO.RELSTRETCH,
+        "⬐": MO.RELSTRETCH,
+        "⬑": MO.RELSTRETCH,
+        "⬰": MO.WIDEREL,
+        "⬱": MO.WIDEREL,
+        "⬲": MO.RELSTRETCH,
+        "⬳": MO.WIDEREL,
+        "⬴": MO.WIDEREL,
+        "⬵": MO.WIDEREL,
+        "⬶": MO.WIDEREL,
+        "⬷": MO.WIDEREL,
+        "⬸": MO.WIDEREL,
+        "⬹": MO.WIDEREL,
+        "⬺": MO.WIDEREL,
+        "⬻": MO.WIDEREL,
+        "⬼": MO.WIDEREL,
+        "⬽": MO.WIDEREL,
+        "⬾": MO.WIDEREL,
+        "⬿": MO.RELACCENT,
+        "⭀": MO.WIDEREL,
+        "⭁": MO.WIDEREL,
+        "⭂": MO.WIDEREL,
+        "⭃": MO.WIDEREL,
+        "⭄": MO.WIDEREL,
+        "⭅": MO.WIDEREL,
+        "⭆": MO.WIDEREL,
+        "⭇": MO.WIDEREL,
+        "⭈": MO.WIDEREL,
+        "⭉": MO.WIDEREL,
+        "⭊": MO.WIDEREL,
+        "⭋": MO.WIDEREL,
+        "⭌": MO.WIDEREL,
+        "⭍": MO.REL,
+        "⭎": MO.REL,
+        "⭏": MO.REL,
+        "⭚": MO.REL,
+        "⭛": MO.REL,
+        "⭜": MO.REL,
+        "⭝": MO.REL,
+        "⭞": MO.REL,
+        "⭟": MO.REL,
+        "⭠": MO.WIDEREL,
+        "⭡": MO.RELSTRETCH,
+        "⭢": MO.WIDEREL,
+        "⭣": MO.RELSTRETCH,
+        "⭤": MO.WIDEREL,
+        "⭥": MO.RELSTRETCH,
+        "⭦": MO.REL,
+        "⭧": MO.REL,
+        "⭨": MO.REL,
+        "⭩": MO.REL,
+        "⭪": MO.WIDEREL,
+        "⭫": MO.RELSTRETCH,
+        "⭬": MO.WIDEREL,
+        "⭭": MO.RELSTRETCH,
+        "⭮": MO.REL,
+        "⭯": MO.REL,
+        "⭰": MO.WIDEREL,
+        "⭱": MO.RELSTRETCH,
+        "⭲": MO.WIDEREL,
+        "⭳": MO.RELSTRETCH,
+        "⭶": MO.REL,
+        "⭷": MO.REL,
+        "⭸": MO.REL,
+        "⭹": MO.REL,
+        "⭺": MO.WIDEREL,
+        "⭻": MO.RELSTRETCH,
+        "⭼": MO.WIDEREL,
+        "⭽": MO.RELSTRETCH,
+        "⮀": MO.WIDEREL,
+        "⮁": MO.RELSTRETCH,
+        "⮂": MO.WIDEREL,
+        "⮃": MO.RELSTRETCH,
+        "⮄": MO.WIDEREL,
+        "⮅": MO.RELSTRETCH,
+        "⮆": MO.WIDEREL,
+        "⮇": MO.RELSTRETCH,
+        "⮈": MO.RELACCENT,
+        "⮉": MO.REL,
+        "⮊": MO.RELACCENT,
+        "⮋": MO.REL,
+        "⮌": MO.REL,
+        "⮍": MO.REL,
+        "⮎": MO.REL,
+        "⮏": MO.REL,
+        "⮔": MO.REL,
+        "⮕": MO.WIDEREL,
+        "⮠": MO.RELSTRETCH,
+        "⮡": MO.RELSTRETCH,
+        "⮢": MO.RELSTRETCH,
+        "⮣": MO.RELSTRETCH,
+        "⮤": MO.RELSTRETCH,
+        "⮥": MO.RELSTRETCH,
+        "⮦": MO.RELSTRETCH,
+        "⮧": MO.RELSTRETCH,
+        "⮨": MO.WIDEREL,
+        "⮩": MO.WIDEREL,
+        "⮪": MO.WIDEREL,
+        "⮫": MO.WIDEREL,
+        "⮬": MO.RELSTRETCH,
+        "⮭": MO.RELSTRETCH,
+        "⮮": MO.RELSTRETCH,
+        "⮯": MO.RELSTRETCH,
+        "⮰": MO.REL,
+        "⮱": MO.REL,
+        "⮲": MO.REL,
+        "⮳": MO.REL,
+        "⮴": MO.REL,
+        "⮵": MO.REL,
+        "⮶": MO.REL,
+        "⮷": MO.REL,
+        "⮸": MO.RELSTRETCH,
+        "⯑": MO.REL,
+        "㫜": MO.BIN3,
+        "︷": MO.WIDEACCENT,
+        "︸": MO.WIDEACCENT
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/string.js
+function sortLength(a, b) {
+  return a.length !== b.length ? b.length - a.length : a === b ? 0 : a < b ? -1 : 1;
+}
+function quotePattern(text) {
+  return text.replace(/([\^$(){}.+*?\-|[\]:\\])/g, "\\$1");
+}
+function unicodeChars(text) {
+  return Array.from(text).map((c) => c.codePointAt(0));
+}
+function unicodeString(data) {
+  return String.fromCodePoint(...data);
+}
+function isPercent(x2) {
+  return !!x2.match(/%\s*$/);
+}
+function split(x2) {
+  return x2.trim().split(/\s+/);
+}
+function replaceUnicode(text) {
+  return text.replace(/\\U(?:([0-9A-Fa-f]{4})|\{\s*([0-9A-Fa-f]{1,6})\s*\})|\\./g, (m, h1, h2) => m === "\\\\" ? "\\" : String.fromCodePoint(parseInt(h1 || h2, 16)));
+}
+function toEntity(c) {
+  return `&#x${c.codePointAt(0).toString(16).toUpperCase()};`;
+}
+var init_string = __esm({
+  "node_modules/@mathjax/src/mjs/util/string.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mo.js
+var MmlMo;
+var init_mo = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mo.js"() {
+    init_MmlNode();
+    init_OperatorDictionary();
+    init_string();
+    MmlMo = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this._texClass = null;
+        this.lspace = 5 / 18;
+        this.rspace = 5 / 18;
+      }
+      get texClass() {
+        if (this._texClass === null) {
+          return this.getOperatorDef(this.getText())[2];
+        }
+        return this._texClass;
+      }
+      set texClass(value) {
+        this._texClass = value;
+      }
+      get kind() {
+        return "mo";
+      }
+      get isEmbellished() {
+        return true;
+      }
+      coreParent() {
+        let embellished = null;
+        let parent = this;
+        const math = this.factory.getNodeClass("math");
+        while (parent && parent.isEmbellished && parent.coreMO() === this && !(parent instanceof math)) {
+          embellished = parent;
+          parent = parent.parent;
+        }
+        return embellished || this;
+      }
+      coreText(parent) {
+        if (!parent) {
+          return "";
+        }
+        if (parent.isEmbellished) {
+          return parent.coreMO().getText();
+        }
+        while (((parent.isKind("mrow") || parent.isKind("TeXAtom") || parent.isKind("mstyle") || parent.isKind("mphantom")) && parent.childNodes.length === 1 || parent.isKind("munderover")) && parent.childNodes[0]) {
+          parent = parent.childNodes[0];
+        }
+        return parent.isToken ? parent.getText() : "";
+      }
+      hasSpacingAttributes() {
+        return this.attributes.isSet("lspace") || this.attributes.isSet("rspace");
+      }
+      get isAccent() {
+        let accent = false;
+        const node = this.coreParent().parent;
+        if (node) {
+          const key = node.isKind("mover") ? node.childNodes[node.over].coreMO() ? "accent" : "" : node.isKind("munder") ? node.childNodes[node.under].coreMO() ? "accentunder" : "" : node.isKind("munderover") ? this === node.childNodes[node.over].coreMO() ? "accent" : this === node.childNodes[node.under].coreMO() ? "accentunder" : "" : "";
+          if (key) {
+            const value = node.attributes.getExplicit(key);
+            accent = value !== void 0 ? accent : this.attributes.get("accent");
+          }
+        }
+        return accent;
+      }
+      setTeXclass(prev) {
+        const { form, fence } = this.attributes.getList("form", "fence");
+        if (this.getProperty("texClass") === void 0 && this.hasSpacingAttributes()) {
+          return null;
+        }
+        if (fence && this.texClass === TEXCLASS.REL) {
+          if (form === "prefix") {
+            this.texClass = TEXCLASS.OPEN;
+          }
+          if (form === "postfix") {
+            this.texClass = TEXCLASS.CLOSE;
+          }
+        }
+        return this.adjustTeXclass(prev);
+      }
+      adjustTeXclass(prev) {
+        const texClass = this.texClass;
+        let prevClass = this.prevClass;
+        if (texClass === TEXCLASS.NONE) {
+          return prev;
+        }
+        if (prev) {
+          if (prev.getProperty("autoOP") && (texClass === TEXCLASS.BIN || texClass === TEXCLASS.REL)) {
+            prevClass = prev.texClass = TEXCLASS.ORD;
+          }
+          prevClass = this.prevClass = prev.texClass || TEXCLASS.ORD;
+          this.prevLevel = this.attributes.getInherited("scriptlevel");
+        } else {
+          prevClass = this.prevClass = TEXCLASS.NONE;
+        }
+        if (texClass === TEXCLASS.BIN && (prevClass === TEXCLASS.NONE || prevClass === TEXCLASS.BIN || prevClass === TEXCLASS.OP || prevClass === TEXCLASS.REL || prevClass === TEXCLASS.OPEN || prevClass === TEXCLASS.PUNCT)) {
+          this.texClass = TEXCLASS.ORD;
+        } else if (prevClass === TEXCLASS.BIN && (texClass === TEXCLASS.REL || texClass === TEXCLASS.CLOSE || texClass === TEXCLASS.PUNCT)) {
+          prev.texClass = this.prevClass = TEXCLASS.ORD;
+        } else if (texClass === TEXCLASS.BIN) {
+          let child = null;
+          let parent = this.parent;
+          while (parent && parent.parent && parent.isEmbellished && (parent.childNodes.length === 1 || !parent.isKind("mrow") && parent.core() === child)) {
+            child = parent;
+            parent = parent.parent;
+          }
+          child = child || this;
+          if (parent.childNodes[parent.childNodes.length - 1] === child) {
+            this.texClass = TEXCLASS.ORD;
+          }
+        }
+        return this;
+      }
+      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
+        super.setInheritedAttributes(attributes, display, level, prime);
+        const mo = this.getText();
+        this.checkOperatorTable(mo);
+        this.checkPseudoScripts(mo);
+        this.checkPrimes(mo);
+        this.checkMathAccent(mo);
+      }
+      getOperatorDef(mo) {
+        const [form1, form2, form3] = this.handleExplicitForm(this.getForms());
+        this.attributes.setInherited("form", form1);
+        const CLASS = this.constructor;
+        const OPTABLE2 = CLASS.OPTABLE;
+        const def2 = OPTABLE2[form1][mo] || OPTABLE2[form2][mo] || OPTABLE2[form3][mo];
+        if (def2) {
+          return def2;
+        }
+        this.setProperty("noDictDef", true);
+        const limits = this.attributes.get("movablelimits");
+        const isOP = !!mo.match(CLASS.opPattern);
+        if ((isOP || limits) && this.getProperty("texClass") === void 0) {
+          return OPDEF(1, 2, TEXCLASS.OP);
+        }
+        const range = getRange(mo);
+        const [l, r] = CLASS.MMLSPACING[range[2]];
+        return OPDEF(l, r, range[2]);
+      }
+      checkOperatorTable(mo) {
+        const def2 = this.getOperatorDef(mo);
+        if (this.getProperty("texClass") === void 0) {
+          this.texClass = def2[2];
+        }
+        for (const name of Object.keys(def2[3] || {})) {
+          this.attributes.setInherited(name, def2[3][name]);
+        }
+        this.lspace = def2[0] / 18;
+        this.rspace = def2[1] / 18;
+      }
+      getForms() {
+        let core = null;
+        let parent = this.parent;
+        let Parent = this.Parent;
+        while (Parent && Parent.isEmbellished) {
+          core = parent;
+          parent = Parent.parent;
+          Parent = Parent.Parent;
+        }
+        core = core || this;
+        if (parent && parent.isKind("mrow") && parent.nonSpaceLength() !== 1) {
+          if (parent.firstNonSpace() === core) {
+            return ["prefix", "infix", "postfix"];
+          }
+          if (parent.lastNonSpace() === core) {
+            return ["postfix", "infix", "prefix"];
+          }
+        }
+        return ["infix", "prefix", "postfix"];
+      }
+      handleExplicitForm(forms) {
+        if (this.attributes.isSet("form")) {
+          const form = this.attributes.get("form");
+          forms = [form].concat(forms.filter((name) => name !== form));
+        }
+        return forms;
+      }
+      checkPseudoScripts(mo) {
+        const PSEUDOSCRIPTS = this.constructor.pseudoScripts;
+        if (!mo.match(PSEUDOSCRIPTS))
+          return;
+        const parent = this.coreParent().Parent;
+        const isPseudo = !parent || !(parent.isKind("msubsup") && !parent.isKind("msub"));
+        this.setProperty("pseudoscript", isPseudo);
+        if (isPseudo) {
+          this.attributes.setInherited("lspace", 0);
+          this.attributes.setInherited("rspace", 0);
+        }
+      }
+      checkPrimes(mo) {
+        const PRIMES = this.constructor.primes;
+        if (!mo.match(PRIMES))
+          return;
+        const REMAP = this.constructor.remapPrimes;
+        const primes = unicodeString(unicodeChars(mo).map((c) => REMAP[c]));
+        this.setProperty("primes", primes);
+      }
+      checkMathAccent(mo) {
+        const parent = this.Parent;
+        if (this.getProperty("mathaccent") !== void 0 || !parent || !parent.isKind("munderover")) {
+          return;
+        }
+        const [base, under, over] = parent.childNodes;
+        if (base.isEmbellished && base.coreMO() === this)
+          return;
+        const isUnder = !!(under && under.isEmbellished && under.coreMO() === this);
+        const isOver = !!(over && over.isEmbellished && under.coreMO() === this);
+        if (!isUnder && !isOver)
+          return;
+        if (this.isMathAccent(mo)) {
+          this.setProperty("mathaccent", true);
+        } else if (this.isMathAccentWithWidth(mo)) {
+          this.setProperty("mathaccent", false);
+        }
+      }
+      isMathAccent(mo = this.getText()) {
+        const MATHACCENT = this.constructor.mathaccents;
+        return !!mo.match(MATHACCENT);
+      }
+      isMathAccentWithWidth(mo = this.getText()) {
+        const MATHACCENT = this.constructor.mathaccentsWithWidth;
+        return !!mo.match(MATHACCENT);
+      }
+    };
+    MmlMo.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), JSON.parse(`{
+ "form":"infix","fence":false,"separator":false,"lspace":"thickmathspace","rspace":"thickmathspace","stretchy":false,"symmetric":false,"maxsize":"infinity","minsize":"0em","largeop":false,
+ "movablelimits":false,"accent":false,"linebreak":"auto","lineleading":"100%","linebreakstyle":"before","indentalign":"auto","indentshift":"0","indenttarget":"","indentalignfirst":"indentalign",
+ "indentshiftfirst":"indentshift","indentalignlast":"indentalign","indentshiftlast":"indentshift"
+}`));
+    MmlMo.MMLSPACING = MMLSPACING;
+    MmlMo.OPTABLE = OPTABLE;
+    MmlMo.pseudoScripts = new RegExp([
+      "^[\"'*`",
+      "ª",
+      "°",
+      "²-´",
+      "¹",
+      "º",
+      "‘-‟",
+      "′-‷⁗",
+      "⁰ⁱ",
+      "⁴-ⁿ",
+      "₀-₎",
+      "]+$"
+    ].join(""));
+    MmlMo.primes = new RegExp([
+      `^["'`,
+      "‘-‟",
+      "]+$"
+    ].join(""));
+    MmlMo.opPattern = /^[a-zA-Z]{2,}$/;
+    MmlMo.remapPrimes = {
+      34: 8243,
+      39: 8242,
+      8216: 8245,
+      8217: 8242,
+      8218: 8242,
+      8219: 8245,
+      8220: 8246,
+      8221: 8243,
+      8222: 8243,
+      8223: 8246
+    };
+    MmlMo.mathaccents = new RegExp([
+      "^[",
+      "´\u0301ˊ",
+      "`\u0300ˋ",
+      "¨\u0308",
+      "~\u0303˜",
+      "¯\u0304ˉ",
+      "˘\u0306",
+      "ˇ\u030C",
+      "^\u0302ˆ",
+      "\u20D0\u20D1",
+      "\u20D6\u20D7\u20E1",
+      "˙\u0307",
+      "˚\u030A",
+      "\u20DB",
+      "\u20DC",
+      "]$"
+    ].join(""));
+    MmlMo.mathaccentsWithWidth = new RegExp([
+      "^[",
+      "←→↔",
+      "⏜⏝",
+      "⏞⏟",
+      "]$"
+    ].join(""));
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtext.js
+var MmlMtext;
+var init_mtext = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtext.js"() {
+    init_MmlNode();
+    MmlMtext = class _MmlMtext extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mtext";
+      }
+      get isSpacelike() {
+        return !!this.getText().match(/^\s*$/) && !this.attributes.hasOneOf(_MmlMtext.NONSPACELIKE);
+      }
+    };
+    MmlMtext.NONSPACELIKE = ["style", "mathbackground", "background"];
+    MmlMtext.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
+  }
+});
+export{init_string,split,init_mo,MmlMo,init_mtext,MmlMtext,toEntity,sortLength,quotePattern,replaceUnicode,getRange,init_OperatorDictionary,OPTABLE,unicodeChars,isPercent};

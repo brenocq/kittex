@@ -1,12 +1,13 @@
 // The build's splitter (scripts/split.mjs): one module cut into a chain of
-// small parts must behave exactly as the module did, and literal tables as
-// JSON must be the same values.
+// small parts must behave exactly as the module did, literal tables as JSON
+// must be the same values, and characters a reader cannot see become escapes
+// that leave every string as it was.
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, describe, expect, test } from 'vitest'
-import { jsonTables, splitModule } from '../../scripts/split.mjs'
+import { escapeHidden, jsonLayout, jsonTables, splitModule } from '../../scripts/split.mjs'
 
 const dirs: string[] = []
 afterAll(() => {
@@ -107,7 +108,7 @@ describe('jsonTables', () => {
   test('a literal table becomes JSON.parse of the same value, keys in the same order', () => {
     const literal = `{ b: [${Array.from({ length: 70 }, (_, k) => k - 3).join(',')}], a: 'é\\u2028\\'"', 7: true, 3: null, z: { y: -1.5e-7 } }`
     const out = jsonTables(`var t = ${literal};`)
-    expect(out).toMatch(/^var t = JSON\.parse\('/)
+    expect(out).toMatch(/^var t = JSON\.parse\(`/)
     const rewritten = out.slice('var t = '.length, -1)
     expect(evaluate(rewritten)).toEqual(evaluate(literal))
     expect(Object.keys(evaluate(rewritten) as object)).toEqual(Object.keys(evaluate(literal) as object))
@@ -124,5 +125,49 @@ describe('jsonTables', () => {
 
   test('small literals are left alone', () => {
     expect(jsonTables('var t = [1, 2, 3];')).toBe('var t = [1, 2, 3];')
+  })
+
+  test('a large table is parsed from top-level constants in pieces, the same value', () => {
+    const glyph = (k: number) => `${k}: [0.5, -0.25, ${k / 7}, { p: '${'M1 2L3 4C5 6 7 8 9 10 '.repeat(40)}\`\${x}\\\\' }]`
+    const literal = `{ normal: { ${Array.from({ length: 400 }, (_, k) => glyph(k)).join(', ')} }, ranges: [${Array.from({ length: 300 }, (_, k) => `[${k}, ${k + 1}]`).join(',')}] }`
+    const out = jsonTables(`function f() { return ${literal} }`)
+    const declared = [...out.matchAll(/^var (__kittexJson\d+) = `/gm)].map(m => m[1])
+    expect(declared.length).toBeGreaterThan(2)
+    expect(out).toContain(`JSON.parse(${declared.join(' + ')})`)
+    const value = new Function(`${out}; return f()`)() as unknown
+    expect(value).toEqual(evaluate(literal))
+    // A line per glyph, the ranges filling lines of their own.
+    expect(Math.max(...out.split('\n').filter(line => line.startsWith('  "')).map(line => line.length))).toBeLessThan(1200)
+  })
+
+  test('jsonLayout is JSON of the same value', () => {
+    const value = { a: Array.from({ length: 90 }, (_, k) => [k, `x${k}`]), b: { c: 'é\u2061', d: [1, 2, { e: null }] }, f: 'y'.repeat(300), g: [] }
+    expect(JSON.parse(jsonLayout(value))).toEqual(value)
+    expect(jsonLayout([1, 2])).toBe('[1,2]')
+  })
+})
+
+describe('escapeHidden', () => {
+  const values = (code: string) => new Function(`${code}; return [s, t, r.test(s), r.test("a" + String.fromCharCode(0x2061) + "b")]`)() as unknown[]
+
+  test('a hidden character in a string, template, regular expression or comment becomes an escape', () => {
+    const code = "var s = 'a\u2061b\u200Bc\u{E0001}é'; var t = `x\u2063y`; var r = /a\u2061b/u; // zero\u200Bwidth\n/* nb\u00A0sp */"
+    const raw = code.replace(/\\u\{?([0-9A-F]+)\}?/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    const out = escapeHidden(raw)
+    expect(out).not.toMatch(/[\u2061\u2063\u200B\u00A0]|\u{E0001}/u)
+    expect(out).toContain('\\u2061')
+    expect(out).toContain('\\uDB40\\uDC01')
+    expect(out).toContain('é')
+    expect(values(out)).toEqual(values(raw))
+  })
+
+  test('a source with nothing hidden is returned as it is', () => {
+    const code = "var s = 'plain ℓ'; var ℑ = 1;"
+    expect(escapeHidden(code)).toBe(code)
+  })
+
+  test('a hidden character it cannot escape is an error', () => {
+    expect(() => escapeHidden('var a\u200Db = 1;'.replace('\\u200D', '\u200D'))).toThrow(/outside a string/)
+    expect(() => escapeHidden('var s = String.raw`a\u2061`;'.replace('\\u2061', '\u2061'))).toThrow(/tagged template/)
   })
 })

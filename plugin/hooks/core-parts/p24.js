@@ -1,148 +1,1837 @@
-import{C0,n8,Vu,Rp,Uu,k3,Ju,ex,bg,Ag,Eg,nx,Lx,fL,kg,ux,xx,Bg,Fg,wg,eM}from'./p23.js';export*from'./p23.js';
-function df(e,C={}){return new C0(1/0,C.diagrams===!0,1/0).push(e,!0)}
-function ff(e={}){let C=new C0(Math.max(1,e.maxHeldLines??40),e.diagrams===!0,Math.max(1,e.maxDiagramLines??400));return{push:(t,L)=>C.push(t,L)}}
-n8();
-var Xu;
-function m9(){return Xu??=(Vu(),Rp(Uu))}
-function Ku(){return Xu!==void 0}
-n8();
-var Qu=Object.fromEntries([..."\u2070\xB9\xB2\xB3\u2074\u2075\u2076\u2077\u2078\u2079\u207A\u207B\u207C\u207D\u207E\u207F\u2071"].map((e,C)=>[e,"0123456789+-=()ni"[C]]));
-var pg=Object.fromEntries([..."\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089\u208A\u208B\u208C\u208D\u208E\u2090\u2091\u2092\u2093\u2095\u2096\u2097\u2098\u2099\u209A\u209B\u209C"].map((e,C)=>[e,"0123456789+-=()aeoxhklmnpst"[C]]));
-var hg=/[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+|[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ]+/g;
-function dg(e){return e.replace(hg,C=>{let t=Qu[C[0]]!==void 0,L=t?Qu:pg;return`${t?"^":"_"}{${[...C].map(n=>L[n]).join("")}}`})}
-function Zu(){try{return m9().prepare(),Promise.resolve()}catch(e){return Promise.reject(e)}}
-function fg(){return Ku()}
-function cL(e,C){let t=m9();try{return t.typesetOnce(e,C)}catch(L){if(!(L instanceof k3))throw L;let n=dg(e);if(n===e)throw L;return t.typesetOnce(n,C)}}
-function Yu(e,C){return m9().texToMathML(e,C)}
-var lL=class extends Error{name="Unsupported"};
-function c1(e){throw new lL(e)}
-var mg=/^[\p{Mn}\p{Me}\p{Cf}]$/u;
-function gg(e){if(e<768)return e<32||e>=127&&e<160?0:1;if(mg.test(String.fromCodePoint(e))||e>=4448&&e<=4607)return 0;if(e<4352)return 1;let C=0,t=Ju.length-1;for(;C<=t;){let L=C+t>>1,[n,i]=Ju[L];if(e<n)t=L-1;else if(e>i)C=L+1;else return 2}return 1}
-function B5(e){let C=[],t=-1;for(let L of e){let n=gg(L.codePointAt(0));if(n===0){if(t<0){if(/\p{Cf}/u.test(L))continue;C.push(" "),t=0}C[t]+=L}else t=C.length,C.push(L),n===2&&C.push("")}return C}
-function R1(e){let C=B5(e);return{rows:[C],width:C.length,base:0}}
-function _1(e,C=1,t=0){return{rows:Array.from({length:C},()=>Array(e).fill(" ")),width:e,base:t}}
-function D1(e){return e.rows.length}
-function w5(e){return e.base}
-function f6(e){return e.rows.length-e.base-1}
-function e2(e){if(e.length===1)return e[0];let C=Math.max(0,...e.map(w5)),t=Math.max(0,...e.map(f6)),L=Array.from({length:C+t+1},()=>[]),n=0;for(let i of e){let s=C-i.base;for(let r=0;r<L.length;r++){let o=i.rows[r-s];if(o)L[r].push(...o);else for(let a=0;a<i.width;a++)L[r].push(" ")}n+=i.width}return{rows:L,width:n,base:C}}
-function m6(e,C,t){if(e.width>=C)return e;let L=C-e.width,n=t==="left"?0:t==="right"?L:Math.floor(L/2);return g9(e,n,L-n)}
-function g9(e,C,t){if(C===0&&t===0)return e;let L=Array(C).fill(" "),n=Array(t).fill(" ");return{rows:e.rows.map(i=>[...L,...i,...n]),width:e.width+C+t,base:e.base}}
-function E2(e,C,t){let L=Math.max(0,...e.map(i=>i.width));return{rows:e.flatMap(i=>m6(i,L,C).rows),width:L,base:t}}
-function M9(e,C,t){let L=Math.max(0,C-w5(e)),n=Math.max(0,t-f6(e));if(L===0&&n===0)return e;let i=()=>Array(e.width).fill(" ");return{rows:[...Array.from({length:L},i),...e.rows,...Array.from({length:n},i)],width:e.width,base:e.base+L}}
-function Cx(e){return _1(e.width,e.rows.length,e.base)}
-function A9(e){return e.rows.every(C=>C.every(t=>t===" "||t===""))}
-function E9(e){return e.rows.map(C=>C.join(""))}
-var uL=sx("0\u20701\xB92\xB23\xB34\u20745\u20756\u20767\u20778\u20789\u2079+\u207A\u2212\u207B-\u207B=\u207C(\u207D)\u207Ea\u1D43b\u1D47c\u1D9Cd\u1D48e\u1D49f\u1DA0g\u1D4Dh\u02B0i\u2071j\u02B2k\u1D4Fl\u02E1m\u1D50n\u207Fo\u1D52p\u1D56r\u02B3s\u02E2t\u1D57u\u1D58v\u1D5Bw\u02B7x\u02E3y\u02B8z\u1DBBA\u1D2CB\u1D2ED\u1D30E\u1D31G\u1D33H\u1D34I\u1D35J\u1D36K\u1D37L\u1D38M\u1D39N\u1D3AO\u1D3CP\u1D3ER\u1D3FT\u1D40U\u1D41V\u2C7DW\u1D42\u03B1\u1D45\u03B2\u1D5D\u03B3\u1D5E\u03B4\u1D5F\u03B5\u1D4B\u03F5\u1D4B\u03B8\u1DBF\u03B9\u1DA5\u03C6\u1D60\u03D5\u1D60\u03C7\u1D61\u2032\u2032\u2033\u2033\u2034\u2034\u2057\u2057\u2217***\u2020\u2020\u2021\u2021\u22A4\u1D40\u22BA\u1D40\u2218\xB0\xB0\xB0  ");
-var ix=sx("0\u20801\u20812\u20823\u20834\u20845\u20856\u20867\u20878\u20889\u2089+\u208A\u2212\u208B-\u208B=\u208C(\u208D)\u208Ea\u2090e\u2091h\u2095i\u1D62j\u2C7Ck\u2096l\u2097m\u2098n\u2099o\u2092p\u209Ar\u1D63s\u209Bt\u209Cu\u1D64v\u1D65x\u2093\u03B2\u1D66\u03B3\u1D67\u03C1\u1D68\u03C6\u1D69\u03D5\u1D69\u03C7\u1D6A  ");
-function sx(e){let C=[...e],t=new Map;for(let L=0;L+1<C.length;L+=2)t.set(C[L],C[L+1]);for(let L of",.;:")t.set(L,L);return t}
-var Mg=new Map([["|","|"],["\u2223","|"]]);
-function b9(e,C){let t=e.filter(n=>n!==""),L="";for(let[n,i]of t.entries()){let s=C.get(i)??C.get(tx(i));if(s!==void 0){L+=s;continue}let r=Mg.get(i),o=t[n+1];if(r===void 0||L===""||o===void 0||(C.get(o)??C.get(tx(o)))===void 0)return;L+=r}return L}
-function tx(e){let C=e.codePointAt(0);for(let t of[120224,120432])if(C>=t&&C<t+52)return String.fromCharCode((C-t<26?65:71)+C-t);return e}
-var rx={bold:ex,"bold-italic":ex,"double-struck":{latin:120120,digits:120792,holes:bg},script:{latin:119964,holes:Ag},"bold-script":{latin:120016},fraktur:{latin:120068,holes:Eg},"bold-fraktur":{latin:120172},"sans-serif":nx,"sans-serif-italic":nx,"bold-sans-serif":Lx,"sans-serif-bold-italic":Lx,monospace:{latin:120432,digits:120822}};
-var F5=new Map;
-for(let e=913;e<=937;e++)e!==930&&F5.set(e,e-913);
-F5.set(1012,17);
-F5.set(8711,25);
-for(let e=945;e<=969;e++)F5.set(e,e-945+26);
-for(let[e,C]of[8706,1013,977,1008,981,1009,982].entries())F5.set(C,51+e);
-function Dg(e,C){let t=rx[C];if(!t)return e;let L=t.holes?.[e];if(L)return L;let n=e.codePointAt(0);if(t.latin!==void 0){if(n>=65&&n<=90)return String.fromCodePoint(t.latin+n-65);if(n>=97&&n<=122)return String.fromCodePoint(t.latin+26+n-97)}if(t.digits!==void 0&&n>=48&&n<=57)return String.fromCodePoint(t.digits+n-48);let i=F5.get(n);return t.greek!==void 0&&i!==void 0?String.fromCodePoint(t.greek+i):e}
-function xL(e,C){if(!C||!rx[C])return e;let t="";for(let L of e)t+=Dg(L,C);return t}
-var pL=new Map(JSON.parse('[["^",{"mark":"̂","glyph":"^"}],["ˆ",{"mark":"̂","glyph":"^"}],["ˇ",{"mark":"̌","glyph":"ˇ"}],["~",{"mark":"̃","glyph":"~"}],["˜",{"mark":"̃","glyph":"~"}],["¯",{"mark":"̄","glyph":"_","wide":true}],["ˉ",{"mark":"̄","glyph":"_","wide":true}],["‾",{"mark":"̅","glyph":"_","wide":true}],["―",{"mark":"̅","glyph":"_","wide":true}],["─",{"mark":"̅","glyph":"_","wide":true}],["_",{"mark":"̅","glyph":"_","wide":true}],["˙",{"mark":"̇","glyph":"˙"}],["¨",{"mark":"̈","glyph":"¨"}],["⃛",{"mark":"⃛","glyph":"⋯"}],["⃜",{"mark":"⃜","glyph":"⋯"}],["´",{"mark":"́","glyph":"´"}],["ˊ",{"mark":"́","glyph":"´"}],["`",{"mark":"̀","glyph":"`"}],["ˋ",{"mark":"̀","glyph":"`"}],["˘",{"mark":"̆","glyph":"˘"}],["˚",{"mark":"̊","glyph":"°"}],["→",{"mark":"⃗","glyph":"→","arrow":"right"}],["⃗",{"mark":"⃗","glyph":"→","arrow":"right"}],["←",{"mark":"⃖","glyph":"←","arrow":"left"}],["↔",{"mark":"⃡","glyph":"↔","arrow":"both"}]]'));
-var hL=new Map(JSON.parse('[["―",{"mark":"̲","glyph":"‾","wide":true}],["_",{"mark":"̲","glyph":"‾","wide":true}],["‾",{"mark":"̲","glyph":"‾","wide":true}],["¯",{"mark":"̲","glyph":"‾","wide":true}],["─",{"mark":"̲","glyph":"‾","wide":true}],["~",{"mark":"̰","glyph":"~"}],["˜",{"mark":"̰","glyph":"~"}],["→",{"mark":"⃯","glyph":"→","arrow":"right"}],["←",{"mark":"⃮","glyph":"←","arrow":"left"}],["↔",{"mark":"͍","glyph":"↔","arrow":"both"}]]'));
-function B2(e,C,t=!1){let L=t?"\u2550":"\u2500",[n,i]=t?["\u21D0","\u21D2"]:["\u2190","\u2192"];return C<=1?e==="right"?i:e==="left"?n:t?"\u21D4":"\u2194":e==="right"?L.repeat(C-1)+i:e==="left"?n+L.repeat(C-1):n+L.repeat(Math.max(0,C-2))+i}
-var ox=new Map([["\u2192",e=>B2("right",e)],["\u27F6",e=>B2("right",e)],["\u2190",e=>B2("left",e)],["\u27F5",e=>B2("left",e)],["\u2194",e=>B2("both",e)],["\u27F7",e=>B2("both",e)],["\u21D2",e=>B2("right",e,!0)],["\u27F9",e=>B2("right",e,!0)],["\u21D0",e=>B2("left",e,!0)],["\u27F8",e=>B2("left",e,!0)],["\u21D4",e=>B2("both",e,!0)],["\u27FA",e=>B2("both",e,!0)],["\u21A6",e=>e<=1?"\u21A6":"\u251C"+"\u2500".repeat(Math.max(0,e-2))+"\u2192"],["\u27FC",e=>e<=1?"\u21A6":"\u251C"+"\u2500".repeat(Math.max(0,e-2))+"\u2192"]]);
-function D9(e,C){let t=Math.max(1,C),L=(n,i,s,r)=>{if(t===1)return r;if(t===2)return n+s;if(!i)return n+"\u2500".repeat(t-2)+s;let o=Math.floor((t-3)/2);return n+"\u2500".repeat(o)+i+"\u2500".repeat(t-3-o)+s};switch(e){case"\u23DE":return L("\u256D","\u2534","\u256E","\u2534");case"\u23DF":return L("\u2570","\u252C","\u256F","\u252C");case"\u23DC":return L("\u256D","","\u256E","\u2312");case"\u23DD":return L("\u2570","","\u256F","\u203F");case"\u23B4":return L("\u250C","","\u2510","\u252C");case"\u23B5":return L("\u2514","","\u2518","\u2534")}}
-var ax=new Set(["(",")","[","]","{","}","|","\u2016","\u2225","\u230A","\u230B","\u2308","\u2309","\u27E8","\u27E9","\u27E6","\u27E7","/","\\",""]);
-function dL(e,C,t){if(C<=1)return[e==="\u2225"?"\u2016":e];let L=(n,i,s)=>[n,...Array(C-2).fill(i),s];switch(e){case"(":return L("\u239B","\u239C","\u239D");case")":return L("\u239E","\u239F","\u23A0");case"[":return L("\u23A1","\u23A2","\u23A3");case"]":return L("\u23A4","\u23A5","\u23A6");case"\u2308":return L("\u23A1","\u23A2","\u23A2");case"\u2309":return L("\u23A4","\u23A5","\u23A5");case"\u230A":return L("\u23A2","\u23A2","\u23A3");case"\u230B":return L("\u23A5","\u23A5","\u23A6");case"\u27E6":return L("\u2553","\u2551","\u2559");case"\u27E7":return L("\u2556","\u2551","\u255C");case"|":return Array(C).fill("\u2502");case"\u2016":case"\u2225":return Array(C).fill("\u2551");case"{":case"}":{let[n,i,s,r]=e==="{"?["\u23A7","\u23A8","\u23A9","\u23AA"]:["\u23AB","\u23AC","\u23AD","\u23AA"];if(C===2)return e==="{"?["\u23B0","\u23B1"]:["\u23B1","\u23B0"];let o=t>0&&t<C-1?t:Math.floor(C/2);return Array.from({length:C},(a,l)=>l===0?n:l===C-1?s:l===o?i:r)}case"\u27E8":case"\u27E9":{let[n,i]=e==="\u27E8"?["\u2571","\u2572"]:["\u2572","\u2571"],s=C/2;return Array.from({length:C},(r,o)=>o<Math.floor(s)?n:o>=Math.ceil(s)?i:e)}case"/":return Array(C).fill("\u2571");case"\\":return Array(C).fill("\u2572");case"":return Array(C).fill("")}return Array.from({length:C},(n,i)=>i===t?e:" ")}
-function cx(e){return e<=1?["\u222B"]:["\u2320",...Array(e-2).fill("\u23AE"),"\u2321"]}
-var lx=new Map([["1/2","\xBD"],["1/3","\u2153"],["2/3","\u2154"],["1/4","\xBC"],["3/4","\xBE"],["1/5","\u2155"],["2/5","\u2156"],["3/5","\u2157"],["4/5","\u2158"],["1/6","\u2159"],["5/6","\u215A"],["1/7","\u2150"],["1/8","\u215B"],["3/8","\u215C"],["5/8","\u215D"],["7/8","\u215E"],["1/9","\u2151"],["1/10","\u2152"]]);
-var yg=new Set(["ORD","OP","BIN","REL","OPEN","CLOSE","PUNCT","INNER","NONE"]);
-function mL(e){return e!==void 0&&yg.has(e)?e:void 0}
-var px=Object.fromEntries(Object.keys(fL).map(e=>{let C=new Map;for(let[t,L]of Object.entries(fL[e]))for(let n of L)C.set(n,t);return[e,C]}));
-function gL(e,C){for(let L of kg[C]){let n=px[L].get(e);if(n)return n}if(/^[a-zA-Z]{2,}$/.test(e))return"OP";let t=e.codePointAt(0);if(t===void 0)return"ORD";for(let[L,n,i]of ux)if(t<=n)return t>=L?i:"REL";return"REL"}
-function g6(e,C){return px[C].has(e)}
-function hx(e,C,t){let L=xx.indexOf(e),n=xx.indexOf(C);if(L<0||n<0)return 0;let i=Bg[L][n];return i<0?-i:t?0:i}
-var ML=/[A-Za-z_][-A-Za-z0-9_.:]*/y;
-var AL=/\s*/y;
-function fx(e){let C=0,t=()=>{AL.lastIndex=C,AL.exec(e),C=AL.lastIndex},L=()=>{ML.lastIndex=C;let o=ML.exec(e);o||c1(`XML: name expected at ${C}`),C=ML.lastIndex;let a=o[0].lastIndexOf(":");return a>=0?o[0].slice(a+1):o[0]},n=o=>o.indexOf("&")<0?o:o.replace(/&([#\w]*)(;?)/g,(a,l,u)=>{if(u||c1("XML: unterminated reference"),l.startsWith("#")){let p=l[1]==="x"||l[1]==="X"?parseInt(l.slice(2),16):parseInt(l.slice(1),10);return(!/^#(x[0-9a-fA-F]+|X[0-9a-fA-F]+|[0-9]+)$/.test(l)||!(p>=0&&p<=1114111))&&c1(`XML: bad reference &${l};`),String.fromCodePoint(p)}return Fg[l]??c1(`XML: unknown entity &${l};`)}),i=()=>{for(;;)if(t(),e.startsWith("<?",C)){let o=e.indexOf("?>",C);o<0&&c1("XML: unterminated processing instruction"),C=o+2}else if(e.startsWith("<!--",C)){let o=e.indexOf("-->",C);o<0&&c1("XML: unterminated comment"),C=o+3}else if(e.startsWith("<!DOCTYPE",C)){let o=e.indexOf(">",C);o<0&&c1("XML: unterminated doctype"),C=o+1}else return},s=o=>{o>wg&&c1("XML: too deep"),e[C]!=="<"&&c1(`XML: element expected at ${C}`),C++;let a=L(),l={};for(;;){t();let x=e[C];if(x==="/"&&e[C+1]===">")return C+=2,{name:a,attrs:l,children:[]};if(x===">"){C++;break}let p=L();t(),e[C]!=="="&&c1("XML: = expected"),C++,t();let h=e[C];h!=='"'&&h!=="'"&&c1("XML: quoted value expected");let d=e.indexOf(h,C+1);d<0&&c1("XML: unterminated attribute");let m=e.slice(C+1,d);m.includes("<")&&c1("XML: < in attribute"),p in l&&c1(`XML: duplicate attribute ${p}`),l[p]=n(m),C=d+1}let u=[];for(;;){if(C>=e.length&&c1(`XML: unclosed <${a}>`),e.startsWith("</",C)){C+=2;let x=L();return x!==a&&c1(`XML: </${x}> closes <${a}>`),t(),e[C]!==">"&&c1("XML: > expected"),C++,{name:a,attrs:l,children:u}}if(e.startsWith("<!--",C)){let x=e.indexOf("-->",C);x<0&&c1("XML: unterminated comment"),C=x+3}else if(e.startsWith("<![CDATA[",C)){let x=e.indexOf("]]>",C);x<0&&c1("XML: unterminated CDATA"),dx(u,e.slice(C+9,x)),C=x+3}else if(e[C]==="<")u.push(s(o+1));else{let x=e.indexOf("<",C);x<0&&(x=e.length),dx(u,n(e.slice(C,x))),C=x}}};i();let r=s(0);return i(),C!==e.length&&c1("XML: content after the root element"),r}
-function dx(e,C){if(C==="")return;let t=e.length-1;typeof e[t]=="string"?e[t]+=C:e.push(C)}
-function b1(e){let C=[];for(let t of e.children)typeof t!="string"?C.push(t):/[^ \t\r\n]/.test(t)&&c1(`text inside <${e.name}>`);return C}
-function U1(e){let C="";for(let t of e.children)typeof t=="string"?C+=t:t.name==="mglyph"||t.name==="malignmark"?c1(`<${t.name}>`):c1(`<${t.name}> inside <${e.name}>`);return C.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g,"").replace(/[ \t\r\n]+/g," ")}
-var $4=!1;
-function wx(e,C,t=!1){e.name!=="math"&&c1(`root <${e.name}>`);let L=typeof t=="boolean"?{compact:t}:t,n=L.compact?{twoD:!1,display:!1,level:0,compact:!0}:{twoD:C,display:C,level:0};$4=L.tight===!0;try{let i=z1(b1(e),n),s=L.breakWidth;if(s===void 0||i.box.width<=s)return i.box;let r=i;for(let o=r.items.filter(a=>a.box.width>0);o.length===1&&o[0].row&&o[0].kind!=="fence";)r=o[0].row,o=r.items.filter(a=>a.box.width>0);return vg(r,s)??i.box}finally{$4=!1}}
-function vg(e,C){let{parts:t,breaks:L}=e;if(!t||!L||L.length===0)return;let n=[],i=[...L.filter(r=>r>0&&r<t.length),t.length],s=0;for(;s<t.length;){let r=-1;for(let o of i)if(!(o<=s))if(mx(t.slice(s,o)).width<=C)r=o;else break;if(r<0)return;n.push(mx(t.slice(s,r))),s=r}if(!(n.length<2))return E2(n,"left",n[0].base)}
-function mx(e){let C=0,t=e.length;for(;C<t&&A9(e[C]);)C++;for(;t>C&&A9(e[t-1]);)t--;return C<t?e2(e.slice(C,t)):_1(0)}
-var k9=new Set(["msub","msup","msubsup","munder","mover","munderover"]);
-function y9(e,C,t=[]){for(let L of e)if(L.name==="mrow"&&L.attrs["data-mjx-texclass"]===void 0)y9(b1(L),C,t);else if(L.name==="mstyle")y9(b1(L),Sg(L,C),t);else if(L.name==="semantics"){let n=b1(L)[0];n&&y9([n],C,t)}else t.push({el:L,ctx:C});return t}
-function Sg(e,C){let t={twoD:C.twoD,display:C.display,level:C.level,compact:C.compact},L=e.attrs.displaystyle;L==="true"&&(t.display=!0),L==="false"&&(t.display=!1);let n=e.attrs.scriptlevel;if(n!==void 0){let i=parseInt(n,10);Number.isNaN(i)&&c1("scriptlevel"),t.level=/^[+-]/.test(n)?Math.max(0,C.level+i):Math.max(0,i)}return t}
-function gx(e){return e.name==="mspace"&&e.attrs.linebreak==="newline"}
-function z1(e,C){let t=y9(e,C);if(!t.some(s=>gx(s.el)))return Mx(t,C);!C.twoD&&!C.compact&&c1("line break in inline math");let L=[[]];for(let s of t)gx(s.el)?L.push([]):L.at(-1).push(s);let n=L.map(s=>Mx(s,C));return{box:E2(n.map(s=>s.box),"center",n[0].box.base),items:n.flatMap(s=>s.items),spaced:!0}}
-function Mx(e,C){let t=e.map((D,k)=>D.el.name==="mspace"?-1:k).filter(D=>D>=0),L=t[0],n=t.at(-1),i=D=>t.length>1&&D===L?"prefix":t.length>1&&D===n?"postfix":"infix",s=e.map(()=>{}),r=e.map(D=>Pg(D.el,D.ctx));e.forEach((D,k)=>{r[k]||(s[k]=Ex(D.el,L3(D.ctx),i(k)))});let o=(D,k)=>{let F={up:C.stretch?.up??0,down:C.stretch?.down??0};for(let N=D;N<k;N++){let U=s[N]?.box;!U||r[N]||(F.up=Math.max(F.up,w5(U)),F.down=Math.max(F.down,f6(U)))}return F},a=o(0,e.length);e.forEach((D,k)=>{if(!r[k])return;let F=a,N=M6(D.el);if(wL(U1(N))){let U=k+1;for(;U<e.length&&!["REL","PUNCT"].includes(s[U]?s[U].cls:"ORD");)U++;F=o(k+1,U)}else if(N.attrs.minsize!==void 0||N.attrs.maxsize!==void 0){let U=U1(N),q=BL(D.el,i(k)),K=g6(U,"prefix")&&!g6(U,"postfix"),P=g6(U,"postfix")&&!g6(U,"prefix"),j=q==="OPEN"||q==="CLOSE"?q:K?"OPEN":P?"CLOSE":q,W=r.indexOf(!0,k+1),G=r.lastIndexOf(!0,k-1);j==="OPEN"?F=o(k+1,W<0?e.length:W):j==="CLOSE"&&(F=o(G+1,k))}s[k]=Ex(D.el,{...L3(D.ctx),stretch:F},i(k))});let l=s;Tg(l),Og(l),Ig(l);let u=l.filter(D=>D.cls!=="NONE");u.forEach((D,k)=>{if(!D.wrapped)return;let F=u[k-1],N=u[k+1];(F!==void 0&&!F.unary&&(F.cls==="ORD"||F.cls==="INNER"||F.cls==="CLOSE"||F.cls==="OP"&&(x7(F.el)||$4&&x7(F.el,!0)))||N!==void 0&&(N.cls==="ORD"||N.cls==="INNER"||N.cls==="OPEN"||N.cls==="OP"||Rg(N)))&&(D.box=D.wrapped,D.kind="fence")});let x=C.level>0;l.forEach((D,k)=>{let F=u7.get(D.box);if(!F)return;let N=k+1;for(;N<l.length&&l[N].box.width===0;)N++;let U=l[N];if(!U||U.cls==="NONE"||Ax(D,U,x)>0)return;let q=U.box.rows[U.box.base]?.find(K=>K!=="")??"";D.box=F(q)??D.box});let p=[],h=[],d,m=!1,E=0,w=0,b=D=>{D>0&&(p.push(_1(D)),E===0&&(m=!0)),w=0};for(let D of l){if(D.cls==="NONE"){if(D.el.name==="mspace"){w+=D.box.width;continue}(D.box.width>0||D.lspace)&&b(w+(D.lspace??0)),p.push(D.box),w+=D.rspace??0;continue}if(D.cls==="CLOSE"&&(E=Math.max(0,E-1)),d&&E===0&&(D.cls==="REL"||D.cls==="BIN"&&!D.unary||w>=2)&&h.push(p.length),b(Math.max(d?Ax(d,D,x):0,w)),D.cls==="OPEN"&&E++,E===0&&D.el.name==="mtext"&&D1(D.box)===1&&D.box.rows[0].includes(" "))for(let[k,F]of Ng(D.box.rows[0]).entries())k>0&&F[0]!==" "&&h.push(p.length),p.push({rows:[F],width:F.length,base:0});else p.push(D.box);d=D}b(w);let B=p.length?e2(p):_1(0),y=l.findLast(D=>D.box.width>0),S=y&&p.at(-1)===y.box?u7.get(y.box):void 0;return S&&u7.set(B,D=>{let k=S(D);return k&&e2([...p.slice(0,-1),k])}),{box:B,items:l,spaced:m,parts:p,breaks:h}}
-function Rg(e){return e.el.name==="mo"&&/^[!′″‴']+$/u.test(U1(e.el))}
-function x7(e,C=!1){if(e.name==="mi"||C&&e.name==="mo"&&/^\p{L}{2,}$/u.test(U1(e)))return!0;let t=k9.has(e.name)?b1(e)[0]:void 0;return t!==void 0&&x7(t,C)}
-function Tg(e){e.forEach((C,t)=>{let L=C.el;if(L.name!=="mpadded"||L.attrs.width!=="0"||!L.attrs.lspace?.startsWith("-"))return;let[n,i]=b1(L);if(!n||i?.name!=="mphantom"||n.name!=="mpadded")return;let s=b1(n),r=s.length===1?U1(s[0]):"",o=e.slice(0,t).reverse().find(a=>a.box.width>0);!o||!["/","\u29F8","\u2215"].includes(r)||(o.box={...o.box,rows:o.box.rows.map(a=>a.map(l=>l===" "||l===""?l:l+"\u0338"))},C.box=_1(0),C.cls="NONE")})}
-function Ng(e){let C=[];for(let t of e){let L=t===" ",n=C.at(-1);n&&n[0]===" "===L?n.push(t):C.push([t])}return C}
-function Og(e){let C;for(let t of e){if(t.cls==="NONE")continue;C?.autoOP&&(t.cls==="BIN"||t.cls==="REL")&&(C.cls="ORD");let L=C?.cls;t.cls==="BIN"&&(!L||L==="BIN"||L==="OP"||L==="REL"||L==="OPEN"||L==="PUNCT")?(t.cls="ORD",t.unary=!0):L==="BIN"&&(t.cls==="REL"||t.cls==="CLOSE"||t.cls==="PUNCT")&&(C.cls="ORD"),C=t}C?.cls==="BIN"&&(C.cls="ORD")}
-function Ig(e){for(let C=1;C+1<e.length;C++){let[t,L,n]=[e[C-1],e[C],e[C+1]];t.cls==="CLOSE"&&t.box.width===0&&n.cls==="OPEN"&&n.box.width===0&&L.el.name==="mo"&&(t.cls="NONE",n.cls="NONE",L.cls="REL")}}
-function Ax(e,C,t){if($4)return 0;let L=hx(e.cls,C.cls,t);return L===0?0:L>=2?1:e.unary||C.cls==="PUNCT"?0:e.cls==="PUNCT"?1:e.cls==="OP"&&C.kind==="fence"?x7(e.el)?0:1:e.cls==="OP"||C.cls==="OP"||e.kind==="frac"||C.kind==="frac"?1:0}
-function Ex(e,C,t){if(e.name==="mfrac"){let i=vL(e,C);return{el:e,box:i.box,cls:i.plain?"ORD":"INNER",kind:i.plain?void 0:"frac",wrapped:i.wrapped}}if(e.name==="mrow"){let i=C.twoD&&C.level===0?void 0:Wg(e,C);if(i)return{el:e,box:i,cls:"ORD"};let s=z1(b1(e),C),r=mL(e.attrs["data-mjx-texclass"])??"ORD";return{el:e,box:s.box,cls:r,kind:r==="INNER"?"fence":void 0,row:s}}let L=G4(e,C),n={el:e,box:L,cls:BL(e,t)};return e.name==="mi"&&n.cls==="OP"&&e.attrs["data-mjx-texclass"]===void 0&&(n.autoOP=!0),e.name==="mo"&&e.attrs["data-mjx-texclass"]===void 0&&(e.attrs.lspace!==void 0||e.attrs.rspace!==void 0)&&(n.cls="NONE",n.lspace=DL(p7(e.attrs.lspace??"0")),n.rspace=DL(p7(e.attrs.rspace??"0"))),n}
-function BL(e,C){let t=mL(e.attrs["data-mjx-texclass"]);if(t)return t;switch(e.name){case"mo":{let L=U1(e),n=e.attrs.form,i=gL(L,n==="prefix"||n==="infix"||n==="postfix"?n:C);return e.attrs.fence==="true"&&i==="REL"&&(C==="prefix"&&(i="OPEN"),C==="postfix"&&(i="CLOSE")),i}case"mi":{let L=U1(e),n=e.attrs.mathvariant??([...L].length>1?"normal":"italic");return e.attrs["data-mjx-auto-op"]!=="false"&&[...L].length>1&&/^[a-z][a-z0-9]*$/i.test(L)&&n==="normal"?"OP":"ORD"}case"mspace":return"NONE";default:if(k9.has(e.name)){let L=b1(e)[0];if(L&&(L.name==="mo"||L.name==="mi"||k9.has(L.name)||L.name==="mrow"&&L.attrs["data-mjx-texclass"]!==void 0))return BL(L,C)}return"ORD"}}
-function M6(e){if(e.name==="mo")return e;if(e.name==="mrow"||e.name==="mstyle"){let C=b1(e);return C.length===1?M6(C[0]):void 0}if(k9.has(e.name)){let C=b1(e)[0];return C&&M6(C)}}
-var Fx=new Map([["\u222B",1],["\u222C",2],["\u222D",3]]);
-function wL(e){return Fx.has(e)}
-function Pg(e,C){if(!C.twoD&&!C.compact)return!1;let t=M6(e);if(!t)return!1;let L=U1(t);if(wL(L))return C.display&&!e.name.startsWith("munder")&&e.name!=="mover";if(!ax.has(L))return!1;let n=t.attrs.stretchy;return n==="true"?!0:n==="false"?!1:t.attrs.minsize!==void 0||t.attrs.maxsize!==void 0?!0:L!=="/"&&L!=="\\"&&(g6(L,"prefix")||g6(L,"postfix"))}
-function G4(e,C){switch(e.name){case"mi":case"mn":case"mtext":return bx(e);case"ms":{let t=bx(e);return e2([R1(e.attrs.lquote??'"'),t,R1(e.attrs.rquote??'"')])}case"mo":return _g(e,C);case"mspace":return _1(DL(p7(e.attrs.width??"0")));case"mrow":case"mstyle":return z1([e],C).box;case"semantics":{let t=b1(e)[0];return t?G4(t,C):_1(0)}case"maction":{let L=b1(e)[parseInt(e.attrs.selection??"1",10)-1];return L?G4(L,C):c1("maction")}case"mphantom":return Cx(z1(b1(e),L3(C)).box);case"mpadded":return zg(e,C);case"mfrac":return vL(e,C).box;case"msqrt":return kx(z1(b1(e),L3(C)),void 0,C);case"mroot":{let t=b1(e);return t.length!==2&&c1("mroot"),kx(z1([t[0]],L3(C)),t[1],C)}case"msub":case"msup":case"msubsup":return Xg(e,C);case"mmultiscripts":return Kg(e,C);case"munder":case"mover":case"munderover":return tM(e,C);case"menclose":return nM(e,C);case"mtable":return oM(e,C)}return c1(`<${e.name}>`)}
-function L3(e){return e.stretch?{twoD:e.twoD,display:e.display,level:e.level,compact:e.compact}:e}
-function B9(e){return{twoD:e.twoD,display:!1,level:e.level+1,compact:e.compact}}
-function vx(e){return e.replace(/[\u00a0\u2000-\u200a\u202f\u205f]/g," ")}
-function bx(e){let C=vx(U1(e));e.name==="mtext"&&e.attrs.mathcolor==="red"&&C.startsWith("\\")&&c1("undefined macro");let t=e.attrs.mathvariant;return R1(xL(C,t))}
-function _g(e,C){let t=vx(U1(e)),L=C.stretch;if(L&&(L.up>0||L.down>0)){let n=L.up+L.down+1,i=Fx.get(t),r=(i?cx(n).map(o=>o.repeat(i)):dL(t,n,L.up)).map(o=>B5(o));return{rows:r,width:r[0].length,base:L.up}}return R1(xL(t,e.attrs.mathvariant))}
-function p7(e){let C={veryverythinmathspace:1,verythinmathspace:2,thinmathspace:3,mediummathspace:4,thickmathspace:5,verythickmathspace:6,veryverythickmathspace:7},t=e.trim(),L=t.startsWith("negative"),n=L?t.slice(8):t;if(C[n]!==void 0)return(L?-1:1)*C[n]/18;let i=/^([+-]?(?:\d+\.?\d*|\.\d+))\s*(em|ex|pt|px|mu|in|cm|mm|pc)?$/.exec(t);if(!i)return c1(`length ${e}`);let s=parseFloat(i[1]),r=i[2]??"em",o={em:1,ex:.43,pt:.1,px:1/16,mu:1/18,in:7.2,cm:2.835,mm:.2835,pc:1.2};return s*o[r]}
-function FL(e){return e<=.05?0:Math.max(1,Math.round(e*2))}
-function DL(e){return $4?e<.25?0:1:FL(e)}
-function zg(e,C){let t=z1(b1(e),C).box;if(!A9(t))return t;let L=t;return e.attrs.width==="0"&&(L={rows:L.rows.map(()=>[]),width:0,base:L.base}),e.attrs.height==="0"&&e.attrs.depth==="0"&&(L=_1(L.width)),L}
-function vL(e,C){let t=b1(e);t.length!==2&&c1("mfrac");let[L,n]=t,i=/^0+(\.0*)?([a-z]+)?$/.test(e.attrs.linethickness??""),s=L3(C),r=i?void 0:lx.get(`${yL(L)}/${yL(n)}`);if(r&&(!C.twoD||!C.display))return{box:R1(r),plain:!0};if(C.twoD&&C.level===0&&e.attrs.bevelled!=="true"){let u={twoD:!0,display:!1,level:C.display?C.level:C.level+1},x=z1([L],u).box,p=z1([n],u).box,h=D1(x)>1||D1(p)>1?1:0,d=Math.max(x.width,p.width)+2*h,m=i?_1(d):R1("\u2500".repeat(d));return{box:E2([x,m,p],"center",D1(x))}}if(r)return{box:R1(r),plain:!0};let o=z1([L],s),a=z1([n],s);if(i)return{box:e2([o.box,_1(1),a.box]),plain:!0};let l=e2([l7(o.box,Dx(o,"num")),R1("/"),l7(a.box,Dx(a,"den"))]);return{box:l,wrapped:l7(l,!0)}}
-function Wg(e,C){let t=b1(e);if(t.length!==3)return;let[L,n,i]=t,s=(a,l)=>{let u=M6(a);return u!==void 0&&U1(u)===l};if(!s(L,"(")||!s(i,")")||n.name!=="mfrac"||!/^0+(\.0*)?([a-z]+)?$/.test(n.attrs.linethickness??""))return;let[r,o]=b1(n);if(!(!r||!o))return e2([R1("C("),z1([r],C).box,R1(", "),z1([o],C).box,R1(")")])}
-function yL(e){if(e.name==="mn")return U1(e);if(e.name==="mrow"||e.name==="mstyle"){let C=b1(e);return C.length===1?yL(C[0]):""}return""}
-function l7(e,C){if(!C)return e;if(D1(e)===1)return e2([R1("("),e,R1(")")]);let t=L=>({rows:dL(L,D1(e),e.base).map(n=>B5(n)),width:1,base:e.base});return e2([t("("),e,t(")")])}
-function SL(e){let C=e.items.filter(L=>L.box.width>0),t=e.spaced;for(;C.length===1&&C[0].row&&C[0].kind!=="fence";){let L=C[0].row;C=L.items.filter(n=>n.box.width>0),t=L.spaced}return{items:C,spaced:t}}
-var $g=new Set(["d","\u2202","\u03B4","\u0394","\u2207","D"]);
-function Dx(e,C){let{items:t,spaced:L}=SL(e);if(t.length===0)return!1;if(t.some(l=>l.wrapped&&l.kind==="frac"))return!0;if(t.length===1){let l=t[0];return l.el.name==="mtext"&&U1(l.el).includes(" ")}if(L)return!0;if(C==="num")return Hg(t);let[n,i]=t,s=t.at(-1),r=l=>["mi","mn","msub","msup","msubsup"].includes(l.el.name);if(t.length===2&&$g.has(h7(n))&&r(i))return!1;let a=t.slice(2,-1).every(l=>r(l)||l.cls==="PUNCT");return!(r(n)&&i.cls==="OPEN"&&s.cls==="CLOSE"&&a||t.length===2&&r(n)&&h7(i)==="!")}
-function Gg(e,C,t){return e.unary?!C:e.cls==="NONE"?e.box.width>0&&(e.lspace!==void 0||e.rspace!==void 0):e.el.name==="mtext"?h7(e).includes(" "):e.cls==="OP"&&x7(e.el)&&t?.cls==="OPEN"?!1:e.cls==="BIN"||e.cls==="REL"||e.cls==="PUNCT"||e.cls==="OP"}
-function Hg(e){let C=0,t=[];for(let[L,n]of e.entries()){let i=n.el.name==="mo"?U1(n.el):"";if(jg.has(i)){let s=e[L-1];if(t.at(-1)===C&&(!s||!["BIN","REL","OPEN","PUNCT"].includes(s.cls)))t.pop(),C--;else if(!s||s.unary||["BIN","REL","OPEN","PUNCT","OP"].includes(s.cls))C++,t.push(C);else if(C===0)return!0;continue}if(n.cls==="CLOSE")C=Math.max(0,C-1);else if(n.cls==="OPEN")C++;else if(C===0&&Gg(n,L===0,e[L+1]))return!0}return!1}
-var jg=new Set(["|","\u2016","\u2225","\u2223"]);
-function h7(e){return e.box.rows.length===1?e.box.rows[0].join(""):""}
-function yx(e){let{items:C}=SL(e);if(C.length===0)return!0;if(C.length!==1)return!1;let t=C[0];return t.kind==="fence"?!0:t.el.name==="msub"&&["mi","mn","mover","munder"].includes(b1(t.el)[0]?.name??"")&&/^[^\s_^()]+$/u.test(h7(t))||(t.el.name==="mi"||t.el.name==="mn"||t.el.name==="mtext")&&!h7(t).includes(" ")}
-function kx(e,C,t){let L,n;C&&(L=z1([C],{twoD:t.twoD,display:!1,level:t.level+2,compact:t.compact}).box,n=D1(L)===1?b9(L.rows[0],uL):void 0);let i=n==="\xB3"?"\u221B":n==="\u2074"?"\u221C":"\u221A",s=i==="\u221A"&&n!==void 0?n:"";L&&i==="\u221A"&&n===void 0&&!t.twoD&&c1("root index");let r=e.box;if(D1(r)===1&&(yx(e)||!t.twoD)){let h=yx(e),d=h?r:l7(r,!0),m=e2([R1(s+i),d]);return L&&n===void 0?EL(m,L,0):(h&&!SL(e).items.some(w=>w.kind==="fence")&&r.width>0&&u7.set(m,w=>Ug.test(w)?e2([m,_1(1)]):void 0),m)}if(D1(r)===1){let h=R1(" ".repeat(B5(s).length+1)+"_".repeat(r.width)),d=E2([h,e2([R1(s+i),r])],"left",1);return L&&n===void 0?EL(d,L,1):d}let o=D1(r)+1,a=B5(s),l=Array.from({length:o},(h,d)=>[...d===o-2?a:Array(a.length).fill(" "),d===o-1?"\u2572":" ",d===0?"\u250C":"\u2502"]),u={rows:l,width:l[0].length,base:r.base+1},x={rows:[Array(r.width+1).fill("\u2500"),...r.rows.map(h=>[" ",...h])],width:r.width+1,base:r.base+1},p=e2([u,x]);return L&&n===void 0?EL(p,L,p.rows.length-1):p}
-function EL(e,C,t){let L=C.width,n=g9(e,L,0);return RL([{box:n,row:-n.base,col:0},{box:C,row:t-n.base-D1(C),col:0}])}
-function RL(e){let C=Math.min(...e.map(s=>s.row)),t=Math.max(...e.map(s=>s.row+D1(s.box)-1)),L=Math.min(0,...e.map(s=>s.col)),n=Math.max(0,...e.map(s=>s.col+s.box.width))-L,i=_1(n,t-C+1,-C);for(let s of e)s.box.rows.forEach((r,o)=>{r.forEach((a,l)=>{i.rows[s.row-C+o][s.col-L+l]=a})});return i}
-function bL(e,C=!1){let t=e.rows[0].join("");return e.rows[0].filter(n=>n!=="").length<=1||/^\(.*\)$/.test(t)&&Vg(t.slice(1,-1))||C&&qg.test(t)?t:`(${t})`}
-var qg=/^(?:(?![\u00b2\u00b3\u00b9\u02b0-\u02ff\u1d2c-\u1dbf\u2070-\u209f\u2c7c\u2c7d])[\p{L}\p{N}]\p{M}*)+$/u;
-var u7=new WeakMap;
-var Sx=/^[\p{L}\p{N}\p{M}]/u;
-var Ug=/^[\p{L}\p{N}\p{M}(]/u;
-function Vg(e){let C=0;for(let t of e)if(t==="("&&C++,t===")"&&--C<0)return!1;return C===0}
-function Xg(e,C){let t=b1(e),L=e.name==="msubsup"?3:2;t.length!==L&&c1(e.name);let n=t[0],i=e.name==="msup"?void 0:t[1],s=e.name==="msub"?void 0:e.name==="msup"?t[1]:t[2];return Rx(n,i,s,C)}
-function Rx(e,C,t,L){let n=B9(L),i=Tx(C&&z1([C],n).box,t&&z1([t],n).box),s=M6(e),r=s!==void 0&&wL(U1(s))&&L.twoD&&L.display,o=L;if(r){let{sub:l,sup:u,subMapped:x,supMapped:p}=i,h=L.stretch??{up:0,down:0};(u!==void 0&&p===void 0||l!==void 0&&x===void 0&&u!==void 0||h.up+h.down>0)&&(o={...L,stretch:{up:Math.max(h.up,u?p!==void 0?1:D1(u):0,1),down:Math.max(h.down,l?x!==void 0?1:D1(l):0,l?1:0)}})}let a=Qg(e,Yg(e,o),i);return L.twoD?RL([{box:a,row:-a.base,col:0},...kL(a,i,"right",r)]):Ox(a,i)}
-function Tx(e,C){return{sub:e,sup:C,subMapped:e&&D1(e)===1?b9(e.rows[0],ix):void 0,supMapped:C&&D1(C)===1?b9(C.rows[0],uL):void 0}}
-function Nx({sub:e,sup:C,subMapped:t,supMapped:L}){let n="";e&&(n+=t??"_"+bL(e,$4&&(!C||L===void 0)));let i=n;C&&(n+=L??"^"+bL(C,$4));let s=C?L===void 0?C:void 0:t===void 0?e:void 0;if(!s)return{text:n,bare:!1};let r=bL(s,$4);return r.startsWith("(")||!Sx.test([...r].at(-1)??"")?{text:n,bare:!1}:{text:n,bare:!0,word:s.rows[0].filter(o=>o!=="").length>1}}
-function kL(e,{sub:C,sup:t,subMapped:L,supMapped:n},i,s=!1){let r=D1(e)>1,o=-w5(e),a=f6(e),l=L!==void 0?R1(L):C,u=n!==void 0?R1(n):t,x=(d,m,E)=>({box:i==="right"?d:m6(d,E,"right"),row:m,col:i==="right"?e.width:-E});if(!r&&L!==void 0&&n!==void 0){let d=R1(L+n);return[x(d,0,d.width)]}let p=Math.max(l?.width??0,u?.width??0),h=[];if(u){let d=s&&r||n!==void 0?o:r?o-D1(u)+1:o-D1(u);h.push(x(u,d,p))}if(l){let d=s&&r?a-D1(l)+1:L!==void 0||r?a:a+1;h.push(x(l,d,p))}return h}
-function Kg(e,C){let t=b1(e);t.length===0&&c1("mmultiscripts");let L=B9(C),n=[{sub:[],sup:[]},{sub:[],sup:[]}],i=0;for(let l=1;l<t.length;){if(t[l].name==="mprescripts"){i=1,l++;continue}let u=[t[l],t[l+1]];u[1]||c1("mmultiscripts pair");let[x,p]=u;x.name!=="none"&&n[i].sub.push(z1([x],L).box),p.name!=="none"&&n[i].sup.push(z1([p],L).box),l+=2}let s=l=>l.length?e2(l):void 0,[r,o]=n.map(l=>Tx(s(l.sub),s(l.sup))),a=G4(t[0],L3(C));return C.twoD?RL([{box:a,row:-a.base,col:0},...kL(a,r,"right"),...kL(a,o,"left")]):Ox(e2([R1(Nx(o).text),a]),r)}
-function Ox(e,C){let{text:t,bare:L,word:n}=Nx(C),i=e2([e,R1(t)]);return L&&u7.set(i,s=>Sx.test(s)||s==="("&&n?e2([i,_1(1)]):void 0),i}
-function Qg(e,C,{sub:t,sup:L}){let n=e;for(;n.name==="mrow"&&b1(n).length===1;)n=b1(n)[0];let i=n.name==="msqrt"||n.name==="mroot",s=L!==void 0&&(n.name==="msup"||n.name==="msubsup"||n.name==="mover"||n.name==="munderover"),r=t!==void 0&&L===void 0&&(n.name==="msub"||n.name==="msubsup"||n.name==="munder"||n.name==="munderover");return!i&&!s&&!r||s&&(n.name==="mover"||n.name==="munderover")&&!Zg(n)?C:D1(C)===1?l7(C,!0):C}
-function Zg(e){let C=b1(e),t=e.name==="munder"?C[1]:C.at(-1);return!(t?.name==="mo"&&(pL.has(U1(t))||hL.has(U1(t))||D9(U1(t),1)!==void 0))}
-function Yg(e,C){if(e.name==="mfrac"){let t=vL(e,C);return t.wrapped??t.box}return G4(e,C)}
-var Jg=/^[\u222b-\u2233\u2a0b-\u2a1c]$/;
-function CM(e){let C=M6(e);if(C){if(C.attrs.movablelimits==="true")return!0;if(C.attrs.movablelimits==="false")return!1;let t=U1(C);return gL(t,"prefix")==="OP"&&!Jg.test(t)}return e.name==="mi"&&[...U1(e)].length>1}
-function tM(e,C){let t=b1(e),L=e.name==="munderover"?3:2;t.length!==L&&c1(e.name);let n=t[0],i=e.name==="mover"?void 0:t[1],s=e.name==="munder"?void 0:e.name==="mover"?t[1]:t[2],r=s?.name==="mo"?U1(s):void 0,o=i?.name==="mo"?U1(i):void 0;if(e.name!=="munderover"){let h=r??o,d=r!==void 0;if(h!==void 0){if(D9(h,1)!==void 0){C.twoD||c1("brace in inline math");let b=G4(n,L3(C)),B=R1(D9(h,b.width));return d?E2([B,b],"center",b.base+1):E2([b,B],"center",b.base)}let E=(d?pL:hL).get(h),w=d?s:i;if(E&&e.attrs[d?"accent":"accentunder"]!=="false"&&w.attrs.accent!=="false")return LM(G4(n,L3(C)),E,d,C)}}let a=n.name==="mo"&&n.attrs.stretchy!=="false"?ox.get(U1(n)):void 0;if(a&&C.twoD){let h=B9(C),d=s&&z1([s],h).box,m=i&&z1([i],h).box,E=Math.max(d?.width??0,m?.width??0)+2,w=R1(a(E));return Bx(w,d,m)}if(!C.twoD||!C.display&&CM(n))return Rx(n,i,s,C);let l=B9(C),u=G4(n,L3(C)),x=s&&z1([s],l).box,p=i&&z1([i],l).box;return Bx(u,x,p)}
-function Bx(e,C,t){let L=[C,e,t].filter(n=>n!==void 0);return E2(L,"center",(C?D1(C):0)+e.base)}
-function R5(e,C){return e===""?e:e+C}
-function LM(e,C,t,L){if(D1(e)===1){let r=e.rows[0];if(r.filter(a=>a!=="").length===1&&r.length===1){let a=eM[C.mark],l=r[0];return t&&a&&[...(l+C.mark).normalize("NFC")].length>1?R1(l+a):{...e,rows:[[R5(l,C.mark)]]}}if(C.wide)return{...e,rows:[r.map(a=>R5(a,C.mark))]};if(!L.twoD){if(C.arrow){let a=r.reduce((l,u,x)=>u!==""&&u!==" "?x:l,-1);return{...e,rows:[r.map((l,u)=>u===a?R5(l,C.mark):l)]}}return{...e,rows:[r.map(a=>a===" "?a:R5(a,C.mark))]}}}L.twoD||c1("accent over a tall base");let n=Math.max(1,e.width),i=C.arrow?B2(C.arrow,n):C.wide?C.glyph.repeat(n):C.glyph,s=m6(R1(i),n,"center");return t?E2([s,e],"center",e.base+1):E2([e,s],"center",e.base)}
-function nM(e,C){let t=z1(b1(e),L3(C)).box,L=(e.attrs.notation??"longdiv").trim().split(/\s+/),n=t;for(let i of L)switch(i){case"updiagonalstrike":case"downdiagonalstrike":case"updiagonalarrow":case"northeastarrow":case"horizontalstrike":{let s=i==="horizontalstrike"?"\u0336":"\u0338";if(n.rows.some(r=>r.some(o=>o.includes(s))))break;n={...n,rows:n.rows.map(r=>r.map(o=>o===" "||o===""?o:o+s))};break}case"box":case"roundedbox":{if(!C.twoD)break;let[s,r,o,a]=i==="box"?["\u250C","\u2510","\u2514","\u2518"]:["\u256D","\u256E","\u2570","\u256F"],l=n.width+2,u=p=>({rows:n.rows.map(()=>[p]),width:1,base:n.base}),x=e2([u("\u2502"),g9(n,1,1),u("\u2502")]);n=E2([R1(s+"\u2500".repeat(l)+r),x,R1(o+"\u2500".repeat(l)+a)],"left",n.base+1);break}case"left":case"right":case"top":case"bottom":break;default:c1(`menclose ${i}`)}return iM(n,new Set(L),C)}
-function iM(e,C,t){let[L,n,i,s]=["left","right","top","bottom"].map(l=>C.has(l));if(!L&&!n&&!i&&!s)return e;if(D1(e)===1){let l=e.rows[0];i&&(l=l.map(p=>R5(p,"\u0305"))),s&&(l=l.map(p=>R5(p,"\u0332")));let u=t.twoD?"\u2502":"|",x=[...L?[u]:[],...l,...n?[u]:[]];return{rows:[x],width:x.length,base:0}}let r=l=>({rows:e.rows.map(()=>[l]),width:1,base:e.base}),o=e2([...L?[r("\u2502"),_1(1,D1(e),e.base)]:[],e,...n?[_1(1,D1(e),e.base),r("\u2502")]:[]]),a=(l,u)=>R1((L?l:"")+"\u2500".repeat(o.width-(L?1:0)-(n?1:0))+(n?u:""));return i&&(o=E2([a("\u250C","\u2510"),o],"left",o.base+1)),s&&(o=E2([o,a("\u2514","\u2518")],"left",o.base)),o}
-function v5(e,C){let t=(e??C).trim().split(/\s+/);return t.length?t:[C]}
-function S5(e,C){return e[Math.min(C,e.length-1)]}
-function sM(e){return e==="left"||e==="right"||e==="center"?e:e==="decimalpoint"?"center":c1(`columnalign ${e}`)}
-function rM(e,C,t){let L={twoD:!1,display:!1,level:t.level},n=v5(e.attrs.columnspacing,"0.8em").map(s=>s.endsWith("%")?0:FL(p7(s))),i=[];for(let s of C){s.name!=="mtr"&&s.name!=="mlabeledtr"&&c1(`<${s.name}> in mtable`);let r=b1(s);s.name==="mlabeledtr"&&r.shift();let o="";for(let[a,l]of r.entries()){l.name!=="mtd"&&c1(`<${l.name}> in mtr`);let u=z1(b1(l),L).box;D1(u)!==1&&c1("tall cell in a one-line table");let x=E9(u)[0].trim();a>0&&x!==""&&o!==""&&(o+=S5(n,a-1)>0?/[,;:]$/.test(o)?" ":", ":/^[\p{L}\p{N}]/u.test(x)?"":" "),o+=x}o!==""&&i.push(o)}return R1(i.map((s,r)=>r<i.length-1?s.replace(/[,;]$/,""):s).join("; "))}
-function oM(e,C){let t=C.compact?{twoD:!1,display:!1,level:C.level,compact:!0}:{twoD:C.twoD,display:e.attrs.displaystyle==="true",level:C.level},L=b1(e);if(!C.twoD&&!C.compact&&L.length>1)return rM(e,L,C);let n=v5(e.attrs.columnalign,"center"),i=v5(e.attrs.columnspacing,"0.8em").map(k=>k.endsWith("%")?0:FL(p7(k))),s=v5(e.attrs.columnlines,"none"),r=v5(e.attrs.rowlines,"none"),o=[],a=[];for(let k of L){k.name!=="mtr"&&k.name!=="mlabeledtr"&&c1(`<${k.name}> in mtable`);let F=b1(k),N;if(k.name==="mlabeledtr"){let q=F.shift();q||c1("mlabeledtr"),N=z1(b1(q),{...t,display:!1}).box}let U=k.attrs.columnalign?v5(k.attrs.columnalign,"center"):void 0;o.push(F.map((q,K)=>{q.name!=="mtd"&&c1(`<${q.name}> in mtr`),((q.attrs.rowspan??"1")!=="1"||(q.attrs.columnspan??"1")!=="1")&&c1("spanning cell");let P=sM(q.attrs.columnalign??S5(U??n,K));return{box:z1(b1(q),t).box,align:P}})),a.push(N)}if(o.length===0)return _1(0);let l=Math.max(...o.map(k=>k.length)),u=Array.from({length:l},(k,F)=>Math.max(0,...o.map(N=>N[F]?.box.width??0))),x=Array.from({length:Math.max(0,l-1)},(k,F)=>{let N=S5(s,F),U=S5(i,F);return N==="none"?{space:U,line:""}:{space:Math.max(3,U|1),line:N==="dashed"?"\u2506":"\u2502"}}),p=o.some(k=>k.some(F=>D1(F.box)>1)),h=o.map(k=>{let F=Math.max(0,...k.map(q=>w5(q.box))),N=Math.max(0,...k.map(q=>f6(q.box))),U=[];for(let q=0;q<l;q++){let K=k[q]??{box:_1(0),align:"center"};U.push(m6(M9(K.box,F,N),u[q],K.align));let P=x[q];if(P&&q<l-1){let j=P.line?(P.space-1)/2:P.space,W=P.line?P.space-1-j:0;U.push(_1(j,F+N+1,F)),P.line&&U.push({rows:Array.from({length:F+N+1},()=>[P.line]),width:1,base:F}),W&&U.push(_1(W,F+N+1,F))}}return M9(e2(U),F,N)}),d=Math.max(...h.map(k=>k.width)),m=[],E=0;for(let k=0;k<l-1;k++){E+=u[k];let F=x[k];F.line&&m.push(E+(F.space-1)/2),E+=F.space}let w=k=>{let F=S5(r,k);if(F!=="none"){let N=Array(d).fill(F==="dashed"?"\u2504":"\u2500");for(let U of m)N[U]="\u253C";return{rows:[N],width:d,base:0}}return p?_1(d):void 0},b=[],B=new Set,y=0;h.forEach((k,F)=>{if(F>0){let N=w(F-1);N&&(S5(r,F-1)!=="none"&&B.add(y),b.push(N),y+=D1(N))}b.push(m6(k,d,"left")),y+=D1(k)});let S=E2(b,"left",Math.floor((y-1)/2)),D=e.attrs.frame;if(D!==void 0&&D!=="none"){let[k,F]=D==="dashed"?["\u2504","\u2506"]:["\u2500","\u2502"],N=(q,K,P)=>{let j=[q,...Array(S.width+2).fill(k),K];for(let W of m)j[W+2]=P;return j},U=S.rows.map((q,K)=>B.has(K)?["\u251C",k,...q,k,"\u2524"]:[F," ",...q," ",F]);S={rows:[N("\u250C","\u2510","\u252C"),...U,N("\u2514","\u2518","\u2534")],width:S.width+4,base:S.base+1}}if(a.some(k=>k!==void 0)){let k=Math.max(...a.map(U=>U?.width??0)),F=[];h.forEach((U,q)=>{if(q>0){let P=w(q-1);P&&F.push(_1(k,D1(P)))}let K=a[q];F.push(K?m6(M9(K,U.base,f6(U)),k,"right"):_1(k,D1(U)))}),D!==void 0&&D!=="none"&&(F.unshift(_1(k)),F.push(_1(k)));let N=E2(F,"left",S.base);S=e2([S,_1(2,D1(S),S.base),N])}return S}
-export{wx,fx,E9,Zu,cL,Yu,ff,df,fg};
+import{__esm,init_FontData2,init_common2,init_normal,init_bold,init_italic,init_bold_italic,init_double_struck,init_fraktur,init_fraktur_bold,init_sans_serif,init_sans_serif_bold,init_sans_serif_italic,init_sans_serif_bold_italic,init_monospace,init_smallop,init_largeop,init_size3,init_size4,init_size5,init_size6,init_size7,init_tex_mathit,init_tex_calligraphic,init_tex_calligraphic_bold,init_tex_oldstyle,init_tex_oldstyle_bold,init_tex_variant,init_lf_tp,init_rt_bt,init_ex_md,init_bbold,init_upsmall,init_uplarge,init_script,init_script_bold,init_delimiters,CommonMathJaxNewcmFontMixin,SvgFontData,delimiters,normal,bold,italic,boldItalic,doubleStruck,fraktur,frakturBold,sansSerif,sansSerifBold,sansSerifItalic,sansSerifBoldItalic,monospace,smallop,largeop,size3,size4,size5,size6,size7,texMathit,texCalligraphic,texCalligraphicBold,texOldstyle,texOldstyleBold,texVariant,lfTp,rtBt,exMd,bbold,upsmall,uplarge,script,scriptBold,__kittexJson18,init_common,init_WrapperFactory3,init_StyleJson,init_FontCache,init_string,init_lengths,init_Wrapper2,CommonOutputJax,SvgWrapperFactory,FontCache,StyleJsonSheet,em,SPACE3,unicodeChars,init_BaseItems,init_ParseUtil,init_NodeUtil,init_TexError,init_TexConstants,ArrayItem,ParseUtil,TexError_default,NodeUtil_default,TexConstant,EqnArrayItem,init_HandlerTypes,init_MapHandler,init_UnitUtil,init_Token,UnitUtil,Token,Macro,HandlerType,SubHandler,init_ParseMethods,init_TexParser,init_BaseMethods,init_MmlNode,BaseMethods_default,splitAlignArray,TexParser,TEXCLASS,ParseMethods_default,init_TokenMap,CharacterMap,RegExpMap,CommandMap,MATHSPACE,EnvironmentMap,DelimiterMap,init_StackItem,BaseItem,MacroMap,init_Configuration,Configuration,ConfigurationType,init_Tags,AbstractTags,NodeFactory,init_NodeFactory2,__kittexLate}from'./p23.js';export*from'./p23.js';
+__kittexLate.init_svg2=()=>init_svg2;__kittexLate.XLINKNS=()=>XLINKNS;
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg.js
+var Base;
+var MathJaxNewcmFont;
+var init_svg = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg.js"() {
+    init_FontData2();
+    init_common2();
+    init_normal();
+    init_bold();
+    init_italic();
+    init_bold_italic();
+    init_double_struck();
+    init_fraktur();
+    init_fraktur_bold();
+    init_sans_serif();
+    init_sans_serif_bold();
+    init_sans_serif_italic();
+    init_sans_serif_bold_italic();
+    init_monospace();
+    init_smallop();
+    init_largeop();
+    init_size3();
+    init_size4();
+    init_size5();
+    init_size6();
+    init_size7();
+    init_tex_mathit();
+    init_tex_calligraphic();
+    init_tex_calligraphic_bold();
+    init_tex_oldstyle();
+    init_tex_oldstyle_bold();
+    init_tex_variant();
+    init_lf_tp();
+    init_rt_bt();
+    init_ex_md();
+    init_bbold();
+    init_upsmall();
+    init_uplarge();
+    init_script();
+    init_script_bold();
+    init_delimiters();
+    Base = CommonMathJaxNewcmFontMixin(SvgFontData);
+    MathJaxNewcmFont = class extends Base {
+      constructor(options3 = {}) {
+        super(options3);
+        const CLASS = this.constructor;
+        for (const variant of Object.keys(this.variant)) {
+          this.variant[variant].cacheID = "NCM-" + (CLASS.variantCacheIds[variant] || "N");
+        }
+      }
+    };
+    MathJaxNewcmFont.NAME = "MathJaxNewcm";
+    MathJaxNewcmFont.OPTIONS = Object.assign(Object.assign({}, Base.OPTIONS), { dynamicPrefix: "@mathjax/mathjax-newcm-font/js/svg/dynamic" });
+    MathJaxNewcmFont.defaultDelimiters = delimiters;
+    MathJaxNewcmFont.defaultChars = {
+      "normal": normal,
+      "bold": bold,
+      "italic": italic,
+      "bold-italic": boldItalic,
+      "double-struck": doubleStruck,
+      "fraktur": fraktur,
+      "bold-fraktur": frakturBold,
+      "sans-serif": sansSerif,
+      "bold-sans-serif": sansSerifBold,
+      "sans-serif-italic": sansSerifItalic,
+      "sans-serif-bold-italic": sansSerifBoldItalic,
+      "monospace": monospace,
+      "-smallop": smallop,
+      "-largeop": largeop,
+      "-size3": size3,
+      "-size4": size4,
+      "-size5": size5,
+      "-size6": size6,
+      "-size7": size7,
+      "-tex-mathit": texMathit,
+      "-tex-calligraphic": texCalligraphic,
+      "-tex-bold-calligraphic": texCalligraphicBold,
+      "-tex-oldstyle": texOldstyle,
+      "-tex-bold-oldstyle": texOldstyleBold,
+      "-tex-variant": texVariant,
+      "-lf-tp": lfTp,
+      "-rt-bt": rtBt,
+      "-ex-md": exMd,
+      "-bbold": bbold,
+      "-upsmall": upsmall,
+      "-uplarge": uplarge,
+      "script": script,
+      "bold-script": scriptBold
+    };
+    MathJaxNewcmFont.dynamicFiles = SvgFontData.defineDynamicFiles(JSON.parse(__kittexJson18));
+    MathJaxNewcmFont.variantCacheIds = JSON.parse(`{
+ "normal":"N","bold":"B","italic":"I","bold-italic":"BI","double-struck":"DS","fraktur":"F","bold-fraktur":"FB","sans-serif":"SS","bold-sans-serif":"SSB","sans-serif-italic":"SSI",
+ "sans-serif-bold-italic":"SSBI","monospace":"M","-smallop":"SO","-largeop":"LO","-size3":"S3","-size4":"S4","-size5":"S5","-size6":"S6","-size7":"S7","-tex-mathit":"MI","-tex-calligraphic":"C",
+ "-tex-bold-calligraphic":"CB","-tex-oldstyle":"OS","-tex-bold-oldstyle":"OB","-tex-variant":"V","-lf-tp":"LT","-rt-bt":"RB","-ex-md":"EM","-bbold":"B-a","-upsmall":"U","-uplarge":"U-a","script":"S",
+ "bold-script":"SB"
+}`);
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/default.js
+var Font;
+var init_default = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/default.js"() {
+    init_svg();
+    Font = {
+      fontName: "mathjax-newcm",
+      DefaultFont: MathJaxNewcmFont
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/DefaultFont.js
+var fontName;
+var DefaultFont;
+var init_DefaultFont = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/DefaultFont.js"() {
+    init_default();
+    fontName = Font.fontName;
+    DefaultFont = Font.DefaultFont;
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg.js
+var SVGNS;
+var XLINKNS;
+var SVG;
+var init_svg2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg.js"() {
+    init_common();
+    init_WrapperFactory3();
+    init_StyleJson();
+    init_FontCache();
+    init_string();
+    init_lengths();
+    init_Wrapper2();
+    init_DefaultFont();
+    SVGNS = "http://www.w3.org/2000/svg";
+    XLINKNS = "http://www.w3.org/1999/xlink";
+    SVG = class _SVG extends CommonOutputJax {
+      get forceInlineBreaks() {
+        return this.options.linebreaks.inline;
+      }
+      constructor(options3 = {}) {
+        super(options3, SvgWrapperFactory, DefaultFont);
+        this.minwidth = 0;
+        this.shift = 0;
+        this.svgStyles = null;
+        this.fontCache = new FontCache(this);
+        this.options.matchFontHeight = true;
+      }
+      initialize() {
+        if (this.options.fontCache === "global") {
+          this.fontCache.clearCache();
+        }
+      }
+      clearFontCache() {
+        this.fontCache.clearCache();
+      }
+      reset() {
+        this.clearFontCache();
+      }
+      escaped(math, html2) {
+        this.setDocument(html2);
+        return this.html("span", {}, [this.text(math.math)]);
+      }
+      styleSheet(html2) {
+        if (this.svgStyles) {
+          return this.svgStyles;
+        }
+        const sheet = this.svgStyles = super.styleSheet(html2);
+        this.adaptor.setAttribute(sheet, "id", _SVG.STYLESHEETID);
+        return sheet;
+      }
+      insertStyles(styles) {
+        if (this.svgStyles) {
+          this.adaptor.insertRules(this.svgStyles, new StyleJsonSheet(styles).getStyleRules());
+        }
+      }
+      pageElements(html2) {
+        if (this.options.fontCache === "global" && !this.findCache(html2)) {
+          return this.svg("svg", {
+            xmlns: SVGNS,
+            id: _SVG.FONTCACHEID,
+            style: { display: "none" }
+          }, [this.fontCache.getCache()]);
+        }
+        return null;
+      }
+      findCache(html2) {
+        const adaptor = this.adaptor;
+        const svgs = adaptor.tags(adaptor.body(html2.document), "svg");
+        for (let i2 = svgs.length - 1; i2 >= 0; i2--) {
+          if (this.adaptor.getAttribute(svgs[i2], "id") === _SVG.FONTCACHEID) {
+            return true;
+          }
+        }
+        return false;
+      }
+      getInitialScale() {
+        return 1;
+      }
+      processMath(wrapper, parent) {
+        const container = this.container;
+        this.container = parent;
+        const [svg, g] = this.createRoot(wrapper);
+        this.typesetSvg(wrapper, svg, g);
+        if (wrapper.node.getProperty("process-breaks")) {
+          this.handleInlineBreaks(wrapper, svg, g);
+        }
+        this.container = container;
+      }
+      createRoot(wrapper) {
+        const { w, h, d, pwidth } = wrapper.getOuterBBox();
+        const [svg, g] = this.createSVG(h, d, w);
+        if (pwidth) {
+          const adaptor = this.adaptor;
+          adaptor.setStyle(svg, "min-width", adaptor.getStyle(svg, "width"));
+          adaptor.setAttribute(svg, "width", pwidth);
+          adaptor.setAttribute(svg, "data-mjx-viewBox", adaptor.getAttribute(svg, "viewBox"));
+          adaptor.removeAttribute(svg, "viewBox");
+          const scale2 = this.fixed(wrapper.metrics.ex / (this.font.params.x_height * 1e3), 6);
+          adaptor.setAttribute(g, "transform", `scale(${scale2},-${scale2}) translate(0, ${this.fixed(-h * 1e3, 1)})`);
+        }
+        return [svg, g];
+      }
+      createSVG(h, d, w) {
+        const px2 = this.math.metrics.em / 1e3;
+        const W = Math.max(w, px2);
+        const H2 = Math.max(h + d, px2);
+        const g = this.svg("g", {
+          stroke: "currentColor",
+          fill: "currentColor",
+          "stroke-width": 0,
+          transform: "scale(1,-1)"
+        });
+        const adaptor = this.adaptor;
+        const svg = adaptor.append(this.container, this.svg("svg", {
+          xmlns: SVGNS,
+          width: this.ex(W),
+          height: this.ex(H2),
+          role: "img",
+          focusable: false,
+          style: { "vertical-align": this.ex(-d) },
+          viewBox: [
+            0,
+            this.fixed(-h * 1e3, 1),
+            this.fixed(W * 1e3, 1),
+            this.fixed(H2 * 1e3, 1)
+          ].join(" ")
+        }, [g]));
+        if (W === 1e-3) {
+          adaptor.setAttribute(svg, "preserveAspectRatio", "xMidYMid slice");
+          if (w < 0) {
+            adaptor.setStyle(this.container, "margin-right", this.ex(w));
+          }
+        }
+        if (this.options.fontCache !== "none" && this.options.useXlink) {
+          adaptor.setAttribute(svg, "xmlns:xlink", XLINKNS);
+        }
+        return [svg, g];
+      }
+      typesetSvg(wrapper, svg, g) {
+        const adaptor = this.adaptor;
+        this.minwidth = this.shift = 0;
+        if (this.options.fontCache === "local") {
+          this.fontCache.clearCache();
+          this.fontCache.useLocalID(this.options.localID);
+          adaptor.insert(this.fontCache.getCache(), g);
+        }
+        wrapper.toSVG([g]);
+        this.fontCache.clearLocalID();
+        if (this.minwidth) {
+          adaptor.setStyle(svg, "minWidth", this.ex(this.minwidth));
+          adaptor.setStyle(this.container, "minWidth", this.ex(this.minwidth));
+        } else if (this.shift) {
+          const align = adaptor.getAttribute(this.container, "justify") || "center";
+          this.setIndent(svg, align, this.shift);
+        }
+      }
+      setIndent(svg, align, shift) {
+        if (align === "center" || align === "left") {
+          this.adaptor.setStyle(svg, "margin-left", this.ex(shift));
+        }
+        if (align === "center" || align === "right") {
+          this.adaptor.setStyle(svg, "margin-right", this.ex(-shift));
+        }
+      }
+      handleInlineBreaks(wrapper, svg, g) {
+        const n = wrapper.childNodes[0].breakCount;
+        if (!n)
+          return;
+        const adaptor = this.adaptor;
+        const math = adaptor.firstChild(g);
+        const lines2 = adaptor.childNodes(adaptor.firstChild(math));
+        const lineBBox = wrapper.childNodes[0].lineBBox;
+        adaptor.remove(g);
+        for (let i2 = 0; i2 <= n; i2++) {
+          const line = lineBBox[i2] || wrapper.childNodes[0].getLineBBox(i2);
+          const { h, d, w } = line;
+          const [mml, mo] = wrapper.childNodes[0].getBreakNode(line);
+          const { scale: scale2 } = mml.getBBox();
+          const [nsvg, ng] = this.createSVG(h * scale2, d * scale2, w * scale2);
+          const nmath = adaptor.append(ng, adaptor.clone(math, false));
+          for (const child of adaptor.childNodes(lines2[i2])) {
+            adaptor.append(nmath, child);
+          }
+          adaptor.insert(nsvg, svg);
+          const forced = !!(mo && mo.node.getProperty("forcebreak"));
+          if (forced && mo.node.attributes.get("linebreakstyle") === "after") {
+            const k = mml.parent.node.childIndex(mml.node) + 1;
+            const next = mml.parent.childNodes[k];
+            const dimen = next ? next.getLineBBox(0).originalL * scale2 : 0;
+            if (dimen) {
+              this.addInlineBreak(nsvg, dimen, forced);
+            }
+          } else if (forced || i2) {
+            const dimen = mml && i2 ? mml.getLineBBox(0).originalL * scale2 : 0;
+            if (dimen || !forced) {
+              this.addInlineBreak(nsvg, dimen, forced || !!mml.node.getProperty("forcebreak"));
+            }
+          }
+        }
+        if (adaptor.childNodes(svg).length) {
+          adaptor.append(adaptor.firstChild(adaptor.parent(svg)), adaptor.firstChild(svg));
+        }
+        adaptor.remove(svg);
+      }
+      addInlineBreak(nsvg, dimen, forced) {
+        const adaptor = this.adaptor;
+        const space = em(dimen);
+        if (!forced) {
+          adaptor.insert(adaptor.node("mjx-break", { prebreak: true }, [adaptor.text(" ")]), nsvg);
+        }
+        adaptor.insert(adaptor.node("mjx-break", !forced ? { newline: true } : SPACE3[space] ? { size: SPACE3[space] } : { style: `letter-spacing: ${em(dimen - 1)}` }, [adaptor.text(" ")]), nsvg);
+      }
+      ex(m) {
+        m /= this.font.params.x_height;
+        return Math.abs(m) < 1e-3 ? "0" : m.toFixed(3).replace(/\.?0+$/, "") + "ex";
+      }
+      svg(kind, properties = {}, children = []) {
+        return this.html(kind, properties, children, SVGNS);
+      }
+      unknownText(text, variant) {
+        const metrics = this.math.metrics;
+        const scale2 = this.font.params.x_height / metrics.ex * metrics.em * 1e3;
+        const svg = this.svg("text", {
+          "data-variant": variant,
+          transform: "scale(1,-1)",
+          "font-size": this.fixed(scale2, 1) + "px"
+        }, [this.text(text)]);
+        const adaptor = this.adaptor;
+        if (variant !== "-explicitFont") {
+          const c = unicodeChars(text);
+          if (c.length !== 1 || c[0] < 119808 || c[0] > 120831) {
+            const [family, italic2, bold2] = this.font.getCssFont(variant);
+            adaptor.setAttribute(svg, "font-family", family);
+            if (italic2) {
+              adaptor.setAttribute(svg, "font-style", "italic");
+            }
+            if (bold2) {
+              adaptor.setAttribute(svg, "font-weight", "bold");
+            }
+          }
+        }
+        return svg;
+      }
+      measureTextNode(text) {
+        const adaptor = this.adaptor;
+        text = adaptor.clone(text);
+        adaptor.removeAttribute(text, "transform");
+        const ex = this.fixed(this.font.params.x_height * 1e3, 1);
+        const svg = this.svg("svg", {
+          position: "absolute",
+          visibility: "hidden",
+          width: "1ex",
+          height: "1ex",
+          top: 0,
+          left: 0,
+          viewBox: [0, 0, ex, ex].join(" ")
+        }, [text]);
+        adaptor.append(adaptor.body(adaptor.document), svg);
+        const w = adaptor.nodeSize(text, 1e3, true)[0];
+        adaptor.remove(svg);
+        return { w, h: 0.75, d: 0.2 };
+      }
+    };
+    SVG.NAME = "SVG";
+    SVG.OPTIONS = Object.assign(Object.assign({}, CommonOutputJax.OPTIONS), { blacker: 3, fontCache: "local", localID: null, useXlink: true });
+    SVG.commonStyles = Object.assign(Object.assign({}, CommonOutputJax.commonStyles), { 'mjx-container[jax="SVG"]': {
+      direction: "ltr",
+      "white-space": "nowrap"
+    }, 'mjx-container[jax="SVG"] > svg': {
+      overflow: "visible",
+      "min-height": "1px",
+      "min-width": "1px"
+    }, 'mjx-container[jax="SVG"] > svg a': {
+      fill: "blue",
+      stroke: "blue"
+    }, [[
+      "rect[data-sre-highlighter-added]:has(+ .mjx-selected)",
+      "rect[data-sre-highlighter-bbox].mjx-selected"
+    ].join(", ")]: {
+      stroke: "black",
+      "stroke-width": "80px"
+    }, "@media (prefers-color-scheme: dark)": {
+      [[
+        "rect[data-sre-highlighter-added]:has(+ .mjx-selected)",
+        "rect[data-sre-highlighter-bbox].mjx-selected"
+      ].join(", ")]: {
+        stroke: "#C8C8C8"
+      }
+    } });
+    SVG.FONTCACHEID = "MJX-SVG-global-cache";
+    SVG.STYLESHEETID = "MJX-SVG-styles";
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ams/AmsItems.js
+var MultlineItem;
+var FlalignItem;
+var init_AmsItems = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ams/AmsItems.js"() {
+    init_BaseItems();
+    init_ParseUtil();
+    init_NodeUtil();
+    init_TexError();
+    init_TexConstants();
+    MultlineItem = class extends ArrayItem {
+      constructor(factory, ...args) {
+        super(factory);
+        this.factory.configuration.tags.start("multline", true, args[0]);
+      }
+      get kind() {
+        return "multline";
+      }
+      EndEntry() {
+        if (this.table.length) {
+          ParseUtil.fixInitialMO(this.factory.configuration, this.nodes);
+        }
+        const shove = this.getProperty("shove");
+        const mtd = this.create("node", "mtd", this.nodes, shove ? { columnalign: shove } : {});
+        this.setProperty("shove", null);
+        this.row.push(mtd);
+        this.Clear();
+      }
+      EndRow() {
+        if (this.row.length !== 1) {
+          throw new TexError_default("MultlineRowsOneCol", "The rows within the %1 environment must have exactly one column", "multline");
+        }
+        const row = this.create("node", "mtr", this.row);
+        this.table.push(row);
+        this.row = [];
+      }
+      EndTable() {
+        super.EndTable();
+        if (this.table.length) {
+          const m = this.table.length - 1;
+          let label = -1;
+          if (!NodeUtil_default.getAttribute(NodeUtil_default.getChildren(this.table[0])[0], "columnalign")) {
+            NodeUtil_default.setAttribute(NodeUtil_default.getChildren(this.table[0])[0], "columnalign", TexConstant.Align.LEFT);
+          }
+          if (!NodeUtil_default.getAttribute(NodeUtil_default.getChildren(this.table[m])[0], "columnalign")) {
+            NodeUtil_default.setAttribute(NodeUtil_default.getChildren(this.table[m])[0], "columnalign", TexConstant.Align.RIGHT);
+          }
+          const tag3 = this.factory.configuration.tags.getTag();
+          if (tag3) {
+            label = this.arraydef.side === TexConstant.Align.LEFT ? 0 : this.table.length - 1;
+            const mtr = this.table[label];
+            const mlabel = this.create("node", "mlabeledtr", [tag3].concat(NodeUtil_default.getChildren(mtr)));
+            NodeUtil_default.copyAttributes(mtr, mlabel);
+            this.table[label] = mlabel;
+          }
+        }
+        this.factory.configuration.tags.end();
+      }
+    };
+    FlalignItem = class extends EqnArrayItem {
+      get kind() {
+        return "flalign";
+      }
+      constructor(factory, name, numbered, padded2, center) {
+        super(factory);
+        this.name = name;
+        this.numbered = numbered;
+        this.padded = padded2;
+        this.center = center;
+        this.factory.configuration.tags.start(name, numbered, numbered);
+      }
+      EndEntry() {
+        super.EndEntry();
+        const n = this.getProperty("xalignat");
+        if (!n)
+          return;
+        if (this.row.length > n) {
+          throw new TexError_default("XalignOverflow", "Extra %1 in row of %2", "&", this.name);
+        }
+      }
+      EndRow() {
+        let cell;
+        const row = this.row;
+        const n = this.getProperty("xalignat");
+        while (row.length < n) {
+          row.push(this.create("node", "mtd"));
+        }
+        this.row = [];
+        if (this.padded) {
+          this.row.push(this.create("node", "mtd"));
+        }
+        while (cell = row.shift()) {
+          this.row.push(cell);
+          cell = row.shift();
+          if (cell)
+            this.row.push(cell);
+          if (row.length || this.padded) {
+            this.row.push(this.create("node", "mtd"));
+          }
+        }
+        if (this.row.length > this.maxrow) {
+          this.maxrow = this.row.length;
+        }
+        super.EndRow();
+        const mtr = this.table[this.table.length - 1];
+        if (this.getProperty("zeroWidthLabel") && mtr.isKind("mlabeledtr")) {
+          const mtd = NodeUtil_default.getChildren(mtr)[0];
+          const side = this.factory.configuration.options["tagSide"];
+          const def2 = Object.assign({ width: 0 }, side === "right" ? { lspace: "-1width" } : {});
+          const mpadded = this.create("node", "mpadded", NodeUtil_default.getChildren(mtd), def2);
+          mtd.setChildren([mpadded]);
+        }
+      }
+      EndTable() {
+        super.EndTable();
+        if (this.center) {
+          if (this.maxrow <= 2) {
+            const def2 = this.arraydef;
+            delete def2.width;
+            delete this.global.indentalign;
+          }
+        }
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandUtil.js
+var NewcommandTables;
+var NewcommandPriority;
+var NewcommandUtil;
+var init_NewcommandUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandUtil.js"() {
+    init_HandlerTypes();
+    init_MapHandler();
+    init_UnitUtil();
+    init_TexError();
+    init_Token();
+    (function(NewcommandTables2) {
+      NewcommandTables2["NEW_DELIMITER"] = "new-Delimiter";
+      NewcommandTables2["NEW_COMMAND"] = "new-Command";
+      NewcommandTables2["NEW_ENVIRONMENT"] = "new-Environment";
+    })(NewcommandTables || (NewcommandTables = {}));
+    NewcommandPriority = -100;
+    NewcommandUtil = {
+      GetCSname(parser2, cmd) {
+        const c = parser2.GetNext();
+        if (c !== "\\") {
+          throw new TexError_default("MissingCS", "%1 must be followed by a control sequence", cmd);
+        }
+        const cs = UnitUtil.trimSpaces(parser2.GetArgument(cmd)).substring(1);
+        this.checkProtectedMacros(parser2, cs);
+        return cs;
+      },
+      GetCsNameArgument(parser2, name) {
+        let cs = UnitUtil.trimSpaces(parser2.GetArgument(name));
+        if (cs.charAt(0) === "\\") {
+          cs = cs.substring(1);
+        }
+        if (!cs.match(/^(.|[a-z]+)$/i)) {
+          throw new TexError_default("IllegalControlSequenceName", "Illegal control sequence name for %1", name);
+        }
+        this.checkProtectedMacros(parser2, cs);
+        return cs;
+      },
+      GetArgCount(parser2, name) {
+        let n = parser2.GetBrackets(name);
+        if (n) {
+          n = UnitUtil.trimSpaces(n);
+          if (!n.match(/^[0-9]+$/)) {
+            throw new TexError_default("IllegalParamNumber", "Illegal number of parameters specified in %1", name);
+          }
+        }
+        return n;
+      },
+      GetTemplate(parser2, cmd, cs) {
+        let c = parser2.GetNext();
+        const params = [];
+        let n = 0;
+        let i2 = parser2.i;
+        while (parser2.i < parser2.string.length) {
+          c = parser2.GetNext();
+          if (c === "#") {
+            if (i2 !== parser2.i) {
+              params[n] = parser2.string.substring(i2, parser2.i);
+            }
+            c = parser2.string.charAt(++parser2.i);
+            if (!c.match(/^[1-9]$/)) {
+              throw new TexError_default("CantUseHash2", "Illegal use of # in template for %1", cs);
+            }
+            if (parseInt(c) !== ++n) {
+              throw new TexError_default("SequentialParam", "Parameters for %1 must be numbered sequentially", cs);
+            }
+            i2 = parser2.i + 1;
+          } else if (c === "{") {
+            if (i2 !== parser2.i) {
+              params[n] = parser2.string.substring(i2, parser2.i);
+              if (params[n].replace(/^ +/, "") === "" && params.slice(0, n).join("") === "") {
+                return n;
+              }
+            }
+            if (params.length > 0) {
+              return [n.toString()].concat(params);
+            } else {
+              return n;
+            }
+          }
+          parser2.i++;
+        }
+        throw new TexError_default("MissingReplacementString", "Missing replacement string for definition of %1", cmd);
+      },
+      GetParameter(parser2, name, param) {
+        if (param == null) {
+          return parser2.GetArgument(name);
+        }
+        let i2 = parser2.i;
+        let j = 0;
+        let hasBraces = false;
+        while (parser2.i < parser2.string.length) {
+          const c = parser2.string.charAt(parser2.i);
+          if (c === "{") {
+            hasBraces = parser2.i === i2;
+            parser2.GetArgument(name);
+            j = parser2.i - i2;
+          } else if (this.MatchParam(parser2, param)) {
+            if (hasBraces) {
+              i2++;
+              j -= 2;
+            }
+            return parser2.string.substring(i2, i2 + j);
+          } else if (c === "\\") {
+            parser2.i++;
+            j++;
+            hasBraces = false;
+            const match = parser2.string.substring(parser2.i).match(/[a-z]+|./i);
+            if (match) {
+              parser2.i += match[0].length;
+              j = parser2.i - i2;
+            }
+          } else {
+            parser2.i++;
+            j++;
+            hasBraces = false;
+          }
+        }
+        throw new TexError_default("RunawayArgument", "Runaway argument for %1?", name);
+      },
+      MatchParam(parser2, param) {
+        if (parser2.string.substring(parser2.i, parser2.i + param.length) !== param) {
+          return 0;
+        }
+        if (param.match(/\\[a-z]+$/i) && parser2.string.charAt(parser2.i + param.length).match(/[a-z]/i)) {
+          return 0;
+        }
+        parser2.i += param.length;
+        return 1;
+      },
+      checkGlobal(parser2, tokens, maps3) {
+        return parser2.stack.env.isGlobal ? parser2.configuration.packageData.get("begingroup").stack.checkGlobal(tokens, maps3) : maps3.map((name) => parser2.configuration.handlers.retrieve(name));
+      },
+      checkProtectedMacros(parser2, cs) {
+        var _a2;
+        if ((_a2 = parser2.options.protectedMacros) === null || _a2 === void 0 ? void 0 : _a2.includes(cs)) {
+          throw new TexError_default("ProtectedMacro", "The control sequence %1 can't be redefined", `\\${cs}`);
+        }
+      },
+      addDelimiter(parser2, cs, char, attr) {
+        const name = cs.substring(1);
+        this.checkProtectedMacros(parser2, name);
+        const [macros, delims] = NewcommandUtil.checkGlobal(parser2, [name, cs], [NewcommandTables.NEW_COMMAND, NewcommandTables.NEW_DELIMITER]);
+        if (name !== cs) {
+          macros.remove(name);
+        }
+        delims.add(cs, new Token(cs, char, attr));
+        delete parser2.stack.env.isGlobal;
+      },
+      addMacro(parser2, cs, func, attr, token2 = "") {
+        this.checkProtectedMacros(parser2, cs);
+        const macros = NewcommandUtil.checkGlobal(parser2, [cs], [NewcommandTables.NEW_COMMAND])[0];
+        this.undefineDelimiter(parser2, "\\" + cs);
+        macros.add(cs, new Macro(token2 ? token2 : cs, func, attr));
+        delete parser2.stack.env.isGlobal;
+      },
+      addEnvironment(parser2, env, func, attr) {
+        const envs = NewcommandUtil.checkGlobal(parser2, [env], [NewcommandTables.NEW_ENVIRONMENT])[0];
+        envs.add(env, new Macro(env, func, attr));
+        delete parser2.stack.env.isGlobal;
+      },
+      undefineMacro(parser2, cs) {
+        const macros = NewcommandUtil.checkGlobal(parser2, [cs], [NewcommandTables.NEW_COMMAND])[0];
+        macros.remove(cs);
+        if (parser2.configuration.handlers.get(HandlerType.MACRO).applicable(cs)) {
+          macros.add(cs, new Macro(cs, () => SubHandler.FALLBACK, []));
+          this.undefineDelimiter(parser2, "\\" + cs);
+        }
+        delete parser2.stack.env.isGlobal;
+      },
+      undefineDelimiter(parser2, cs) {
+        const delims = NewcommandUtil.checkGlobal(parser2, [cs], [NewcommandTables.NEW_DELIMITER])[0];
+        delims.remove(cs);
+        if (parser2.configuration.handlers.get(HandlerType.DELIMITER).applicable(cs)) {
+          delims.add(cs, new Token(cs, null, {}));
+        }
+        delete parser2.stack.env.isGlobal;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ams/AmsMethods.js
+function splitSideSet(mml) {
+  if (!mml || mml.isInferred && mml.childNodes.length === 0) {
+    return [null, null];
+  }
+  if (mml.isKind("msubsup") && checkSideSetBase(mml)) {
+    return [mml, null];
+  }
+  const child = NodeUtil_default.getChildAt(mml, 0);
+  if (!(mml.isInferred && child && checkSideSetBase(child))) {
+    return [null, mml];
+  }
+  mml.childNodes.splice(0, 1);
+  return [child, mml];
+}
+function checkSideSetBase(mml) {
+  const base = mml.childNodes[0];
+  return base && base.isKind("mi") && base.getText() === "";
+}
+var AmsMethods;
+var init_AmsMethods = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ams/AmsMethods.js"() {
+    init_ParseUtil();
+    init_UnitUtil();
+    init_ParseMethods();
+    init_NodeUtil();
+    init_TexConstants();
+    init_TexParser();
+    init_TexError();
+    init_BaseMethods();
+    init_BaseMethods();
+    init_MmlNode();
+    init_NewcommandUtil();
+    AmsMethods = {
+      AmsEqnArray(parser2, begin, numbered, taggable, align, balign, spacing, style) {
+        const args = parser2.GetBrackets("\\begin{" + begin.getName() + "}");
+        const array = BaseMethods_default.EqnArray(parser2, begin, numbered, taggable, align, balign, spacing, style);
+        return ParseUtil.setArrayAlign(array, args, parser2);
+      },
+      AlignAt(parser2, begin, numbered, taggable) {
+        const name = begin.getName();
+        let valign;
+        let align = "";
+        let balign = "";
+        const spacing = [];
+        if (!taggable) {
+          valign = parser2.GetBrackets("\\begin{" + name + "}");
+        }
+        const n = parser2.GetArgument("\\begin{" + name + "}");
+        if (n.match(/[^0-9]/)) {
+          throw new TexError_default("PositiveIntegerArg", "Argument to %1 must be a positive integer", "\\begin{" + name + "}");
+        }
+        let count = parseInt(n, 10);
+        while (count > 0) {
+          align += "rl";
+          balign += "bt";
+          spacing.push("0em 0em");
+          count--;
+        }
+        const spaceStr = spacing.join(" ");
+        if (taggable) {
+          return AmsMethods.EqnArray(parser2, begin, numbered, taggable, align, balign, spaceStr);
+        }
+        const array = AmsMethods.EqnArray(parser2, begin, numbered, taggable, align, balign, spaceStr);
+        return ParseUtil.setArrayAlign(array, valign, parser2);
+      },
+      Multline(parser2, begin, numbered) {
+        ParseUtil.checkEqnEnv(parser2);
+        parser2.Push(begin);
+        const padding2 = parser2.options.ams["multlineIndent"];
+        const item = parser2.itemFactory.create("multline", numbered, parser2.stack);
+        item.arraydef = {
+          displaystyle: true,
+          rowspacing: ".5em",
+          columnspacing: "100%",
+          width: parser2.options.ams["multlineWidth"],
+          side: parser2.options["tagSide"],
+          minlabelspacing: parser2.options["tagIndent"],
+          "data-array-padding": `${padding2} ${padding2}`,
+          "data-width-includes-label": true
+        };
+        return item;
+      },
+      XalignAt(parser2, begin, numbered, padded2) {
+        const n = parser2.GetArgument("\\begin{" + begin.getName() + "}");
+        if (n.match(/[^0-9]/)) {
+          throw new TexError_default("PositiveIntegerArg", "Argument to %1 must be a positive integer", "\\begin{" + begin.getName() + "}");
+        }
+        const align = padded2 ? "crl" : "rlc";
+        const balign = padded2 ? "mbt" : "btm";
+        const width = padded2 ? "fit auto auto" : "auto auto fit";
+        const item = AmsMethods.FlalignArray(parser2, begin, numbered, padded2, false, align, balign, width, true);
+        item.setProperty("xalignat", 2 * parseInt(n));
+        return item;
+      },
+      FlalignArray(parser2, begin, numbered, padded2, center, align, balign, width, zeroWidthLabel = false) {
+        ParseUtil.checkEqnEnv(parser2);
+        parser2.Push(begin);
+        align = align.split("").join(" ").replace(/r/g, "right").replace(/l/g, "left").replace(/c/g, "center");
+        balign = splitAlignArray(balign);
+        const item = parser2.itemFactory.create("flalign", begin.getName(), numbered, padded2, center, parser2.stack);
+        item.arraydef = {
+          width: "100%",
+          displaystyle: true,
+          columnalign: align,
+          columnspacing: "0em",
+          columnwidth: width,
+          rowspacing: "3pt",
+          "data-break-align": balign,
+          side: parser2.options["tagSide"],
+          minlabelspacing: zeroWidthLabel ? "0" : parser2.options["tagIndent"],
+          "data-width-includes-label": true
+        };
+        item.setProperty("zeroWidthLabel", zeroWidthLabel);
+        return item;
+      },
+      HandleDeclareOp(parser2, name) {
+        const star = parser2.GetStar() ? "*" : "";
+        const cs = NewcommandUtil.GetCsNameArgument(parser2, name);
+        const op = parser2.GetArgument(name);
+        NewcommandUtil.addMacro(parser2, cs, AmsMethods.Macro, [
+          `\\operatorname${star}{${op}}`
+        ]);
+        parser2.Push(parser2.itemFactory.create("null"));
+      },
+      HandleOperatorName(parser2, name) {
+        const star = parser2.GetStar();
+        const op = UnitUtil.trimSpaces(parser2.GetArgument(name));
+        let mml = new TexParser(op, Object.assign(Object.assign({}, parser2.stack.env), { font: TexConstant.Variant.NORMAL, multiLetterIdentifiers: parser2.options.ams.operatornamePattern, operatorLetters: true, noAutoOP: true }), parser2.configuration).mml();
+        if (mml.isKind("mi")) {
+          mml.removeProperty("autoOP");
+        } else {
+          mml = parser2.create("node", "TeXAtom", [mml]);
+        }
+        NodeUtil_default.setProperties(mml, {
+          movesupsub: star,
+          movablelimits: true,
+          texClass: TEXCLASS.OP
+        });
+        if (!star) {
+          const c = parser2.GetNext();
+          const i2 = parser2.i;
+          if (c === "\\" && ++parser2.i && parser2.GetCS() !== "limits") {
+            parser2.i = i2;
+          }
+        }
+        parser2.Push(parser2.itemFactory.create("fn", mml));
+      },
+      SideSet(parser2, name) {
+        const [preScripts, preRest] = splitSideSet(parser2.ParseArg(name));
+        const [postScripts, postRest] = splitSideSet(parser2.ParseArg(name));
+        const base = parser2.ParseArg(name);
+        let mml = base;
+        if (preScripts) {
+          if (preRest) {
+            preScripts.replaceChild(parser2.create("node", "mphantom", [
+              parser2.create("node", "mpadded", [ParseUtil.copyNode(base, parser2)], { width: 0 })
+            ]), NodeUtil_default.getChildAt(preScripts, 0));
+          } else {
+            mml = parser2.create("node", "mmultiscripts", [base]);
+            if (postScripts) {
+              NodeUtil_default.appendChildren(mml, [
+                NodeUtil_default.getChildAt(postScripts, 1) || parser2.create("node", "none"),
+                NodeUtil_default.getChildAt(postScripts, 2) || parser2.create("node", "none")
+              ]);
+            }
+            NodeUtil_default.setProperty(mml, "scriptalign", "left");
+            NodeUtil_default.appendChildren(mml, [
+              parser2.create("node", "mprescripts"),
+              NodeUtil_default.getChildAt(preScripts, 1) || parser2.create("node", "none"),
+              NodeUtil_default.getChildAt(preScripts, 2) || parser2.create("node", "none")
+            ]);
+          }
+        }
+        if (postScripts && mml === base) {
+          postScripts.replaceChild(base, NodeUtil_default.getChildAt(postScripts, 0));
+          mml = postScripts;
+        }
+        const mrow = parser2.create("node", "TeXAtom", [], {
+          texClass: TEXCLASS.OP,
+          movesupsub: true,
+          movablelimits: true
+        });
+        if (preRest) {
+          if (preScripts) {
+            mrow.appendChild(preScripts);
+          }
+          mrow.appendChild(preRest);
+        }
+        mrow.appendChild(mml);
+        if (postRest) {
+          mrow.appendChild(postRest);
+        }
+        parser2.Push(mrow);
+      },
+      operatorLetter(parser2, c) {
+        return parser2.stack.env.operatorLetters ? ParseMethods_default.variable(parser2, c) : false;
+      },
+      MultiIntegral(parser2, name, integral) {
+        let next = parser2.GetNext();
+        if (next === "\\") {
+          const i2 = parser2.i;
+          next = parser2.GetArgument(name);
+          parser2.i = i2;
+          if (next === "\\limits") {
+            integral = "\\!\\!\\mathop{\\,\\," + integral + "}";
+          }
+        }
+        parser2.string = integral + " " + parser2.string.slice(parser2.i);
+        parser2.i = 0;
+      },
+      xArrow(parser2, name, chr, l, r, m = 0) {
+        const def2 = {
+          width: "+" + UnitUtil.em((l + r) / 18),
+          lspace: UnitUtil.em(l / 18)
+        };
+        const bot = parser2.GetBrackets(name);
+        const first = parser2.ParseArg(name);
+        const dstrut = parser2.create("node", "mspace", [], { depth: ".2em" });
+        let arrow = parser2.create("token", "mo", { stretchy: true, texClass: TEXCLASS.ORD }, String.fromCodePoint(chr));
+        if (m) {
+          arrow.attributes.set("minsize", UnitUtil.em(m));
+        }
+        arrow = parser2.create("node", "mstyle", [arrow], { scriptlevel: 0 });
+        const mml = parser2.create("node", "munderover", [arrow]);
+        let mpadded = parser2.create("node", "mpadded", [first, dstrut], def2);
+        NodeUtil_default.setAttribute(mpadded, "voffset", "-.2em");
+        NodeUtil_default.setAttribute(mpadded, "height", "-.2em");
+        NodeUtil_default.setChild(mml, mml.over, mpadded);
+        if (bot) {
+          const bottom = new TexParser(bot, parser2.stack.env, parser2.configuration).mml();
+          const bstrut = parser2.create("node", "mspace", [], { height: ".75em" });
+          mpadded = parser2.create("node", "mpadded", [bottom, bstrut], def2);
+          NodeUtil_default.setAttribute(mpadded, "voffset", ".15em");
+          NodeUtil_default.setAttribute(mpadded, "depth", "-.15em");
+          NodeUtil_default.setChild(mml, mml.under, mpadded);
+        }
+        NodeUtil_default.setProperty(mml, "subsupOK", true);
+        parser2.Push(parser2.create("node", "TeXAtom", [
+          parser2.create("node", "TeXAtom", [], {
+            texClass: TEXCLASS.NONE
+          }),
+          mml
+        ], { texClass: TEXCLASS.REL }));
+      },
+      HandleShove(parser2, _name, shove) {
+        const top = parser2.stack.Top();
+        if (top.kind !== "multline") {
+          throw new TexError_default("CommandOnlyAllowedInEnv", "%1 only allowed in %2 environment", parser2.currentCS, "multline");
+        }
+        if (top.Size()) {
+          throw new TexError_default("CommandAtTheBeginingOfLine", "%1 must come at the beginning of the line", parser2.currentCS);
+        }
+        top.setProperty("shove", shove);
+      },
+      CFrac(parser2, name) {
+        let lr = UnitUtil.trimSpaces(parser2.GetBrackets(name, ""));
+        const num3 = parser2.GetArgument(name);
+        const den = parser2.GetArgument(name);
+        const lrMap = {
+          l: TexConstant.Align.LEFT,
+          r: TexConstant.Align.RIGHT,
+          "": ""
+        };
+        const numNode = new TexParser("\\strut\\textstyle{" + num3 + "}", parser2.stack.env, parser2.configuration).mml();
+        const denNode = new TexParser("\\strut\\textstyle{" + den + "}", parser2.stack.env, parser2.configuration).mml();
+        const frac = parser2.create("node", "mfrac", [numNode, denNode]);
+        lr = lrMap[lr];
+        if (lr == null) {
+          throw new TexError_default("IllegalAlign", "Illegal alignment specified in %1", parser2.currentCS);
+        }
+        if (lr) {
+          NodeUtil_default.setProperties(frac, { numalign: lr, denomalign: lr });
+        }
+        parser2.Push(frac);
+      },
+      Genfrac(parser2, name, left, right, thick, style) {
+        if (left == null) {
+          left = parser2.GetDelimiterArg(name);
+        }
+        if (right == null) {
+          right = parser2.GetDelimiterArg(name);
+        }
+        if (thick == null) {
+          thick = parser2.GetArgument(name);
+        }
+        if (style == null) {
+          style = UnitUtil.trimSpaces(parser2.GetArgument(name));
+        }
+        const num3 = parser2.ParseArg(name);
+        const den = parser2.ParseArg(name);
+        let frac = parser2.create("node", "mfrac", [num3, den]);
+        if (thick !== "") {
+          NodeUtil_default.setAttribute(frac, "linethickness", thick);
+        }
+        if (left || right) {
+          NodeUtil_default.setProperty(frac, "withDelims", true);
+          frac = ParseUtil.fixedFence(parser2.configuration, left, frac, right);
+        }
+        if (style !== "") {
+          const styleDigit = parseInt(style, 10);
+          const styleAlpha = ["D", "T", "S", "SS"][styleDigit];
+          if (styleAlpha == null) {
+            throw new TexError_default("BadMathStyleFor", "Bad math style for %1", parser2.currentCS);
+          }
+          frac = parser2.create("node", "mstyle", [frac]);
+          if (styleAlpha === "D") {
+            NodeUtil_default.setProperties(frac, { displaystyle: true, scriptlevel: 0 });
+          } else {
+            NodeUtil_default.setProperties(frac, {
+              displaystyle: false,
+              scriptlevel: styleDigit - 1
+            });
+          }
+        }
+        parser2.Push(frac);
+      },
+      HandleTag(parser2, name) {
+        if (!parser2.tags.currentTag.taggable && parser2.tags.env) {
+          throw new TexError_default("CommandNotAllowedInEnv", "%1 not allowed in %2 environment", parser2.currentCS, parser2.tags.env);
+        }
+        if (parser2.tags.currentTag.tag) {
+          throw new TexError_default("MultipleCommand", "Multiple %1", parser2.currentCS);
+        }
+        const star = parser2.GetStar();
+        const tagId = UnitUtil.trimSpaces(parser2.GetArgument(name));
+        parser2.tags.tag(tagId, star);
+        parser2.Push(parser2.itemFactory.create("null"));
+      },
+      HandleNoTag: BaseMethods_default.HandleNoTag,
+      HandleRef: BaseMethods_default.HandleRef,
+      Macro: BaseMethods_default.Macro,
+      Accent: BaseMethods_default.Accent,
+      Tilde: BaseMethods_default.Tilde,
+      Array: BaseMethods_default.Array,
+      Spacer: BaseMethods_default.Spacer,
+      NamedOp: BaseMethods_default.NamedOp,
+      EqnArray: BaseMethods_default.EqnArray,
+      Equation: BaseMethods_default.Equation
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ams/AmsMappings.js
+var init_AmsMappings = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ams/AmsMappings.js"() {
+    init_AmsMethods();
+    init_TokenMap();
+    init_TexConstants();
+    init_ParseMethods();
+    init_ParseUtil();
+    init_MmlNode();
+    init_lengths();
+    new CharacterMap("AMSmath-mathchar0mo", ParseMethods_default.mathchar0mo, {
+      iiiint: ["⨌", { texClass: TEXCLASS.OP }]
+    });
+    new RegExpMap("AMSmath-operatorLetter", AmsMethods.operatorLetter, /[-*]/i);
+    new CommandMap("AMSmath-macros", {
+      mathring: [AmsMethods.Accent, "02DA"],
+      nobreakspace: AmsMethods.Tilde,
+      negmedspace: [AmsMethods.Spacer, MATHSPACE.negativemediummathspace],
+      negthickspace: [AmsMethods.Spacer, MATHSPACE.negativethickmathspace],
+      idotsint: [AmsMethods.MultiIntegral, "\\int\\cdots\\int"],
+      dddot: [AmsMethods.Accent, "20DB"],
+      ddddot: [AmsMethods.Accent, "20DC"],
+      sideset: AmsMethods.SideSet,
+      boxed: [AmsMethods.Macro, "\\fbox{$\\displaystyle{#1}$}", 1],
+      tag: AmsMethods.HandleTag,
+      notag: AmsMethods.HandleNoTag,
+      eqref: [AmsMethods.HandleRef, true],
+      substack: [AmsMethods.Macro, "\\begin{subarray}{c}#1\\end{subarray}", 1],
+      injlim: [AmsMethods.NamedOp, "inj&thinsp;lim"],
+      projlim: [AmsMethods.NamedOp, "proj&thinsp;lim"],
+      varliminf: [AmsMethods.Macro, "\\mathop{\\underline{\\mmlToken{mi}{lim}}}"],
+      varlimsup: [AmsMethods.Macro, "\\mathop{\\overline{\\mmlToken{mi}{lim}}}"],
+      varinjlim: [
+        AmsMethods.Macro,
+        "\\mathop{\\underrightarrow{\\mmlToken{mi}{lim}}}"
+      ],
+      varprojlim: [
+        AmsMethods.Macro,
+        "\\mathop{\\underleftarrow{\\mmlToken{mi}{lim}}}"
+      ],
+      DeclareMathOperator: AmsMethods.HandleDeclareOp,
+      operatorname: AmsMethods.HandleOperatorName,
+      genfrac: AmsMethods.Genfrac,
+      frac: [AmsMethods.Genfrac, "", "", "", ""],
+      tfrac: [AmsMethods.Genfrac, "", "", "", "1"],
+      dfrac: [AmsMethods.Genfrac, "", "", "", "0"],
+      binom: [AmsMethods.Genfrac, "(", ")", "0", ""],
+      tbinom: [AmsMethods.Genfrac, "(", ")", "0", "1"],
+      dbinom: [AmsMethods.Genfrac, "(", ")", "0", "0"],
+      cfrac: AmsMethods.CFrac,
+      shoveleft: [AmsMethods.HandleShove, TexConstant.Align.LEFT],
+      shoveright: [AmsMethods.HandleShove, TexConstant.Align.RIGHT],
+      xrightarrow: [AmsMethods.xArrow, 8594, 5, 10],
+      xleftarrow: [AmsMethods.xArrow, 8592, 10, 5]
+    });
+    new EnvironmentMap("AMSmath-environment", ParseMethods_default.environment, {
+      "equation*": [AmsMethods.Equation, null, false],
+      "eqnarray*": [
+        AmsMethods.EqnArray,
+        null,
+        false,
+        true,
+        "rcl",
+        "bmt",
+        ParseUtil.cols(0, MATHSPACE.thickmathspace),
+        ".5em"
+      ],
+      align: [
+        AmsMethods.EqnArray,
+        null,
+        true,
+        true,
+        "rl",
+        "bt",
+        ParseUtil.cols(0, 2)
+      ],
+      "align*": [
+        AmsMethods.EqnArray,
+        null,
+        false,
+        true,
+        "rl",
+        "bt",
+        ParseUtil.cols(0, 2)
+      ],
+      multline: [AmsMethods.Multline, null, true],
+      "multline*": [AmsMethods.Multline, null, false],
+      split: [
+        AmsMethods.EqnArray,
+        null,
+        false,
+        false,
+        "rl",
+        "bt",
+        ParseUtil.cols(0)
+      ],
+      gather: [AmsMethods.EqnArray, null, true, true, "c", "m"],
+      "gather*": [AmsMethods.EqnArray, null, false, true, "c", "m"],
+      alignat: [AmsMethods.AlignAt, null, true, true],
+      "alignat*": [AmsMethods.AlignAt, null, false, true],
+      alignedat: [AmsMethods.AlignAt, null, false, false],
+      aligned: [
+        AmsMethods.AmsEqnArray,
+        null,
+        null,
+        null,
+        "rl",
+        "bt",
+        ParseUtil.cols(0, 2),
+        ".5em",
+        "D"
+      ],
+      gathered: [
+        AmsMethods.AmsEqnArray,
+        null,
+        null,
+        null,
+        "c",
+        "m",
+        null,
+        ".5em",
+        "D"
+      ],
+      xalignat: [AmsMethods.XalignAt, null, true, true],
+      "xalignat*": [AmsMethods.XalignAt, null, false, true],
+      xxalignat: [AmsMethods.XalignAt, null, false, false],
+      flalign: [
+        AmsMethods.FlalignArray,
+        null,
+        true,
+        false,
+        true,
+        "rlc",
+        "btm",
+        "auto auto fit"
+      ],
+      "flalign*": [
+        AmsMethods.FlalignArray,
+        null,
+        false,
+        false,
+        true,
+        "rlc",
+        "btm",
+        "auto auto fit"
+      ],
+      subarray: [
+        AmsMethods.Array,
+        null,
+        null,
+        null,
+        null,
+        ParseUtil.cols(0),
+        "0.1em",
+        "S",
+        true
+      ],
+      smallmatrix: [
+        AmsMethods.Array,
+        null,
+        null,
+        null,
+        "c",
+        ParseUtil.cols(1 / 3),
+        ".2em",
+        "S",
+        true
+      ],
+      matrix: [AmsMethods.Array, null, null, null, "c"],
+      pmatrix: [AmsMethods.Array, null, "(", ")", "c"],
+      bmatrix: [AmsMethods.Array, null, "[", "]", "c"],
+      Bmatrix: [AmsMethods.Array, null, "\\{", "\\}", "c"],
+      vmatrix: [AmsMethods.Array, null, "\\vert", "\\vert", "c"],
+      Vmatrix: [AmsMethods.Array, null, "\\Vert", "\\Vert", "c"],
+      cases: [AmsMethods.Array, null, "\\{", ".", "ll", null, ".2em", "T"]
+    });
+    new DelimiterMap("AMSmath-delimiter", ParseMethods_default.delimiter, {
+      "\\lvert": ["|", { texClass: TEXCLASS.OPEN }],
+      "\\rvert": ["|", { texClass: TEXCLASS.CLOSE }],
+      "\\lVert": ["‖", { texClass: TEXCLASS.OPEN }],
+      "\\rVert": ["‖", { texClass: TEXCLASS.CLOSE }]
+    });
+    new CharacterMap("AMSsymbols-mathchar0mi", ParseMethods_default.mathchar0mi, {
+      digamma: "ϝ",
+      varkappa: "ϰ",
+      varGamma: ["Γ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varDelta: ["Δ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varTheta: ["Θ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varLambda: ["Λ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varXi: ["Ξ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varPi: ["Π", { mathvariant: TexConstant.Variant.ITALIC }],
+      varSigma: ["Σ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varUpsilon: ["Υ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varPhi: ["Φ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varPsi: ["Ψ", { mathvariant: TexConstant.Variant.ITALIC }],
+      varOmega: ["Ω", { mathvariant: TexConstant.Variant.ITALIC }],
+      beth: "ℶ",
+      gimel: "ℷ",
+      daleth: "ℸ",
+      backprime: ["‵", { variantForm: true }],
+      hslash: "ℏ",
+      varnothing: ["∅", { variantForm: true }],
+      blacktriangle: "▴",
+      triangledown: ["▽", { variantForm: true }],
+      blacktriangledown: "▾",
+      square: "◻",
+      Box: "◻",
+      blacksquare: "◼",
+      lozenge: "◊",
+      Diamond: "◊",
+      blacklozenge: "⧫",
+      circledS: ["Ⓢ", { mathvariant: TexConstant.Variant.NORMAL }],
+      bigstar: "★",
+      sphericalangle: "∢",
+      measuredangle: "∡",
+      nexists: "∄",
+      complement: "∁",
+      mho: "℧",
+      eth: ["ð", { mathvariant: TexConstant.Variant.NORMAL }],
+      Finv: "Ⅎ",
+      diagup: "╱",
+      Game: "⅁",
+      diagdown: "╲",
+      Bbbk: ["k", { mathvariant: TexConstant.Variant.DOUBLESTRUCK }],
+      yen: "¥",
+      circledR: "®",
+      checkmark: "✓",
+      maltese: "✠"
+    });
+    new CharacterMap("AMSsymbols-mathchar0mo", ParseMethods_default.mathchar0mo, JSON.parse(`{
+ "dotplus":"∔",
+ "ltimes":"⋉",
+ "smallsetminus":["∖",{"variantForm":true}],
+ "rtimes":"⋊",
+ "Cap":"⋒",
+ "doublecap":"⋒",
+ "leftthreetimes":"⋋",
+ "Cup":"⋓",
+ "doublecup":"⋓",
+ "rightthreetimes":"⋌",
+ "barwedge":"⊼",
+ "curlywedge":"⋏",
+ "veebar":"⊻",
+ "curlyvee":"⋎",
+ "doublebarwedge":"⩞",
+ "boxminus":"⊟",
+ "circleddash":"⊝",
+ "boxtimes":"⊠",
+ "circledast":"⊛",
+ "boxdot":"⊡",
+ "circledcirc":"⊚",
+ "boxplus":"⊞",
+ "centerdot":["⋅",{"variantForm":true}],
+ "divideontimes":"⋇",
+ "intercal":"⊺",
+ "leqq":"≦",
+ "geqq":"≧",
+ "leqslant":"⩽",
+ "geqslant":"⩾",
+ "eqslantless":"⪕",
+ "eqslantgtr":"⪖",
+ "lesssim":"≲",
+ "gtrsim":"≳",
+ "lessapprox":"⪅",
+ "gtrapprox":"⪆",
+ "approxeq":"≊",
+ "lessdot":"⋖",
+ "gtrdot":"⋗",
+ "lll":"⋘",
+ "llless":"⋘",
+ "ggg":"⋙",
+ "gggtr":"⋙",
+ "lessgtr":"≶",
+ "gtrless":"≷",
+ "lesseqgtr":"⋚",
+ "gtreqless":"⋛",
+ "lesseqqgtr":"⪋",
+ "gtreqqless":"⪌",
+ "doteqdot":"≑",
+ "Doteq":"≑",
+ "eqcirc":"≖",
+ "risingdotseq":"≓",
+ "circeq":"≗",
+ "fallingdotseq":"≒",
+ "triangleq":"≜",
+ "backsim":"∽",
+ "thicksim":["∼",{"variantForm":true}],
+ "backsimeq":"⋍",
+ "thickapprox":["≈",{"variantForm":true}],
+ "subseteqq":"⫅",
+ "supseteqq":"⫆",
+ "Subset":"⋐",
+ "Supset":"⋑",
+ "sqsubset":"⊏",
+ "sqsupset":"⊐",
+ "preccurlyeq":"≼",
+ "succcurlyeq":"≽",
+ "curlyeqprec":"⋞",
+ "curlyeqsucc":"⋟",
+ "precsim":"≾",
+ "succsim":"≿",
+ "precapprox":"⪷",
+ "succapprox":"⪸",
+ "vartriangleleft":"⊲",
+ "lhd":"⊲",
+ "vartriangleright":"⊳",
+ "rhd":"⊳",
+ "trianglelefteq":"⊴",
+ "unlhd":"⊴",
+ "trianglerighteq":"⊵",
+ "unrhd":"⊵",
+ "vDash":"⊨",
+ "Vdash":"⊩",
+ "Vvdash":"⊪",
+ "smallsmile":["⌣",{"variantForm":true}],
+ "shortmid":["∣",{"variantForm":true}],
+ "smallfrown":["⌢",{"variantForm":true}],
+ "shortparallel":["∥",{"variantForm":true}],
+ "bumpeq":"≏",
+ "between":"≬",
+ "Bumpeq":"≎",
+ "pitchfork":"⋔",
+ "varpropto":["∝",{"variantForm":true}],
+ "backepsilon":"∍",
+ "blacktriangleleft":"◂",
+ "blacktriangleright":"▸",
+ "therefore":"∴",
+ "because":"∵",
+ "eqsim":"≂",
+ "vartriangle":["△",{"variantForm":true}],
+ "Join":"⋈",
+ "nless":"≮",
+ "ngtr":"≯",
+ "nleq":"≰",
+ "ngeq":"≱",
+ "nleqslant":["⪇",{"variantForm":true}],
+ "ngeqslant":["⪈",{"variantForm":true}],
+ "nleqq":["≰",{"variantForm":true}],
+ "ngeqq":["≱",{"variantForm":true}],
+ "lneq":"⪇",
+ "gneq":"⪈",
+ "lneqq":"≨",
+ "gneqq":"≩",
+ "lvertneqq":["≨",{"variantForm":true}],
+ "gvertneqq":["≩",{"variantForm":true}],
+ "lnsim":"⋦",
+ "gnsim":"⋧",
+ "lnapprox":"⪉",
+ "gnapprox":"⪊",
+ "nprec":"⊀",
+ "nsucc":"⊁",
+ "npreceq":["⋠",{"variantForm":true}],
+ "nsucceq":["⋡",{"variantForm":true}],
+ "precneqq":"⪵",
+ "succneqq":"⪶",
+ "precnsim":"⋨",
+ "succnsim":"⋩",
+ "precnapprox":"⪹",
+ "succnapprox":"⪺",
+ "nsim":"≁",
+ "ncong":"≇",
+ "nshortmid":["∤",{"variantForm":true}],
+ "nshortparallel":["∦",{"variantForm":true}],
+ "nmid":"∤",
+ "nparallel":"∦",
+ "nvdash":"⊬",
+ "nvDash":"⊭",
+ "nVdash":"⊮",
+ "nVDash":"⊯",
+ "ntriangleleft":"⋪",
+ "ntriangleright":"⋫",
+ "ntrianglelefteq":"⋬",
+ "ntrianglerighteq":"⋭",
+ "nsubseteq":"⊈",
+ "nsupseteq":"⊉",
+ "nsubseteqq":["⊈",{"variantForm":true}],
+ "nsupseteqq":["⊉",{"variantForm":true}],
+ "subsetneq":"⊊",
+ "supsetneq":"⊋",
+ "varsubsetneq":["⊊",{"variantForm":true}],
+ "varsupsetneq":["⊋",{"variantForm":true}],
+ "subsetneqq":"⫋",
+ "supsetneqq":"⫌",
+ "varsubsetneqq":["⫋",{"variantForm":true}],
+ "varsupsetneqq":["⫌",{"variantForm":true}],
+ "leftleftarrows":"⇇",
+ "rightrightarrows":"⇉",
+ "leftrightarrows":"⇆",
+ "rightleftarrows":"⇄",
+ "Lleftarrow":"⇚",
+ "Rrightarrow":"⇛",
+ "twoheadleftarrow":"↞",
+ "twoheadrightarrow":"↠",
+ "leftarrowtail":"↢",
+ "rightarrowtail":"↣",
+ "looparrowleft":"↫",
+ "looparrowright":"↬",
+ "leftrightharpoons":"⇋",
+ "rightleftharpoons":["⇌",{"variantForm":true}],
+ "curvearrowleft":"↶",
+ "curvearrowright":"↷",
+ "circlearrowleft":"↺",
+ "circlearrowright":"↻",
+ "Lsh":"↰",
+ "Rsh":"↱",
+ "upuparrows":"⇈",
+ "downdownarrows":"⇊",
+ "upharpoonleft":"↿",
+ "upharpoonright":"↾",
+ "downharpoonleft":"⇃",
+ "restriction":"↾",
+ "multimap":"⊸",
+ "downharpoonright":"⇂",
+ "leftrightsquigarrow":"↭",
+ "rightsquigarrow":"⇝",
+ "leadsto":"⇝",
+ "dashrightarrow":"⇢",
+ "dashleftarrow":"⇠",
+ "nleftarrow":"↚",
+ "nrightarrow":"↛",
+ "nLeftarrow":"⇍",
+ "nRightarrow":"⇏",
+ "nleftrightarrow":"↮",
+ "nLeftrightarrow":"⇎"
+}`));
+    new DelimiterMap("AMSsymbols-delimiter", ParseMethods_default.delimiter, {
+      "\\ulcorner": "⌜",
+      "\\urcorner": "⌝",
+      "\\llcorner": "⌞",
+      "\\lrcorner": "⌟"
+    });
+    new CommandMap("AMSsymbols-macros", {
+      implies: [AmsMethods.Macro, "\\;\\Longrightarrow\\;"],
+      impliedby: [AmsMethods.Macro, "\\;\\Longleftarrow\\;"]
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandItems.js
+var BeginEnvItem;
+var init_NewcommandItems = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandItems.js"() {
+    init_TexError();
+    init_StackItem();
+    BeginEnvItem = class extends BaseItem {
+      get kind() {
+        return "beginEnv";
+      }
+      get isOpen() {
+        return true;
+      }
+      checkItem(item) {
+        if (item.isKind("end")) {
+          if (item.getName() !== this.getName()) {
+            throw new TexError_default("EnvBadEnd", "\\begin{%1} ended with \\end{%2}", this.getName(), item.getName());
+          }
+          return [[this.factory.create("mml", this.toMml())], true];
+        }
+        if (item.isKind("stop")) {
+          throw new TexError_default("EnvMissingEnd", "Missing \\end{%1}", this.getName());
+        }
+        return super.checkItem(item);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandMethods.js
+var NewcommandMethods;
+var NewcommandMethods_default;
+var init_NewcommandMethods = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandMethods.js"() {
+    init_HandlerTypes();
+    init_TexError();
+    init_TokenMap();
+    init_BaseMethods();
+    init_ParseUtil();
+    init_UnitUtil();
+    init_NewcommandUtil();
+    NewcommandMethods = {
+      NewCommand(parser2, name) {
+        const cs = NewcommandUtil.GetCsNameArgument(parser2, name);
+        const n = NewcommandUtil.GetArgCount(parser2, name);
+        const opt = parser2.GetBrackets(name);
+        const def2 = parser2.GetArgument(name);
+        NewcommandUtil.addMacro(parser2, cs, NewcommandMethods.Macro, [def2, n, opt]);
+        parser2.Push(parser2.itemFactory.create("null"));
+      },
+      NewEnvironment(parser2, name) {
+        const env = UnitUtil.trimSpaces(parser2.GetArgument(name));
+        const n = NewcommandUtil.GetArgCount(parser2, name);
+        const opt = parser2.GetBrackets(name);
+        const bdef = parser2.GetArgument(name);
+        const edef = parser2.GetArgument(name);
+        NewcommandUtil.addEnvironment(parser2, env, NewcommandMethods.BeginEnv, [
+          true,
+          bdef,
+          edef,
+          n,
+          opt
+        ]);
+        parser2.Push(parser2.itemFactory.create("null"));
+      },
+      MacroDef(parser2, name) {
+        const cs = NewcommandUtil.GetCSname(parser2, name);
+        const params = NewcommandUtil.GetTemplate(parser2, name, "\\" + cs);
+        const def2 = parser2.GetArgument(name);
+        !(params instanceof Array) ? NewcommandUtil.addMacro(parser2, cs, NewcommandMethods.Macro, [
+          def2,
+          params
+        ]) : NewcommandUtil.addMacro(parser2, cs, NewcommandMethods.MacroWithTemplate, [def2].concat(params));
+        parser2.Push(parser2.itemFactory.create("null"));
+      },
+      Let(parser2, name) {
+        const cs = NewcommandUtil.GetCSname(parser2, name);
+        let c = parser2.GetNext();
+        if (c === "=") {
+          parser2.i++;
+          c = parser2.GetNext();
+        }
+        const handlers = parser2.configuration.handlers;
+        parser2.Push(parser2.itemFactory.create("null"));
+        if (c === "\\") {
+          name = NewcommandUtil.GetCSname(parser2, name);
+          if (cs === name) {
+            return;
+          }
+          const map = handlers.get(HandlerType.MACRO).applicable(name);
+          if (map instanceof MacroMap) {
+            const macro3 = map.lookup(name);
+            NewcommandUtil.addMacro(parser2, cs, macro3.func, macro3.args, macro3.token);
+            return;
+          }
+          if (map instanceof CharacterMap && !(map instanceof DelimiterMap)) {
+            const macro3 = map.lookup(name);
+            const method = (p) => map.parser(p, macro3);
+            NewcommandUtil.addMacro(parser2, cs, method, [cs, macro3.char]);
+            return;
+          }
+          const macro2 = handlers.get(HandlerType.DELIMITER).lookup("\\" + name);
+          if (macro2) {
+            NewcommandUtil.addDelimiter(parser2, "\\" + cs, macro2.char, macro2.attributes);
+            return;
+          }
+          NewcommandUtil.checkProtectedMacros(parser2, cs);
+          NewcommandUtil.undefineMacro(parser2, cs);
+          NewcommandUtil.undefineDelimiter(parser2, "\\" + cs);
+          return;
+        }
+        parser2.i++;
+        const macro = handlers.get(HandlerType.DELIMITER).lookup(c);
+        if (macro) {
+          NewcommandUtil.addDelimiter(parser2, "\\" + cs, macro.char, macro.attributes);
+          return;
+        }
+        NewcommandUtil.addMacro(parser2, cs, NewcommandMethods.Macro, [c]);
+      },
+      MacroWithTemplate(parser2, name, text, n, ...params) {
+        const argCount = parseInt(n, 10);
+        if (params.length) {
+          const args = [];
+          parser2.GetNext();
+          if (params[0] && !NewcommandUtil.MatchParam(parser2, params[0])) {
+            throw new TexError_default("MismatchUseDef", "Use of %1 doesn't match its definition", name);
+          }
+          if (argCount) {
+            for (let i2 = 0; i2 < argCount; i2++) {
+              args.push(NewcommandUtil.GetParameter(parser2, name, params[i2 + 1]));
+            }
+            text = ParseUtil.substituteArgs(parser2, args, text);
+          }
+        }
+        parser2.string = ParseUtil.addArgs(parser2, text, parser2.string.slice(parser2.i));
+        parser2.i = 0;
+        ParseUtil.checkMaxMacros(parser2);
+      },
+      BeginEnv(parser2, begin, bdef, edef, n, def2) {
+        const name = begin.getName();
+        if (parser2.stack.env["closing"] === name) {
+          delete parser2.stack.env["closing"];
+          const beginN = parser2.stack.global["beginEnv"];
+          if (beginN) {
+            parser2.stack.global["beginEnv"]--;
+            if (edef) {
+              const rest = parser2.string.slice(parser2.i);
+              parser2.string = ParseUtil.addArgs(parser2, parser2.string.substring(0, parser2.i), edef);
+              parser2.Parse();
+              parser2.string = rest;
+              parser2.i = 0;
+            }
+          }
+          return parser2.itemFactory.create("end").setProperty("name", name);
+        }
+        if (n) {
+          const args = [];
+          if (def2 != null) {
+            const optional = parser2.GetBrackets(`\\begin{${name}}`);
+            args.push(optional == null ? def2 : optional);
+          }
+          for (let i2 = args.length; i2 < n; i2++) {
+            args.push(parser2.GetArgument(`\\begin{${name}}`));
+          }
+          bdef = ParseUtil.substituteArgs(parser2, args, bdef);
+          edef = ParseUtil.substituteArgs(parser2, [], edef);
+        }
+        parser2.string = ParseUtil.addArgs(parser2, bdef, parser2.string.slice(parser2.i));
+        parser2.i = 0;
+        parser2.stack.global["beginEnv"] = (parser2.stack.global["beginEnv"] || 0) + 1;
+        return parser2.itemFactory.create("beginEnv").setProperty("name", name);
+      },
+      Macro: BaseMethods_default.Macro
+    };
+    NewcommandMethods_default = NewcommandMethods;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandMappings.js
+var init_NewcommandMappings = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandMappings.js"() {
+    init_NewcommandMethods();
+    init_TokenMap();
+    new CommandMap("Newcommand-macros", {
+      newcommand: NewcommandMethods_default.NewCommand,
+      renewcommand: NewcommandMethods_default.NewCommand,
+      newenvironment: NewcommandMethods_default.NewEnvironment,
+      renewenvironment: NewcommandMethods_default.NewEnvironment,
+      def: NewcommandMethods_default.MacroDef,
+      let: NewcommandMethods_default.Let
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandConfiguration.js
+function NewcommandConfig(_config, jax) {
+  if (jax.parseOptions.packageData.has("newcommand")) {
+    return;
+  }
+  jax.parseOptions.packageData.set("newcommand", {});
+  new DelimiterMap(NewcommandTables.NEW_DELIMITER, ParseMethods_default.delimiter, {});
+  new CommandMap(NewcommandTables.NEW_COMMAND, {});
+  new EnvironmentMap(NewcommandTables.NEW_ENVIRONMENT, ParseMethods_default.environment, {});
+  jax.parseOptions.handlers.add({
+    [HandlerType.CHARACTER]: [],
+    [HandlerType.DELIMITER]: [NewcommandTables.NEW_DELIMITER],
+    [HandlerType.MACRO]: [
+      NewcommandTables.NEW_DELIMITER,
+      NewcommandTables.NEW_COMMAND
+    ],
+    [HandlerType.ENVIRONMENT]: [NewcommandTables.NEW_ENVIRONMENT]
+  }, {}, NewcommandPriority);
+}
+var NewcommandConfiguration;
+var init_NewcommandConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/newcommand/NewcommandConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_NewcommandItems();
+    init_NewcommandUtil();
+    init_NewcommandMappings();
+    init_ParseMethods();
+    init_TokenMap();
+    NewcommandConfiguration = Configuration.create("newcommand", {
+      [ConfigurationType.HANDLER]: {
+        macro: ["Newcommand-macros"]
+      },
+      [ConfigurationType.ITEMS]: {
+        [BeginEnvItem.prototype.kind]: BeginEnvItem
+      },
+      [ConfigurationType.OPTIONS]: {
+        maxMacros: 1e3,
+        protectedMacros: ["begingroupSandbox"]
+      },
+      [ConfigurationType.CONFIG]: NewcommandConfig
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ams/AmsConfiguration.js
+var AmsTags;
+var AmsConfiguration;
+var init_AmsConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ams/AmsConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_AmsItems();
+    init_Tags();
+    init_AmsMappings();
+    init_NewcommandConfiguration();
+    AmsTags = class extends AbstractTags {
+    };
+    AmsConfiguration = Configuration.create("ams", {
+      [ConfigurationType.HANDLER]: {
+        [HandlerType.CHARACTER]: ["AMSmath-operatorLetter"],
+        [HandlerType.DELIMITER]: ["AMSsymbols-delimiter", "AMSmath-delimiter"],
+        [HandlerType.MACRO]: [
+          "AMSsymbols-mathchar0mi",
+          "AMSsymbols-mathchar0mo",
+          "AMSsymbols-delimiter",
+          "AMSsymbols-macros",
+          "AMSmath-mathchar0mo",
+          "AMSmath-macros",
+          "AMSmath-delimiter"
+        ],
+        [HandlerType.ENVIRONMENT]: ["AMSmath-environment"]
+      },
+      [ConfigurationType.ITEMS]: {
+        [MultlineItem.prototype.kind]: MultlineItem,
+        [FlalignItem.prototype.kind]: FlalignItem
+      },
+      [ConfigurationType.TAGS]: { ams: AmsTags },
+      [ConfigurationType.OPTIONS]: {
+        multlineWidth: "",
+        ams: {
+          operatornamePattern: /^[-*a-zA-Z0-9]+/,
+          multlineWidth: "100%",
+          multlineIndent: "1em"
+        }
+      },
+      [ConfigurationType.CONFIG]: NewcommandConfig
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/boldsymbol/BoldsymbolConfiguration.js
+function createBoldToken(factory, kind, def2, text) {
+  const token2 = NodeFactory.createToken(factory, kind, def2, text);
+  if (kind !== "mtext" && factory.configuration.parser.stack.env["boldsymbol"]) {
+    NodeUtil_default.setProperty(token2, "fixBold", true);
+    factory.configuration.addNode("fixBold", token2);
+  }
+  return token2;
+}
+function rewriteBoldTokens(arg) {
+  for (const node of arg.data.getList("fixBold")) {
+    if (NodeUtil_default.getProperty(node, "fixBold")) {
+      const variant = NodeUtil_default.getAttribute(node, "mathvariant");
+      NodeUtil_default.setAttribute(node, "mathvariant", BOLDVARIANT[variant] || variant);
+      NodeUtil_default.removeProperties(node, "fixBold");
+    }
+  }
+}
+var BOLDVARIANT;
+var BoldsymbolMethods;
+var BoldsymbolConfiguration;
+var init_BoldsymbolConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/boldsymbol/BoldsymbolConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_NodeUtil();
+    init_TexConstants();
+    init_TokenMap();
+    init_NodeFactory2();
+    BOLDVARIANT = {};
+    BOLDVARIANT[TexConstant.Variant.NORMAL] = TexConstant.Variant.BOLD;
+    BOLDVARIANT[TexConstant.Variant.ITALIC] = TexConstant.Variant.BOLDITALIC;
+    BOLDVARIANT[TexConstant.Variant.FRAKTUR] = TexConstant.Variant.BOLDFRAKTUR;
+    BOLDVARIANT[TexConstant.Variant.SCRIPT] = TexConstant.Variant.BOLDSCRIPT;
+    BOLDVARIANT[TexConstant.Variant.SANSSERIF] = TexConstant.Variant.BOLDSANSSERIF;
+    BOLDVARIANT["-tex-calligraphic"] = "-tex-bold-calligraphic";
+    BOLDVARIANT["-tex-oldstyle"] = "-tex-bold-oldstyle";
+    BOLDVARIANT["-tex-mathit"] = TexConstant.Variant.BOLDITALIC;
+    BoldsymbolMethods = {
+      Boldsymbol(parser2, name) {
+        const boldsymbol = parser2.stack.env["boldsymbol"];
+        parser2.stack.env["boldsymbol"] = true;
+        const mml = parser2.ParseArg(name);
+        parser2.stack.env["boldsymbol"] = boldsymbol;
+        parser2.Push(mml);
+      }
+    };
+    new CommandMap("boldsymbol", { boldsymbol: BoldsymbolMethods.Boldsymbol });
+    BoldsymbolConfiguration = Configuration.create("boldsymbol", {
+      [ConfigurationType.HANDLER]: { [HandlerType.MACRO]: ["boldsymbol"] },
+      [ConfigurationType.NODES]: { token: createBoldToken },
+      [ConfigurationType.POSTPROCESSORS]: [rewriteBoldTokens]
+    });
+  }
+});
+export{init_NewcommandUtil,NewcommandUtil,init_AmsMethods,init_NewcommandMethods,NewcommandTables,AmsMethods,NewcommandMethods_default,init_AmsItems,MultlineItem,NewcommandConfig,init_NewcommandConfiguration,init_svg,MathJaxNewcmFont,SVG,init_svg2,init_AmsConfiguration,init_BoldsymbolConfiguration};

@@ -1,30 +1,1845 @@
-import{d6,M,S1,t2,jt,v4,a6,Ze,o9,tu,x1,Q,X,z,S4,p3,R4,h3,o5,_8,p2,Q1,$1,$2,j1,$6,P0,R,r1,ZC,g,I0,a1,j2,Q0,L1,A,f,Y,w1,A2,t1,e3,d2,m1,h2,q1,_}from'./p14.js';export*from'./p14.js';
-function Fm(e,C,t,L){let n=e.configuration.packageData.get("textmacros");return e instanceof d6||(n.texParser=e),n.parseOptions.clear(),[new d6(C,L?{mathvariant:L}:{},n.parseOptions,t).mml()]}
-var $W;
-var GW;
-var eu=M(()=>{S1();t2();jt();v4();a6();Ze();o9();tu();$W=x1.create("text-base",{[Q.PARSER]:"text",[Q.PRIORITY]:1,[Q.HANDLER]:{[X.CHARACTER]:["command","text-special"],[X.MACRO]:["text-macros"]},[Q.FALLBACK]:{[X.CHARACTER]:(e,C)=>{e.text+=C},[X.MACRO]:(e,C)=>{let t=e.texParser,L=t.lookup(X.MACRO,C);L&&L._func!==z.Macro&&e.Error("MathMacro","%1 is only supported in math mode","\\"+C),t.parse(X.MACRO,[e,C])}},[Q.ITEMS]:{[S4.prototype.kind]:S4,[p3.prototype.kind]:p3,[R4.prototype.kind]:R4,[h3.prototype.kind]:h3}});GW=x1.create("textmacros",{[Q.PRIORITY]:1,[Q.CONFIG]:(e,C)=>{let t=new o5(C.parseOptions.options.textmacros.packages,["tex","text"]);t.init();let L=new _8(t,[]);L.options=C.parseOptions.options,t.config(C),p2.addTags(t.tags),L.tags=p2.getDefault(),L.tags.configuration=L,L.packageData=C.parseOptions.packageData,L.packageData.set("textmacros",{textConf:t,parseOptions:L,jax:C,texParser:null}),L.options.internalMath=Fm},[Q.PREPROCESSORS]:[e=>{let C=e.data.packageData.get("textmacros");C.parseOptions.nodeFactory.setMmlFactory(C.jax.mmlFactory),C.parseOptions.clear()}],[Q.OPTIONS]:{textmacros:{packages:["text-base"]}}})});
-var M5;
-var Ye;
-var YW;
-var Lu=M(()=>{S1();t2();Q1();$1();$2();j1();$6();P0();M5={},Ye={Unicode(e,C){let t=e.GetBrackets(C),L=null,n="";if(t&&(t.replace(/ /g,"").match(/^(\d+(\.\d*)?|\.\d+),(\d+(\.\d*)?|\.\d+)$/)?(L=t.replace(/ /g,"").split(/,/),n=e.GetBrackets(C)||""):n=t),n.match(/;/))throw new R("BadFont","Font name for %1 can't contain semicolons",e.currentCS);let i=r1.trimSpaces(e.GetArgument(C)).replace(/^0x/,"x");if(!i.match(/^(x[0-9A-Fa-f]+|[0-9]+)$/))throw new R("BadUnicode","Argument to %1 must be a number",e.currentCS);let s=parseInt(i.match(/^x/)?"0"+i:i);M5[s]?n||(n=M5[s][2]):M5[s]=[800,200,n,s],L&&(M5[s][0]=Math.floor(parseFloat(L[0])*1e3),M5[s][1]=Math.floor(parseFloat(L[1])*1e3));let r=e.stack.env.font,o={};n?(M5[s][2]=o.fontfamily=n.replace(/'/g,"'"),r&&(r.match(/bold/)&&(o.fontweight="bold"),r.match(/italic|-mathit/)&&(o.fontstyle="italic"))):r&&(o.mathvariant=r);let a=e.create("token","mtext",o,ZC(i));g.setProperty(a,"unicode",!0),e.Push(a)},RawUnicode(e,C){let t=e.GetArgument(C).trim();if(!t.match(/^[0-9A-F]{1,6}$/))throw new R("BadRawUnicode","Argument to %1 must a hexadecimal number with 1 to 6 digits",e.currentCS);let L=parseInt(t,16);e.string=String.fromCodePoint(L)+e.string.substring(e.i),e.i=0},Char(e,C){let t,L=e.GetNext(),n="",i=e.string.substring(e.i);if(L==="'")t=i.match(/^'([0-7]{1,7}) ?/u),t&&(n=String.fromCodePoint(parseInt(t[1],8)));else if(L==='"')t=i.match(/^"([0-9A-F]{1,6}) ?/),t&&(n=String.fromCodePoint(parseInt(t[1],16)));else if(L==="`"){if(t=i.match(/^`(?:(\\\S)|(.))/u),t)if(t[2])n=t[2];else{e.i+=2;let s=[...e.GetCS()];if(s.length>1)throw new R("InvalidAlphanumeric","Invalid alphanumeric constant for %1",e.currentCS);n=s[0],t=[""]}}else t=i.match(/^([0-9]{1,7}) ?/),t&&(n=String.fromCodePoint(parseInt(t[1])));if(!n)throw new R("MissingNumber","Missing numeric constant for %1",e.currentCS);e.i+=t[0].length,n>="0"&&n<="9"?e.Push(e.create("token","mn",{},n)):n.match(/[A-Za-z]/)?e.Push(e.create("token","mi",{},n)):I0(e,n)}};new a1("unicode",{unicode:Ye.Unicode,U:Ye.RawUnicode,char:Ye.Char});YW=x1.create("unicode",{[Q.HANDLER]:{[X.MACRO]:["unicode"]}})});
-function y2(e){let C,t,L={};for(C in e)for(t in e[C]){let n=t.split("|");e[C][t].stateArray=n;for(let i=0;i<n.length;i++)L[n[i]]=[]}for(C in e)for(t in e[C]){let n=e[C][t].stateArray||[];for(let i=0;i<n.length;i++){let s=e[C][t];s.action_=[].concat(s.action_);for(let o=0;o<s.action_.length;o++)typeof s.action_[o]=="string"&&(s.action_[o]={type_:s.action_[o]});let r=C.split("|");for(let o=0;o<r.length;o++)if(n[i]==="*"){let a;for(a in L)L[a].push({pattern:r[o],task:s})}else L[n[i]].push({pattern:r[o],task:s})}}return L}
-var a9;
-var V;
-var O1;
-var nu=M(()=>{a9=class{static toTex(C,t){return O1.go(V.go(C,t),t!=="tex")}};V={go:function(e,C){if(!e)return[];C===void 0&&(C="ce");let t="0",L={};L.parenthesisLevel=0,e=e.replace(/\n/g," "),e=e.replace(/[\u2212\u2013\u2014\u2010]/g,"-"),e=e.replace(/[\u2026]/g,"...");let n,i=10,s=[];for(;;){n!==e?(i=10,n=e):i--;let r=V.stateMachines[C],o=r.transitions[t]||r.transitions["*"];C:for(let a=0;a<o.length;a++){let l=V.patterns.match_(o[a].pattern,e);if(l){let u=o[a].task;for(let x=0;x<u.action_.length;x++){let p;if(r.actions[u.action_[x].type_])p=r.actions[u.action_[x].type_](L,l.match_,u.action_[x].option);else if(V.actions[u.action_[x].type_])p=V.actions[u.action_[x].type_](L,l.match_,u.action_[x].option);else throw["MhchemBugA","mhchem bug A. Please report. ("+u.action_[x].type_+")"];V.concatArray(s,p)}if(t=u.nextState||t,e.length>0){if(u.revisit||(e=l.remainder),!u.toContinue)break C}else return s}}if(i<=0)throw["MhchemBugU","mhchem bug U. Please report."]}},concatArray:function(e,C){if(C)if(Array.isArray(C))for(let t=0;t<C.length;t++)e.push(C[t]);else e.push(C)},patterns:{patterns:{empty:/^$/,else:/^./,else2:/^./,space:/^\s/,"space A":/^\s(?=[A-Z\\$])/,space$:/^\s$/,"a-z":/^[a-z]/,x:/^x/,x$:/^x$/,i$:/^i$/,letters:/^(?:[a-zA-Z\u03B1-\u03C9\u0391-\u03A9?@]|(?:\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))))+/,"\\greek":/^\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))/,"one lowercase latin letter $":/^(?:([a-z])(?:$|[^a-zA-Z]))$/,"$one lowercase latin letter$ $":/^\$(?:([a-z])(?:$|[^a-zA-Z]))\$$/,"one lowercase greek letter $":/^(?:\$?[\u03B1-\u03C9]\$?|\$?\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\s*\$?)(?:\s+|\{\}|(?![a-zA-Z]))$/,digits:/^[0-9]+/,"-9.,9":/^[+\-]?(?:[0-9]+(?:[,.][0-9]+)?|[0-9]*(?:\.[0-9]+))/,"-9.,9 no missing 0":/^[+\-]?[0-9]+(?:[.,][0-9]+)?/,"(-)(9.,9)(e)(99)":function(e){let C=e.match(/^(\+\-|\+\/\-|\+|\-|\\pm\s?)?([0-9]+(?:[,.][0-9]+)?|[0-9]*(?:\.[0-9]+))?(\((?:[0-9]+(?:[,.][0-9]+)?|[0-9]*(?:\.[0-9]+))\))?(?:(?:([eE])|\s*(\*|x|\\times|\u00D7)\s*10\^)([+\-]?[0-9]+|\{[+\-]?[0-9]+\}))?/);return C&&C[0]?{match_:C.slice(1),remainder:e.substr(C[0].length)}:null},"(-)(9)^(-9)":/^(\+\-|\+\/\-|\+|\-|\\pm\s?)?([0-9]+(?:[,.][0-9]+)?|[0-9]*(?:\.[0-9]+)?)\^([+\-]?[0-9]+|\{[+\-]?[0-9]+\})/,"state of aggregation $":function(e){let C=V.patterns.findObserveGroups(e,"",/^\([a-z]{1,3}(?=[\),])/,")","");if(C&&C.remainder.match(/^($|[\s,;\)\]\}])/))return C;let t=e.match(/^(?:\((?:\\ca\s?)?\$[amothc]\$\))/);return t?{match_:t[0],remainder:e.substr(t[0].length)}:null},"_{(state of aggregation)}$":/^_\{(\([a-z]{1,3}\))\}/,"{[(":/^(?:\\\{|\[|\()/,")]}":/^(?:\)|\]|\\\})/,", ":/^[,;]\s*/,",":/^[,;]/,".":/^[.]/,". __* ":/^([.\u22C5\u00B7\u2022]|[*])\s*/,"...":/^\.\.\.(?=$|[^.])/,"^{(...)}":function(e){return V.patterns.findObserveGroups(e,"^{","","","}")},"^($...$)":function(e){return V.patterns.findObserveGroups(e,"^","$","$","")},"^a":/^\^([0-9]+|[^\\_])/,"^\\x{}{}":function(e){return V.patterns.findObserveGroups(e,"^",/^\\[a-zA-Z]+\{/,"}","","","{","}","",!0)},"^\\x{}":function(e){return V.patterns.findObserveGroups(e,"^",/^\\[a-zA-Z]+\{/,"}","")},"^\\x":/^\^(\\[a-zA-Z]+)\s*/,"^(-1)":/^\^(-?\d+)/,"'":/^'/,"_{(...)}":function(e){return V.patterns.findObserveGroups(e,"_{","","","}")},"_($...$)":function(e){return V.patterns.findObserveGroups(e,"_","$","$","")},_9:/^_([+\-]?[0-9]+|[^\\])/,"_\\x{}{}":function(e){return V.patterns.findObserveGroups(e,"_",/^\\[a-zA-Z]+\{/,"}","","","{","}","",!0)},"_\\x{}":function(e){return V.patterns.findObserveGroups(e,"_",/^\\[a-zA-Z]+\{/,"}","")},"_\\x":/^_(\\[a-zA-Z]+)\s*/,"^_":/^(?:\^(?=_)|\_(?=\^)|[\^_]$)/,"{}^":/^\{\}(?=\^)/,"{}":/^\{\}/,"{...}":function(e){return V.patterns.findObserveGroups(e,"","{","}","")},"{(...)}":function(e){return V.patterns.findObserveGroups(e,"{","","","}")},"$...$":function(e){return V.patterns.findObserveGroups(e,"","$","$","")},"${(...)}$__$(...)$":function(e){return V.patterns.findObserveGroups(e,"${","","","}$")||V.patterns.findObserveGroups(e,"$","","","$")},"=<>":/^[=<>]/,"#":/^[#\u2261]/,"+":/^\+/,"-$":/^-(?=[\s_},;\]/]|$|\([a-z]+\))/,"-9":/^-(?=[0-9])/,"- orbital overlap":/^-(?=(?:[spd]|sp)(?:$|[\s,;\)\]\}]))/,"-":/^-/,"pm-operator":/^(?:\\pm|\$\\pm\$|\+-|\+\/-)/,operator:/^(?:\+|(?:[\-=<>]|<<|>>|\\approx|\$\\approx\$)(?=\s|$|-?[0-9]))/,arrowUpDown:/^(?:v|\(v\)|\^|\(\^\))(?=$|[\s,;\)\]\}])/,"\\bond{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\bond{","","","}")},"->":/^(?:<->|<-->|->|<-|<=>>|<<=>|<=>|[\u2192\u27F6\u21CC])/,CMT:/^[CMT](?=\[)/,"[(...)]":function(e){return V.patterns.findObserveGroups(e,"[","","","]")},"1st-level escape":/^(&|\\\\|\\hline)\s*/,"\\,":/^(?:\\[,\ ;:])/,"\\x{}{}":function(e){return V.patterns.findObserveGroups(e,"",/^\\[a-zA-Z]+\{/,"}","","","{","}","",!0)},"\\x{}":function(e){return V.patterns.findObserveGroups(e,"",/^\\[a-zA-Z]+\{/,"}","")},"\\ca":/^\\ca(?:\s+|(?![a-zA-Z]))/,"\\x":/^(?:\\[a-zA-Z]+\s*|\\[_&{}%])/,orbital:/^(?:[0-9]{1,2}[spdfgh]|[0-9]{0,2}sp)(?=$|[^a-zA-Z])/,others:/^[\/~|]/,"\\frac{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\frac{","","","}","{","","","}")},"\\overset{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\overset{","","","}","{","","","}")},"\\underset{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\underset{","","","}","{","","","}")},"\\underbrace{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\underbrace{","","","}_","{","","","}")},"\\color{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\color{","","","}")},"\\color{(...)}{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\color{","","","}","{","","","}")||V.patterns.findObserveGroups(e,"\\color","\\","",/^(?=\{)/,"{","","","}")},"\\ce{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\ce{","","","}")},"\\pu{(...)}":function(e){return V.patterns.findObserveGroups(e,"\\pu{","","","}")},oxidation$:/^(?:[+-][IVX]+|(?:\\pm|\$\\pm\$|\+-|\+\/-)\s*0)$/,"d-oxidation$":/^(?:[+-]?[IVX]+|(?:\\pm|\$\\pm\$|\+-|\+\/-)\s*0)$/,"1/2$":/^[+\-]?(?:[0-9]+|\$[a-z]\$|[a-z])\/[0-9]+(?:\$[a-z]\$|[a-z])?$/,amount:function(e){let C;if(C=e.match(/^(?:(?:(?:\([+\-]?[0-9]+\/[0-9]+\)|[+\-]?(?:[0-9]+|\$[a-z]\$|[a-z])\/[0-9]+|[+\-]?[0-9]+[.,][0-9]+|[+\-]?\.[0-9]+|[+\-]?[0-9]+)(?:[a-z](?=\s*[A-Z]))?)|[+\-]?[a-z](?=\s*[A-Z])|\+(?!\s))/),C)return{match_:C[0],remainder:e.substr(C[0].length)};let t=V.patterns.findObserveGroups(e,"","$","$","");return t&&(C=t.match_.match(/^\$(?:\(?[+\-]?(?:[0-9]*[a-z]?[+\-])?[0-9]*[a-z](?:[+\-][0-9]*[a-z]?)?\)?|\+|-)\$$/),C)?{match_:C[0],remainder:e.substr(C[0].length)}:null},amount2:function(e){return this.amount(e)},"(KV letters),":/^(?:[A-Z][a-z]{0,2}|i)(?=,)/,formula$:function(e){if(e.match(/^\([a-z]+\)$/))return null;let C=e.match(/^(?:[a-z]|(?:[0-9\ \+\-\,\.\(\)]+[a-z])+[0-9\ \+\-\,\.\(\)]*|(?:[a-z][0-9\ \+\-\,\.\(\)]+)+[a-z]?)$/);return C?{match_:C[0],remainder:e.substr(C[0].length)}:null},uprightEntities:/^(?:pH|pOH|pC|pK|iPr|iBu)(?=$|[^a-zA-Z])/,"/":/^\s*(\/)\s*/,"//":/^\s*(\/\/)\s*/,"*":/^\s*[*.]\s*/},findObserveGroups:function(e,C,t,L,n,i,s,r,o,a){let l=function(d,m){if(typeof m=="string")return d.indexOf(m)!==0?null:m;{let E=d.match(m);return E?E[0]:null}},u=function(d,m,E){let w=0;for(;m<d.length;){let b=d.charAt(m),B=l(d.substr(m),E);if(B!==null&&w===0)return{endMatchBegin:m,endMatchEnd:m+B.length};if(b==="{")w++;else if(b==="}"){if(w===0)throw["ExtraCloseMissingOpen","Extra close brace or missing open brace"];w--}m++}return w>0,null},x=l(e,C);if(x===null||(e=e.substr(x.length),x=l(e,t),x===null))return null;let p=u(e,x.length,L||n);if(p===null)return null;let h=e.substring(0,L?p.endMatchEnd:p.endMatchBegin);if(i||s){let d=this.findObserveGroups(e.substr(p.endMatchEnd),i,s,r,o);if(d===null)return null;let m=[h,d.match_];return{match_:a?m.join(""):m,remainder:d.remainder}}else return{match_:h,remainder:e.substr(p.endMatchEnd)}},match_:function(e,C){let t=V.patterns.patterns[e];if(t===void 0)throw["MhchemBugP","mhchem bug P. Please report. ("+e+")"];if(typeof t=="function")return V.patterns.patterns[e](C);{let L=C.match(t);return L?L.length>2?{match_:L.slice(1),remainder:C.substr(L[0].length)}:{match_:L[1]||L[0],remainder:C.substr(L[0].length)}:null}}},actions:{"a=":function(e,C){e.a=(e.a||"")+C},"b=":function(e,C){e.b=(e.b||"")+C},"p=":function(e,C){e.p=(e.p||"")+C},"o=":function(e,C){e.o=(e.o||"")+C},"o=+p1":function(e,C,t){e.o=(e.o||"")+t},"q=":function(e,C){e.q=(e.q||"")+C},"d=":function(e,C){e.d=(e.d||"")+C},"rm=":function(e,C){e.rm=(e.rm||"")+C},"text=":function(e,C){e.text_=(e.text_||"")+C},insert:function(e,C,t){return{type_:t}},"insert+p1":function(e,C,t){return{type_:t,p1:C}},"insert+p1+p2":function(e,C,t){return{type_:t,p1:C[0],p2:C[1]}},copy:function(e,C){return C},write:function(e,C,t){return t},rm:function(e,C){return{type_:"rm",p1:C}},text:function(e,C){return V.go(C,"text")},"tex-math":function(e,C){return V.go(C,"tex-math")},"tex-math tight":function(e,C){return V.go(C,"tex-math tight")},bond:function(e,C,t){return{type_:"bond",kind_:t||C}},"color0-output":function(e,C){return{type_:"color0",color:C}},ce:function(e,C){return V.go(C,"ce")},pu:function(e,C){return V.go(C,"pu")},"1/2":function(e,C){let t=[];C.match(/^[+\-]/)&&(t.push(C.substr(0,1)),C=C.substr(1));let L=C.match(/^([0-9]+|\$[a-z]\$|[a-z])\/([0-9]+)(\$[a-z]\$|[a-z])?$/);return L[1]=L[1].replace(/\$/g,""),t.push({type_:"frac",p1:L[1],p2:L[2]}),L[3]&&(L[3]=L[3].replace(/\$/g,""),t.push({type_:"tex-math",p1:L[3]})),t},"9,9":function(e,C){return V.go(C,"9,9")}},stateMachines:{tex:{transitions:y2(JSON.parse('{"empty":{"0":{"action_":"copy"}},"\\\\ce{(...)}":{"0":{"action_":[{"type_":"write","option":"{"},"ce",{"type_":"write","option":"}"}]}},"\\\\pu{(...)}":{"0":{"action_":[{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"else":{"0":{"action_":"copy"}}}')),actions:{}},ce:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"else":{"0|1|2":{"action_":"beginsWithBond=false","revisit":true,"toContinue":true}},"oxidation$":{"0":{"action_":"oxidation-output"}},"CMT":{"r":{"action_":"rdt=","nextState":"rt"},"rd":{"action_":"rqt=","nextState":"rdt"}},"arrowUpDown":{"0|1|2|as":{"action_":["sb=false","output","operator"],"nextState":"1"}},"uprightEntities":{"0|1|2":{"action_":["o=","output"],"nextState":"1"}},"orbital":{"0|1|2|3":{"action_":"o=","nextState":"o"}},"->":{"0|1|2|3":{"action_":"r=","nextState":"r"},"a|as":{"action_":["output","r="],"nextState":"r"},"*":{"action_":["output","r="],"nextState":"r"}},"+":{"3":{"action_":["sb=false","output","operator"],"nextState":"0"},"o":{"action_":"d= kv","nextState":"d"},"d|D":{"action_":"d=","nextState":"d"},"q":{"action_":"d=","nextState":"qd"},"qd|qD":{"action_":"d=","nextState":"qd"},"dq":{"action_":["output","d="],"nextState":"d"}},"amount":{"0|2":{"action_":"a=","nextState":"a"}},"pm-operator":{"0|1|2|a|as":{"action_":["sb=false","output",{"type_":"operator","option":"\\\\pm"}],"nextState":"0"}},"operator":{"0|1|2|a|as":{"action_":["sb=false","output","operator"],"nextState":"0"}},"-$":{"o|q":{"action_":["charge or bond","output"],"nextState":"qd"},"d":{"action_":"d=","nextState":"d"},"D":{"action_":["output",{"type_":"bond","option":"-"}],"nextState":"3"},"q":{"action_":"d=","nextState":"qd"},"qd":{"action_":"d=","nextState":"qd"},"qD|dq":{"action_":["output",{"type_":"bond","option":"-"}],"nextState":"3"}},"-9":{"3|o":{"action_":["output",{"type_":"insert","option":"hyphen"}],"nextState":"3"}},"- orbital overlap":{"o":{"action_":["output",{"type_":"insert","option":"hyphen"}],"nextState":"2"},"d":{"action_":["output",{"type_":"insert","option":"hyphen"}],"nextState":"2"}},"-":{"3":{"action_":{"type_":"bond","option":"-"}},"0|1|2":{"action_":[{"type_":"output","option":1},"beginsWithBond=true",{"type_":"bond","option":"-"}],"nextState":"3"},"a":{"action_":["output",{"type_":"insert","option":"hyphen"}],"nextState":"2"},"as":{"action_":[{"type_":"output","option":2},{"type_":"bond","option":"-"}],"nextState":"3"},"b":{"action_":"b="},"o":{"action_":{"type_":"- after o/d","option":false},"nextState":"2"},"q":{"action_":{"type_":"- after o/d","option":false},"nextState":"2"},"d|qd|dq":{"action_":{"type_":"- after o/d","option":true},"nextState":"2"},"D|qD|p":{"action_":["output",{"type_":"bond","option":"-"}],"nextState":"3"}},"amount2":{"1|3":{"action_":"a=","nextState":"a"}},"letters":{"0|1|2|3|a|as|b|p|bp|o":{"action_":"o=","nextState":"o"},"q|dq":{"action_":["output","o="],"nextState":"o"},"d|D|qd|qD":{"action_":"o after d","nextState":"o"}},"digits":{"o":{"action_":"q=","nextState":"q"},"d|D":{"action_":"q=","nextState":"dq"},"q":{"action_":["output","o="],"nextState":"o"},"a":{"action_":"o=","nextState":"o"}},"space A":{"b|p|bp":{"action_":[]}},"space":{"0":{"action_":"sb=false"},"a":{"action_":[],"nextState":"as"},"1|2":{"action_":"sb=true"},"r|rt|rd|rdt|rdq":{"action_":"output","nextState":"0"},"*":{"action_":["output","sb=true"],"nextState":"1"}},"1st-level escape":{"1|2":{"action_":["output",{"type_":"insert+p1","option":"1st-level escape"}]},"*":{"action_":["output",{"type_":"insert+p1","option":"1st-level escape"}],"nextState":"0"}},"[(...)]":{"r|rt":{"action_":"rd=","nextState":"rd"},"rd|rdt":{"action_":"rq=","nextState":"rdq"}},"...":{"o|d|D|dq|qd|qD":{"action_":["output",{"type_":"bond","option":"..."}],"nextState":"3"},"*":{"action_":[{"type_":"output","option":1},{"type_":"insert","option":"ellipsis"}],"nextState":"1"}},". __* ":{"*":{"action_":["output",{"type_":"insert","option":"addition compound"}],"nextState":"1"}},"state of aggregation $":{"*":{"action_":["output","state of aggregation"],"nextState":"1"}},"{[(":{"a|as|o":{"action_":["o=","output","parenthesisLevel++"],"nextState":"2"},"0|1|2|3":{"action_":["o=","output","parenthesisLevel++"],"nextState":"2"},"*":{"action_":["output","o=","output","parenthesisLevel++"],"nextState":"2"}},")]}":{"0|1|2|3|b|p|bp|o":{"action_":["o=","parenthesisLevel--"],"nextState":"o"},"a|as|d|D|q|qd|qD|dq":{"action_":["output","o=","parenthesisLevel--"],"nextState":"o"}},", ":{"*":{"action_":["output","comma"],"nextState":"0"}},"^_":{"*":{"action_":[]}},"^{(...)}|^($...$)":{"0|1|2|as":{"action_":"b=","nextState":"b"},"p":{"action_":"b=","nextState":"bp"},"3|o":{"action_":"d= kv","nextState":"D"},"q":{"action_":"d=","nextState":"qD"},"d|D|qd|qD|dq":{"action_":["output","d="],"nextState":"D"}},"^a|^\\\\x{}{}|^\\\\x{}|^\\\\x|\'":{"0|1|2|as":{"action_":"b=","nextState":"b"},"p":{"action_":"b=","nextState":"bp"},"3|o":{"action_":"d= kv","nextState":"d"},"q":{"action_":"d=","nextState":"qd"},"d|qd|D|qD":{"action_":"d="},"dq":{"action_":["output","d="],"nextState":"d"}},"_{(state of aggregation)}$":{"d|D|q|qd|qD|dq":{"action_":["output","q="],"nextState":"q"}},"_{(...)}|_($...$)|_9|_\\\\x{}{}|_\\\\x{}|_\\\\x":{"0|1|2|as":{"action_":"p=","nextState":"p"},"b":{"action_":"p=","nextState":"bp"},"3|o":{"action_":"q=","nextState":"q"},"d|D":{"action_":"q=","nextState":"dq"},"q|qd|qD|dq":{"action_":["output","q="],"nextState":"q"}},"=<>":{"0|1|2|3|a|as|o|q|d|D|qd|qD|dq":{"action_":[{"type_":"output","option":2},"bond"],"nextState":"3"}},"#":{"0|1|2|3|a|as|o":{"action_":[{"type_":"output","option":2},{"type_":"bond","option":"#"}],"nextState":"3"}},"{}^":{"*":{"action_":[{"type_":"output","option":1},{"type_":"insert","option":"tinySkip"}],"nextState":"1"}},"{}":{"*":{"action_":{"type_":"output","option":1},"nextState":"1"}},"{...}":{"0|1|2|3|a|as|b|p|bp":{"action_":"o=","nextState":"o"},"o|d|D|q|qd|qD|dq":{"action_":["output","o="],"nextState":"o"}},"$...$":{"a":{"action_":"a="},"0|1|2|3|as|b|p|bp|o":{"action_":"o=","nextState":"o"},"as|o":{"action_":"o="},"q|d|D|qd|qD|dq":{"action_":["output","o="],"nextState":"o"}},"\\\\bond{(...)}":{"*":{"action_":[{"type_":"output","option":2},"bond"],"nextState":"3"}},"\\\\frac{(...)}":{"*":{"action_":[{"type_":"output","option":1},"frac-output"],"nextState":"3"}},"\\\\overset{(...)}":{"*":{"action_":[{"type_":"output","option":2},"overset-output"],"nextState":"3"}},"\\\\underset{(...)}":{"*":{"action_":[{"type_":"output","option":2},"underset-output"],"nextState":"3"}},"\\\\underbrace{(...)}":{"*":{"action_":[{"type_":"output","option":2},"underbrace-output"],"nextState":"3"}},"\\\\color{(...)}{(...)}":{"*":{"action_":[{"type_":"output","option":2},"color-output"],"nextState":"3"}},"\\\\color{(...)}":{"*":{"action_":[{"type_":"output","option":2},"color0-output"]}},"\\\\ce{(...)}":{"*":{"action_":[{"type_":"output","option":2},"ce"],"nextState":"3"}},"\\\\,":{"*":{"action_":[{"type_":"output","option":1},"copy"],"nextState":"1"}},"\\\\pu{(...)}":{"*":{"action_":["output",{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}],"nextState":"3"}},"\\\\x{}{}|\\\\x{}|\\\\x":{"0|1|2|3|a|as|b|p|bp|o|c0":{"action_":["o=","output"],"nextState":"3"},"*":{"action_":["output","o=","output"],"nextState":"3"}},"others":{"*":{"action_":[{"type_":"output","option":1},"copy"],"nextState":"3"}},"else2":{"a":{"action_":"a to o","nextState":"o","revisit":true},"as":{"action_":["output","sb=true"],"nextState":"1","revisit":true},"r|rt|rd|rdt|rdq":{"action_":["output"],"nextState":"0","revisit":true},"*":{"action_":["output","copy"],"nextState":"3"}}}')),actions:{"o after d":function(e,C){let t;if((e.d||"").match(/^[1-9][0-9]*$/)){let L=e.d;e.d=void 0,t=this.output(e),t.push({type_:"tinySkip"}),e.b=L}else t=this.output(e);return V.actions["o="](e,C),t},"d= kv":function(e,C){e.d=C,e.dType="kv"},"charge or bond":function(e,C){if(e.beginsWithBond){let t=[];return V.concatArray(t,this.output(e)),V.concatArray(t,V.actions.bond(e,C,"-")),t}else{e.d=C;return}},"- after o/d":function(e,C,t){let L=V.patterns.match_("orbital",e.o||""),n=V.patterns.match_("one lowercase greek letter $",e.o||""),i=V.patterns.match_("one lowercase latin letter $",e.o||""),s=V.patterns.match_("$one lowercase latin letter$ $",e.o||""),r=C==="-"&&(L&&L.remainder===""||n||i||s);r&&!e.a&&!e.b&&!e.p&&!e.d&&!e.q&&!L&&i&&(e.o="$"+e.o+"$");let o=[];return r?(V.concatArray(o,this.output(e)),o.push({type_:"hyphen"})):(L=V.patterns.match_("digits",e.d||""),t&&L&&L.remainder===""?(V.concatArray(o,V.actions["d="](e,C)),V.concatArray(o,this.output(e))):(V.concatArray(o,this.output(e)),V.concatArray(o,V.actions.bond(e,C,"-")))),o},"a to o":function(e){e.o=e.a,e.a=void 0},"sb=true":function(e){e.sb=!0},"sb=false":function(e){e.sb=!1},"beginsWithBond=true":function(e){e.beginsWithBond=!0},"beginsWithBond=false":function(e){e.beginsWithBond=!1},"parenthesisLevel++":function(e){e.parenthesisLevel++},"parenthesisLevel--":function(e){e.parenthesisLevel--},"state of aggregation":function(e,C){return{type_:"state of aggregation",p1:V.go(C,"o")}},comma:function(e,C){let t=C.replace(/\s*$/,"");return t!==C&&e.parenthesisLevel===0?{type_:"comma enumeration L",p1:t}:{type_:"comma enumeration M",p1:t}},output:function(e,C,t){let L;if(!e.r)L=[],!e.a&&!e.b&&!e.p&&!e.o&&!e.q&&!e.d&&!t||(e.sb&&L.push({type_:"entitySkip"}),!e.o&&!e.q&&!e.d&&!e.b&&!e.p&&t!==2?(e.o=e.a,e.a=void 0):!e.o&&!e.q&&!e.d&&(e.b||e.p)?(e.o=e.a,e.d=e.b,e.q=e.p,e.a=e.b=e.p=void 0):e.o&&e.dType==="kv"&&V.patterns.match_("d-oxidation$",e.d||"")?e.dType="oxidation":e.o&&e.dType==="kv"&&!e.q&&(e.dType=void 0),L.push({type_:"chemfive",a:V.go(e.a,"a"),b:V.go(e.b,"bd"),p:V.go(e.p,"pq"),o:V.go(e.o,"o"),q:V.go(e.q,"pq"),d:V.go(e.d,e.dType==="oxidation"?"oxidation":"bd"),dType:e.dType}));else{let n;e.rdt==="M"?n=V.go(e.rd,"tex-math"):e.rdt==="T"?n=[{type_:"text",p1:e.rd||""}]:n=V.go(e.rd,"ce");let i;e.rqt==="M"?i=V.go(e.rq,"tex-math"):e.rqt==="T"?i=[{type_:"text",p1:e.rq||""}]:i=V.go(e.rq,"ce"),L={type_:"arrow",r:e.r,rd:n,rq:i}}for(let n in e)n!=="parenthesisLevel"&&n!=="beginsWithBond"&&delete e[n];return L},"oxidation-output":function(e,C){let t=["{"];return V.concatArray(t,V.go(C,"oxidation")),t.push("}"),t},"frac-output":function(e,C){return{type_:"frac-ce",p1:V.go(C[0],"ce"),p2:V.go(C[1],"ce")}},"overset-output":function(e,C){return{type_:"overset",p1:V.go(C[0],"ce"),p2:V.go(C[1],"ce")}},"underset-output":function(e,C){return{type_:"underset",p1:V.go(C[0],"ce"),p2:V.go(C[1],"ce")}},"underbrace-output":function(e,C){return{type_:"underbrace",p1:V.go(C[0],"ce"),p2:V.go(C[1],"ce")}},"color-output":function(e,C){return{type_:"color",color1:C[0],color2:V.go(C[1],"ce")}},"r=":function(e,C){e.r=C},"rdt=":function(e,C){e.rdt=C},"rd=":function(e,C){e.rd=C},"rqt=":function(e,C){e.rqt=C},"rq=":function(e,C){e.rq=C},operator:function(e,C,t){return{type_:"operator",kind_:t||C}}}},a:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":[]}},"1/2$":{"0":{"action_":"1/2"}},"else":{"0":{"action_":[],"nextState":"1","revisit":true}},"${(...)}$__$(...)$":{"*":{"action_":"tex-math tight","nextState":"1"}},",":{"*":{"action_":{"type_":"insert","option":"commaDecimal"}}},"else2":{"*":{"action_":"copy"}}}')),actions:{}},o:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":[]}},"1/2$":{"0":{"action_":"1/2"}},"else":{"0":{"action_":[],"nextState":"1","revisit":true}},"letters":{"*":{"action_":"rm"}},"\\\\ca":{"*":{"action_":{"type_":"insert","option":"circa"}}},"\\\\pu{(...)}":{"*":{"action_":[{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":"copy"}},"${(...)}$__$(...)$":{"*":{"action_":"tex-math"}},"{(...)}":{"*":{"action_":[{"type_":"write","option":"{"},"text",{"type_":"write","option":"}"}]}},"else2":{"*":{"action_":"copy"}}}')),actions:{}},text:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"{...}":{"*":{"action_":"text="}},"${(...)}$__$(...)$":{"*":{"action_":"tex-math"}},"\\\\greek":{"*":{"action_":["output","rm"]}},"\\\\pu{(...)}":{"*":{"action_":["output",{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"\\\\,|\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":["output","copy"]}},"else":{"*":{"action_":"text="}}}')),actions:{output:function(e){if(e.text_){let C={type_:"text",p1:e.text_};for(let t in e)delete e[t];return C}}}},pq:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":[]}},"state of aggregation $":{"*":{"action_":"state of aggregation"}},"i$":{"0":{"action_":[],"nextState":"!f","revisit":true}},"(KV letters),":{"0":{"action_":"rm","nextState":"0"}},"formula$":{"0":{"action_":[],"nextState":"f","revisit":true}},"1/2$":{"0":{"action_":"1/2"}},"else":{"0":{"action_":[],"nextState":"!f","revisit":true}},"${(...)}$__$(...)$":{"*":{"action_":"tex-math"}},"{(...)}":{"*":{"action_":"text"}},"a-z":{"f":{"action_":"tex-math"}},"letters":{"*":{"action_":"rm"}},"-9.,9":{"*":{"action_":"9,9"}},",":{"*":{"action_":{"type_":"insert+p1","option":"comma enumeration S"}}},"\\\\color{(...)}{(...)}":{"*":{"action_":"color-output"}},"\\\\color{(...)}":{"*":{"action_":"color0-output"}},"\\\\ce{(...)}":{"*":{"action_":"ce"}},"\\\\pu{(...)}":{"*":{"action_":[{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"\\\\,|\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":"copy"}},"else2":{"*":{"action_":"copy"}}}')),actions:{"state of aggregation":function(e,C){return{type_:"state of aggregation subscript",p1:V.go(C,"o")}},"color-output":function(e,C){return{type_:"color",color1:C[0],color2:V.go(C[1],"pq")}}}},bd:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":[]}},"x$":{"0":{"action_":[],"nextState":"!f","revisit":true}},"formula$":{"0":{"action_":[],"nextState":"f","revisit":true}},"else":{"0":{"action_":[],"nextState":"!f","revisit":true}},"-9.,9 no missing 0":{"*":{"action_":"9,9"}},".":{"*":{"action_":{"type_":"insert","option":"electron dot"}}},"a-z":{"f":{"action_":"tex-math"}},"x":{"*":{"action_":{"type_":"insert","option":"KV x"}}},"letters":{"*":{"action_":"rm"}},"\'":{"*":{"action_":{"type_":"insert","option":"prime"}}},"${(...)}$__$(...)$":{"*":{"action_":"tex-math"}},"{(...)}":{"*":{"action_":"text"}},"\\\\color{(...)}{(...)}":{"*":{"action_":"color-output"}},"\\\\color{(...)}":{"*":{"action_":"color0-output"}},"\\\\ce{(...)}":{"*":{"action_":"ce"}},"\\\\pu{(...)}":{"*":{"action_":[{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"\\\\,|\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":"copy"}},"else2":{"*":{"action_":"copy"}}}')),actions:{"color-output":function(e,C){return{type_:"color",color1:C[0],color2:V.go(C[1],"bd")}}}},oxidation:{transitions:y2({empty:{"*":{action_:"roman-numeral"}},"pm-operator":{"*":{action_:{type_:"o=+p1",option:"\\pm"}}},else:{"*":{action_:"o="}}}),actions:{"roman-numeral":function(e){return{type_:"roman numeral",p1:e.o||""}}}},"tex-math":{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"\\\\ce{(...)}":{"*":{"action_":["output","ce"]}},"\\\\pu{(...)}":{"*":{"action_":["output",{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"{...}|\\\\,|\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":"o="}},"else":{"*":{"action_":"o="}}}')),actions:{output:function(e){if(e.o){let C={type_:"tex-math",p1:e.o};for(let t in e)delete e[t];return C}}}},"tex-math tight":{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"\\\\ce{(...)}":{"*":{"action_":["output","ce"]}},"\\\\pu{(...)}":{"*":{"action_":["output",{"type_":"write","option":"{"},"pu",{"type_":"write","option":"}"}]}},"{...}|\\\\,|\\\\x{}{}|\\\\x{}|\\\\x":{"*":{"action_":"o="}},"-|+":{"*":{"action_":"tight operator"}},"else":{"*":{"action_":"o="}}}')),actions:{"tight operator":function(e,C){e.o=(e.o||"")+"{"+C+"}"},output:function(e){if(e.o){let C={type_:"tex-math",p1:e.o};for(let t in e)delete e[t];return C}}}},"9,9":{transitions:y2({empty:{"*":{action_:[]}},",":{"*":{action_:"comma"}},else:{"*":{action_:"copy"}}}),actions:{comma:function(){return{type_:"commaDecimal"}}}},pu:{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"space$":{"*":{"action_":["output","space"]}},"{[(|)]}":{"0|a":{"action_":"copy"}},"(-)(9)^(-9)":{"0":{"action_":"number^","nextState":"a"}},"(-)(9.,9)(e)(99)":{"0":{"action_":"enumber","nextState":"a"}},"space":{"0|a":{"action_":[]}},"pm-operator":{"0|a":{"action_":{"type_":"operator","option":"\\\\pm"},"nextState":"0"}},"operator":{"0|a":{"action_":"copy","nextState":"0"}},"//":{"d":{"action_":"o=","nextState":"/"}},"/":{"d":{"action_":"o=","nextState":"/"}},"{...}|else":{"0|d":{"action_":"d=","nextState":"d"},"a":{"action_":["space","d="],"nextState":"d"},"/|q":{"action_":"q=","nextState":"q"}}}')),actions:{enumber:function(e,C){let t=[];return C[0]==="+-"||C[0]==="+/-"?t.push("\\pm "):C[0]&&t.push(C[0]),C[1]&&(V.concatArray(t,V.go(C[1],"pu-9,9")),C[2]&&(C[2].match(/[,.]/)?V.concatArray(t,V.go(C[2],"pu-9,9")):t.push(C[2])),(C[3]||C[4])&&(C[3]==="e"||C[4]==="*"?t.push({type_:"cdot"}):t.push({type_:"times"}))),C[5]&&t.push("10^{"+C[5]+"}"),t},"number^":function(e,C){let t=[];return C[0]==="+-"||C[0]==="+/-"?t.push("\\pm "):C[0]&&t.push(C[0]),V.concatArray(t,V.go(C[1],"pu-9,9")),t.push("^{"+C[2]+"}"),t},operator:function(e,C,t){return{type_:"operator",kind_:t||C}},space:function(){return{type_:"pu-space-1"}},output:function(e){let C,t=V.patterns.match_("{(...)}",e.d||"");t&&t.remainder===""&&(e.d=t.match_);let L=V.patterns.match_("{(...)}",e.q||"");if(L&&L.remainder===""&&(e.q=L.match_),e.d&&(e.d=e.d.replace(/\u00B0C|\^oC|\^{o}C/g,"{}^{\\circ}C"),e.d=e.d.replace(/\u00B0F|\^oF|\^{o}F/g,"{}^{\\circ}F")),e.q){e.q=e.q.replace(/\u00B0C|\^oC|\^{o}C/g,"{}^{\\circ}C"),e.q=e.q.replace(/\u00B0F|\^oF|\^{o}F/g,"{}^{\\circ}F");let n={d:V.go(e.d,"pu"),q:V.go(e.q,"pu")};e.o==="//"?C={type_:"pu-frac",p1:n.d,p2:n.q}:(C=n.d,n.d.length>1||n.q.length>1?C.push({type_:" / "}):C.push({type_:"/"}),V.concatArray(C,n.q))}else C=V.go(e.d,"pu-2");for(let n in e)delete e[n];return C}}},"pu-2":{transitions:y2(JSON.parse('{"empty":{"*":{"action_":"output"}},"*":{"*":{"action_":["output","cdot"],"nextState":"0"}},"\\\\x":{"*":{"action_":"rm="}},"space":{"*":{"action_":["output","space"],"nextState":"0"}},"^{(...)}|^(-1)":{"1":{"action_":"^(-1)"}},"-9.,9":{"0":{"action_":"rm=","nextState":"0"},"1":{"action_":"^(-1)","nextState":"0"}},"{...}|else":{"*":{"action_":"rm=","nextState":"1"}}}')),actions:{cdot:function(){return{type_:"tight cdot"}},"^(-1)":function(e,C){e.rm+="^{"+C+"}"},space:function(){return{type_:"pu-space-2"}},output:function(e){let C=[];if(e.rm){let t=V.patterns.match_("{(...)}",e.rm||"");t&&t.remainder===""?C=V.go(t.match_,"pu"):C={type_:"rm",p1:e.rm}}for(let t in e)delete e[t];return C}}},"pu-9,9":{transitions:y2({empty:{0:{action_:"output-0"},o:{action_:"output-o"}},",":{0:{action_:["output-0","comma"],nextState:"o"}},".":{0:{action_:["output-0","copy"],nextState:"o"}},else:{"*":{action_:"text="}}}),actions:{comma:function(){return{type_:"commaDecimal"}},"output-0":function(e){let C=[];if(e.text_=e.text_||"",e.text_.length>4){let t=e.text_.length%3;t===0&&(t=3);for(let L=e.text_.length-3;L>0;L-=3)C.push(e.text_.substr(L,3)),C.push({type_:"1000 separator"});C.push(e.text_.substr(0,t)),C.reverse()}else C.push(e.text_);for(let t in e)delete e[t];return C},"output-o":function(e){let C=[];if(e.text_=e.text_||"",e.text_.length>4){let t=e.text_.length-3,L;for(L=0;L<t;L+=3)C.push(e.text_.substr(L,3)),C.push({type_:"1000 separator"});C.push(e.text_.substr(L))}else C.push(e.text_);for(let t in e)delete e[t];return C}}}}},O1={go:function(e,C){if(!e)return"";let t="",L=!1;for(let n=0;n<e.length;n++){let i=e[n];typeof i=="string"?t+=i:(t+=O1._go2(i),i.type_==="1st-level escape"&&(L=!0))}return C&&!L&&t&&(t="{"+t+"}"),t},_goInner:function(e){return O1.go(e,!1)},_go2:function(e){let C;switch(e.type_){case"chemfive":C="";let t={a:O1._goInner(e.a),b:O1._goInner(e.b),p:O1._goInner(e.p),o:O1._goInner(e.o),q:O1._goInner(e.q),d:O1._goInner(e.d)};t.a&&(t.a.match(/^[+\-]/)&&(t.a="{"+t.a+"}"),C+=t.a+"\\,"),(t.b||t.p)&&(C+="{\\vphantom{A}}",C+="^{\\hphantom{"+(t.b||"")+"}}_{\\hphantom{"+(t.p||"")+"}}",C+="\\mkern-1.5mu",C+="{\\vphantom{A}}",C+="^{\\smash[t]{\\vphantom{2}}\\llap{"+(t.b||"")+"}}",C+="_{\\vphantom{2}\\llap{\\smash[t]{"+(t.p||"")+"}}}"),t.o&&(t.o.match(/^[+\-]/)&&(t.o="{"+t.o+"}"),C+=t.o),e.dType==="kv"?((t.d||t.q)&&(C+="{\\vphantom{A}}"),t.d&&(C+="^{"+t.d+"}"),t.q&&(C+="_{\\smash[t]{"+t.q+"}}")):e.dType==="oxidation"?(t.d&&(C+="{\\vphantom{A}}",C+="^{"+t.d+"}"),t.q&&(C+="{\\vphantom{A}}",C+="_{\\smash[t]{"+t.q+"}}")):(t.q&&(C+="{\\vphantom{A}}",C+="_{\\smash[t]{"+t.q+"}}"),t.d&&(C+="{\\vphantom{A}}",C+="^{"+t.d+"}"));break;case"rm":C="\\mathrm{"+e.p1+"}";break;case"text":e.p1.match(/[\^_]/)?(e.p1=e.p1.replace(" ","~").replace("-","\\text{-}"),C="\\mathrm{"+e.p1+"}"):C="\\text{"+e.p1+"}";break;case"roman numeral":C="\\mathrm{"+e.p1+"}";break;case"state of aggregation":C="\\mskip2mu "+O1._goInner(e.p1);break;case"state of aggregation subscript":C="\\mskip1mu "+O1._goInner(e.p1);break;case"bond":if(C=O1._getBond(e.kind_),!C)throw["MhchemErrorBond","mhchem Error. Unknown bond type ("+e.kind_+")"];break;case"frac":let L="\\frac{"+e.p1+"}{"+e.p2+"}";C="\\mathchoice{\\textstyle"+L+"}{"+L+"}{"+L+"}{"+L+"}";break;case"pu-frac":let n="\\frac{"+O1._goInner(e.p1)+"}{"+O1._goInner(e.p2)+"}";C="\\mathchoice{\\textstyle"+n+"}{"+n+"}{"+n+"}{"+n+"}";break;case"tex-math":C=e.p1+" ";break;case"frac-ce":C="\\frac{"+O1._goInner(e.p1)+"}{"+O1._goInner(e.p2)+"}";break;case"overset":C="\\overset{"+O1._goInner(e.p1)+"}{"+O1._goInner(e.p2)+"}";break;case"underset":C="\\underset{"+O1._goInner(e.p1)+"}{"+O1._goInner(e.p2)+"}";break;case"underbrace":C="\\underbrace{"+O1._goInner(e.p1)+"}_{"+O1._goInner(e.p2)+"}";break;case"color":C="{\\color{"+e.color1+"}{"+O1._goInner(e.color2)+"}}";break;case"color0":C="\\color{"+e.color+"}";break;case"arrow":let i={rd:O1._goInner(e.rd),rq:O1._goInner(e.rq)},s=O1._getArrow(e.r);i.rd||i.rq?e.r==="<=>"||e.r==="<=>>"||e.r==="<<=>"||e.r==="<-->"?(s="\\long"+s,i.rd&&(s="\\overset{"+i.rd+"}{"+s+"}"),i.rq&&(e.r==="<-->"?s="\\underset{\\lower2mu{"+i.rq+"}}{"+s+"}":s="\\underset{\\lower6mu{"+i.rq+"}}{"+s+"}"),s=" {}\\mathrel{"+s+"}{} "):(i.rq&&(s+="[{"+i.rq+"}]"),s+="{"+i.rd+"}",s=" {}\\mathrel{\\x"+s+"}{} "):s=" {}\\mathrel{\\long"+s+"}{} ",C=s;break;case"operator":C=O1._getOperator(e.kind_);break;case"1st-level escape":C=e.p1+" ";break;case"space":C=" ";break;case"tinySkip":C="\\mkern2mu";break;case"entitySkip":C="~";break;case"pu-space-1":C="~";break;case"pu-space-2":C="\\mkern3mu ";break;case"1000 separator":C="\\mkern2mu ";break;case"commaDecimal":C="{,}";break;case"comma enumeration L":C="{"+e.p1+"}\\mkern6mu ";break;case"comma enumeration M":C="{"+e.p1+"}\\mkern3mu ";break;case"comma enumeration S":C="{"+e.p1+"}\\mkern1mu ";break;case"hyphen":C="\\text{-}";break;case"addition compound":C="\\,{\\cdot}\\,";break;case"electron dot":C="\\mkern1mu \\bullet\\mkern1mu ";break;case"KV x":C="{\\times}";break;case"prime":C="\\prime ";break;case"cdot":C="\\cdot ";break;case"tight cdot":C="\\mkern1mu{\\cdot}\\mkern1mu ";break;case"times":C="\\times ";break;case"circa":C="{\\sim}";break;case"^":C="uparrow";break;case"v":C="downarrow";break;case"ellipsis":C="\\ldots ";break;case"/":C="/";break;case" / ":C="\\,/\\,";break;default:throw["MhchemBugT","mhchem bug T. Please report."]}return C},_getArrow:function(e){switch(e){case"->":return"rightarrow";case"\u2192":return"rightarrow";case"\u27F6":return"rightarrow";case"<-":return"leftarrow";case"<->":return"leftrightarrow";case"<-->":return"leftrightarrows";case"<=>":return"rightleftharpoons";case"\u21CC":return"rightleftharpoons";case"<=>>":return"Rightleftharpoons";case"<<=>":return"Leftrightharpoons";default:throw["MhchemBugT","mhchem bug T. Please report."]}},_getBond:function(e){switch(e){case"-":return"{-}";case"1":return"{-}";case"=":return"{=}";case"2":return"{=}";case"#":return"{\\equiv}";case"3":return"{\\equiv}";case"~":return"{\\tripledash}";case"~-":return"{\\rlap{\\lower.1em{-}}\\raise.1em{\\tripledash}}";case"~=":return"{\\rlap{\\lower.2em{-}}\\rlap{\\raise.2em{\\tripledash}}-}";case"~--":return"{\\rlap{\\lower.2em{-}}\\rlap{\\raise.2em{\\tripledash}}-}";case"-~-":return"{\\rlap{\\lower.2em{-}}\\rlap{\\raise.2em{-}}\\tripledash}";case"...":return"{{\\cdot}{\\cdot}{\\cdot}}";case"....":return"{{\\cdot}{\\cdot}{\\cdot}{\\cdot}}";case"->":return"{\\rightarrow}";case"<-":return"{\\leftarrow}";case"<":return"{<}";case">":return"{>}";default:throw["MhchemBugT","mhchem bug T. Please report."]}},_getOperator:function(e){switch(e){case"+":return" {}+{} ";case"-":return" {}-{} ";case"=":return" {}={} ";case"<":return" {}<{} ";case">":return" {}>{} ";case"<<":return" {}\\ll{} ";case">>":return" {}\\gg{} ";case"\\pm":return" {}\\pm{} ";case"\\approx":return" {}\\approx{} ";case"$\\approx$":return" {}\\approx{} ";case"v":return" \\downarrow{} ";case"(v)":return" \\downarrow{} ";case"^":return" \\uparrow{} ";case"(^)":return" \\uparrow{} ";default:throw["MhchemBugT","mhchem bug T. Please report."]}}}});
-var vm;
-var Sm;
-var U3;
-var Rm;
-var Tm;
-var a$;
-var iu=M(()=>{S1();t2();$1();Q1();j2();Q0();nu();L1();vm={relmo(e,C){let t=Object.assign({stretchy:!0,texClass:A.REL,mathvariant:"-mhchem"},C.attributes||{}),L=e.create("token","mo",t,C.char);e.Push(L)}},Sm=new Map([["\\mhchemx$3[$1]{$2}",/\\underset{\\lower2mu{(.*?)}}{\\overset{(.*?)}{\\long(.*?)}}/g],["\\mhchemx$2{$1}",/\\overset{(.*?)}{\\long(.*?)}/g],["\\mhchemBondTD",/\\rlap\{\\lower\.1em\{-\}\}\\raise\.1em\{\\tripledash\}/g],["\\mhchemBondTDD",/\\rlap\{\\lower\.2em\{-\}\}\\rlap\{\\raise\.2em\{\\tripledash\}\}-/g],["\\mhchemBondDTD",/\\rlap\{\\lower\.2em\{-\}\}\\rlap\{\\raise.2em\{-\}\}\\tripledash/g],[(e,C)=>{let t=`mhchem${C}`;return Tm.lookup(t)||Rm.lookup(t)?`\\${t}`:e},/\\(x?(?:long)?(?:left|right|[Ll]eftright|[Rr]ightleft)(?:arrow|harpoons))/g]]),U3={Machine(e,C,t){let L=e.GetArgument(C),n;try{n=a9.toTex(L,t);for(let[i,s]of Sm.entries())n=n.replace(s,i)}catch(i){throw new R(i[0],i[1])}e.string=n+e.string.substring(e.i),e.i=0},Macro:f.Macro,xArrow:Y.xArrow},Rm=new a1("mhchem",{ce:[U3.Machine,"ce"],pu:[U3.Machine,"pu"],mhchemxrightarrow:[U3.xArrow,58409,5,9],mhchemxleftarrow:[U3.xArrow,58408,9,5],mhchemxleftrightarrow:[U3.xArrow,58410,9,9],mhchemxleftrightarrows:[U3.xArrow,58411,9,9],mhchemxrightleftharpoons:[U3.xArrow,58376,5,9],mhchemxRightleftharpoons:[U3.xArrow,58377,5,9],mhchemxLeftrightharpoons:[U3.xArrow,58378,9,11]}),Tm=new w1("mhchem-chars",vm.relmo,JSON.parse('{"tripledash":["",{"stretchy":false}],"mhchemBondTD":["",{"stretchy":false}],"mhchemBondTDD":["",{"stretchy":false}],"mhchemBondDTD":["",{"stretchy":false}],"mhchemlongleftarrow":"","mhchemlongrightarrow":"","mhchemlongleftrightarrow":"","mhchemlongrightleftharpoons":"","mhchemlongRightleftharpoons":"","mhchemlongLeftrightharpoons":"","mhchemlongleftrightarrows":"","mhchemrightarrow":"","mhchemleftarrow":"","mhchemleftrightarrow":""}')),a$=x1.create("mhchem",{[Q.HANDLER]:{[X.MACRO]:["mhchem","mhchem-chars"]}})});
-var c9;
-var n7;
-var su=M(()=>{A2();P0();L1();j1();c9={CD(e,C){e.Push(C);let t=e.itemFactory.create("array"),L=e.configuration.options.amscd;return t.setProperties({minw:e.stack.env.CD_minw||L.harrowsize,minh:e.stack.env.CD_minh||L.varrowsize}),t.arraydef={columnalign:"center",columnspacing:L.colspace,rowspacing:L.rowspace,displaystyle:!0},t},arrow(e,C){let t=e.i,L=e.GetNext();if(L.match(/[><VA.|=]/))e.i++;else return e.i=t,I0(e,C);let n=e.stack.Top();(!n.isKind("array")||n.Size())&&(c9.cell(e,C),n=e.stack.Top());let i=n,s=i.table.length%2===1,r=(i.row.length+(s?0:1))%2;for(;r;)c9.cell(e,C),r--;let o,a={minsize:i.getProperty("minw"),stretchy:!0},l={minsize:i.getProperty("minh"),stretchy:!0,symmetric:!0,lspace:0,rspace:0};if(L==="|")o=e.create("token","mo",l,"\u2225");else if(L==="=")o=e.create("token","mo",a,"=");else if(L!=="."){let u={">":"\u2192","<":"\u2190",V:"\u2193",A:"\u2191"}[L],x=e.GetUpTo(C+L,L),p=e.GetUpTo(C+L,L);if(L===">"||L==="<"){o=e.create("token","mo",a,u),x||(x="\\kern "+i.getProperty("minw"));let h={width:"+.67em",lspace:".33em"};o=e.create("node","munderover",[o]);let d=new t1(x,e.stack.env,e.configuration).mml(),m=e.create("node","mpadded",[d],h);if(g.setAttribute(m,"voffset",".1em"),g.setChild(o,o.over,m),p){let E=new t1(p,e.stack.env,e.configuration).mml();g.setChild(o,o.under,e.create("node","mpadded",[E],h))}e.configuration.options.amscd.hideHorizontalLabels&&(o=e.create("node","mpadded",[o],{depth:0,height:".67em"}))}else{let h=e.create("token","mo",l,u);o=h,(x||p)&&(o=e.create("node","mrow"),x&&g.appendChildren(o,[new t1("\\scriptstyle\\raise.125em{\\vcenter{\\llap{"+x+"}}}",e.stack.env,e.configuration).mml()]),h.texClass=A.ORD,g.appendChildren(o,[h]),p&&g.appendChildren(o,[new t1("\\scriptstyle\\raise.125em{\\vcenter{\\rlap{"+p+"}}}",e.stack.env,e.configuration).mml()]))}}o&&e.Push(o),c9.cell(e,C)},cell(e,C){let t=e.stack.Top();(t.table||[]).length%2===0&&(t.row||[]).length===0&&e.Push(e.create("node","mpadded",[],{height:"8.5pt",depth:"2pt"})),e.Push(e.itemFactory.create("cell").setProperties({isEntry:!0,name:C}))},minCDarrowwidth(e,C){e.stack.env.CD_minw=e.GetDimen(C)},minCDarrowheight(e,C){e.stack.env.CD_minh=e.GetDimen(C)}},n7=c9});
-var ru=M(()=>{$1();e3();su();new d2("amscd_environment",m1.environment,{CD:n7.CD});new a1("amscd_macros",{minCDarrowwidth:n7.minCDarrowwidth,minCDarrowheight:n7.minCDarrowheight});new h2("amscd_special",{"@":n7.arrow})});
-var A$;
-var ou=M(()=>{S1();t2();ru();A$=x1.create("amscd",{[Q.HANDLER]:{[X.CHARACTER]:["amscd_special"],[X.MACRO]:["amscd_macros"],[X.ENVIRONMENT]:["amscd_environment"]},[Q.OPTIONS]:{amscd:{colspace:"5pt",rowspace:"5pt",harrowsize:"2.75em",varrowsize:"1.75em",hideHorizontalLabels:!1}}})});
-var _4;
-var Je=M(()=>{q1();A2();_4={splitOptions(e,C=null){return _.keyvalOptions(e,C,!0)},columnCount(e){let C=0;for(let t of e.childNodes){let L=t.childNodes.length-(t.isKind("mlabeledtr")?1:0);L>C&&(C=L)}return C},cellBlock(e,C,t,L){let n=t.create("node","mpadded",[],{height:0,depth:0,voffset:"-1height"}),i=new t1(e,t.stack.env,t.configuration),s=i.mml();L&&i.configuration.tags.label&&(i.configuration.tags.currentTag.env=L,i.configuration.tags.getTag(!0));for(let r of s.isInferred?s.childNodes:[s])n.appendChild(r);return n.appendChild(t.create("node","mphantom",[t.create("node","mpadded",[C],{width:0})])),n},topRowTable(e,C){let t=_.copyNode(e,C);return t.setChildren(t.childNodes.slice(0,1)),t.attributes.set("align","baseline 1"),e.factory.create("mphantom",{},[C.create("node","mpadded",[t],{width:0})])},rowspanCell(e,C,t,L,n){e.appendChild(L.create("node","mpadded",[this.cellBlock(C,_.copyNode(t,L),L,n),this.topRowTable(t,L)],{height:0,depth:0,voffset:"height"}))},left(e,C,t,L,n=""){e.attributes.set("columnalign","right "+e.attributes.get("columnalign")),e.attributes.set("columnspacing","0em "+e.attributes.get("columnspacing")),e.childNodes.length===0&&e.appendChild(L.create("node","mtr"));let i;for(let s of e.childNodes.slice(0).reverse())i=L.create("node","mtd"),s.childNodes.unshift(i),i.parent=s,s.isKind("mlabeledtr")&&(s.childNodes[0]=s.childNodes[1],s.childNodes[1]=i);this.rowspanCell(i,t,C,L,n)},right(e,C,t,L,n=""){e.childNodes.length===0&&e.appendChild(L.create("node","mtr"));let i=e.childNodes[0],s=_4.columnCount(e)+(i.isKind("mlabeledtr")?1:0);for(;i.childNodes.length<s;)i.appendChild(L.create("node","mtd"));let r=i.appendChild(L.create("node","mtd"));_4.rowspanCell(r,t,C,L,n),e.attributes.set("columnalign",(e.attributes.get("columnalign")||"").split(/ /).slice(0,s).join(" ")+" left"),e.attributes.set("columnspacing",e.attributes.get("columnspacing").split(/ /).slice(0,s-1).join(" ")+" 0em")},adjustTable(e,C){let t=e.getProperty("left"),L=e.getProperty("right");if(t||L){let n=e.Last,i=_.copyNode(n,C);t&&this.left(n,i,t,C),L&&this.right(n,i,L,C)}},allowEnv:{equation:!0,align:!0,gather:!0,flalign:!0,alignat:!0,multline:!0},checkEnv(e){return Object.hasOwn(this.allowEnv,e.replace(/\*$/,""))||!1}}});
-export{Je,_4,eu,Lu,iu,ou};
+import{__esm,init_Options,init_InputJax,init_OutputJax,init_MathList,init_MathItem,init_MmlFactory,init_BitField,init_PrioritizedList,init_Retries,PrioritizedList,STATE,AbstractInputJax,AbstractOutputJax,AbstractMathList,AbstractMathItem,userOptions,defaultOptions,MmlFactory,handleRetriesFor,expandable,BitFieldClass,makeArray,newState,separateOptions,mathjax,init_mathjax,init_string,sortLength,quotePattern,protoItem,init_MmlNode,init_mo,AbstractMmlNode,AbstractMmlEmptyNode,MmlMo,TEXCLASS}from'./p14.js';export*from'./p14.js';
+// node_modules/@mathjax/src/mjs/core/MathDocument.js
+var __awaiter3;
+var RenderList;
+var resetOptions;
+var resetAllOptions;
+var DefaultInputJax;
+var DefaultOutputJax;
+var DefaultMathList;
+var DefaultMathItem;
+var AbstractMathDocument;
+var init_MathDocument = __esm({
+  "node_modules/@mathjax/src/mjs/core/MathDocument.js"() {
+    init_Options();
+    init_InputJax();
+    init_OutputJax();
+    init_MathList();
+    init_MathItem();
+    init_MmlFactory();
+    init_BitField();
+    init_PrioritizedList();
+    init_Retries();
+    __awaiter3 = function(thisArg, _arguments, P, generator) {
+      function adopt(value) {
+        return value instanceof P ? value : new P(function(resolve) {
+          resolve(value);
+        });
+      }
+      return new (P || (P = Promise))(function(resolve, reject) {
+        function fulfilled(value) {
+          try {
+            step(generator.next(value));
+          } catch (e) {
+            reject(e);
+          }
+        }
+        function rejected(value) {
+          try {
+            step(generator["throw"](value));
+          } catch (e) {
+            reject(e);
+          }
+        }
+        function step(result) {
+          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+        }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+      });
+    };
+    RenderList = class extends PrioritizedList {
+      static create(actions) {
+        const list3 = new this();
+        for (const id of Object.keys(actions)) {
+          const [action, priority] = this.action(id, actions[id]);
+          if (priority) {
+            list3.add(action, priority);
+          }
+        }
+        return list3;
+      }
+      static action(id, action) {
+        let renderDoc, renderMath;
+        let convert = true;
+        const priority = action[0];
+        if (action.length === 1 || typeof action[1] === "boolean") {
+          if (action.length === 2) {
+            convert = action[1];
+          }
+          [renderDoc, renderMath] = this.methodActions(id);
+        } else if (typeof action[1] === "string") {
+          if (typeof action[2] === "string") {
+            if (action.length === 4) {
+              convert = action[3];
+            }
+            const [method1, method2] = action.slice(1);
+            [renderDoc, renderMath] = this.methodActions(method1, method2);
+          } else {
+            if (action.length === 3) {
+              convert = action[2];
+            }
+            [renderDoc, renderMath] = this.methodActions(action[1]);
+          }
+        } else {
+          if (action.length === 4) {
+            convert = action[3];
+          }
+          [renderDoc, renderMath] = action.slice(1);
+        }
+        return [
+          { id, renderDoc, renderMath, convert },
+          priority
+        ];
+      }
+      static methodActions(method1, method2 = method1) {
+        return [
+          (document) => {
+            if (method1) {
+              document[method1]();
+            }
+            return false;
+          },
+          (math, document) => {
+            if (method2) {
+              math[method2](document);
+            }
+            return false;
+          }
+        ];
+      }
+      renderDoc(document, start = STATE.UNPROCESSED) {
+        for (const item of this.items) {
+          if (item.priority >= start) {
+            if (item.item.renderDoc(document))
+              return;
+          }
+        }
+      }
+      renderMath(math, document, start = STATE.UNPROCESSED) {
+        for (const item of this.items) {
+          if (item.priority >= start) {
+            if (item.item.renderMath(math, document))
+              return;
+          }
+        }
+      }
+      renderConvert(math, document, end = STATE.LAST) {
+        for (const item of this.items) {
+          if (item.priority > end)
+            return;
+          if (item.item.convert) {
+            if (item.item.renderMath(math, document))
+              return;
+          }
+        }
+      }
+      findID(id) {
+        for (const item of this.items) {
+          if (item.item.id === id) {
+            return item.item;
+          }
+        }
+        return null;
+      }
+    };
+    resetOptions = {
+      all: false,
+      processed: false,
+      inputJax: null,
+      outputJax: null
+    };
+    resetAllOptions = {
+      all: true,
+      processed: true,
+      inputJax: [],
+      outputJax: []
+    };
+    DefaultInputJax = class extends AbstractInputJax {
+      compile(_math) {
+        return null;
+      }
+    };
+    DefaultOutputJax = class extends AbstractOutputJax {
+      typeset(_math, _document = null) {
+        return null;
+      }
+      escaped(_math, _document) {
+        return null;
+      }
+    };
+    DefaultMathList = class extends AbstractMathList {
+    };
+    DefaultMathItem = class extends AbstractMathItem {
+    };
+    AbstractMathDocument = class _AbstractMathDocument {
+      constructor(document, adaptor, options3) {
+        const CLASS = this.constructor;
+        this.document = document;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.math = new (this.options["MathList"] || DefaultMathList)();
+        this.renderActions = RenderList.create(this.options["renderActions"]);
+        this._actionPromises = [];
+        this._readyPromise = Promise.resolve();
+        this.processed = new _AbstractMathDocument.ProcessBits();
+        this.outputJax = this.options["OutputJax"] || new DefaultOutputJax();
+        let inputJax = this.options["InputJax"] || [new DefaultInputJax()];
+        if (!Array.isArray(inputJax)) {
+          inputJax = [inputJax];
+        }
+        this.inputJax = inputJax;
+        this.adaptor = adaptor;
+        this.outputJax.setAdaptor(adaptor);
+        this.inputJax.map((jax) => jax.setAdaptor(adaptor));
+        this.mmlFactory = this.options["MmlFactory"] || new MmlFactory();
+        this.inputJax.map((jax) => jax.setMmlFactory(this.mmlFactory));
+        this.outputJax.initialize();
+        this.inputJax.map((jax) => jax.initialize());
+      }
+      get kind() {
+        return this.constructor.KIND;
+      }
+      addRenderAction(id, ...action) {
+        const [fn, p] = RenderList.action(id, action);
+        this.renderActions.add(fn, p);
+      }
+      removeRenderAction(id) {
+        const action = this.renderActions.findID(id);
+        if (action) {
+          this.renderActions.remove(action);
+        }
+      }
+      render() {
+        this.clearPromises();
+        this.renderActions.renderDoc(this);
+        return this;
+      }
+      renderPromise() {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          this.render();
+          yield this.actionPromises();
+          this.clearPromises();
+          return this;
+        })));
+      }
+      rerender(start = STATE.RERENDER) {
+        this.state(start - 1);
+        this.render();
+        return this;
+      }
+      rerenderPromise(start = STATE.RERENDER) {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          this.rerender(start);
+          yield this.actionPromises();
+          this.clearPromises();
+          return this;
+        })));
+      }
+      convert(math, options3 = {}) {
+        let { format, display, end, ex, em: em2, containerWidth, scale: scale2, family } = userOptions({
+          format: this.inputJax[0].name,
+          display: true,
+          end: STATE.LAST,
+          em: 16,
+          ex: 8,
+          containerWidth: null,
+          scale: 1,
+          family: ""
+        }, options3);
+        if (containerWidth === null) {
+          containerWidth = 80 * ex;
+        }
+        const jax = this.inputJax.reduce((jax2, ijax) => ijax.name === format ? ijax : jax2, null);
+        const mitem = new this.options.MathItem(math, jax, display);
+        mitem.start.node = this.adaptor.body(this.document);
+        mitem.setMetrics(em2, ex, containerWidth, scale2);
+        if (family && this.outputJax.options.mtextInheritFont) {
+          mitem.outputData.mtextFamily = family;
+        }
+        if (family && this.outputJax.options.merrorInheritFont) {
+          mitem.outputData.merrorFamily = family;
+        }
+        this.clearPromises();
+        mitem.convert(this, end);
+        return mitem.typesetRoot || mitem.root;
+      }
+      convertPromise(math, options3 = {}) {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          const node = this.convert(math, options3);
+          yield this.actionPromises();
+          this.clearPromises();
+          return node;
+        })));
+      }
+      whenReady(action) {
+        return this._readyPromise = this._readyPromise.catch((_) => {
+        }).then(() => {
+          const ready3 = this._readyPromise;
+          this._readyPromise = Promise.resolve();
+          const result = action();
+          const promise = this._readyPromise.then(() => result);
+          this._readyPromise = ready3;
+          return promise;
+        });
+      }
+      actionPromises() {
+        return Promise.all(this._actionPromises);
+      }
+      clearPromises() {
+        this._actionPromises = [];
+      }
+      savePromise(promise) {
+        this._actionPromises.push(promise);
+      }
+      findMath(_options = null) {
+        this.processed.set("findMath");
+        return this;
+      }
+      compile() {
+        if (!this.processed.isSet("compile")) {
+          const recompile = [];
+          for (const math of this.math) {
+            this.compileMath(math);
+            if (math.inputData.recompile !== void 0) {
+              recompile.push(math);
+            }
+          }
+          for (const math of recompile) {
+            const data = math.inputData.recompile;
+            math.state(data.state);
+            math.inputData.recompile = data;
+            this.compileMath(math);
+          }
+          this.processed.set("compile");
+        }
+        return this;
+      }
+      compileMath(math) {
+        try {
+          math.compile(this);
+        } catch (err) {
+          if (err.retry || err.restart) {
+            throw err;
+          }
+          this.options["compileError"](this, math, err);
+          math.inputData["error"] = err;
+        }
+      }
+      compileError(math, err) {
+        math.root = this.mmlFactory.create("math", null, [
+          this.mmlFactory.create("merror", { "data-mjx-error": err.message, title: err.message }, [
+            this.mmlFactory.create("mtext", null, [
+              this.mmlFactory.create("text").setText("Math input error")
+            ])
+          ])
+        ]);
+        if (math.display) {
+          math.root.attributes.set("display", "block");
+        }
+        math.inputData.error = err.message;
+      }
+      typeset() {
+        if (!this.processed.isSet("typeset")) {
+          for (const math of this.math) {
+            try {
+              math.typeset(this);
+            } catch (err) {
+              if (err.retry || err.restart) {
+                throw err;
+              }
+              this.options["typesetError"](this, math, err);
+              math.outputData["error"] = err;
+            }
+          }
+          this.processed.set("typeset");
+        }
+        return this;
+      }
+      typesetError(math, err) {
+        math.typesetRoot = this.adaptor.node("mjx-container", {
+          class: "MathJax mjx-output-error",
+          jax: this.outputJax.name
+        }, [
+          this.adaptor.node("span", {
+            "data-mjx-error": err.message,
+            title: err.message,
+            style: {
+              color: "red",
+              "background-color": "yellow",
+              "line-height": "normal"
+            }
+          }, [this.adaptor.text("Math output error")])
+        ]);
+        if (math.display) {
+          this.adaptor.setAttributes(math.typesetRoot, {
+            style: {
+              display: "block",
+              margin: "1em 0",
+              "text-align": "center"
+            }
+          });
+        }
+        math.outputData.error = err.message;
+      }
+      getMetrics() {
+        if (!this.processed.isSet("getMetrics")) {
+          this.outputJax.getMetrics(this);
+          this.processed.set("getMetrics");
+        }
+        return this;
+      }
+      updateDocument() {
+        if (!this.processed.isSet("updateDocument")) {
+          for (const math of this.math.reversed()) {
+            math.updateDocument(this);
+          }
+          this.processed.set("updateDocument");
+        }
+        return this;
+      }
+      removeFromDocument(_restore = false) {
+        return this;
+      }
+      state(state, restore = false) {
+        for (const math of this.math) {
+          math.state(state, restore);
+        }
+        if (state < STATE.INSERTED) {
+          this.processed.clear("updateDocument");
+        }
+        if (state < STATE.TYPESET) {
+          this.processed.clear("typeset");
+          this.processed.clear("getMetrics");
+        }
+        if (state < STATE.COMPILED) {
+          this.processed.clear("compile");
+        }
+        if (state < STATE.FINDMATH) {
+          this.processed.clear("findMath");
+        }
+        return this;
+      }
+      reset(options3 = { processed: true }) {
+        options3 = userOptions(Object.assign({}, resetOptions), options3);
+        if (options3.all) {
+          Object.assign(options3, resetAllOptions);
+        }
+        if (options3.processed) {
+          this.processed.reset();
+        }
+        if (options3.inputJax) {
+          this.inputJax.forEach((jax) => jax.reset(...options3.inputJax));
+        }
+        if (options3.outputJax) {
+          this.outputJax.reset(...options3.outputJax);
+        }
+        return this;
+      }
+      clear() {
+        this.reset();
+        this.math.clear();
+        return this;
+      }
+      done() {
+        return Promise.resolve();
+      }
+      concat(list3) {
+        this.math.merge(list3);
+        return this;
+      }
+      clearMathItemsWithin(containers) {
+        const items = this.getMathItemsWithin(containers);
+        for (const item of items.slice(0).reverse()) {
+          item.clear();
+        }
+        this.math.remove(...items);
+        return items;
+      }
+      getMathItemsWithin(elements2) {
+        if (!Array.isArray(elements2)) {
+          elements2 = [elements2];
+        }
+        const adaptor = this.adaptor;
+        const items = [];
+        const containers = adaptor.getElements(elements2, this.document);
+        ITEMS: for (const item of this.math) {
+          for (const container of containers) {
+            if (item.start.node && adaptor.contains(container, item.start.node)) {
+              items.push(item);
+              continue ITEMS;
+            }
+          }
+        }
+        return items;
+      }
+    };
+    AbstractMathDocument.KIND = "MathDocument";
+    AbstractMathDocument.OPTIONS = {
+      OutputJax: null,
+      InputJax: null,
+      MmlFactory: null,
+      MathList: DefaultMathList,
+      MathItem: DefaultMathItem,
+      compileError: (doc, math, err) => {
+        doc.compileError(math, err);
+      },
+      typesetError: (doc, math, err) => {
+        doc.typesetError(math, err);
+      },
+      renderActions: expandable({
+        find: [STATE.FINDMATH, "findMath", "", false],
+        compile: [STATE.COMPILED],
+        metrics: [STATE.METRICS, "getMetrics", "", false],
+        typeset: [STATE.TYPESET],
+        update: [STATE.INSERTED, "updateDocument", false]
+      })
+    };
+    AbstractMathDocument.ProcessBits = BitFieldClass("findMath", "compile", "getMetrics", "typeset", "updateDocument");
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Handler.js
+var DefaultMathDocument;
+var AbstractHandler;
+var init_Handler = __esm({
+  "node_modules/@mathjax/src/mjs/core/Handler.js"() {
+    init_MathDocument();
+    DefaultMathDocument = class extends AbstractMathDocument {
+    };
+    AbstractHandler = class {
+      constructor(adaptor, priority = 5) {
+        this.documentClass = DefaultMathDocument;
+        this.adaptor = adaptor;
+        this.priority = priority;
+      }
+      get name() {
+        return this.constructor.NAME;
+      }
+      handlesDocument(_document) {
+        return false;
+      }
+      create(document, options3) {
+        return new this.documentClass(document, this.adaptor, options3);
+      }
+    };
+    AbstractHandler.NAME = "generic";
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js
+var HTMLMathItem;
+var init_HTMLMathItem = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js"() {
+    init_MathItem();
+    HTMLMathItem = class extends AbstractMathItem {
+      get adaptor() {
+        return this.inputJax.adaptor;
+      }
+      constructor(math, jax, display = true, start = { node: null, n: 0, delim: "" }, end = { node: null, n: 0, delim: "" }) {
+        super(math, jax, display, start, end);
+      }
+      updateDocument(_html) {
+        if (this.state() < STATE.INSERTED) {
+          if (this.inputJax.processStrings) {
+            let node = this.start.node;
+            if (node === this.end.node) {
+              if (this.end.n && this.end.n < this.adaptor.value(this.end.node).length) {
+                this.adaptor.split(this.end.node, this.end.n);
+              }
+              if (this.start.n) {
+                node = this.adaptor.split(this.start.node, this.start.n);
+              }
+              if (this.adaptor.parent(node)) {
+                this.adaptor.replace(this.typesetRoot, node);
+              }
+            } else {
+              if (this.start.n) {
+                node = this.adaptor.split(node, this.start.n);
+              }
+              while (node !== this.end.node) {
+                const next = this.adaptor.next(node);
+                this.adaptor.remove(node);
+                node = next;
+              }
+              this.adaptor.insert(this.typesetRoot, node);
+              if (this.end.n < this.adaptor.value(node).length) {
+                this.adaptor.split(node, this.end.n);
+              }
+              this.adaptor.remove(node);
+            }
+          } else {
+            this.adaptor.replace(this.typesetRoot, this.start.node);
+          }
+          this.start.node = this.end.node = this.typesetRoot;
+          this.start.n = this.end.n = 0;
+          this.state(STATE.INSERTED);
+        }
+      }
+      updateStyleSheet(document) {
+        document.addStyleSheet();
+      }
+      removeFromDocument(restore = false) {
+        super.removeFromDocument(restore);
+        if (this.state() >= STATE.TYPESET) {
+          const adaptor = this.adaptor;
+          const node = this.start.node;
+          let math = adaptor.text("");
+          if (restore) {
+            const text = this.start.delim + this.math + this.end.delim;
+            if (this.inputJax.processStrings) {
+              math = adaptor.text(text);
+            } else {
+              const doc = adaptor.parse(text, "text/html");
+              math = adaptor.firstChild(adaptor.body(doc));
+            }
+          }
+          if (adaptor.parent(node)) {
+            adaptor.replace(math, node);
+          }
+          this.start.node = this.end.node = math;
+          this.start.n = this.end.n = 0;
+        }
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js
+var HTMLMathList;
+var init_HTMLMathList = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js"() {
+    init_MathList();
+    HTMLMathList = class extends AbstractMathList {
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js
+var HTMLDomStrings;
+var init_HTMLDomStrings = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js"() {
+    init_Options();
+    HTMLDomStrings = class {
+      constructor(options3 = null) {
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.init();
+        this.getPatterns();
+      }
+      init() {
+        this.strings = [];
+        this.string = "";
+        this.snodes = [];
+        this.nodes = [];
+        this.stack = [];
+      }
+      getPatterns() {
+        const skip = makeArray(this.options["skipHtmlTags"]);
+        const ignore = makeArray(this.options["ignoreHtmlClass"]);
+        const process2 = makeArray(this.options["processHtmlClass"]);
+        this.skipHtmlTags = new RegExp("^(?:" + skip.join("|") + ")$", "i");
+        this.ignoreHtmlClass = new RegExp("(?:^| )(?:" + ignore.join("|") + ")(?: |$)");
+        this.processHtmlClass = new RegExp("(?:^| )(?:" + process2 + ")(?: |$)");
+      }
+      pushString() {
+        if (this.string.match(/\S/)) {
+          this.strings.push(this.string);
+          this.nodes.push(this.snodes);
+        }
+        this.string = "";
+        this.snodes = [];
+      }
+      extendString(node, text) {
+        this.snodes.push([node, text.length]);
+        this.string += text;
+      }
+      handleText(node, ignore) {
+        if (!ignore) {
+          this.extendString(node, this.adaptor.value(node));
+        }
+        return this.adaptor.next(node);
+      }
+      handleTag(node, ignore) {
+        if (!ignore) {
+          const text = this.options["includeHtmlTags"][this.adaptor.kind(node)];
+          if (text instanceof Function) {
+            this.extendString(node, text(node, this.adaptor));
+          } else {
+            this.extendString(node, text);
+          }
+        }
+        return this.adaptor.next(node);
+      }
+      handleContainer(node, ignore) {
+        this.pushString();
+        const cname = this.adaptor.getAttribute(node, "class") || "";
+        const tname = this.adaptor.kind(node) || "";
+        const process2 = this.processHtmlClass.exec(cname);
+        let next = node;
+        if (this.adaptor.firstChild(node) && !this.adaptor.getAttribute(node, "data-MJX") && (process2 || !this.skipHtmlTags.exec(tname))) {
+          if (this.adaptor.next(node)) {
+            this.stack.push([this.adaptor.next(node), ignore]);
+          }
+          next = this.adaptor.firstChild(node);
+          ignore = (ignore || this.ignoreHtmlClass.exec(cname)) && !process2;
+        } else {
+          next = this.adaptor.next(node);
+        }
+        return [next, ignore];
+      }
+      handleOther(node, _ignore) {
+        this.pushString();
+        return this.adaptor.next(node);
+      }
+      find(node) {
+        this.init();
+        const stop = this.adaptor.next(node);
+        let ignore = false;
+        const include = this.options["includeHtmlTags"];
+        while (node && node !== stop) {
+          const kind = this.adaptor.kind(node);
+          if (kind === "#text") {
+            node = this.handleText(node, ignore);
+          } else if (Object.hasOwn(include, kind)) {
+            node = this.handleTag(node, ignore);
+          } else if (kind) {
+            [node, ignore] = this.handleContainer(node, ignore);
+          } else {
+            node = this.handleOther(node, ignore);
+          }
+          if (!node && this.stack.length) {
+            this.pushString();
+            [node, ignore] = this.stack.pop();
+          }
+        }
+        this.pushString();
+        const result = [this.strings, this.nodes];
+        this.init();
+        return result;
+      }
+    };
+    HTMLDomStrings.OPTIONS = {
+      skipHtmlTags: [
+        "script",
+        "noscript",
+        "style",
+        "textarea",
+        "pre",
+        "code",
+        "math",
+        "select",
+        "option",
+        "mjx-container"
+      ],
+      includeHtmlTags: expandable({ br: "\n", wbr: "", "#comment": "" }),
+      ignoreHtmlClass: "mathjax_ignore",
+      processHtmlClass: "mathjax_process"
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js
+var HTMLDocument;
+var init_HTMLDocument = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js"() {
+    init_MathDocument();
+    init_Options();
+    init_HTMLMathItem();
+    init_HTMLMathList();
+    init_HTMLDomStrings();
+    init_MathItem();
+    newState("STYLES", STATE.INSERTED + 1);
+    HTMLDocument = class extends AbstractMathDocument {
+      constructor(document, adaptor, options3) {
+        const [html2, dom] = separateOptions(options3, HTMLDomStrings.OPTIONS);
+        super(document, adaptor, html2);
+        this.domStrings = this.options["DomStrings"] || new HTMLDomStrings(dom);
+        this.domStrings.adaptor = adaptor;
+        this.styles = [];
+      }
+      findPosition(N, index, delim, nodes) {
+        const adaptor = this.adaptor;
+        const inc = 1 / (nodes[N].length || 1);
+        let i2 = N;
+        for (const [node, n] of nodes[N]) {
+          if (index <= n && adaptor.kind(node) === "#text") {
+            return { i: i2, node, n: Math.max(index, 0), delim };
+          }
+          index -= n;
+          i2 += inc;
+        }
+        return { node: null, n: 0, delim };
+      }
+      mathItem(item, jax, nodes) {
+        const math = item.math;
+        const start = this.findPosition(item.n, item.start.n, item.open, nodes);
+        const end = this.findPosition(item.n, item.end.n, item.close, nodes);
+        return new this.options.MathItem(math, jax, item.display, start, end);
+      }
+      findMath(options3) {
+        if (!this.processed.isSet("findMath")) {
+          this.adaptor.document = this.document;
+          options3 = userOptions({
+            elements: this.options.elements || [this.adaptor.body(this.document)]
+          }, options3);
+          const containers = this.adaptor.getElements(options3.elements, this.document);
+          for (const jax of this.inputJax) {
+            const list3 = jax.processStrings ? this.findMathFromStrings(jax, containers) : this.findMathFromDOM(jax, containers);
+            this.math.merge(list3);
+          }
+          this.processed.set("findMath");
+        }
+        return this;
+      }
+      findMathFromStrings(jax, containers) {
+        const strings = [];
+        const nodes = [];
+        for (const container of containers) {
+          const [slist, nlist] = this.domStrings.find(container);
+          strings.push(...slist);
+          nodes.push(...nlist);
+        }
+        const list3 = new this.options.MathList();
+        for (const math of jax.findMath(strings)) {
+          list3.push(this.mathItem(math, jax, nodes));
+        }
+        return list3;
+      }
+      findMathFromDOM(jax, containers) {
+        const items = [];
+        for (const container of containers) {
+          for (const math of jax.findMath(container)) {
+            items.push(new this.options.MathItem(math.math, jax, math.display, math.start, math.end));
+          }
+        }
+        return new this.options.MathList(...items);
+      }
+      updateDocument() {
+        if (!this.processed.isSet("updateDocument")) {
+          this.addPageElements();
+          this.addStyleSheet();
+          super.updateDocument();
+          this.processed.set("updateDocument");
+        }
+        return this;
+      }
+      addPageElements() {
+        const adaptor = this.adaptor;
+        const body = adaptor.body(this.document);
+        const node = this.documentPageElements();
+        if (node) {
+          const child = adaptor.firstChild(body);
+          if (child) {
+            adaptor.insert(node, child);
+          } else {
+            adaptor.append(body, node);
+          }
+        }
+      }
+      addStyleSheet() {
+        const sheet = this.documentStyleSheet();
+        const adaptor = this.adaptor;
+        if (sheet && !adaptor.parent(sheet)) {
+          const head = adaptor.head(this.document);
+          const styles = this.findSheet(head, adaptor.getAttribute(sheet, "id"));
+          if (styles) {
+            adaptor.replace(sheet, styles);
+          } else {
+            adaptor.append(head, sheet);
+          }
+        }
+      }
+      findSheet(head, id) {
+        if (id) {
+          for (const sheet of this.adaptor.tags(head, "style")) {
+            if (this.adaptor.getAttribute(sheet, "id") === id) {
+              return sheet;
+            }
+          }
+        }
+        return null;
+      }
+      removeFromDocument(restore = false) {
+        if (this.processed.isSet("updateDocument")) {
+          for (const math of this.math) {
+            if (math.state() >= STATE.INSERTED) {
+              math.state(STATE.TYPESET, restore);
+            }
+          }
+        }
+        this.processed.clear("updateDocument");
+        return this;
+      }
+      documentStyleSheet() {
+        return this.outputJax.styleSheet(this);
+      }
+      documentPageElements() {
+        return this.outputJax.pageElements(this);
+      }
+      addStyles(styles) {
+        this.styles.push(styles);
+        if ("insertStyles" in this.outputJax) {
+          this.outputJax.insertStyles(styles);
+        }
+      }
+      getStyles() {
+        return this.styles;
+      }
+    };
+    HTMLDocument.KIND = "HTML";
+    HTMLDocument.OPTIONS = Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS), { renderActions: expandable(Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS.renderActions), { styles: [STATE.STYLES, "", "updateStyleSheet", false] })), MathList: HTMLMathList, MathItem: HTMLMathItem, DomStrings: null });
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js
+var HTMLHandler;
+var init_HTMLHandler = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js"() {
+    init_Handler();
+    init_HTMLDocument();
+    HTMLHandler = class extends AbstractHandler {
+      constructor() {
+        super(...arguments);
+        this.documentClass = HTMLDocument;
+      }
+      handlesDocument(document) {
+        const adaptor = this.adaptor;
+        if (typeof document === "string") {
+          try {
+            document = adaptor.parse(document, "text/html");
+          } catch (_err) {
+          }
+        }
+        if (document instanceof adaptor.window.Document || document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
+          return true;
+        }
+        return false;
+      }
+      create(document, options3) {
+        const adaptor = this.adaptor;
+        if (typeof document === "string") {
+          document = adaptor.parse(document, "text/html");
+        } else if (document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
+          const child = document;
+          document = adaptor.parse("", "text/html");
+          adaptor.append(adaptor.body(document), child);
+        }
+        return super.create(document, options3);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html.js
+function RegisterHTMLHandler(adaptor) {
+  const handler = new HTMLHandler(adaptor);
+  mathjax.handlers.register(handler);
+  return handler;
+}
+var init_html = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html.js"() {
+    init_mathjax();
+    init_HTMLHandler();
+  }
+});
+// node_modules/@mathjax/src/mjs/core/FindMath.js
+var AbstractFindMath;
+var init_FindMath = __esm({
+  "node_modules/@mathjax/src/mjs/core/FindMath.js"() {
+    init_Options();
+    AbstractFindMath = class {
+      constructor(options3) {
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+      }
+    };
+    AbstractFindMath.OPTIONS = {};
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/FindTeX.js
+var FindTeX;
+var init_FindTeX = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/FindTeX.js"() {
+    init_FindMath();
+    init_string();
+    init_MathItem();
+    FindTeX = class extends AbstractFindMath {
+      constructor(options3) {
+        super(options3);
+        this.getPatterns();
+      }
+      getPatterns() {
+        const options3 = this.options;
+        const starts = [];
+        const parts = [];
+        const subparts = [];
+        this.end = {};
+        this.env = this.sub = 0;
+        let i2 = 1;
+        options3["inlineMath"].forEach((delims) => this.addPattern(starts, delims, false));
+        options3["displayMath"].forEach((delims) => this.addPattern(starts, delims, true));
+        if (starts.length) {
+          parts.push(starts.sort(sortLength).join("|"));
+        }
+        if (options3["processEnvironments"]) {
+          parts.push("\\\\begin\\s*\\{([^}]*)\\}");
+          this.env = i2;
+          i2++;
+        }
+        if (options3["processEscapes"]) {
+          subparts.push("\\\\([\\\\$])");
+        }
+        if (options3["processRefs"]) {
+          subparts.push("(\\\\(?:eq)?ref\\s*\\{[^}]*\\})");
+        }
+        if (subparts.length) {
+          parts.push("(" + subparts.join("|") + ")");
+          this.sub = i2;
+        }
+        this.start = new RegExp(parts.join("|"), "g");
+        this.hasPatterns = parts.length > 0;
+      }
+      addPattern(starts, delims, display) {
+        const [open, close] = delims;
+        starts.push(quotePattern(open));
+        this.end[open] = [close, display, this.endPattern(close)];
+      }
+      endPattern(end, endp) {
+        return new RegExp((endp || quotePattern(end)) + "|\\\\(?:[a-zA-Z]|.)|[{}]", "g");
+      }
+      findEnd(text, n, start, end) {
+        const [close, display, pattern] = end;
+        const i2 = pattern.lastIndex = start.index + start[0].length;
+        let match, braces = 0;
+        while (match = pattern.exec(text)) {
+          if ((match[1] || match[0]) === close && braces === 0) {
+            return protoItem(start[0], text.substring(i2, match.index), match[0], n, start.index, match.index + match[0].length, display);
+          } else if (match[0] === "{") {
+            braces++;
+          } else if (match[0] === "}" && braces) {
+            braces--;
+          }
+        }
+        return null;
+      }
+      findMathInString(math, n, text) {
+        let start, match;
+        this.start.lastIndex = 0;
+        while (start = this.start.exec(text)) {
+          if (start[this.env] !== void 0 && this.env) {
+            const end = "\\\\end\\s*(\\{" + quotePattern(start[this.env]) + "\\})";
+            match = this.findEnd(text, n, start, [
+              "{" + start[this.env] + "}",
+              true,
+              this.endPattern(null, end)
+            ]);
+            if (match) {
+              match.math = match.open + match.math + match.close;
+              match.open = match.close = "";
+            }
+          } else if (start[this.sub] !== void 0 && this.sub) {
+            const math2 = start[this.sub];
+            const end = start.index + start[this.sub].length;
+            if (math2.length === 2) {
+              match = protoItem("\\", math2.substring(1), "", n, start.index, end);
+            } else {
+              match = protoItem("", math2, "", n, start.index, end, false);
+            }
+          } else {
+            match = this.findEnd(text, n, start, this.end[start[0]]);
+          }
+          if (match) {
+            math.push(match);
+            this.start.lastIndex = match.end.n;
+          }
+        }
+      }
+      findMath(strings) {
+        const math = [];
+        if (this.hasPatterns) {
+          for (let i2 = 0, m = strings.length; i2 < m; i2++) {
+            this.findMathInString(math, i2, strings[i2]);
+          }
+        }
+        return math;
+      }
+    };
+    FindTeX.OPTIONS = {
+      inlineMath: [
+        ["\\(", "\\)"]
+      ],
+      displayMath: [
+        ["$$", "$$"],
+        ["\\[", "\\]"]
+      ],
+      processEscapes: true,
+      processEnvironments: true,
+      processRefs: true
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js
+var NodeUtil;
+var NodeUtil_default;
+var init_NodeUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js"() {
+    init_MmlNode();
+    init_mo();
+    NodeUtil = {
+      attrs: /* @__PURE__ */ new Set([
+        "autoOP",
+        "fnOP",
+        "movesupsub",
+        "subsupOK",
+        "texprimestyle",
+        "useHeight",
+        "variantForm",
+        "withDelims",
+        "mathaccent",
+        "open",
+        "close"
+      ]),
+      createEntity(code) {
+        return String.fromCodePoint(parseInt(code, 16));
+      },
+      getChildren(node) {
+        return node.childNodes;
+      },
+      getText(node) {
+        return node.getText();
+      },
+      appendChildren(node, children) {
+        for (const child of children) {
+          node.appendChild(child);
+        }
+      },
+      setAttribute(node, attribute, value) {
+        node.attributes.set(attribute, value);
+      },
+      setProperty(node, property, value) {
+        node.setProperty(property, value);
+      },
+      setProperties(node, properties) {
+        for (const name of Object.keys(properties)) {
+          const value = properties[name];
+          if (name === "texClass") {
+            node.texClass = value;
+            node.setProperty(name, value);
+          } else if (name === "movablelimits") {
+            node.setProperty("movablelimits", value);
+            if (node.isKind("mo") || node.isKind("mstyle")) {
+              node.attributes.set("movablelimits", value);
+            }
+          } else if (name === "inferred") {
+          } else if (NodeUtil.attrs.has(name)) {
+            node.setProperty(name, value);
+          } else {
+            node.attributes.set(name, value);
+          }
+        }
+      },
+      getProperty(node, property) {
+        return node.getProperty(property);
+      },
+      getAttribute(node, attr) {
+        return node.attributes.get(attr);
+      },
+      removeAttribute(node, attr) {
+        node.attributes.unset(attr);
+      },
+      removeProperties(node, ...properties) {
+        node.removeProperty(...properties);
+      },
+      getChildAt(node, position) {
+        return node.childNodes[position];
+      },
+      setChild(node, position, child) {
+        const children = node.childNodes;
+        children[position] = child;
+        if (child) {
+          child.parent = node;
+        }
+      },
+      copyChildren(oldNode, newNode) {
+        const children = oldNode.childNodes;
+        for (let i2 = 0; i2 < children.length; i2++) {
+          this.setChild(newNode, i2, children[i2]);
+        }
+      },
+      copyAttributes(oldNode, newNode) {
+        newNode.attributes = oldNode.attributes;
+        for (const [prop, value] of Object.entries(oldNode.getAllProperties())) {
+          newNode.setProperty(prop, value);
+        }
+      },
+      isType(node, kind) {
+        return node.isKind(kind);
+      },
+      isEmbellished(node) {
+        return node.isEmbellished;
+      },
+      getTexClass(node) {
+        return node.texClass;
+      },
+      getCoreMO(node) {
+        return node.coreMO();
+      },
+      isNode(item) {
+        return item instanceof AbstractMmlNode || item instanceof AbstractMmlEmptyNode;
+      },
+      isInferred(node) {
+        return node.isInferred;
+      },
+      getForm(node) {
+        if (!node.isKind("mo")) {
+          return null;
+        }
+        const mo = node;
+        const forms = mo.getForms();
+        for (const form of forms) {
+          const symbol = this.getOp(mo, form);
+          if (symbol) {
+            return symbol;
+          }
+        }
+        return null;
+      },
+      getOp(mo, form = "infix") {
+        return MmlMo.OPTABLE[form][mo.getText()] || null;
+      },
+      getMoAttribute(mo, attr) {
+        var _a2, _b2;
+        if (!mo.attributes.isSet(attr)) {
+          for (const form of ["infix", "postfix", "prefix"]) {
+            const value = (_b2 = (_a2 = this.getOp(mo, form)) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2[attr];
+            if (value !== void 0) {
+              return value;
+            }
+          }
+        }
+        return mo.attributes.get(attr);
+      }
+    };
+    NodeUtil_default = NodeUtil;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TexConstants.js
+var TexConstant;
+var init_TexConstants = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexConstants.js"() {
+    TexConstant = JSON.parse(`{
+ "Variant":{
+  "NORMAL":"normal",
+  "BOLD":"bold",
+  "ITALIC":"italic",
+  "BOLDITALIC":"bold-italic",
+  "DOUBLESTRUCK":"double-struck",
+  "FRAKTUR":"fraktur",
+  "BOLDFRAKTUR":"bold-fraktur",
+  "SCRIPT":"script",
+  "BOLDSCRIPT":"bold-script",
+  "SANSSERIF":"sans-serif",
+  "BOLDSANSSERIF":"bold-sans-serif",
+  "SANSSERIFITALIC":"sans-serif-italic",
+  "SANSSERIFBOLDITALIC":"sans-serif-bold-italic",
+  "MONOSPACE":"monospace",
+  "INITIAL":"inital",
+  "TAILED":"tailed",
+  "LOOPED":"looped",
+  "STRETCHED":"stretched",
+  "CALLIGRAPHIC":"-tex-calligraphic",
+  "BOLDCALLIGRAPHIC":"-tex-bold-calligraphic",
+  "OLDSTYLE":"-tex-oldstyle",
+  "BOLDOLDSTYLE":"-tex-bold-oldstyle",
+  "MATHITALIC":"-tex-mathit"
+ },
+ "Form":{"PREFIX":"prefix","INFIX":"infix","POSTFIX":"postfix"},
+ "LineBreak":{"AUTO":"auto","NEWLINE":"newline","NOBREAK":"nobreak","GOODBREAK":"goodbreak","BADBREAK":"badbreak"},
+ "LineBreakStyle":{"BEFORE":"before","AFTER":"after","DUPLICATE":"duplicate","INFIXLINBREAKSTYLE":"infixlinebreakstyle"},
+ "IndentAlign":{"LEFT":"left","CENTER":"center","RIGHT":"right","AUTO":"auto","ID":"id","INDENTALIGN":"indentalign"},
+ "IndentShift":{"INDENTSHIFT":"indentshift"},
+ "LineThickness":{"THIN":"thin","MEDIUM":"medium","THICK":"thick"},
+ "Notation":{"LONGDIV":"longdiv","ACTUARIAL":"actuarial","PHASORANGLE":"phasorangle","RADICAL":"radical","BOX":"box","ROUNDEDBOX":"roundedbox","CIRCLE":"circle","LEFT":"left","RIGHT":"right","TOP":"top","BOTTOM":"bottom","UPDIAGONALSTRIKE":"updiagonalstrike","DOWNDIAGONALSTRIKE":"downdiagonalstrike","VERTICALSTRIKE":"verticalstrike","HORIZONTALSTRIKE":"horizontalstrike","NORTHEASTARROW":"northeastarrow","MADRUWB":"madruwb","UPDIAGONALARROW":"updiagonalarrow"},
+ "Align":{"TOP":"top","BOTTOM":"bottom","CENTER":"center","BASELINE":"baseline","AXIS":"axis","LEFT":"left","RIGHT":"right"},
+ "Lines":{"NONE":"none","SOLID":"solid","DASHED":"dashed"},
+ "Side":{"LEFT":"left","RIGHT":"right","LEFTOVERLAP":"leftoverlap","RIGHTOVERLAP":"rightoverlap"},
+ "Width":{"AUTO":"auto","FIT":"fit"},
+ "Actiontype":{"TOGGLE":"toggle","STATUSLINE":"statusline","TOOLTIP":"tooltip","INPUT":"input"},
+ "Overflow":{"LINBREAK":"linebreak","SCROLL":"scroll","ELIDE":"elide","TRUNCATE":"truncate","SCALE":"scale"},
+ "Unit":{"EM":"em","EX":"ex","PX":"px","IN":"in","CM":"cm","MM":"mm","PT":"pt","PC":"pc"},
+ "Attr":{"LATEX":"data-latex","LATEXITEM":"data-latex-item"}
+}`);
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js
+function _copyExplicit(attrs, node1, node2) {
+  const attr1 = node1.attributes;
+  const attr2 = node2.attributes;
+  attrs.forEach((x2) => {
+    const attr = attr2.getExplicit(x2);
+    if (attr != null) {
+      attr1.set(x2, attr);
+    }
+  });
+}
+function _compareExplicit(node1, node2) {
+  const filter2 = (attr, space) => {
+    const exp = attr.getExplicitNames();
+    return exp.filter((x2) => {
+      return x2 !== space && (x2 !== "stretchy" || attr.getExplicit("stretchy")) && x2 !== "data-latex" && x2 !== "data-latex-item";
+    });
+  };
+  const attr1 = node1.attributes;
+  const attr2 = node2.attributes;
+  const exp1 = filter2(attr1, "lspace");
+  const exp2 = filter2(attr2, "rspace");
+  if (exp1.length !== exp2.length) {
+    return false;
+  }
+  for (const name of exp1) {
+    if (attr1.getExplicit(name) !== attr2.getExplicit(name)) {
+      return false;
+    }
+  }
+  return true;
+}
+function _cleanSubSup(options3, low, up) {
+  const remove = [];
+  for (const mml of options3.getList("m" + low + up)) {
+    const children = mml.childNodes;
+    if (children[mml[low]] && children[mml[up]]) {
+      continue;
+    }
+    const parent = mml.parent;
+    const newNode = children[mml[low]] ? options3.nodeFactory.create("node", "m" + low, [
+      children[mml.base],
+      children[mml[low]]
+    ]) : options3.nodeFactory.create("node", "m" + up, [
+      children[mml.base],
+      children[mml[up]]
+    ]);
+    NodeUtil_default.copyAttributes(mml, newNode);
+    parent.replaceChild(newNode, mml);
+    remove.push(mml);
+  }
+  options3.removeFromList("m" + low + up, remove);
+}
+function _moveLimits(options3, underover, subsup) {
+  const remove = [];
+  for (const mml of options3.getList(underover)) {
+    if (mml.attributes.get("displaystyle")) {
+      continue;
+    }
+    const base = mml.childNodes[mml.base];
+    const mo = base.coreMO();
+    if (base.getProperty("movablelimits") && !mo.attributes.hasExplicit("movablelimits")) {
+      const node = options3.nodeFactory.create("node", subsup, mml.childNodes);
+      NodeUtil_default.copyAttributes(mml, node);
+      mml.parent.replaceChild(node, mml);
+      remove.push(mml);
+    }
+  }
+  options3.removeFromList(underover, remove);
+}
+var FilterUtil;
+var FilterUtil_default;
+var init_FilterUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js"() {
+    init_MmlNode();
+    init_NodeUtil();
+    init_TexConstants();
+    FilterUtil = {
+      cleanStretchy(arg) {
+        var _a2;
+        const options3 = arg.data;
+        for (const mo of options3.getList("fixStretchy")) {
+          if (NodeUtil_default.getProperty(mo, "fixStretchy")) {
+            const symbol = NodeUtil_default.getForm(mo);
+            if ((_a2 = symbol === null || symbol === void 0 ? void 0 : symbol[3]) === null || _a2 === void 0 ? void 0 : _a2["stretchy"]) {
+              NodeUtil_default.setAttribute(mo, "stretchy", false);
+            }
+            NodeUtil_default.removeProperties(mo, "fixStretchy");
+          }
+        }
+      },
+      cleanAttributes(arg) {
+        const node = arg.data.root;
+        node.walkTree((mml) => {
+          const keep = new Set((mml.getProperty("keep-attrs") || "").split(/ /));
+          const attribs = mml.attributes;
+          attribs.unset(TexConstant.Attr.LATEXITEM);
+          for (const key of attribs.getExplicitNames()) {
+            if (!keep.has(key) && attribs.get(key) === attribs.getInherited(key)) {
+              attribs.unset(key);
+            }
+          }
+        });
+      },
+      combineRelations(arg) {
+        const remove = [];
+        for (const mo of arg.data.getList("mo")) {
+          if (mo.getProperty("relationsCombined") || !mo.parent || mo.parent && !NodeUtil_default.isType(mo.parent, "mrow") || NodeUtil_default.getTexClass(mo) !== TEXCLASS.REL) {
+            continue;
+          }
+          const mml = mo.parent;
+          let m2;
+          const children = mml.childNodes;
+          const next = children.indexOf(mo) + 1;
+          const variantForm = NodeUtil_default.getProperty(mo, "variantForm");
+          while (next < children.length && (m2 = children[next]) && NodeUtil_default.isType(m2, "mo") && NodeUtil_default.getTexClass(m2) === TEXCLASS.REL) {
+            if (variantForm === NodeUtil_default.getProperty(m2, "variantForm") && _compareExplicit(mo, m2)) {
+              NodeUtil_default.appendChildren(mo, NodeUtil_default.getChildren(m2));
+              _copyExplicit(["stretchy", "rspace"], mo, m2);
+              for (const name of m2.getPropertyNames()) {
+                mo.setProperty(name, m2.getProperty(name));
+              }
+              if (m2.attributes.get("data-latex")) {
+                mo.attributes.set("data-latex", mo.attributes.get("data-latex") + m2.attributes.get("data-latex"));
+              }
+              children.splice(next, 1);
+              remove.push(m2);
+              m2.parent = null;
+              m2.setProperty("relationsCombined", true);
+              mo.setProperty("texClass", TEXCLASS.REL);
+            } else {
+              if (!mo.attributes.hasExplicit("rspace")) {
+                NodeUtil_default.setAttribute(mo, "rspace", "0pt");
+              }
+              if (!m2.attributes.hasExplicit("lspace")) {
+                NodeUtil_default.setAttribute(m2, "lspace", "0pt");
+              }
+              break;
+            }
+          }
+          mo.attributes.setInherited("form", mo.getForms()[0]);
+        }
+        arg.data.removeFromList("mo", remove);
+      },
+      cleanSubSup(arg) {
+        const options3 = arg.data;
+        if (options3.error) {
+          return;
+        }
+        _cleanSubSup(options3, "sub", "sup");
+        _cleanSubSup(options3, "under", "over");
+      },
+      moveLimits(arg) {
+        const options3 = arg.data;
+        _moveLimits(options3, "munderover", "msubsup");
+        _moveLimits(options3, "munder", "msub");
+        _moveLimits(options3, "mover", "msup");
+      },
+      setInherited(arg) {
+        arg.data.root.setInheritedAttributes({}, arg.math["display"], 0, false);
+      },
+      checkScriptlevel(arg) {
+        const options3 = arg.data;
+        const remove = [];
+        for (const mml of options3.getList("mstyle")) {
+          if (mml.childNodes[0].childNodes.length !== 1) {
+            continue;
+          }
+          const attributes = mml.attributes;
+          for (const key of ["displaystyle", "scriptlevel"]) {
+            if (attributes.getExplicit(key) === attributes.getInherited(key)) {
+              attributes.unset(key);
+            }
+          }
+          const names = attributes.getExplicitNames();
+          if (names.filter((key) => key.substring(0, 10) !== "data-latex").length === 0) {
+            const child = mml.childNodes[0].childNodes[0];
+            names.forEach((key) => child.attributes.set(key, attributes.get(key)));
+            mml.parent.replaceChild(child, mml);
+            remove.push(mml);
+          }
+        }
+        options3.removeFromList("mstyle", remove);
+      }
+    };
+    FilterUtil_default = FilterUtil;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js
+var ConfigurationType;
+var HandlerType;
+var init_HandlerTypes = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js"() {
+    (function(ConfigurationType2) {
+      ConfigurationType2["HANDLER"] = "handler";
+      ConfigurationType2["FALLBACK"] = "fallback";
+      ConfigurationType2["ITEMS"] = "items";
+      ConfigurationType2["TAGS"] = "tags";
+      ConfigurationType2["OPTIONS"] = "options";
+      ConfigurationType2["NODES"] = "nodes";
+      ConfigurationType2["PREPROCESSORS"] = "preprocessors";
+      ConfigurationType2["POSTPROCESSORS"] = "postprocessors";
+      ConfigurationType2["INIT"] = "init";
+      ConfigurationType2["CONFIG"] = "config";
+      ConfigurationType2["PRIORITY"] = "priority";
+      ConfigurationType2["PARSER"] = "parser";
+    })(ConfigurationType || (ConfigurationType = {}));
+    (function(HandlerType2) {
+      HandlerType2["DELIMITER"] = "delimiter";
+      HandlerType2["MACRO"] = "macro";
+      HandlerType2["CHARACTER"] = "character";
+      HandlerType2["ENVIRONMENT"] = "environment";
+    })(HandlerType || (HandlerType = {}));
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js
+function muReplace([value, unit, length4]) {
+  if (unit !== "mu") {
+    return [value, unit, length4];
+  }
+  const em2 = UnitUtil.em(UnitUtil.UNIT_CASES.get(unit) * parseFloat(value));
+  return [em2.slice(0, -2), "em", length4];
+}
+var UnitMap;
+var emPerInch;
+var pxPerInch;
+var UnitUtil;
+var init_UnitUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js"() {
+    UnitMap = class {
+      constructor(map) {
+        this.num = "([-+]?([.,]\\d+|\\d+([.,]\\d*)?))";
+        this.unit = "";
+        this.dimenEnd = /./;
+        this.dimenRest = /./;
+        this.map = new Map(map);
+        this.updateDimen();
+      }
+      updateDimen() {
+        this.unit = `(${Array.from(this.map.keys()).join("|")})`;
+        this.dimenEnd = RegExp("^\\s*" + this.num + "\\s*" + this.unit + "\\s*$");
+        this.dimenRest = RegExp("^\\s*" + this.num + "\\s*" + this.unit + " ?");
+      }
+      set(name, ems) {
+        this.map.set(name, ems);
+        this.updateDimen();
+        return this;
+      }
+      get(name) {
+        return this.map.get(name) || this.map.get("pt");
+      }
+      delete(name) {
+        if (this.map.delete(name)) {
+          this.updateDimen();
+          return true;
+        }
+        return false;
+      }
+    };
+    emPerInch = 7.2;
+    pxPerInch = 72;
+    UnitUtil = {
+      UNIT_CASES: new UnitMap([
+        ["em", 1],
+        ["ex", 0.43],
+        ["pt", 1 / 10],
+        ["pc", 1.2],
+        ["px", emPerInch / pxPerInch],
+        ["in", emPerInch],
+        ["cm", emPerInch / 2.54],
+        ["mm", emPerInch / 25.4],
+        ["mu", 1 / 18]
+      ]),
+      matchDimen(dim, rest = false) {
+        const match = dim.match(rest ? UnitUtil.UNIT_CASES.dimenRest : UnitUtil.UNIT_CASES.dimenEnd);
+        return match ? muReplace([match[1].replace(/,/, "."), match[4], match[0].length]) : [null, null, 0];
+      },
+      dimen2em(dim) {
+        const [value, unit] = UnitUtil.matchDimen(dim);
+        const m = parseFloat(value || "1");
+        const factor = UnitUtil.UNIT_CASES.get(unit);
+        return factor * m;
+      },
+      em(m) {
+        if (Math.abs(m) < 6e-4) {
+          return "0em";
+        }
+        return m.toFixed(3).replace(/\.?0+$/, "") + "em";
+      },
+      trimSpaces(text) {
+        if (typeof text !== "string") {
+          return text;
+        }
+        let TEXT = text.trim();
+        if (TEXT.match(/\\$/) && text.match(/ $/)) {
+          TEXT += " ";
+        }
+        return TEXT;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/Stack.js
+var Stack;
+var init_Stack = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Stack.js"() {
+    init_NodeUtil();
+    Stack = class {
+      constructor(_factory, _env, inner) {
+        this._factory = _factory;
+        this._env = _env;
+        this.global = {};
+        this.stack = [];
+        this.global = { isInner: inner };
+        this.stack = [this._factory.create("start", this.global)];
+        if (_env) {
+          this.stack[0].env = _env;
+        }
+        this.env = this.stack[0].env;
+      }
+      set env(env) {
+        this._env = env;
+      }
+      get env() {
+        return this._env;
+      }
+      Push(...args) {
+        for (const node of args) {
+          if (!node) {
+            continue;
+          }
+          const item = NodeUtil_default.isNode(node) ? this._factory.create("mml", node) : node;
+          item.global = this.global;
+          const [top, success] = this.stack.length ? this.Top().checkItem(item) : [null, true];
+          if (!success) {
+            continue;
+          }
+          if (top) {
+            this.Pop();
+            this.Push(...top);
+            continue;
+          }
+          if (!item.isKind("null")) {
+            this.stack.push(item);
+          }
+          if (item.env) {
+            if (item.copyEnv) {
+              Object.assign(item.env, this.env);
+            }
+            this.env = item.env;
+          } else {
+            item.env = this.env;
+          }
+        }
+      }
+      Pop() {
+        const item = this.stack.pop();
+        if (!item.isOpen) {
+          delete item.env;
+        }
+        this.env = this.stack.length ? this.Top().env : {};
+        return item;
+      }
+      Top(n = 1) {
+        return this.stack.length < n ? null : this.stack[this.stack.length - n];
+      }
+      Prev(noPop) {
+        const top = this.Top();
+        return noPop ? top.First : top.Pop();
+      }
+      get height() {
+        return this.stack.length;
+      }
+      toString() {
+        return "stack[\n  " + this.stack.join("\n  ") + "\n]";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TexError.js
+var TexError2;
+var TexError_default;
+var init_TexError = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexError.js"() {
+    TexError2 = class _TexError {
+      static processString(str, args) {
+        const parts = str.split(_TexError.pattern);
+        for (let i2 = 1, m = parts.length; i2 < m; i2 += 2) {
+          let c = parts[i2].charAt(0);
+          if (c >= "0" && c <= "9") {
+            parts[i2] = args[parseInt(parts[i2], 10) - 1];
+            if (typeof parts[i2] === "number") {
+              parts[i2] = parts[i2].toString();
+            }
+          } else if (c === "{") {
+            c = parts[i2].substring(1);
+            if (c >= "0" && c <= "9") {
+              parts[i2] = args[parseInt(parts[i2].substring(1, parts[i2].length - 1), 10) - 1];
+              if (typeof parts[i2] === "number") {
+                parts[i2] = parts[i2].toString();
+              }
+            } else {
+              const match = parts[i2].match(/^\{([a-z]+):%(\d+)\|(.*)\}$/);
+              if (match) {
+                parts[i2] = "%" + parts[i2];
+              }
+            }
+          }
+        }
+        return parts.join("");
+      }
+      constructor(id, message, ...rest) {
+        this.id = id;
+        this.message = _TexError.processString(message, rest);
+      }
+    };
+    TexError2.pattern = /%(\d+|\{\d+\}|\{[a-z]+:%\d+(?:\|(?:%\{\d+\}|%.|[^}])*)+\}|.)/g;
+    TexError_default = TexError2;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/StackItem.js
+var MmlStack;
+var BaseItem;
+var init_StackItem = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/StackItem.js"() {
+    init_TexError();
+    init_TexConstants();
+    MmlStack = class {
+      constructor(_nodes) {
+        this._nodes = _nodes;
+        this.startStr = "";
+        this.startI = 0;
+        this.stopI = 0;
+      }
+      get nodes() {
+        return this._nodes;
+      }
+      Push(...nodes) {
+        this._nodes.push(...nodes);
+      }
+      Pop() {
+        return this._nodes.pop();
+      }
+      get First() {
+        return this._nodes[this.Size() - 1];
+      }
+      set First(node) {
+        this._nodes[this.Size() - 1] = node;
+      }
+      get Last() {
+        return this._nodes[0];
+      }
+      set Last(node) {
+        this._nodes[0] = node;
+      }
+      Peek(n) {
+        if (n == null) {
+          n = 1;
+        }
+        return this._nodes.slice(this.Size() - n);
+      }
+      Size() {
+        return this._nodes.length;
+      }
+      Clear() {
+        this._nodes = [];
+      }
+      toMml(inferred = true, forceRow) {
+        if (this._nodes.length === 1 && !forceRow) {
+          return this.First;
+        }
+        return this.create("node", inferred ? "inferredMrow" : "mrow", this._nodes, {});
+      }
+      create(kind, ...rest) {
+        return this.factory.configuration.nodeFactory.create(kind, ...rest);
+      }
+    };
+    BaseItem = class _BaseItem extends MmlStack {
+      constructor(factory, ...nodes) {
+        super(nodes);
+        this.factory = factory;
+        this.global = {};
+        this._properties = {};
+        if (this.isOpen) {
+          this._env = {};
+        }
+      }
+      get kind() {
+        return "base";
+      }
+      get env() {
+        return this._env;
+      }
+      set env(value) {
+        this._env = value;
+      }
+      get copyEnv() {
+        return true;
+      }
+      getProperty(key) {
+        return this._properties[key];
+      }
+      setProperty(key, value) {
+        this._properties[key] = value;
+        return this;
+      }
+      get isOpen() {
+        return false;
+      }
+      get isClose() {
+        return false;
+      }
+      get isFinal() {
+        return false;
+      }
+      isKind(kind) {
+        return kind === this.kind;
+      }
+      checkItem(item) {
+        if (item.isKind("over") && this.isOpen) {
+          item.setProperty("num", this.toMml(false));
+          this.Clear();
+        }
+        if (item.isKind("cell") && this.isOpen) {
+          if (item.getProperty("linebreak")) {
+            return _BaseItem.fail;
+          }
+          throw new TexError_default("Misplaced", "Misplaced %1", item.getName());
+        }
+        if (item.isClose && this.getErrors(item.kind)) {
+          const [id, message] = this.getErrors(item.kind);
+          throw new TexError_default(id, message, item.getName());
+        }
+        if (!item.isFinal) {
+          return _BaseItem.success;
+        }
+        this.Push(item.First);
+        return _BaseItem.fail;
+      }
+      clearEnv() {
+        for (const id of Object.keys(this.env)) {
+          delete this.env[id];
+        }
+      }
+      setProperties(def2) {
+        Object.assign(this._properties, def2);
+        return this;
+      }
+      getName() {
+        return this.getProperty("name");
+      }
+      toString() {
+        return this.kind + "[" + this.nodes.join("; ") + "]";
+      }
+      getErrors(kind) {
+        const CLASS = this.constructor;
+        return CLASS.errors[kind] || _BaseItem.errors[kind];
+      }
+      addLatexItem(node, prefix = "") {
+        const str = this.startStr.slice(this.startI, this.stopI);
+        if (str) {
+          const tex = prefix ? prefix + str : str;
+          node.attributes.set(TexConstant.Attr.LATEXITEM, tex);
+          if (tex !== "}") {
+            node.attributes.set(TexConstant.Attr.LATEX, tex);
+          }
+        }
+      }
+    };
+    BaseItem.fail = [null, false];
+    BaseItem.success = [null, true];
+    BaseItem.errors = {
+      end: ["MissingBeginExtraEnd", "Missing \\begin{%1} or extra \\end{%1}"],
+      close: ["ExtraCloseMissingOpen", "Extra close brace or missing open brace"],
+      right: ["MissingLeftExtraRight", "Missing \\left or extra \\right"],
+      middle: ["ExtraMiddle", "Extra \\middle"]
+    };
+  }
+});
+export{init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,TexConstant,TexError_default,UnitUtil,init_NodeUtil,NodeUtil_default,ConfigurationType,init_FindTeX,init_FilterUtil,FindTeX,FilterUtil_default,RegisterHTMLHandler,init_html};

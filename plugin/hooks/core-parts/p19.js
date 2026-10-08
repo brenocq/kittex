@@ -1,64 +1,1639 @@
-import{j4,P5,nn,lh,sn,m2,k7,I5,i3,Ln,H9}from'./p18.js';export*from'./p18.js';
-function uh(e,C,t){let L=e.match(t.other.indentCodeCompensation);if(L===null)return C;let n=L[1];return C.split(`
-`).map(i=>{let s=i.match(t.other.beginningSpace);if(s===null)return i;let[r]=s;return r.length>=n.length?i.slice(n.length):i}).join(`
-`)}
-var B6=class{options;rules;lexer;constructor(C){this.options=C||j4}space(C){let t=this.rules.block.newline.exec(C);if(t&&t[0].length>0)return{type:"space",raw:t[0]}}code(C){let t=this.rules.block.code.exec(C);if(t){let L=t[0].replace(this.rules.other.codeRemoveIndent,"");return{type:"code",raw:t[0],codeBlockStyle:"indented",text:this.options.pedantic?L:P5(L,`
-`)}}}fences(C){let t=this.rules.block.fences.exec(C);if(t){let L=t[0],n=uh(L,t[3]||"",this.rules);return{type:"code",raw:L,lang:t[2]?t[2].trim().replace(this.rules.inline.anyPunctuation,"$1"):t[2],text:n}}}heading(C){let t=this.rules.block.heading.exec(C);if(t){let L=t[2].trim();if(this.rules.other.endingHash.test(L)){let n=P5(L,"#");(this.options.pedantic||!n||this.rules.other.endingSpaceChar.test(n))&&(L=n.trim())}return{type:"heading",raw:t[0],depth:t[1].length,text:L,tokens:this.lexer.inline(L)}}}hr(C){let t=this.rules.block.hr.exec(C);if(t)return{type:"hr",raw:P5(t[0],`
-`)}}blockquote(C){let t=this.rules.block.blockquote.exec(C);if(t){let L=P5(t[0],`
-`).split(`
-`),n="",i="",s=[];for(;L.length>0;){let r=!1,o=[],a;for(a=0;a<L.length;a++)if(this.rules.other.blockquoteStart.test(L[a]))o.push(L[a]),r=!0;else if(!r)o.push(L[a]);else break;L=L.slice(a);let l=o.join(`
-`),u=l.replace(this.rules.other.blockquoteSetextReplace,`
-    $1`).replace(this.rules.other.blockquoteSetextReplace2,"");n=n?`${n}
-${l}`:l,i=i?`${i}
-${u}`:u;let x=this.lexer.state.top;if(this.lexer.state.top=!0,this.lexer.blockTokens(u,s,!0),this.lexer.state.top=x,L.length===0)break;let p=s.at(-1);if(p?.type==="code")break;if(p?.type==="blockquote"){let h=p,d=h.raw+`
-`+L.join(`
-`),m=this.blockquote(d);s[s.length-1]=m,n=n.substring(0,n.length-h.raw.length)+m.raw,i=i.substring(0,i.length-h.text.length)+m.text;break}else if(p?.type==="list"){let h=p,d=h.raw+`
-`+L.join(`
-`),m=this.list(d);s[s.length-1]=m,n=n.substring(0,n.length-p.raw.length)+m.raw,i=i.substring(0,i.length-h.raw.length)+m.raw,L=d.substring(s.at(-1).raw.length).split(`
-`);continue}}return{type:"blockquote",raw:n,tokens:s,text:i}}}list(C){let t=this.rules.block.list.exec(C);if(t){let L=t[1].trim(),n=L.length>1,i={type:"list",raw:"",ordered:n,start:n?+L.slice(0,-1):"",loose:!1,items:[]};L=n?`\\d{1,9}\\${L.slice(-1)}`:`\\${L}`,this.options.pedantic&&(L=n?L:"[*+-]");let s=this.rules.other.listItemRegex(L),r=!1;for(;C;){let a=!1,l="",u="";if(!(t=s.exec(C))||this.rules.block.hr.test(C))break;l=t[0],C=C.substring(l.length);let x=t[2].split(`
-`,1)[0].replace(this.rules.other.listReplaceTabs,w=>" ".repeat(3*w.length)),p=C.split(`
-`,1)[0],h=!x.trim(),d=0;if(this.options.pedantic?(d=2,u=x.trimStart()):h?d=t[1].length+1:(d=t[2].search(this.rules.other.nonSpaceChar),d=d>4?1:d,u=x.slice(d),d+=t[1].length),h&&this.rules.other.blankLine.test(p)&&(l+=p+`
-`,C=C.substring(p.length+1),a=!0),!a){let w=this.rules.other.nextBulletRegex(d),b=this.rules.other.hrRegex(d),B=this.rules.other.fencesBeginRegex(d),y=this.rules.other.headingBeginRegex(d),S=this.rules.other.htmlBeginRegex(d);for(;C;){let D=C.split(`
-`,1)[0],k;if(p=D,this.options.pedantic?(p=p.replace(this.rules.other.listReplaceNesting,"  "),k=p):k=p.replace(this.rules.other.tabCharGlobal,"    "),B.test(p)||y.test(p)||S.test(p)||w.test(p)||b.test(p))break;if(k.search(this.rules.other.nonSpaceChar)>=d||!p.trim())u+=`
-`+k.slice(d);else{if(h||x.replace(this.rules.other.tabCharGlobal,"    ").search(this.rules.other.nonSpaceChar)>=4||B.test(x)||y.test(x)||b.test(x))break;u+=`
-`+p}!h&&!p.trim()&&(h=!0),l+=D+`
-`,C=C.substring(D.length+1),x=k.slice(d)}}i.loose||(r?i.loose=!0:this.rules.other.doubleBlankLine.test(l)&&(r=!0));let m=null,E;this.options.gfm&&(m=this.rules.other.listIsTask.exec(u),m&&(E=m[0]!=="[ ] ",u=u.replace(this.rules.other.listReplaceTask,""))),i.items.push({type:"list_item",raw:l,task:!!m,checked:E,loose:!1,text:u,tokens:[]}),i.raw+=l}let o=i.items.at(-1);if(o)o.raw=o.raw.trimEnd(),o.text=o.text.trimEnd();else return;i.raw=i.raw.trimEnd();for(let a=0;a<i.items.length;a++)if(this.lexer.state.top=!1,i.items[a].tokens=this.lexer.blockTokens(i.items[a].text,[]),!i.loose){let l=i.items[a].tokens.filter(x=>x.type==="space"),u=l.length>0&&l.some(x=>this.rules.other.anyLine.test(x.raw));i.loose=u}if(i.loose)for(let a=0;a<i.items.length;a++)i.items[a].loose=!0;return i}}html(C){let t=this.rules.block.html.exec(C);if(t)return{type:"html",block:!0,raw:t[0],pre:t[1]==="pre"||t[1]==="script"||t[1]==="style",text:t[0]}}def(C){let t=this.rules.block.def.exec(C);if(t){let L=t[1].toLowerCase().replace(this.rules.other.multipleSpaceGlobal," "),n=t[2]?t[2].replace(this.rules.other.hrefBrackets,"$1").replace(this.rules.inline.anyPunctuation,"$1"):"",i=t[3]?t[3].substring(1,t[3].length-1).replace(this.rules.inline.anyPunctuation,"$1"):t[3];return{type:"def",tag:L,raw:t[0],href:n,title:i}}}table(C){let t=this.rules.block.table.exec(C);if(!t||!this.rules.other.tableDelimiter.test(t[2]))return;let L=nn(t[1]),n=t[2].replace(this.rules.other.tableAlignChars,"").split("|"),i=t[3]?.trim()?t[3].replace(this.rules.other.tableRowBlankLine,"").split(`
-`):[],s={type:"table",raw:t[0],header:[],align:[],rows:[]};if(L.length===n.length){for(let r of n)this.rules.other.tableAlignRight.test(r)?s.align.push("right"):this.rules.other.tableAlignCenter.test(r)?s.align.push("center"):this.rules.other.tableAlignLeft.test(r)?s.align.push("left"):s.align.push(null);for(let r=0;r<L.length;r++)s.header.push({text:L[r],tokens:this.lexer.inline(L[r]),header:!0,align:s.align[r]});for(let r of i)s.rows.push(nn(r,s.header.length).map((o,a)=>({text:o,tokens:this.lexer.inline(o),header:!1,align:s.align[a]})));return s}}lheading(C){let t=this.rules.block.lheading.exec(C);if(t)return{type:"heading",raw:t[0],depth:t[2].charAt(0)==="="?1:2,text:t[1],tokens:this.lexer.inline(t[1])}}paragraph(C){let t=this.rules.block.paragraph.exec(C);if(t){let L=t[1].charAt(t[1].length-1)===`
-`?t[1].slice(0,-1):t[1];return{type:"paragraph",raw:t[0],text:L,tokens:this.lexer.inline(L)}}}text(C){let t=this.rules.block.text.exec(C);if(t)return{type:"text",raw:t[0],text:t[0],tokens:this.lexer.inline(t[0])}}escape(C){let t=this.rules.inline.escape.exec(C);if(t)return{type:"escape",raw:t[0],text:t[1]}}tag(C){let t=this.rules.inline.tag.exec(C);if(t)return!this.lexer.state.inLink&&this.rules.other.startATag.test(t[0])?this.lexer.state.inLink=!0:this.lexer.state.inLink&&this.rules.other.endATag.test(t[0])&&(this.lexer.state.inLink=!1),!this.lexer.state.inRawBlock&&this.rules.other.startPreScriptTag.test(t[0])?this.lexer.state.inRawBlock=!0:this.lexer.state.inRawBlock&&this.rules.other.endPreScriptTag.test(t[0])&&(this.lexer.state.inRawBlock=!1),{type:"html",raw:t[0],inLink:this.lexer.state.inLink,inRawBlock:this.lexer.state.inRawBlock,block:!1,text:t[0]}}link(C){let t=this.rules.inline.link.exec(C);if(t){let L=t[2].trim();if(!this.options.pedantic&&this.rules.other.startAngleBracket.test(L)){if(!this.rules.other.endAngleBracket.test(L))return;let s=P5(L.slice(0,-1),"\\");if((L.length-s.length)%2===0)return}else{let s=lh(t[2],"()");if(s>-1){let o=(t[0].indexOf("!")===0?5:4)+t[1].length+s;t[2]=t[2].substring(0,s),t[0]=t[0].substring(0,o).trim(),t[3]=""}}let n=t[2],i="";if(this.options.pedantic){let s=this.rules.other.pedanticHrefTitle.exec(n);s&&(n=s[1],i=s[3])}else i=t[3]?t[3].slice(1,-1):"";return n=n.trim(),this.rules.other.startAngleBracket.test(n)&&(this.options.pedantic&&!this.rules.other.endAngleBracket.test(L)?n=n.slice(1):n=n.slice(1,-1)),sn(t,{href:n&&n.replace(this.rules.inline.anyPunctuation,"$1"),title:i&&i.replace(this.rules.inline.anyPunctuation,"$1")},t[0],this.lexer,this.rules)}}reflink(C,t){let L;if((L=this.rules.inline.reflink.exec(C))||(L=this.rules.inline.nolink.exec(C))){let n=(L[2]||L[1]).replace(this.rules.other.multipleSpaceGlobal," "),i=t[n.toLowerCase()];if(!i){let s=L[0].charAt(0);return{type:"text",raw:s,text:s}}return sn(L,i,L[0],this.lexer,this.rules)}}emStrong(C,t,L=""){let n=this.rules.inline.emStrongLDelim.exec(C);if(!n||n[3]&&L.match(this.rules.other.unicodeAlphaNumeric))return;if(!(n[1]||n[2]||"")||!L||this.rules.inline.punctuation.exec(L)){let s=[...n[0]].length-1,r,o,a=s,l=0,u=n[0][0]==="*"?this.rules.inline.emStrongRDelimAst:this.rules.inline.emStrongRDelimUnd;for(u.lastIndex=0,t=t.slice(-1*C.length+s);(n=u.exec(t))!=null;){if(r=n[1]||n[2]||n[3]||n[4]||n[5]||n[6],!r)continue;if(o=[...r].length,n[3]||n[4]){a+=o;continue}else if((n[5]||n[6])&&s%3&&!((s+o)%3)){l+=o;continue}if(a-=o,a>0)continue;o=Math.min(o,o+a+l);let x=[...n[0]][0].length,p=C.slice(0,s+n.index+x+o);if(Math.min(s,o)%2){let d=p.slice(1,-1);return{type:"em",raw:p,text:d,tokens:this.lexer.inlineTokens(d)}}let h=p.slice(2,-2);return{type:"strong",raw:p,text:h,tokens:this.lexer.inlineTokens(h)}}}}codespan(C){let t=this.rules.inline.code.exec(C);if(t){let L=t[2].replace(this.rules.other.newLineCharGlobal," "),n=this.rules.other.nonSpaceChar.test(L),i=this.rules.other.startingSpaceChar.test(L)&&this.rules.other.endingSpaceChar.test(L);return n&&i&&(L=L.substring(1,L.length-1)),{type:"codespan",raw:t[0],text:L}}}br(C){let t=this.rules.inline.br.exec(C);if(t)return{type:"br",raw:t[0]}}del(C){let t=this.rules.inline.del.exec(C);if(t)return{type:"del",raw:t[0],text:t[2],tokens:this.lexer.inlineTokens(t[2])}}autolink(C){let t=this.rules.inline.autolink.exec(C);if(t){let L,n;return t[2]==="@"?(L=t[1],n="mailto:"+L):(L=t[1],n=L),{type:"link",raw:t[0],text:L,href:n,tokens:[{type:"text",raw:L,text:L}]}}}url(C){let t;if(t=this.rules.inline.url.exec(C)){let L,n;if(t[2]==="@")L=t[0],n="mailto:"+L;else{let i;do i=t[0],t[0]=this.rules.inline._backpedal.exec(t[0])?.[0]??"";while(i!==t[0]);L=t[0],t[1]==="www."?n="http://"+t[0]:n=t[0]}return{type:"link",raw:t[0],text:L,href:n,tokens:[{type:"text",raw:L,text:L}]}}}inlineText(C){let t=this.rules.inline.text.exec(C);if(t){let L=this.lexer.state.inRawBlock;return{type:"text",raw:t[0],text:t[0],escaped:L}}}};
-var q2=class e{tokens;options;state;tokenizer;inlineQueue;constructor(C){this.tokens=[],this.tokens.links=Object.create(null),this.options=C||j4,this.options.tokenizer=this.options.tokenizer||new B6,this.tokenizer=this.options.tokenizer,this.tokenizer.options=this.options,this.tokenizer.lexer=this,this.inlineQueue=[],this.state={inLink:!1,inRawBlock:!1,top:!0};let t={other:m2,block:k7.normal,inline:I5.normal};this.options.pedantic?(t.block=k7.pedantic,t.inline=I5.pedantic):this.options.gfm&&(t.block=k7.gfm,this.options.breaks?t.inline=I5.breaks:t.inline=I5.gfm),this.tokenizer.rules=t}static get rules(){return{block:k7,inline:I5}}static lex(C,t){return new e(t).lex(C)}static lexInline(C,t){return new e(t).inlineTokens(C)}lex(C){C=C.replace(m2.carriageReturn,`
-`),this.blockTokens(C,this.tokens);for(let t=0;t<this.inlineQueue.length;t++){let L=this.inlineQueue[t];this.inlineTokens(L.src,L.tokens)}return this.inlineQueue=[],this.tokens}blockTokens(C,t=[],L=!1){for(this.options.pedantic&&(C=C.replace(m2.tabCharGlobal,"    ").replace(m2.spaceLine,""));C;){let n;if(this.options.extensions?.block?.some(s=>(n=s.call({lexer:this},C,t))?(C=C.substring(n.raw.length),t.push(n),!0):!1))continue;if(n=this.tokenizer.space(C)){C=C.substring(n.raw.length);let s=t.at(-1);n.raw.length===1&&s!==void 0?s.raw+=`
-`:t.push(n);continue}if(n=this.tokenizer.code(C)){C=C.substring(n.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=`
-`+n.raw,s.text+=`
-`+n.text,this.inlineQueue.at(-1).src=s.text):t.push(n);continue}if(n=this.tokenizer.fences(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.heading(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.hr(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.blockquote(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.list(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.html(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.def(C)){C=C.substring(n.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=`
-`+n.raw,s.text+=`
-`+n.raw,this.inlineQueue.at(-1).src=s.text):this.tokens.links[n.tag]||(this.tokens.links[n.tag]={href:n.href,title:n.title});continue}if(n=this.tokenizer.table(C)){C=C.substring(n.raw.length),t.push(n);continue}if(n=this.tokenizer.lheading(C)){C=C.substring(n.raw.length),t.push(n);continue}let i=C;if(this.options.extensions?.startBlock){let s=1/0,r=C.slice(1),o;this.options.extensions.startBlock.forEach(a=>{o=a.call({lexer:this},r),typeof o=="number"&&o>=0&&(s=Math.min(s,o))}),s<1/0&&s>=0&&(i=C.substring(0,s+1))}if(this.state.top&&(n=this.tokenizer.paragraph(i))){let s=t.at(-1);L&&s?.type==="paragraph"?(s.raw+=`
-`+n.raw,s.text+=`
-`+n.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(n),L=i.length!==C.length,C=C.substring(n.raw.length);continue}if(n=this.tokenizer.text(C)){C=C.substring(n.raw.length);let s=t.at(-1);s?.type==="text"?(s.raw+=`
-`+n.raw,s.text+=`
-`+n.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(n);continue}if(C){let s="Infinite loop on byte: "+C.charCodeAt(0);if(this.options.silent){console.error(s);break}else throw new Error(s)}}return this.state.top=!0,t}inline(C,t=[]){return this.inlineQueue.push({src:C,tokens:t}),t}inlineTokens(C,t=[]){let L=C,n=null;if(this.tokens.links){let r=Object.keys(this.tokens.links);if(r.length>0)for(;(n=this.tokenizer.rules.inline.reflinkSearch.exec(L))!=null;)r.includes(n[0].slice(n[0].lastIndexOf("[")+1,-1))&&(L=L.slice(0,n.index)+"["+"a".repeat(n[0].length-2)+"]"+L.slice(this.tokenizer.rules.inline.reflinkSearch.lastIndex))}for(;(n=this.tokenizer.rules.inline.blockSkip.exec(L))!=null;)L=L.slice(0,n.index)+"["+"a".repeat(n[0].length-2)+"]"+L.slice(this.tokenizer.rules.inline.blockSkip.lastIndex);for(;(n=this.tokenizer.rules.inline.anyPunctuation.exec(L))!=null;)L=L.slice(0,n.index)+"++"+L.slice(this.tokenizer.rules.inline.anyPunctuation.lastIndex);let i=!1,s="";for(;C;){i||(s=""),i=!1;let r;if(this.options.extensions?.inline?.some(a=>(r=a.call({lexer:this},C,t))?(C=C.substring(r.raw.length),t.push(r),!0):!1))continue;if(r=this.tokenizer.escape(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.tag(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.link(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.reflink(C,this.tokens.links)){C=C.substring(r.raw.length);let a=t.at(-1);r.type==="text"&&a?.type==="text"?(a.raw+=r.raw,a.text+=r.text):t.push(r);continue}if(r=this.tokenizer.emStrong(C,L,s)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.codespan(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.br(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.del(C)){C=C.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.autolink(C)){C=C.substring(r.raw.length),t.push(r);continue}if(!this.state.inLink&&(r=this.tokenizer.url(C))){C=C.substring(r.raw.length),t.push(r);continue}let o=C;if(this.options.extensions?.startInline){let a=1/0,l=C.slice(1),u;this.options.extensions.startInline.forEach(x=>{u=x.call({lexer:this},l),typeof u=="number"&&u>=0&&(a=Math.min(a,u))}),a<1/0&&a>=0&&(o=C.substring(0,a+1))}if(r=this.tokenizer.inlineText(o)){C=C.substring(r.raw.length),r.raw.slice(-1)!=="_"&&(s=r.raw.slice(-1)),i=!0;let a=t.at(-1);a?.type==="text"?(a.raw+=r.raw,a.text+=r.text):t.push(r);continue}if(C){let a="Infinite loop on byte: "+C.charCodeAt(0);if(this.options.silent){console.error(a);break}else throw new Error(a)}}return t}};
-var w6=class{options;parser;constructor(C){this.options=C||j4}space(C){return""}code({text:C,lang:t,escaped:L}){let n=(t||"").match(m2.notSpaceStart)?.[0],i=C.replace(m2.endingNewline,"")+`
-`;return n?'<pre><code class="language-'+i3(n)+'">'+(L?i:i3(i,!0))+`</code></pre>
-`:"<pre><code>"+(L?i:i3(i,!0))+`</code></pre>
-`}blockquote({tokens:C}){return`<blockquote>
-${this.parser.parse(C)}</blockquote>
-`}html({text:C}){return C}heading({tokens:C,depth:t}){return`<h${t}>${this.parser.parseInline(C)}</h${t}>
-`}hr(C){return`<hr>
-`}list(C){let t=C.ordered,L=C.start,n="";for(let r=0;r<C.items.length;r++){let o=C.items[r];n+=this.listitem(o)}let i=t?"ol":"ul",s=t&&L!==1?' start="'+L+'"':"";return"<"+i+s+`>
-`+n+"</"+i+`>
-`}listitem(C){let t="";if(C.task){let L=this.checkbox({checked:!!C.checked});C.loose?C.tokens[0]?.type==="paragraph"?(C.tokens[0].text=L+" "+C.tokens[0].text,C.tokens[0].tokens&&C.tokens[0].tokens.length>0&&C.tokens[0].tokens[0].type==="text"&&(C.tokens[0].tokens[0].text=L+" "+i3(C.tokens[0].tokens[0].text),C.tokens[0].tokens[0].escaped=!0)):C.tokens.unshift({type:"text",raw:L+" ",text:L+" ",escaped:!0}):t+=L+" "}return t+=this.parser.parse(C.tokens,!!C.loose),`<li>${t}</li>
-`}checkbox({checked:C}){return"<input "+(C?'checked="" ':"")+'disabled="" type="checkbox">'}paragraph({tokens:C}){return`<p>${this.parser.parseInline(C)}</p>
-`}table(C){let t="",L="";for(let i=0;i<C.header.length;i++)L+=this.tablecell(C.header[i]);t+=this.tablerow({text:L});let n="";for(let i=0;i<C.rows.length;i++){let s=C.rows[i];L="";for(let r=0;r<s.length;r++)L+=this.tablecell(s[r]);n+=this.tablerow({text:L})}return n&&(n=`<tbody>${n}</tbody>`),`<table>
-<thead>
-`+t+`</thead>
-`+n+`</table>
-`}tablerow({text:C}){return`<tr>
-${C}</tr>
-`}tablecell(C){let t=this.parser.parseInline(C.tokens),L=C.header?"th":"td";return(C.align?`<${L} align="${C.align}">`:`<${L}>`)+t+`</${L}>
-`}strong({tokens:C}){return`<strong>${this.parser.parseInline(C)}</strong>`}em({tokens:C}){return`<em>${this.parser.parseInline(C)}</em>`}codespan({text:C}){return`<code>${i3(C,!0)}</code>`}br(C){return"<br>"}del({tokens:C}){return`<del>${this.parser.parseInline(C)}</del>`}link({href:C,title:t,tokens:L}){let n=this.parser.parseInline(L),i=Ln(C);if(i===null)return n;C=i;let s='<a href="'+C+'"';return t&&(s+=' title="'+i3(t)+'"'),s+=">"+n+"</a>",s}image({href:C,title:t,text:L}){let n=Ln(C);if(n===null)return i3(L);C=n;let i=`<img src="${C}" alt="${L}"`;return t&&(i+=` title="${i3(t)}"`),i+=">",i}text(C){return"tokens"in C&&C.tokens?this.parser.parseInline(C.tokens):"escaped"in C&&C.escaped?C.text:i3(C.text)}};
-var z5=class{strong({text:C}){return C}em({text:C}){return C}codespan({text:C}){return C}del({text:C}){return C}html({text:C}){return C}text({text:C}){return C}link({text:C}){return""+C}image({text:C}){return""+C}br(){return""}};
-var U2=class e{options;renderer;textRenderer;constructor(C){this.options=C||j4,this.options.renderer=this.options.renderer||new w6,this.renderer=this.options.renderer,this.renderer.options=this.options,this.renderer.parser=this,this.textRenderer=new z5}static parse(C,t){return new e(t).parse(C)}static parseInline(C,t){return new e(t).parseInline(C)}parse(C,t=!0){let L="";for(let n=0;n<C.length;n++){let i=C[n];if(this.options.extensions?.renderers?.[i.type]){let r=i,o=this.options.extensions.renderers[r.type].call({parser:this},r);if(o!==!1||!["space","hr","heading","code","table","blockquote","list","html","paragraph","text"].includes(r.type)){L+=o||"";continue}}let s=i;switch(s.type){case"space":{L+=this.renderer.space(s);continue}case"hr":{L+=this.renderer.hr(s);continue}case"heading":{L+=this.renderer.heading(s);continue}case"code":{L+=this.renderer.code(s);continue}case"table":{L+=this.renderer.table(s);continue}case"blockquote":{L+=this.renderer.blockquote(s);continue}case"list":{L+=this.renderer.list(s);continue}case"html":{L+=this.renderer.html(s);continue}case"paragraph":{L+=this.renderer.paragraph(s);continue}case"text":{let r=s,o=this.renderer.text(r);for(;n+1<C.length&&C[n+1].type==="text";)r=C[++n],o+=`
-`+this.renderer.text(r);t?L+=this.renderer.paragraph({type:"paragraph",raw:o,text:o,tokens:[{type:"text",raw:o,text:o,escaped:!0}]}):L+=o;continue}default:{let r='Token with "'+s.type+'" type was not found.';if(this.options.silent)return console.error(r),"";throw new Error(r)}}}return L}parseInline(C,t=this.renderer){let L="";for(let n=0;n<C.length;n++){let i=C[n];if(this.options.extensions?.renderers?.[i.type]){let r=this.options.extensions.renderers[i.type].call({parser:this},i);if(r!==!1||!["escape","html","link","image","strong","em","codespan","br","del","text"].includes(i.type)){L+=r||"";continue}}let s=i;switch(s.type){case"escape":{L+=t.text(s);break}case"html":{L+=t.html(s);break}case"link":{L+=t.link(s);break}case"image":{L+=t.image(s);break}case"strong":{L+=t.strong(s);break}case"em":{L+=t.em(s);break}case"codespan":{L+=t.codespan(s);break}case"br":{L+=t.br(s);break}case"del":{L+=t.del(s);break}case"text":{L+=t.text(s);break}default:{let r='Token with "'+s.type+'" type was not found.';if(this.options.silent)return console.error(r),"";throw new Error(r)}}}return L}};
-var k6=class{options;block;constructor(C){this.options=C||j4}static passThroughHooks=new Set(["preprocess","postprocess","processAllTokens"]);preprocess(C){return C}postprocess(C){return C}processAllTokens(C){return C}provideLexer(){return this.block?q2.lex:q2.lexInline}provideParser(){return this.block?U2.parse:U2.parseInline}};
-var W5=class{defaults=H9();options=this.setOptions;parse=this.parseMarkdown(!0);parseInline=this.parseMarkdown(!1);Parser=U2;Renderer=w6;TextRenderer=z5;Lexer=q2;Tokenizer=B6;Hooks=k6;constructor(...C){this.use(...C)}walkTokens(C,t){let L=[];for(let n of C)switch(L=L.concat(t.call(this,n)),n.type){case"table":{let i=n;for(let s of i.header)L=L.concat(this.walkTokens(s.tokens,t));for(let s of i.rows)for(let r of s)L=L.concat(this.walkTokens(r.tokens,t));break}case"list":{let i=n;L=L.concat(this.walkTokens(i.items,t));break}default:{let i=n;this.defaults.extensions?.childTokens?.[i.type]?this.defaults.extensions.childTokens[i.type].forEach(s=>{let r=i[s].flat(1/0);L=L.concat(this.walkTokens(r,t))}):i.tokens&&(L=L.concat(this.walkTokens(i.tokens,t)))}}return L}use(...C){let t=this.defaults.extensions||{renderers:{},childTokens:{}};return C.forEach(L=>{let n={...L};if(n.async=this.defaults.async||n.async||!1,L.extensions&&(L.extensions.forEach(i=>{if(!i.name)throw new Error("extension name required");if("renderer"in i){let s=t.renderers[i.name];s?t.renderers[i.name]=function(...r){let o=i.renderer.apply(this,r);return o===!1&&(o=s.apply(this,r)),o}:t.renderers[i.name]=i.renderer}if("tokenizer"in i){if(!i.level||i.level!=="block"&&i.level!=="inline")throw new Error("extension level must be 'block' or 'inline'");let s=t[i.level];s?s.unshift(i.tokenizer):t[i.level]=[i.tokenizer],i.start&&(i.level==="block"?t.startBlock?t.startBlock.push(i.start):t.startBlock=[i.start]:i.level==="inline"&&(t.startInline?t.startInline.push(i.start):t.startInline=[i.start]))}"childTokens"in i&&i.childTokens&&(t.childTokens[i.name]=i.childTokens)}),n.extensions=t),L.renderer){let i=this.defaults.renderer||new w6(this.defaults);for(let s in L.renderer){if(!(s in i))throw new Error(`renderer '${s}' does not exist`);if(["options","parser"].includes(s))continue;let r=s,o=L.renderer[r],a=i[r];i[r]=(...l)=>{let u=o.apply(i,l);return u===!1&&(u=a.apply(i,l)),u||""}}n.renderer=i}if(L.tokenizer){let i=this.defaults.tokenizer||new B6(this.defaults);for(let s in L.tokenizer){if(!(s in i))throw new Error(`tokenizer '${s}' does not exist`);if(["options","rules","lexer"].includes(s))continue;let r=s,o=L.tokenizer[r],a=i[r];i[r]=(...l)=>{let u=o.apply(i,l);return u===!1&&(u=a.apply(i,l)),u}}n.tokenizer=i}if(L.hooks){let i=this.defaults.hooks||new k6;for(let s in L.hooks){if(!(s in i))throw new Error(`hook '${s}' does not exist`);if(["options","block"].includes(s))continue;let r=s,o=L.hooks[r],a=i[r];k6.passThroughHooks.has(s)?i[r]=l=>{if(this.defaults.async)return Promise.resolve(o.call(i,l)).then(x=>a.call(i,x));let u=o.call(i,l);return a.call(i,u)}:i[r]=(...l)=>{let u=o.apply(i,l);return u===!1&&(u=a.apply(i,l)),u}}n.hooks=i}if(L.walkTokens){let i=this.defaults.walkTokens,s=L.walkTokens;n.walkTokens=function(r){let o=[];return o.push(s.call(this,r)),i&&(o=o.concat(i.call(this,r))),o}}this.defaults={...this.defaults,...n}}),this}setOptions(C){return this.defaults={...this.defaults,...C},this}lexer(C,t){return q2.lex(C,t??this.defaults)}parser(C,t){return U2.parse(C,t??this.defaults)}parseMarkdown(C){return(L,n)=>{let i={...n},s={...this.defaults,...i},r=this.onError(!!s.silent,!!s.async);if(this.defaults.async===!0&&i.async===!1)return r(new Error("marked(): The async option was set to true by an extension. Remove async: false from the parse options object to return a Promise."));if(typeof L>"u"||L===null)return r(new Error("marked(): input parameter is undefined or null"));if(typeof L!="string")return r(new Error("marked(): input parameter is of type "+Object.prototype.toString.call(L)+", string expected"));s.hooks&&(s.hooks.options=s,s.hooks.block=C);let o=s.hooks?s.hooks.provideLexer():C?q2.lex:q2.lexInline,a=s.hooks?s.hooks.provideParser():C?U2.parse:U2.parseInline;if(s.async)return Promise.resolve(s.hooks?s.hooks.preprocess(L):L).then(l=>o(l,s)).then(l=>s.hooks?s.hooks.processAllTokens(l):l).then(l=>s.walkTokens?Promise.all(this.walkTokens(l,s.walkTokens)).then(()=>l):l).then(l=>a(l,s)).then(l=>s.hooks?s.hooks.postprocess(l):l).catch(r);try{s.hooks&&(L=s.hooks.preprocess(L));let l=o(L,s);s.hooks&&(l=s.hooks.processAllTokens(l)),s.walkTokens&&this.walkTokens(l,s.walkTokens);let u=a(l,s);return s.hooks&&(u=s.hooks.postprocess(u)),u}catch(l){return r(l)}}}onError(C,t){return L=>{if(L.message+=`
-Please report this to https://github.com/markedjs/marked.`,C){let n="<p>An error occurred:</p><pre>"+i3(L.message+"",!0)+"</pre>";return t?Promise.resolve(n):n}if(t)return Promise.reject(L);throw L}}};
-export{W5,U2,w6,z5,q2,B6,k6};
+import{__esm,init_OutputJax,init_MathItem,init_MmlNode,init_FontData,init_Options,init_LinebreakVisitor,init_lengths,init_Styles,AbstractOutputJax,FontData,separateOptions,LinebreakVisitor,percent,length2em,TEXCLASS,STATE,Styles,init_Factory,AbstractFactory,init_string,init_BBox,init_LineBBox,em,NOSTRETCH,BBox,LineBBox,TextNode,DIRECTION,BIGDIMEN,px,lookup,unicodeChars,split,__kittexLate}from'./p18.js';export*from'./p18.js';
+// node_modules/@mathjax/src/mjs/util/StyleJson.js
+var StyleJsonSheet;
+var init_StyleJson = __esm({
+  "node_modules/@mathjax/src/mjs/util/StyleJson.js"() {
+    StyleJsonSheet = class {
+      get cssText() {
+        return this.getStyleString();
+      }
+      constructor(styles = null) {
+        this.styles = {};
+        this.addStyles(styles);
+      }
+      addStyles(styles) {
+        if (!styles)
+          return;
+        for (const style of Object.keys(styles)) {
+          if (!this.styles[style]) {
+            this.styles[style] = {};
+          }
+          Object.assign(this.styles[style], styles[style]);
+        }
+      }
+      removeStyles(...selectors) {
+        for (const selector of selectors) {
+          delete this.styles[selector];
+        }
+      }
+      clear() {
+        this.styles = {};
+      }
+      getStyleString() {
+        return this.getStyleRules().join("\n\n");
+      }
+      getStyleRules(styles = this.styles, spaces = "") {
+        const selectors = Object.keys(styles);
+        const defs = new Array(selectors.length);
+        let i2 = 0;
+        for (const selector of selectors) {
+          const data = styles[selector];
+          defs[i2++] = `${spaces}${selector} {
+${this.getStyleDefString(data, spaces)}
+${spaces}}`;
+        }
+        return defs;
+      }
+      getStyleDefString(styles, spaces) {
+        const properties = Object.keys(styles);
+        const values = new Array(properties.length);
+        let i2 = 0;
+        for (const property of properties) {
+          values[i2++] = styles[property] instanceof Object ? spaces + this.getStyleRules({
+            [property]: styles[property]
+          }, spaces + "  ").join("\n" + spaces) : "  " + spaces + property + ": " + styles[property] + ";";
+        }
+        return values.join("\n" + spaces);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common.js
+var FONTPATH;
+var CommonOutputJax;
+var init_common = __esm({
+  "node_modules/@mathjax/src/mjs/output/common.js"() {
+    init_OutputJax();
+    init_MathItem();
+    init_MmlNode();
+    init_FontData();
+    init_Options();
+    init_LinebreakVisitor();
+    init_lengths();
+    init_lengths();
+    init_Styles();
+    init_StyleJson();
+    FONTPATH = "@mathjax/%%FONT%%-font";
+    CommonOutputJax = class extends AbstractOutputJax {
+      get forceInlineBreaks() {
+        return false;
+      }
+      constructor(options3 = {}, defaultFactory = null, defaultFont = null) {
+        const [fontClass, font] = options3.fontData instanceof FontData ? [options3.fontData.constructor, options3.fontData] : [options3.fontData || defaultFont, null];
+        const [jaxOptions, fontOptions] = separateOptions(options3, fontClass.OPTIONS);
+        super(jaxOptions);
+        this.factory = this.options.wrapperFactory || new defaultFactory();
+        this.factory.jax = this;
+        this.styleJson = this.options.styleJson || new StyleJsonSheet();
+        this.font = font || new fontClass(fontOptions);
+        this.font.setOptions({ mathmlSpacing: this.options.mathmlSpacing });
+        this.constructor.genericFont = fontClass;
+        this.unknownCache = /* @__PURE__ */ new Map();
+        const linebreaks = this.options.linebreaks.LinebreakVisitor || LinebreakVisitor;
+        this.linebreaks = new linebreaks(this.factory);
+      }
+      setAdaptor(adaptor) {
+        super.setAdaptor(adaptor);
+        if (this.options.htmlHDW === "auto") {
+          this.options.htmlHDW = adaptor.canMeasureNodes ? "ignore" : "force";
+        }
+      }
+      addExtension(font, prefix = "") {
+        return this.font.addExtension(font, prefix);
+      }
+      typeset(math, html2) {
+        const CLASS = this.constructor;
+        const generic = CLASS.genericFont;
+        CLASS.genericFont = this.font.constructor;
+        this.setDocument(html2);
+        const node = this.createNode();
+        try {
+          this.toDOM(math, node, html2);
+        } finally {
+          CLASS.genericFont = generic;
+        }
+        return node;
+      }
+      createNode() {
+        const jax = this.constructor.NAME;
+        return this.html("mjx-container", { class: "MathJax", jax });
+      }
+      setScale(node, wrapper) {
+        let scale2 = this.getInitialScale() * this.options.scale;
+        if (wrapper.node.attributes.get("overflow") === "scale" && this.math.display) {
+          const w = wrapper.getOuterBBox().w;
+          const W = Math.max(0, this.math.metrics.containerWidth - 4) / this.pxPerEm;
+          if (w > W && w) {
+            scale2 *= W / w;
+          }
+        }
+        if (scale2 !== 1) {
+          this.adaptor.setStyle(node, "fontSize", percent(scale2));
+        }
+      }
+      getInitialScale() {
+        return this.math.metrics.scale;
+      }
+      toDOM(math, node, html2 = null) {
+        var _a2;
+        this.setDocument(html2);
+        this.math = math;
+        this.container = node;
+        this.pxPerEm = math.metrics.ex / this.font.params.x_height;
+        this.executeFilters(this.preFilters, math, html2, node);
+        this.nodeMap = /* @__PURE__ */ new Map();
+        math.root.attributes.getAllInherited().overflow = this.options.displayOverflow;
+        const overflow = math.root.attributes.get("overflow");
+        this.adaptor.setAttribute(node, "overflow", overflow);
+        const linebreak = overflow === "linebreak";
+        if (linebreak) {
+          this.getLinebreakWidth();
+        }
+        const makeBreaks = this.options.linebreaks.inline && !math.display;
+        let inlineMarked = !!math.root.getProperty("inlineMarked");
+        if (inlineMarked && (!makeBreaks || this.forceInlineBreaks !== math.root.getProperty("inlineForced"))) {
+          this.unmarkInlineBreaks(math.root);
+          math.root.removeProperty("inlineMarked");
+          math.root.removeProperty("inlineForced");
+          inlineMarked = false;
+        }
+        if (makeBreaks && !inlineMarked) {
+          this.markInlineBreaks((_a2 = math.root.childNodes) === null || _a2 === void 0 ? void 0 : _a2[0]);
+          math.root.setProperty("inlineMarked", true);
+          math.root.setProperty("inlineForced", this.forceInlineBreaks);
+        }
+        math.root.setTeXclass(null);
+        const wrapper = this.factory.wrap(math.root);
+        this.setScale(node, wrapper);
+        this.processMath(wrapper, node);
+        this.nodeMap = null;
+        this.executeFilters(this.postFilters, math, html2, node);
+      }
+      getBBox(math, html2) {
+        this.setDocument(html2);
+        this.math = math;
+        math.root.setTeXclass(null);
+        this.nodeMap = /* @__PURE__ */ new Map();
+        const bbox = this.factory.wrap(math.root).getOuterBBox();
+        this.nodeMap = null;
+        return bbox;
+      }
+      getLinebreakWidth() {
+        const W = this.math.metrics.containerWidth / this.pxPerEm;
+        const width = this.math.root.attributes.get("maxwidth") || this.options.linebreaks.width;
+        this.containerWidth = length2em(width, W, 1, this.pxPerEm);
+      }
+      markInlineBreaks(node) {
+        if (!node)
+          return;
+        const forcebreak = this.forceInlineBreaks;
+        let postbreak = false;
+        let marked4 = false;
+        let markNext = "";
+        for (const child of node.childNodes) {
+          if (markNext) {
+            marked4 = this.markInlineBreak(marked4, forcebreak, markNext, node, child);
+            markNext = "";
+            postbreak = false;
+          } else if (child.isEmbellished) {
+            if (child === node.childNodes[0]) {
+              continue;
+            }
+            const mo = child.coreMO();
+            const texClass = mo.texClass;
+            const linebreak = mo.attributes.get("linebreak");
+            const linebreakstyle = mo.attributes.get("linebreakstyle");
+            if ((texClass === TEXCLASS.BIN || texClass === TEXCLASS.REL || texClass === TEXCLASS.ORD && mo.hasSpacingAttributes() || linebreak !== "auto") && linebreak !== "nobreak") {
+              if (linebreakstyle === "before") {
+                if (!postbreak || linebreak !== "auto") {
+                  marked4 = this.markInlineBreak(marked4, forcebreak, linebreak, node, child, mo);
+                }
+              } else {
+                markNext = linebreak;
+              }
+            }
+            postbreak = linebreak === "newline" && linebreakstyle === "after";
+          } else if (child.isKind("mspace")) {
+            const linebreak = child.attributes.get("linebreak");
+            if (linebreak !== "nobreak" && child.canBreak) {
+              marked4 = this.markInlineBreak(marked4, forcebreak, linebreak, node, child);
+            }
+            postbreak = linebreak === "newline";
+          } else {
+            postbreak = false;
+            if (child.isKind("mstyle") && !child.attributes.get("style") && !child.attributes.hasExplicit("mathbackground") || child.isKind("semantics")) {
+              this.markInlineBreaks(child.childNodes[0]);
+              if (child.getProperty("process-breaks")) {
+                child.setProperty("inline-breaks", true);
+                child.childNodes[0].setProperty("inline-breaks", true);
+                node.parent.setProperty("process-breaks", "true");
+              }
+            } else if (child.isKind("mrow") && child.attributes.get("data-semantic-added")) {
+              this.markInlineBreaks(child);
+              if (child.getProperty("process-breaks")) {
+                child.setProperty("inline-breaks", true);
+                node.parent.setProperty("process-breaks", "true");
+              }
+            }
+          }
+        }
+      }
+      markInlineBreak(marked4, forcebreak, linebreak, node, child, mo = null) {
+        child.setProperty("breakable", true);
+        if (forcebreak && linebreak !== "newline") {
+          child.setProperty("forcebreak", true);
+          mo === null || mo === void 0 ? void 0 : mo.setProperty("forcebreak", true);
+        } else {
+          child.removeProperty("forcebreak");
+          mo === null || mo === void 0 ? void 0 : mo.removeProperty("forcebreak");
+          if (linebreak === "newline") {
+            child.setProperty("newline", true);
+          }
+        }
+        if (!marked4) {
+          node.setProperty("process-breaks", true);
+          node.parent.setProperty("process-breaks", true);
+          marked4 = true;
+        }
+        return marked4;
+      }
+      unmarkInlineBreaks(node) {
+        if (!node)
+          return;
+        node.removeProperty("forcebreak");
+        node.removeProperty("breakable");
+        node.coreMO().removeProperty("forcebreak");
+        if (node.getProperty("process-breaks")) {
+          node.removeProperty("process-breaks");
+          for (const child of node.childNodes) {
+            this.unmarkInlineBreaks(child);
+          }
+        }
+      }
+      getMetrics(html2) {
+        this.setDocument(html2);
+        const adaptor = this.adaptor;
+        const maps3 = this.getMetricMaps(html2);
+        for (const math of html2.math) {
+          const parent = adaptor.parent(math.start.node);
+          if (math.state() < STATE.METRICS && parent) {
+            const map = maps3[math.display ? 1 : 0];
+            const { em: em2, ex, containerWidth, scale: scale2, family } = map.get(parent);
+            math.setMetrics(em2, ex, containerWidth, scale2);
+            if (this.options.mtextInheritFont) {
+              math.outputData.mtextFamily = family;
+            }
+            if (this.options.merrorInheritFont) {
+              math.outputData.merrorFamily = family;
+            }
+            math.state(STATE.METRICS);
+          }
+        }
+      }
+      getMetricsFor(node, display) {
+        const getFamily = this.options.mtextInheritFont || this.options.merrorInheritFont;
+        const test = this.getTestElement(node, display);
+        const metrics = Object.assign(Object.assign({}, this.measureMetrics(test, getFamily)), { display });
+        this.adaptor.remove(test);
+        return metrics;
+      }
+      getMetricMaps(html2) {
+        const adaptor = this.adaptor;
+        const domMaps = [
+          /* @__PURE__ */ new Map(),
+          /* @__PURE__ */ new Map()
+        ];
+        for (const math of html2.math) {
+          const node = adaptor.parent(math.start.node);
+          if (node && math.state() < STATE.METRICS) {
+            const map = domMaps[math.display ? 1 : 0];
+            if (!map.has(node)) {
+              map.set(node, this.getTestElement(node, math.display));
+            }
+          }
+        }
+        const getFamily = this.options.mtextInheritFont || this.options.merrorInheritFont;
+        const maps3 = [/* @__PURE__ */ new Map(), /* @__PURE__ */ new Map()];
+        for (const i2 of maps3.keys()) {
+          for (const node of domMaps[i2].keys()) {
+            maps3[i2].set(node, this.measureMetrics(domMaps[i2].get(node), getFamily));
+          }
+        }
+        for (const i2 of maps3.keys()) {
+          for (const node of domMaps[i2].values()) {
+            adaptor.remove(node);
+          }
+        }
+        return maps3;
+      }
+      getTestElement(node, display) {
+        const adaptor = this.adaptor;
+        if (!this.testInline) {
+          this.testInline = this.html("mjx-test", {
+            style: {
+              display: "inline-block",
+              width: "100%",
+              "font-style": "normal",
+              "font-weight": "normal",
+              "font-size": "100%",
+              "font-size-adjust": "none",
+              "text-indent": 0,
+              "text-transform": "none",
+              "letter-spacing": "normal",
+              "word-spacing": "normal",
+              overflow: "hidden",
+              height: "1px",
+              "margin-right": "-1px"
+            }
+          }, [
+            this.html("mjx-left-box", {
+              style: {
+                display: "inline-block",
+                width: 0,
+                float: "left"
+              }
+            }),
+            this.html("mjx-ex-box", {
+              style: {
+                position: "absolute",
+                overflow: "hidden",
+                width: "1px",
+                height: "60ex"
+              }
+            }),
+            this.html("mjx-right-box", {
+              style: {
+                display: "inline-block",
+                width: 0,
+                float: "right"
+              }
+            })
+          ]);
+          this.testDisplay = adaptor.clone(this.testInline);
+          adaptor.setStyle(this.testDisplay, "display", "table");
+          adaptor.setStyle(this.testDisplay, "margin-right", "");
+          adaptor.setStyle(adaptor.firstChild(this.testDisplay), "display", "none");
+          const right = adaptor.lastChild(this.testDisplay);
+          adaptor.setStyle(right, "display", "table-cell");
+          adaptor.setStyle(right, "width", "10000em");
+          adaptor.setStyle(right, "float", "");
+        }
+        return adaptor.append(node, adaptor.clone(display ? this.testDisplay : this.testInline));
+      }
+      measureMetrics(node, getFamily) {
+        const adaptor = this.adaptor;
+        const family = getFamily ? adaptor.fontFamily(node) : "";
+        const em2 = adaptor.fontSize(node);
+        const [w, h] = adaptor.nodeSize(adaptor.childNode(node, 1));
+        const ex = w ? h / 60 : em2 * this.options.exFactor;
+        const containerWidth = !w ? 1e6 : adaptor.getStyle(node, "display") === "table" ? adaptor.nodeSize(adaptor.lastChild(node))[0] - 1 : adaptor.nodeBBox(adaptor.lastChild(node)).left - adaptor.nodeBBox(adaptor.firstChild(node)).left - 2;
+        const scale2 = Math.max(this.options.minScale, this.options.matchFontHeight ? ex / this.font.params.x_height / em2 : 1);
+        return { em: em2, ex, containerWidth, scale: scale2, family };
+      }
+      styleSheet(html2) {
+        this.setDocument(html2);
+        this.styleJson.clear();
+        this.styleJson.addStyles(this.constructor.commonStyles);
+        if ("getStyles" in html2) {
+          for (const styles of html2.getStyles()) {
+            this.styleJson.addStyles(styles);
+          }
+        }
+        this.addWrapperStyles(this.styleJson);
+        this.addFontStyles(this.styleJson);
+        const sheet = this.html("style", { id: "MJX-styles" }, [
+          this.text("\n" + this.styleJson.cssText + "\n")
+        ]);
+        return sheet;
+      }
+      addFontStyles(styles) {
+        styles.addStyles(this.font.styles);
+      }
+      addWrapperStyles(styles) {
+        for (const kind of this.factory.getKinds()) {
+          this.addClassStyles(this.factory.getNodeClass(kind), styles);
+        }
+      }
+      addClassStyles(CLASS, styles) {
+        CLASS.addStyles(styles, this);
+      }
+      insertStyles(_styles) {
+      }
+      setDocument(html2) {
+        if (html2) {
+          this.document = html2;
+          this.adaptor.document = html2.document;
+        }
+      }
+      html(type, def2 = {}, content = [], ns) {
+        return this.adaptor.node(type, def2, content, ns);
+      }
+      text(text) {
+        return this.adaptor.text(text);
+      }
+      fixed(m, n = 3) {
+        if (Math.abs(m) < 6e-4) {
+          return "0";
+        }
+        return m.toFixed(n).replace(/\.?0+$/, "");
+      }
+      measureText(text, variant, font = ["", false, false]) {
+        const node = this.unknownText(text, variant);
+        if (variant === "-explicitFont") {
+          const styles = this.cssFontStyles(font);
+          this.adaptor.setAttributes(node, { style: styles });
+        }
+        return this.measureTextNodeWithCache(node, text, variant, font);
+      }
+      measureTextNodeWithCache(text, chars, variant, font = ["", false, false]) {
+        if (variant === "-explicitFont") {
+          variant = [font[0], font[1] ? "T" : "F", font[2] ? "T" : "F", ""].join("-");
+        }
+        if (!this.unknownCache.has(variant)) {
+          this.unknownCache.set(variant, /* @__PURE__ */ new Map());
+        }
+        const map = this.unknownCache.get(variant);
+        const cached = map.get(chars);
+        if (cached)
+          return cached;
+        const bbox = this.measureTextNode(text);
+        map.set(chars, bbox);
+        return bbox;
+      }
+      cssFontStyles(font, styles = {}) {
+        const [family, italic2, bold2] = font;
+        styles["font-family"] = this.font.getFamily(family);
+        if (italic2)
+          styles["font-style"] = "italic";
+        if (bold2)
+          styles["font-weight"] = "bold";
+        return styles;
+      }
+      getFontData(styles) {
+        if (!styles) {
+          styles = new Styles();
+        }
+        return [
+          this.font.getFamily(styles.get("font-family")),
+          styles.get("font-style") === "italic",
+          styles.get("font-weight") === "bold"
+        ];
+      }
+    };
+    CommonOutputJax.NAME = "Common";
+    CommonOutputJax.OPTIONS = Object.assign(Object.assign({}, AbstractOutputJax.OPTIONS), { scale: 1, minScale: 0.5, mtextInheritFont: false, merrorInheritFont: false, mtextFont: "", merrorFont: "serif", mathmlSpacing: false, skipAttributes: {}, exFactor: 0.5, displayAlign: "center", displayIndent: "0", displayOverflow: "overflow", linebreaks: {
+      inline: true,
+      width: "100%",
+      lineleading: 0.2,
+      LinebreakVisitor: null
+    }, font: "", fontExtensions: [], htmlHDW: "auto", wrapperFactory: null, fontData: null, fontPath: FONTPATH, styleJson: null });
+    CommonOutputJax.commonStyles = {
+      'mjx-container[overflow="scroll"][display]': {
+        overflow: "auto clip",
+        "min-width": "initial !important"
+      },
+      'mjx-container[overflow="truncate"][display]': {
+        overflow: "hidden clip",
+        "min-width": "initial !important"
+      },
+      "mjx-container[display]": {
+        display: "block",
+        "text-align": "center",
+        "justify-content": "center",
+        margin: ".7em 0",
+        padding: ".3em 2px"
+      },
+      'mjx-container[display][width="full"]': {
+        display: "flex"
+      },
+      'mjx-container[justify="left"]': {
+        "text-align": "left",
+        "justify-content": "left"
+      },
+      'mjx-container[justify="right"]': {
+        "text-align": "right",
+        "justify-content": "right"
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/WrapperFactory.js
+var AbstractWrapperFactory;
+var init_WrapperFactory = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/WrapperFactory.js"() {
+    init_Factory();
+    AbstractWrapperFactory = class extends AbstractFactory {
+      wrap(node, ...args) {
+        return this.create(node.kind, node, ...args);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/WrapperFactory.js
+var CommonWrapperFactory;
+var init_WrapperFactory2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/WrapperFactory.js"() {
+    init_WrapperFactory();
+    CommonWrapperFactory = class extends AbstractWrapperFactory {
+      constructor() {
+        super(...arguments);
+        this.jax = null;
+      }
+      get Wrappers() {
+        return this.node;
+      }
+    };
+    CommonWrapperFactory.defaultNodes = {};
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/Wrapper.js
+var AbstractWrapper;
+var init_Wrapper = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/Wrapper.js"() {
+    AbstractWrapper = class {
+      get kind() {
+        return this.node.kind;
+      }
+      constructor(factory, node) {
+        this.factory = factory;
+        this.node = node;
+      }
+      wrap(node) {
+        return this.factory.wrap(node);
+      }
+      walkTree(func, data) {
+        func(this, data);
+        if ("childNodes" in this) {
+          for (const child of this.childNodes) {
+            if (child) {
+              child.walkTree(func, data);
+            }
+          }
+        }
+        return data;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrapper.js
+function MathMLSpace(script2, nodict, size) {
+  return nodict ? script2 ? SMALLSIZE : MOSPACE : script2 ? size < SMALLSIZE ? 0 : SMALLSIZE : size;
+}
+var SMALLSIZE;
+var MOSPACE;
+var SPACE3;
+var CommonWrapper;
+var init_Wrapper2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrapper.js"() {
+    init_Wrapper();
+    init_MmlNode();
+    init_string();
+    init_lengths();
+    init_Styles();
+    init_Options();
+    init_BBox();
+    init_LineBBox();
+    init_FontData();
+    SMALLSIZE = 2 / 18;
+    MOSPACE = 5 / 18;
+    SPACE3 = {
+      [em(0)]: "0",
+      [em(2 / 18)]: "1",
+      [em(3 / 18)]: "2",
+      [em(4 / 18)]: "3",
+      [em(5 / 18)]: "4",
+      [em(6 / 18)]: "5"
+    };
+    CommonWrapper = class _CommonWrapper extends AbstractWrapper {
+      static addStyles(styles, _jax) {
+        styles.addStyles(this.styles);
+      }
+      get jax() {
+        return this.factory.jax;
+      }
+      get adaptor() {
+        return this.factory.jax.adaptor;
+      }
+      get metrics() {
+        return this.factory.jax.math.metrics;
+      }
+      get containerWidth() {
+        return this.parent ? this.parent.containerWidth : this.jax.containerWidth;
+      }
+      get linebreaks() {
+        return this.jax.linebreaks;
+      }
+      get linebreakOptions() {
+        return this.jax.options.linebreaks;
+      }
+      get fixesPWidth() {
+        return !this.node.notParent && !this.node.isToken;
+      }
+      get breakCount() {
+        if (this._breakCount < 0) {
+          const node = this.node;
+          this._breakCount = node.isEmbellished ? this.coreMO().embellishedBreakCount : node.arity < 0 && !node.linebreakContainer && this.childNodes[0].isStack ? this.childNodes[0].breakCount : 0;
+        }
+        return this._breakCount;
+      }
+      breakTop(mrow, _child) {
+        return this.node.linebreakContainer || !this.parent ? mrow : this.parent.breakTop(mrow, this);
+      }
+      constructor(factory, node, parent = null) {
+        super(factory, node);
+        this.parent = null;
+        this.dom = null;
+        this.removedStyles = null;
+        this.styles = null;
+        this.styleData = null;
+        this.variant = "";
+        this.bboxComputed = false;
+        this._breakCount = -1;
+        this.lineBBox = [];
+        this.stretch = NOSTRETCH;
+        this.font = null;
+        this.parent = parent;
+        this.font = factory.jax.font;
+        this.bbox = BBox.zero();
+        this.getStyles();
+        this.getStyleData();
+        this.getVariant();
+        this.getScale();
+        this.getSpace();
+        this.childNodes = node.childNodes.map((child) => {
+          const wrapped = this.wrap(child);
+          if (wrapped.bbox.pwidth && (node.notParent || node.isKind("math"))) {
+            this.bbox.pwidth = BBox.fullWidth;
+          }
+          return wrapped;
+        });
+      }
+      wrap(node, parent = null) {
+        const wrapped = this.factory.wrap(node, parent || this);
+        if (parent) {
+          parent.childNodes.push(wrapped);
+        }
+        this.jax.nodeMap.set(node, wrapped);
+        return wrapped;
+      }
+      getBBox(save = true) {
+        if (this.bboxComputed) {
+          return this.bbox;
+        }
+        const bbox = save ? this.bbox : BBox.zero();
+        this.computeBBox(bbox);
+        this.bboxComputed = save;
+        return bbox;
+      }
+      getOuterBBox(save = true) {
+        var _a2;
+        const bbox = this.getBBox(save);
+        if (!this.styleData)
+          return bbox;
+        const padding2 = this.styleData.padding;
+        const border = ((_a2 = this.styleData.border) === null || _a2 === void 0 ? void 0 : _a2.width) || [0, 0, 0, 0];
+        const margin = this.styleData.margin || [0, 0, 0, 0];
+        const obox = bbox.copy();
+        for (const [, i2, side] of BBox.boxSides) {
+          obox[side] += padding2[i2] + border[i2] + margin[i2];
+        }
+        return obox;
+      }
+      getUnbrokenHD() {
+        const n = this.breakCount + 1;
+        let H2 = 0;
+        let D = 0;
+        for (let i2 = 0; i2 < n; i2++) {
+          const { h, d } = this.getLineBBox(i2);
+          if (h > H2) {
+            H2 = h;
+          }
+          if (d > D) {
+            D = d;
+          }
+        }
+        return [H2, D];
+      }
+      computeBBox(bbox, recompute = false) {
+        bbox.empty();
+        for (const child of this.childNodes) {
+          bbox.append(child.getOuterBBox());
+        }
+        bbox.clean();
+        if (this.fixesPWidth && this.setChildPWidths(recompute)) {
+          this.computeBBox(bbox, true);
+        }
+      }
+      getLineBBox(i2) {
+        if (!this.lineBBox[i2]) {
+          const n = this.breakCount;
+          if (n) {
+            const line = this.embellishedBBox(i2) || this.computeLineBBox(i2);
+            this.lineBBox[i2] = line;
+            if (i2 === 0) {
+              if (!this.node.isKind("mo") && this.node.isEmbellished) {
+                line.originalL = this.getBBox().L;
+              } else {
+                line.L = this.getBBox().L;
+              }
+            }
+            if (i2 === n) {
+              line.R = this.getBBox().R;
+            }
+          } else {
+            const obox = this.getOuterBBox();
+            this.lineBBox[i2] = LineBBox.from(obox, this.linebreakOptions.lineleading);
+          }
+        }
+        return this.lineBBox[i2];
+      }
+      embellishedBBox(i2) {
+        if (!this.node.isEmbellished || this.node.isKind("mo"))
+          return null;
+        const mo = this.coreMO();
+        return mo.moLineBBox(i2, mo.embellishedBreakStyle, this.getOuterBBox());
+      }
+      computeLineBBox(i2) {
+        return this.getChildLineBBox(this.childNodes[0], i2);
+      }
+      getBreakNode(bbox) {
+        var _a2, _b2;
+        if (!bbox.start) {
+          return [this, null];
+        }
+        const [i2, j] = bbox.start;
+        if (this.node.isEmbellished) {
+          return [this, this.coreMO()];
+        }
+        const childNodes = ((_b2 = (_a2 = this.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.node) === null || _b2 === void 0 ? void 0 : _b2.isInferred) || this.node.isKind("semantics") ? this.childNodes[0].childNodes : this.childNodes;
+        if (this.node.isToken || !childNodes[i2]) {
+          return [this, null];
+        }
+        return childNodes[i2].getBreakNode(childNodes[i2].getLineBBox(j));
+      }
+      getChildLineBBox(child, i2) {
+        const n = this.breakCount;
+        let cbox = child.getLineBBox(i2);
+        if (this.styleData || this.bbox.L || this.bbox.R) {
+          cbox = cbox.copy();
+        }
+        this.addMiddleBorders(cbox);
+        if (i2 === 0) {
+          cbox.L += this.bbox.L;
+          this.addLeftBorders(cbox);
+        } else if (i2 === n) {
+          cbox.R += this.bbox.R;
+          this.addRightBorders(cbox);
+        }
+        return cbox;
+      }
+      sideStyleSize(n) {
+        var _a2;
+        const border = this.styleData.border;
+        const padding2 = this.styleData.padding;
+        const margin = this.styleData.margin;
+        return (((_a2 = border === null || border === void 0 ? void 0 : border.width) === null || _a2 === void 0 ? void 0 : _a2[n]) || 0) + ((padding2 === null || padding2 === void 0 ? void 0 : padding2[n]) || 0) + ((margin === null || margin === void 0 ? void 0 : margin[n]) || 0);
+      }
+      addLeftBorders(bbox) {
+        if (!this.styleData)
+          return;
+        bbox.w += this.sideStyleSize(3);
+      }
+      addMiddleBorders(bbox) {
+        if (!this.styleData)
+          return;
+        bbox.h += this.sideStyleSize(0);
+        bbox.d += this.sideStyleSize(2);
+      }
+      addRightBorders(bbox) {
+        if (!this.styleData)
+          return;
+        bbox.w += this.sideStyleSize(1);
+      }
+      setChildPWidths(recompute, w = null, clear = true) {
+        if (recompute) {
+          return false;
+        }
+        if (clear) {
+          this.bbox.pwidth = "";
+        }
+        let changed = false;
+        for (const child of this.childNodes) {
+          const cbox = child.getBBox();
+          if (cbox.pwidth && child.setChildPWidths(recompute, w === null ? cbox.w : w, clear)) {
+            changed = true;
+          }
+        }
+        return changed;
+      }
+      breakToWidth(_W) {
+      }
+      invalidateBBox(bubble = true) {
+        if (this.bboxComputed || this._breakCount >= 0) {
+          this.bboxComputed = false;
+          this.lineBBox = [];
+          this._breakCount = -1;
+          if (this.parent && bubble) {
+            this.parent.invalidateBBox();
+          }
+        }
+      }
+      copySkewIC(bbox) {
+        var _a2, _b2, _c;
+        const first = this.childNodes[0];
+        if ((_a2 = first === null || first === void 0 ? void 0 : first.bbox) === null || _a2 === void 0 ? void 0 : _a2.sk) {
+          bbox.sk = first.bbox.sk;
+        }
+        if ((_b2 = first === null || first === void 0 ? void 0 : first.bbox) === null || _b2 === void 0 ? void 0 : _b2.dx) {
+          bbox.dx = first.bbox.dx;
+        }
+        const last = this.childNodes[this.childNodes.length - 1];
+        if ((_c = last === null || last === void 0 ? void 0 : last.bbox) === null || _c === void 0 ? void 0 : _c.ic) {
+          bbox.ic = last.bbox.ic;
+          bbox.w += bbox.ic;
+        }
+      }
+      getStyles() {
+        const styleString = this.node.attributes.getExplicit("style");
+        if (!styleString)
+          return;
+        const style = this.styles = new Styles(styleString);
+        for (let i2 = 0, m = _CommonWrapper.removeStyles.length; i2 < m; i2++) {
+          const id = _CommonWrapper.removeStyles[i2];
+          if (style.get(id)) {
+            if (!this.removedStyles)
+              this.removedStyles = {};
+            this.removedStyles[id] = style.get(id);
+            style.set(id, "");
+          }
+        }
+      }
+      getStyleData() {
+        if (!this.styles)
+          return;
+        const padding2 = Array(4).fill(0);
+        const margin = Array(4).fill(0);
+        const width = Array(4).fill(0);
+        const style = Array(4);
+        const color = Array(4);
+        let hasPadding = false;
+        let hasBorder = false;
+        let hasMargin = false;
+        for (const [name, i2] of BBox.boxSides) {
+          const key = "border" + name;
+          const w = this.styles.get(key + "Width");
+          if (w) {
+            hasBorder = true;
+            width[i2] = Math.max(0, this.length2em(w, 1));
+            style[i2] = this.styles.get(key + "Style") || "solid";
+            color[i2] = this.styles.get(key + "Color");
+          }
+          const p = this.styles.get("padding" + name);
+          if (p) {
+            hasPadding = true;
+            padding2[i2] = Math.max(0, this.length2em(p, 1));
+          }
+          const m = this.styles.get("margin" + name);
+          if (m) {
+            hasMargin = true;
+            margin[i2] = this.length2em(m, 1);
+          }
+        }
+        this.styleData = hasPadding || hasBorder || hasMargin ? {
+          padding: padding2,
+          margin,
+          border: hasBorder ? { width, style, color } : null
+        } : null;
+      }
+      getVariant() {
+        if (!this.node.isToken)
+          return;
+        const attributes = this.node.attributes;
+        let variant = attributes.get("mathvariant");
+        if (attributes.hasExplicit("mathvariant")) {
+          if (!this.font.getVariant(variant)) {
+            console.warn(`Invalid variant: ${variant}`);
+            variant = "normal";
+          }
+        } else {
+          const values = attributes.getList("fontfamily", "fontweight", "fontstyle");
+          if (this.removedStyles) {
+            const style = this.removedStyles;
+            if (style.fontFamily)
+              values.family = style.fontFamily;
+            if (style.fontWeight)
+              values.weight = style.fontWeight;
+            if (style.fontStyle)
+              values.style = style.fontStyle;
+          }
+          if (values.fontfamily)
+            values.family = values.fontfamily;
+          if (values.fontweight)
+            values.weight = values.fontweight;
+          if (values.fontstyle)
+            values.style = values.fontstyle;
+          if (values.weight && values.weight.match(/^\d+$/)) {
+            values.weight = parseInt(values.weight) > 600 ? "bold" : "normal";
+          }
+          if (values.family) {
+            variant = this.explicitVariant(values.family, values.weight, values.style);
+          } else {
+            if (this.node.getProperty("variantForm"))
+              variant = "-tex-variant";
+            variant = (_CommonWrapper.BOLDVARIANTS[values.weight] || {})[variant] || variant;
+            variant = (_CommonWrapper.ITALICVARIANTS[values.style] || {})[variant] || variant;
+          }
+        }
+        this.variant = variant;
+      }
+      explicitVariant(fontFamily, fontWeight, fontStyle) {
+        let style = this.styles;
+        if (!style)
+          style = this.styles = new Styles();
+        style.set("fontFamily", fontFamily);
+        if (fontWeight)
+          style.set("fontWeight", fontWeight);
+        if (fontStyle)
+          style.set("fontStyle", fontStyle);
+        return "-explicitFont";
+      }
+      getScale() {
+        let scale2 = 1;
+        const parent = this.parent;
+        const pscale = parent ? parent.bbox.scale : 1;
+        const attributes = this.node.attributes;
+        const scriptlevel = Math.min(attributes.get("scriptlevel"), 2);
+        let fontsize = attributes.get("fontsize");
+        let mathsize = this.node.isToken || this.node.isKind("mstyle") ? attributes.get("mathsize") : attributes.getInherited("mathsize");
+        if (scriptlevel !== 0) {
+          scale2 = Math.pow(attributes.get("scriptsizemultiplier"), scriptlevel);
+        }
+        if (this.removedStyles && this.removedStyles.fontSize && !fontsize) {
+          fontsize = this.removedStyles.fontSize;
+        }
+        if (fontsize && !attributes.hasExplicit("mathsize")) {
+          mathsize = fontsize;
+        }
+        if (mathsize !== "1") {
+          scale2 *= this.length2em(mathsize, 1, 1);
+        }
+        if (scriptlevel !== 0) {
+          const scriptminsize = this.length2em(attributes.get("scriptminsize"), 0.4, 1);
+          if (scale2 < scriptminsize)
+            scale2 = scriptminsize;
+        }
+        this.bbox.scale = scale2;
+        this.bbox.rscale = scale2 / pscale;
+      }
+      getSpace() {
+        const isTop = this.isTopEmbellished();
+        const hasSpacing = this.node.hasSpacingAttributes();
+        if (this.jax.options.mathmlSpacing || hasSpacing) {
+          if (isTop) {
+            this.getMathMLSpacing();
+          }
+        } else {
+          this.getTeXSpacing(isTop, hasSpacing);
+        }
+      }
+      getMathMLSpacing() {
+        const node = this.node.coreMO();
+        const child = node.coreParent();
+        const parent = child.parent;
+        if (!parent || !parent.isKind("mrow") || parent.childNodes.length === 1) {
+          return;
+        }
+        const n = parent.childIndex(child);
+        if (n === null)
+          return;
+        const noDictDef = node.getProperty("noDictDef");
+        const attributes = node.attributes;
+        const isScript = attributes.get("scriptlevel") > 0;
+        this.bbox.L = attributes.isSet("lspace") ? Math.max(0, this.length2em(attributes.get("lspace"))) : MathMLSpace(isScript, noDictDef, node.lspace);
+        this.bbox.R = attributes.isSet("rspace") ? Math.max(0, this.length2em(attributes.get("rspace"))) : MathMLSpace(isScript, noDictDef, node.rspace);
+        if (!n)
+          return;
+        const prev = parent.childNodes[n - 1];
+        if (!prev.isEmbellished)
+          return;
+        const bbox = this.jax.nodeMap.get(prev).getBBox();
+        if (bbox.R) {
+          this.bbox.L = Math.max(0, this.bbox.L - bbox.R);
+        }
+      }
+      getTeXSpacing(isTop, hasSpacing) {
+        if (!hasSpacing) {
+          const space = this.node.texSpacing();
+          if (space) {
+            this.bbox.L = this.length2em(space);
+          }
+        }
+        if (isTop || hasSpacing) {
+          const attributes = this.node.coreMO().attributes;
+          if (attributes.isSet("lspace")) {
+            this.bbox.L = Math.max(0, this.length2em(attributes.get("lspace")));
+          }
+          if (attributes.isSet("rspace")) {
+            this.bbox.R = Math.max(0, this.length2em(attributes.get("rspace")));
+          }
+        }
+      }
+      isTopEmbellished() {
+        return this.node.isEmbellished && !(this.node.parent && this.node.parent.isEmbellished);
+      }
+      core() {
+        return this.jax.nodeMap.get(this.node.core());
+      }
+      coreMO() {
+        return this.jax.nodeMap.get(this.node.coreMO());
+      }
+      coreRScale() {
+        let rscale = this.bbox.rscale;
+        let node = this.coreMO();
+        while (node !== this && node) {
+          rscale *= node.bbox.rscale;
+          node = node.parent;
+        }
+        return rscale;
+      }
+      getRScale() {
+        let rscale = 1;
+        let node = this;
+        while (node) {
+          rscale *= node.bbox.rscale;
+          node = node.parent;
+        }
+        return rscale;
+      }
+      getText() {
+        let text = "";
+        if (this.node.isToken) {
+          for (const child of this.node.childNodes) {
+            if (child instanceof TextNode) {
+              text += child.getText();
+            }
+          }
+        }
+        return text;
+      }
+      canStretch(direction) {
+        this.stretch = NOSTRETCH;
+        if (this.node.isEmbellished) {
+          const core = this.core();
+          if (core && core.node !== this.node) {
+            if (core.canStretch(direction)) {
+              this.stretch = core.stretch;
+            }
+          }
+        }
+        return this.stretch.dir !== DIRECTION.None;
+      }
+      getAlignShift() {
+        let { indentalign, indentshift, indentalignfirst, indentshiftfirst } = this.node.attributes.getAllAttributes();
+        if (indentalignfirst !== "indentalign") {
+          indentalign = indentalignfirst;
+        }
+        if (indentshiftfirst !== "indentshift") {
+          indentshift = indentshiftfirst;
+        }
+        return this.processIndent(indentalign, indentshift);
+      }
+      processIndent(indentalign, indentshift, align = "", shift = "", width = this.metrics.containerWidth) {
+        if (!this.jax.math.display) {
+          return ["left", 0];
+        }
+        if (!align || align === "auto") {
+          align = this.jax.math.root.getProperty("inlineMarked") ? "left" : this.jax.options.displayAlign;
+        }
+        if (!shift || shift === "auto") {
+          shift = this.jax.math.root.getProperty("inlineMarked") ? "0" : this.jax.options.displayIndent;
+        }
+        if (indentalign === "auto") {
+          indentalign = align;
+        }
+        if (indentshift === "auto") {
+          indentshift = shift;
+          if (indentalign === "right" && !indentshift.match(/^\s*0[a-z]*\s*$/)) {
+            indentshift = ("-" + indentshift.trim()).replace(/^--/, "");
+          }
+        }
+        const indent = this.length2em(indentshift, width);
+        return [indentalign, indent];
+      }
+      getAlignX(W, bbox, align) {
+        return align === "right" ? W - (bbox.w + bbox.R) * bbox.rscale : align === "left" ? bbox.L * bbox.rscale : (W - bbox.w * bbox.rscale) / 2;
+      }
+      getAlignY(H2, D, h, d, align) {
+        return align === "top" ? H2 - h : align === "bottom" ? d - D : align === "center" ? (H2 - h - (D - d)) / 2 : 0;
+      }
+      getWrapWidth(i2) {
+        return this.childNodes[i2].getBBox().w;
+      }
+      getChildAlign(_i) {
+        return "left";
+      }
+      percent(m) {
+        return percent(m);
+      }
+      em(m) {
+        return em(m);
+      }
+      px(m, M = -BIGDIMEN) {
+        return px(m, M, this.metrics.em);
+      }
+      length2em(length4, size = 1, scale2 = null) {
+        if (scale2 === null) {
+          scale2 = this.bbox.scale;
+        }
+        const t = this.font.params.rule_thickness;
+        const factor = lookup(length4, { medium: 1, thin: 2 / 3, thick: 5 / 3 }, 0);
+        return factor ? factor * t : length2em(length4, size, scale2, this.jax.pxPerEm);
+      }
+      unicodeChars(text, name = this.variant) {
+        let chars = unicodeChars(text);
+        const variant = this.font.getVariant(name);
+        if (variant && variant.chars) {
+          const map = variant.chars;
+          chars = chars.map((n) => {
+            var _a2, _b2;
+            return ((_b2 = (_a2 = map[n]) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2.smp) || n;
+          });
+        }
+        return chars;
+      }
+      remapChars(chars) {
+        return chars;
+      }
+      mmlText(text) {
+        return this.node.factory.create("text").setText(text);
+      }
+      mmlNode(kind, properties = {}, children = []) {
+        return this.node.factory.create(kind, properties, children);
+      }
+      createMo(text) {
+        const mmlFactory = this.node.factory;
+        const textNode = mmlFactory.create("text").setText(text);
+        const mml = mmlFactory.create("mo", { stretchy: true }, [textNode]);
+        mml.inheritAttributesFrom(this.node);
+        mml.parent = this.node.parent;
+        const node = this.wrap(mml);
+        node.parent = this;
+        return node;
+      }
+      getVariantChar(variant, n) {
+        const char = this.font.getChar(variant, n) || [0, 0, 0, { unknown: true }];
+        if (char.length === 3) {
+          char[3] = {};
+        }
+        return char;
+      }
+      html(type, def2 = {}, content = []) {
+        return this.jax.html(type, def2, content);
+      }
+    };
+    CommonWrapper.kind = "unknown";
+    CommonWrapper.styles = {};
+    CommonWrapper.removeStyles = [
+      "fontSize",
+      "fontFamily",
+      "fontWeight",
+      "fontStyle",
+      "fontVariant",
+      "font"
+    ];
+    CommonWrapper.skipAttributes = {
+      fontfamily: true,
+      fontsize: true,
+      fontweight: true,
+      fontstyle: true,
+      color: true,
+      background: true,
+      class: true,
+      href: true,
+      style: true,
+      xmlns: true
+    };
+    CommonWrapper.BOLDVARIANTS = {
+      bold: {
+        normal: "bold",
+        italic: "bold-italic",
+        fraktur: "bold-fraktur",
+        script: "bold-script",
+        "sans-serif": "bold-sans-serif",
+        "sans-serif-italic": "sans-serif-bold-italic"
+      },
+      normal: {
+        bold: "normal",
+        "bold-italic": "italic",
+        "bold-fraktur": "fraktur",
+        "bold-script": "script",
+        "bold-sans-serif": "sans-serif",
+        "sans-serif-bold-italic": "sans-serif-italic"
+      }
+    };
+    CommonWrapper.ITALICVARIANTS = {
+      italic: {
+        normal: "italic",
+        bold: "bold-italic",
+        "sans-serif": "sans-serif-italic",
+        "bold-sans-serif": "sans-serif-bold-italic"
+      },
+      normal: {
+        italic: "normal",
+        "bold-italic": "bold",
+        "sans-serif-italic": "sans-serif",
+        "sans-serif-bold-italic": "bold-sans-serif"
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrapper.js
+var SvgWrapper;
+var init_Wrapper3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrapper.js"() {
+    init_string();
+    init_Wrapper2();
+    (__kittexLate.init_svg2?.())();
+    SvgWrapper = class _SvgWrapper extends CommonWrapper {
+      constructor() {
+        super(...arguments);
+        this.dx = 0;
+        this.utext = "";
+      }
+      toSVG(parents) {
+        if (this.toEmbellishedSVG(parents))
+          return;
+        this.addChildren(this.standardSvgNodes(parents));
+      }
+      toEmbellishedSVG(parents) {
+        if (parents.length <= 1 || !this.node.isEmbellished || this.node.parent.isEmbellished) {
+          return false;
+        }
+        const style = this.coreMO().embellishedBreakStyle;
+        const dom = [];
+        for (const [parent, STYLE] of [
+          [parents[0], "before"],
+          [parents[1], "after"]
+        ]) {
+          if (style !== STYLE) {
+            this.toSVG([parent]);
+            dom.push(this.dom[0]);
+            this.place(0, 0);
+          } else {
+            dom.push(this.createSvgNodes([parent])[0]);
+          }
+        }
+        this.dom = dom;
+        return true;
+      }
+      addChildren(parents) {
+        let x2 = 0;
+        for (const child of this.childNodes) {
+          child.toSVG(parents);
+          const bbox = child.getOuterBBox();
+          if (child.dom) {
+            child.place(x2 + bbox.L * bbox.rscale, 0);
+          }
+          x2 += (bbox.L + bbox.w + bbox.R) * bbox.rscale;
+        }
+      }
+      standardSvgNodes(parents) {
+        const svg = this.createSvgNodes(parents);
+        this.handleStyles();
+        this.handleScale();
+        this.handleBorder();
+        this.handleColor();
+        this.handleAttributes();
+        return svg;
+      }
+      createSvgNodes(parents) {
+        this.dom = parents.map((_parent) => this.svg("g", { "data-mml-node": this.node.kind }));
+        parents = this.handleHref(parents);
+        for (const i2 of parents.keys()) {
+          this.adaptor.append(parents[i2], this.dom[i2]);
+        }
+        return this.dom;
+      }
+      handleHref(parents) {
+        const href = this.node.attributes.get("href");
+        if (!href)
+          return parents;
+        let i2 = 0;
+        const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
+        return parents.map((parent) => {
+          parent = this.adaptor.append(parent, this.svg("a", { href }));
+          const { h, d, w } = isEmbellished ? this.getOuterBBox() : this.getLineBBox(i2);
+          this.adaptor.append(this.dom[i2++], this.svg("rect", {
+            "data-hitbox": true,
+            fill: "none",
+            stroke: "none",
+            "pointer-events": "all",
+            width: this.fixed(w),
+            height: this.fixed(h + d),
+            x: i2 === 1 || isEmbellished ? this.fixed(-this.dx) : 0,
+            y: this.fixed(-d)
+          }));
+          return parent;
+        });
+      }
+      handleStyles() {
+        var _a2, _b2, _c, _d;
+        if (!this.styles)
+          return;
+        const styles = this.styles.cssText;
+        if (styles) {
+          this.dom.forEach((node) => this.adaptor.setAttribute(node, "style", styles));
+        }
+        const padding2 = (((_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.padding) || [0, 0, 0, 0])[3];
+        const margin = (((_b2 = this.styleData) === null || _b2 === void 0 ? void 0 : _b2.margin) || [0, 0, 0, 0])[3];
+        const border = (((_d = (_c = this.styleData) === null || _c === void 0 ? void 0 : _c.border) === null || _d === void 0 ? void 0 : _d.width) || [0, 0, 0, 0])[3];
+        if (padding2 || border) {
+          this.dx = padding2 + border;
+        }
+        if (margin) {
+          const transform = `translate(${this.fixed(margin)},0)`;
+          this.dom.forEach((node) => this.adaptor.setAttribute(node, "transform", transform));
+        }
+      }
+      handleScale() {
+        if (this.bbox.rscale !== 1) {
+          const scale2 = "scale(" + this.fixed(this.bbox.rscale / 1e3, 3) + ")";
+          this.dom.forEach((node) => this.adaptor.setAttribute(node, "transform", scale2));
+        }
+      }
+      handleColor() {
+        var _a2;
+        const adaptor = this.adaptor;
+        const attributes = this.node.attributes;
+        const color = attributes.getExplicit("mathcolor") || attributes.getExplicit("color");
+        const background = attributes.getExplicit("mathbackground") || attributes.getExplicit("background") || ((_a2 = this.styles) === null || _a2 === void 0 ? void 0 : _a2.get("background-color"));
+        if (color) {
+          this.dom.forEach((node) => {
+            adaptor.setAttribute(node, "fill", color);
+            adaptor.setAttribute(node, "stroke", color);
+          });
+        }
+        if (background) {
+          let i2 = 0;
+          const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
+          this.dom.forEach((node) => {
+            const { h, d, w } = isEmbellished ? this.getOuterBBox() : this.getLineBBox(i2++);
+            const rect = this.svg("rect", {
+              fill: background,
+              x: i2 === 1 || isEmbellished ? this.fixed(-this.dx) : 0,
+              y: this.fixed(-d),
+              width: this.fixed(w),
+              height: this.fixed(h + d),
+              "data-bgcolor": true
+            });
+            const child = adaptor.firstChild(node);
+            if (child) {
+              adaptor.insert(rect, child);
+            } else {
+              adaptor.append(node, rect);
+            }
+          });
+        }
+      }
+      handleBorder() {
+        var _a2, _b2, _c;
+        const border = (_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.border;
+        if (!border)
+          return;
+        const margin = (_c = (_b2 = this.styleData) === null || _b2 === void 0 ? void 0 : _b2.margin) !== null && _c !== void 0 ? _c : [0, 0, 0, 0];
+        const f = _SvgWrapper.borderFuzz;
+        const adaptor = this.adaptor;
+        let k = 0;
+        const n = this.dom.length - 1;
+        const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
+        for (const dom of this.dom) {
+          const L = !n || !k ? 1 : 0;
+          const R = !n || k === n ? 1 : 0;
+          const bbox = isEmbellished ? this.getOuterBBox() : this.getLineBBox(k++);
+          const h = bbox.h - margin[0] + f;
+          const d = bbox.d - margin[2] + f;
+          const w = bbox.w - margin[1] - margin[3] + f;
+          const outerRT = [w, h];
+          const outerLT = [-f, h];
+          const outerRB = [w, -d];
+          const outerLB = [-f, -d];
+          const innerRT = [w - R * border.width[1], h - border.width[0]];
+          const innerLT = [-f + L * border.width[3], h - border.width[0]];
+          const innerRB = [w - R * border.width[1], -d + border.width[2]];
+          const innerLB = [-f + L * border.width[3], -d + border.width[2]];
+          const paths = [
+            [outerLT, outerRT, innerRT, innerLT],
+            [outerRB, outerRT, innerRT, innerRB],
+            [outerLB, outerRB, innerRB, innerLB],
+            [outerLB, outerLT, innerLT, innerLB]
+          ];
+          const child = adaptor.firstChild(dom);
+          const dx = L * this.dx;
+          for (const i2 of [0, 1, 2, 3]) {
+            if (!border.width[i2] || i2 === 3 && !L || i2 === 1 && !R)
+              continue;
+            const path = paths[i2];
+            if (border.style[i2] === "dashed" || border.style[i2] === "dotted") {
+              this.addBorderBroken(path, border.color[i2], border.style[i2], border.width[i2], i2, dom, dx);
+            } else {
+              this.addBorderSolid(path, border.color[i2], child, dom, dx);
+            }
+          }
+        }
+      }
+      addBorderSolid(path, color, child, parent, dx) {
+        const border = this.svg("polygon", {
+          points: path.map(([x2, y]) => `${this.fixed(x2 - dx)},${this.fixed(y)}`).join(" "),
+          stroke: "none"
+        });
+        if (color) {
+          this.adaptor.setAttribute(border, "fill", color);
+        }
+        if (child) {
+          this.adaptor.insert(border, child);
+        } else {
+          this.adaptor.append(parent, border);
+        }
+      }
+      addBorderBroken(path, color, style, t, i2, parent, dx) {
+        const dot = style === "dotted";
+        const t2 = t / 2;
+        const [tx1, ty1, tx2, ty2] = [
+          [t2, -t2, -t2, -t2],
+          [-t2, t2, -t2, -t2],
+          [t2, t2, -t2, t2],
+          [t2, t2, t2, -t2]
+        ][i2];
+        const [A, B] = path;
+        const x1 = A[0] + tx1 - dx;
+        const y1 = A[1] + ty1;
+        const x2 = B[0] + tx2 - dx;
+        const y2 = B[1] + ty2;
+        const W = Math.abs(i2 % 2 ? y2 - y1 : x2 - x1);
+        const n = dot ? Math.ceil(W / (2 * t)) : Math.ceil((W - t) / (4 * t));
+        const m = W / (4 * n + 1);
+        const line = this.svg("line", {
+          x1: this.fixed(x1),
+          y1: this.fixed(y1),
+          x2: this.fixed(x2),
+          y2: this.fixed(y2),
+          "stroke-width": this.fixed(t),
+          stroke: color,
+          "stroke-linecap": dot ? "round" : "square",
+          "stroke-dasharray": dot ? [1, this.fixed(W / n - 2e-3)].join(" ") : [this.fixed(m), this.fixed(3 * m)].join(" ")
+        });
+        const adaptor = this.adaptor;
+        const child = adaptor.firstChild(parent);
+        if (child) {
+          adaptor.insert(line, child);
+        } else {
+          adaptor.append(parent, line);
+        }
+      }
+      handleAttributes() {
+        const adaptor = this.adaptor;
+        const attributes = this.node.attributes;
+        const defaults = attributes.getAllDefaults();
+        const skip = _SvgWrapper.skipAttributes;
+        for (const name of attributes.getExplicitNames()) {
+          if (skip[name] === false || !(name in defaults) && !skip[name] && !adaptor.hasAttribute(this.dom[0], name)) {
+            this.dom.forEach((dom) => adaptor.setAttribute(dom, name, attributes.getExplicit(name)));
+          }
+        }
+        if (attributes.get("class")) {
+          for (const name of split(attributes.get("class"))) {
+            this.dom.forEach((node) => adaptor.addClass(node, name));
+          }
+        }
+      }
+      place(x2, y, element = null) {
+        if (!element) {
+          x2 += this.dx * this.bbox.rscale;
+        }
+        if (!(x2 || y))
+          return;
+        if (!element) {
+          element = this.dom[0];
+          y = this.handleId(y);
+        }
+        const translate3 = `translate(${this.fixed(x2)},${this.fixed(y)})`;
+        const transform = this.adaptor.getAttribute(element, "transform") || "";
+        this.adaptor.setAttribute(element, "transform", translate3 + (transform ? " " + transform : ""));
+      }
+      handleId(y) {
+        if (!this.node.attributes || !this.node.attributes.get("id")) {
+          return y;
+        }
+        const adaptor = this.adaptor;
+        const { h, rscale } = this.getBBox();
+        const children = adaptor.childNodes(this.dom[0]);
+        children.forEach((child) => adaptor.remove(child));
+        const g = this.svg("g", { "data-idbox": true, transform: `translate(0,${this.fixed(-h)})` }, children);
+        adaptor.append(this.dom[0], this.svg("text", { "data-id-align": true }, [this.text("")]));
+        adaptor.append(this.dom[0], g);
+        return y + h * rscale;
+      }
+      firstChild(dom = this.dom[0]) {
+        const adaptor = this.adaptor;
+        let child = adaptor.firstChild(dom);
+        if (child && adaptor.kind(child) === "text" && adaptor.getAttribute(child, "data-id-align")) {
+          child = adaptor.firstChild(adaptor.next(child));
+        }
+        if (child && adaptor.kind(child) === "rect" && adaptor.getAttribute(child, "data-hitbox")) {
+          child = adaptor.next(child);
+        }
+        return child;
+      }
+      placeChar(n, x2, y, parent, variant = null, buffer = false) {
+        if (variant === null) {
+          variant = this.variant;
+        }
+        const C = n.toString(16).toUpperCase();
+        const [, , w, data] = this.getVariantChar(variant, n);
+        if (data.unknown) {
+          this.utext += String.fromCodePoint(n);
+          return buffer ? 0 : this.addUtext(x2, y, parent, variant);
+        }
+        const dx = this.addUtext(x2, y, parent, variant);
+        if ("p" in data) {
+          x2 += dx;
+          const path = data.p ? "M" + data.p + "Z" : "";
+          this.place(x2, y, this.adaptor.append(parent, this.charNode(variant, C, path)));
+          return w + dx;
+        }
+        if ("c" in data) {
+          const g = this.adaptor.append(parent, this.svg("g", { "data-c": C }));
+          this.place(x2 + dx, y, g);
+          x2 = 0;
+          for (const n2 of this.unicodeChars(data.c, variant)) {
+            x2 += this.placeChar(n2, x2, y, g, variant);
+          }
+          return x2 + dx;
+        }
+        return w;
+      }
+      addUtext(x2, y, parent, variant) {
+        const c = this.utext;
+        if (!c) {
+          return 0;
+        }
+        this.utext = "";
+        const text = this.adaptor.append(parent, this.jax.unknownText(c, variant));
+        this.place(x2, y, text);
+        return this.jax.measureTextNodeWithCache(text, c, variant).w;
+      }
+      charNode(variant, C, path) {
+        const cache = this.jax.options.fontCache;
+        return cache !== "none" ? this.useNode(variant, C, path) : this.pathNode(C, path);
+      }
+      pathNode(C, path) {
+        return this.svg("path", { "data-c": C, d: path });
+      }
+      useNode(variant, C, path) {
+        const use2 = this.svg("use", { "data-c": C });
+        const id = "#" + this.jax.fontCache.cachePath(variant, C, path);
+        this.adaptor.setAttribute(use2, "href", id, this.jax.options.useXlink ? (__kittexLate.XLINKNS?.()) : null);
+        return use2;
+      }
+      drawBBox() {
+        var _a2, _b2;
+        const { w, h, d } = this.getOuterBBox();
+        const L = (((_b2 = (_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.border) === null || _b2 === void 0 ? void 0 : _b2.width) || [0, 0, 0, 0])[3];
+        const def2 = { style: { opacity: 0.25 } };
+        if (L) {
+          def2.transform = `translate(${this.fixed(-L)}, 0)`;
+        }
+        const box = this.svg("g", def2, [
+          this.svg("rect", {
+            fill: "red",
+            height: this.fixed(h),
+            width: this.fixed(w)
+          }),
+          this.svg("rect", {
+            fill: "green",
+            height: this.fixed(d),
+            width: this.fixed(w),
+            y: this.fixed(-d)
+          })
+        ]);
+        const node = this.dom[0] || this.parent.dom[0];
+        this.adaptor.append(node, box);
+      }
+      html(type, def2 = {}, content = []) {
+        return this.jax.html(type, def2, content);
+      }
+      svg(type, def2 = {}, content = []) {
+        return this.jax.svg(type, def2, content);
+      }
+      text(text) {
+        return this.jax.text(text);
+      }
+      fixed(x2, n = 1) {
+        return this.jax.fixed(x2 * 1e3, n);
+      }
+    };
+    SvgWrapper.kind = "unknown";
+    SvgWrapper.borderFuzz = 5e-3;
+  }
+});
+export{init_Wrapper3,SvgWrapper,init_WrapperFactory2,CommonWrapperFactory,init_common,init_StyleJson,init_Wrapper2,CommonOutputJax,StyleJsonSheet,SPACE3};

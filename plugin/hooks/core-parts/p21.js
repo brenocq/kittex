@@ -1,115 +1,1808 @@
-import{v7,_2,v6,A3,CC,zn,iC,Zn,u2,Cd,O7,oi,xC,ri,N7,I7,ed,Ld,ud,Di,xd,Bi,hi,dd,Ni,V5}from'./p20.js';export*from'./p20.js';
-var Jn=new Set(["table","blockquote"]);
-var Vh=new Set(["paragraph","list","heading","code","table","blockquote","hr"]);
-function Ci(e){let C=v7(e);if(!C)return null;let t=[];for(let L of C){let n=t.length>0,i=L.paragraph||L.quote?null:Xh(e,L.start,L.end);if(i)t.push(...i.map((s,r)=>({...s,...r===0?{gap:n}:{},block:L.start})));else{let s=L.paragraph?"paragraph":L.list?"list":L.quote?"blockquote":L.heading?"heading":L.table?"table":"block";t.push({...L,type:s,gap:n,block:L.start})}}return t}
-function Xh(e,C,t){let L=e.slice(C,/^\r?\n/.test(e.slice(t))?e.indexOf(`
-`,t)+1:t),n;try{n=_2.lexer(L)}catch{return null}let i=[],s=0;for(let r of n){if(!L.startsWith(r.raw,s))return null;if(!Vh.has(r.type)||r.type==="code"&&r.text===""){let l=i.at(-1);return l?(l.end=t,i):null}let o=r.raw.replace(/(?:\r?\n[ \t]*)+$/,""),a=i.at(-1);r.type==="list"&&a?.type==="list"?a.end=C+s+o.length:i.push({start:C+s,end:C+s+o.length,paragraph:r.type==="paragraph",...r.type==="list"?{list:!0}:{},...r.type==="blockquote"?{quote:!0}:{},...r.type==="heading"?{heading:!0}:{},...r.type==="table"?{table:!0}:{},type:r.type,gap:a!==void 0&&ti(a.type,r.type)}),s+=r.raw.length}return s!==L.length||i.length===0?null:i}
-function ti(e,C){return e==="heading"||Jn.has(e)||Jn.has(C)}
-function Kh(e,C,t=[],L={},n=!1){let i=v6(e,L,n);if(!i)return null;let{text:s,source:r}=i,o=i.stop??1/0,a=new Int32Array(s.length),l=new Int32Array(s.length),u=[],x=0,p=0;for(let E of s.split(`
-`)){let w=A3(E,C,!0,L.emojiSequences===!0,n);if(!w)return null;let b=w.known??E.length,B=u.length;for(let y=0;y<w.rows;y++)u.push("");for(let y=0;y<b;y++){a[p+y]=x+w.row[y],l[p+y]=w.col[y];let S=B+w.row[y];w.hidden[y]||(u[S]=u[S]+E[y])}if(x+=w.rows,b<E.length){for(let y=p+b;y<s.length;y++)r[y]>=0&&(o=Math.min(o,r[y]));s=s.slice(0,p+b),r=r.slice(0,p+b);break}p+=E.length+1}let h=o<1/0?()=>!1:E=>E===s.length-1,d=ei(r),m=t.map(E=>E.end>o?null:Li(e,E,s,r,a,l,C,h,L,d));return o<1/0?{rows:x,places:m,lines:u,stop:o}:{rows:x,places:m,lines:u}}
-function Qh(e,C,t=[],L={},n=!1){return T7(e,CC(e,C,L,n),C,t,L)}
-function Zh(e,C,t=[],L={},n=!1){return T7(e,zn(e,C,L,n),C,t,L)}
-function Yh(e,C,t=[],L={},n=!1){return T7(e,iC(e,C,L,n),C,t,L)}
-function Jh(e,C,t=[],L=C-2,n={}){return T7(e,Zn(e,C,L,n),C-2,t,n,()=>!1)}
-function T7(e,C,t,L,n,i=s=>C?.end[s]===!0){if(!C)return null;let s=C.text.join(""),{stop:r}=C,o=r<1/0?()=>!1:i,a=ei(C.source),l=L.map(u=>u.end>r?null:Li(e,u,s,C.source,C.row,C.col,t,o,n,a));return r<1/0?{rows:C.rows,places:l,lines:C.lines(),stop:r}:{rows:C.rows,places:l,lines:C.lines()}}
-function ei(e){let C=0;for(let n of e)n>=C&&(C=n+1);let t=new Int32Array(C).fill(-1),L=new Int32Array(C).fill(-1);for(let n=0;n<e.length;n++){let i=e[n];i<0||(t[i]<0&&(t[i]=n),L[i]=n)}return{first:t,last:L}}
-function Li(e,C,t,L,n,i,s,r,o,a){let l=h=>L[h]>=C.start&&L[h]<C.end,u=-1,x=-1;for(let h=Math.max(0,C.start);h<Math.min(C.end,a.first.length);h++){let d=a.first[h];d<0||((u<0||d<u)&&(u=d),a.last[h]>x&&(x=a.last[h]))}if(u<0)return null;for(let h=u;h<=x;h++)if(!l(h)||n[h]!==n[u])return null;let p=Math.max(0,u2(t.slice(u,x+1),o.emojiSequences===!0));if(C.width!==void 0&&C.width!==p){let h=e.slice(L[x]+1,C.end);if(!r(x)||C.width<p||!/^\s*$/.test(h))return null;p=C.width}return i[u]+p>s?null:{row:n[u],col:i[u],columns:p}}
-var cC=/[A-Za-z_:][-A-Za-z0-9_.:]*/y;
-var lC=/[ \t\r\n]*/y;
-var j5=class extends Error{};
-function ni(e){let C=0,t=0,L=l=>{throw new j5(`XML: ${l} at ${C}`)},n=()=>{lC.lastIndex=C,lC.exec(e),C=lC.lastIndex},i=()=>{cC.lastIndex=C;let l=cC.exec(e);return l||L("name expected"),C=cC.lastIndex,l[0]},s=l=>{let u=e.indexOf(l,C);u<0&&L(`unclosed ${l}`),C=u+l.length},r=()=>{if(e.startsWith("<!--",C))s("-->");else if(e.startsWith("<?",C))s("?>");else if(e.startsWith("<![CDATA[",C))s("]]>");else if(e.startsWith("<!",C))s(">");else return!1;return!0},o=()=>{++t>2e5&&L("too many elements"),C++;let l=i(),u=Object.create(null);for(;;){n();let x=e[C];if(x==="/"&&e[C+1]===">")return C+=2,{el:{name:l,attrs:u,children:[]},closed:!0};if(x===">")return C++,{el:{name:l,attrs:u,children:[]},closed:!1};x===void 0&&L("unclosed tag");let p=i();n(),e[C]!=="="&&L("= expected"),C++,n();let h=e[C];h!=='"'&&h!=="'"&&L("quote expected");let d=e.indexOf(h,C+1);d<0&&L("unclosed attribute"),u[p]=td(e.slice(C+1,d)),C=d+1}},a=()=>{let l=o();if(l.closed)return l.el;let u=[l.el];for(;;){let x=e.indexOf("<",C),p=u[u.length-1];if(x<0&&L(`unclosed <${p.name}>`),C=x,r())continue;if(e[C+1]==="/"){C+=2;let d=i();if(d!==p.name&&L(`</${d}> closes <${p.name}>`),n(),e[C]!==">"&&L("> expected"),C++,u.pop(),u.length===0)return p;continue}let h=o();p.children.push(h.el),!h.closed&&(u.length>=2e4&&L("nested too deep"),u.push(h.el))}};for(;;){if(n(),C>=e.length&&L("no root element"),e[C]!=="<"&&L("< expected"),r())continue;return a()}}
-function td(e){return e.includes("&")?e.replace(/&(#x[0-9A-Fa-f]{1,6}|#[0-9]{1,7}|[A-Za-z]+);/g,(C,t)=>{if(t[0]==="#"){let L=t[1]==="x"?parseInt(t.slice(2),16):parseInt(t.slice(1),10);return L>0&&L<=1114111?String.fromCodePoint(L):C}return Cd[t]??C}):e}
-var l2=class extends Error{};
-var nd={fill:O7,fillOpacity:1,fillRule:"nonzero",stroke:null,strokeOpacity:1,strokeWidth:1,cap:"butt",join:"miter",miterLimit:4,dash:void 0,dashOffset:0,opacity:1,color:O7,clip:void 0};
-var id=new Set(["defs","clipPath","linearGradient","radialGradient","pattern","symbol","marker","title","desc","metadata","style","script"]);
-var sd=new Set(["text","image","foreignObject","mask","svg","video","iframe"]);
-function pC(e,C){let t=ni(e);if(t.name!=="svg")throw new l2("not an SVG document");let L=rd(t),n=new Map,i=[t];for(let D=i.pop();D;D=i.pop()){let k=D.attrs.id;k!==void 0&&!n.has(k)&&n.set(k,D);for(let F=D.children.length-1;F>=0;F--)i.push(D.children[F])}let s=C.emPerUnit,r=C.baseline==="origin"?0:L.y+L.height,o=[s,0,0,s,-L.x*s,-r*s],a=[],l=[],u=new Map,x=new Map,p=0,h=D=>{if(D.length>oi)throw new l2(`picture too complex (a path of ${D.length} characters)`);let k=x.get(D);if(k===void 0&&(k=ai(D),x.set(D,k)),p+=k,p>xC)throw new l2(`picture too complex (more than ${xC} path coordinates)`)},d=D=>{if(a.length>=ri)throw new l2("picture too complex");h(D.d),a.push(D)},m=(D,k,F)=>{if(D===null||!(k>0))return null;if("ref"in D){let N=cd(D.ref,n,F.color);return N?{color:N.color,opacity:k*N.opacity}:null}return{color:D,opacity:k}},E=(D,k,F,N,U=!0)=>{if(D.trim()==="")return;let q=r3(o,k),K=U?m(F.fill,F.fillOpacity*F.opacity,F):null;K&&d({type:"fill",d:D,transform:q,rule:F.fillRule,paint:K,...N?{glyph:!0}:{},...F.clip!==void 0?{clip:F.clip}:{}});let P=m(F.stroke,F.strokeOpacity*F.opacity,F);if(P&&F.strokeWidth>0){let j={width:F.strokeWidth,cap:F.cap,join:F.join,miterLimit:F.miterLimit};F.dash&&(j.dash=F.dash,j.dashOffset=F.dashOffset),d({type:"stroke",d:D,transform:q,style:j,paint:P,...F.clip!==void 0?{clip:F.clip}:{}})}},w=(D,k,F)=>{let N=n.get(D);if(!N||N.name!=="clipPath")return F;let U=`${D}
-${k.join(",")}
-${F??""}`,q=u.get(U);if(q!==void 0)return q;let K=r3(k,uC(N.attrs.transform)),P=[],j=(G,J,C1)=>{if(C1>N7)throw new l2("clip path nested too deep");let e1=r3(J,uC(G.attrs.transform)),l1=(o2(G,"clip-rule")??"nonzero")==="evenodd"?"evenodd":"nonzero";if(G.name==="use"){let h1=n.get(P7(G)??"");h1&&j(h1,r3(e1,ii(G)),C1+1);return}let p1=si(G);if(p1!==void 0){h(p1),P.push({d:p1,transform:r3(o,e1),rule:l1});return}if(G.name==="g")for(let h1 of G.children)j(h1,e1,C1+1)};for(let G of N.children)j(G,K,0);l.push({paths:P,...F!==void 0?{within:F}:{}});let W=l.length-1;return u.set(U,W),W},b=[{el:t,ctm:I7,inherited:{...nd},root:!0,glyph:!1,uses:0}],B=0;for(;b.length>0;){let{el:D,ctm:k,inherited:F,root:N,glyph:U,uses:q}=b.pop();if(++B>ed)throw new l2("picture too complex");if(id.has(D.name))continue;if(sd.has(D.name)&&!N)throw new l2(`<${D.name}> is not drawn`);if(o2(D,"display")==="none")continue;let K=D.name==="svg"?k:r3(k,uC(D.attrs.transform)),P=ad(D,F),j=hC(o2(D,"clip-path"));if(j!==void 0&&(P.clip=w(j,K,F.clip)),o2(D,"mask")!==void 0&&o2(D,"mask")!=="none")throw new l2("masks are not drawn");let W=o2(D,"visibility")==="hidden";switch(D.name){case"svg":case"g":case"a":case"switch":for(let G=D.children.length-1;G>=0;G--)b.push({el:D.children[G],ctm:K,inherited:P,root:!1,glyph:U,uses:q});continue;case"use":{let G=P7(D),J=G===void 0?void 0:n.get(G);if(!J||J===D)continue;if(q>=N7||od(D,n)>N7)throw new l2("use nested too deep");let C1=J.name==="path"&&/^g\d*-/.test(G??"");b.push({el:J.name==="symbol"?{...J,name:"g"}:J,ctm:r3(K,ii(D)),inherited:P,root:!1,glyph:U||C1,uses:q+1});continue}default:{let G=si(D);if(G===void 0||W)continue;E(G,K,P,U,D.name!=="line")}}}let y=(r-L.y)*s,S=(L.y+L.height-r)*s;return{width:L.width*s,height:Math.max(0,y),depth:Math.max(0,S),ops:a,clips:l}}
-function ai(e){let C=0,t=!1,L=!1,n=!1;for(let i=0;i<e.length;i++){let s=e.charCodeAt(i);s>=48&&s<=57?t||(C++,t=!0,L=!1,n=!1):s===46?((!t||L||n)&&(C++,t=!0,n=!1),L=!0):(s===101||s===69)&&t&&!n?n=!0:(s===43||s===45)&&t&&n&&(e.charCodeAt(i-1)===101||e.charCodeAt(i-1)===69)||(t=!1)}return C}
-function rd(e){let C=(e.attrs.viewBox??"").trim().split(/[\s,]+/).map(Number);if(C.length===4&&C.every(Number.isFinite)&&C[2]>0&&C[3]>0){let[n,i,s,r]=C;return{x:n,y:i,width:s,height:r}}let t=K4(e.attrs.width),L=K4(e.attrs.height);if(t&&L&&t>0&&L>0)return{x:0,y:0,width:t,height:L};throw new l2("the picture is empty")}
-function K4(e){if(e===void 0)return;let C=parseFloat(e);return Number.isFinite(C)?C:void 0}
-function P7(e){let C=e.attrs["xlink:href"]??e.attrs.href;return C?.startsWith("#")?C.slice(1):void 0}
-function od(e,C){let t=0,L=e,n=new Set;for(;L&&L.name==="use";){if(n.has(L))return 1/0;n.add(L),t++;let i=P7(L);L=i===void 0?void 0:C.get(i)}return t}
-function ii(e){return[1,0,0,1,K4(e.attrs.x)??0,K4(e.attrs.y)??0]}
-function o2(e,C){let t=e.attrs.style;if(t!==void 0)for(let n of t.split(";")){let i=n.indexOf(":");if(i>0&&n.slice(0,i).trim()===C)return n.slice(i+1).trim()}let L=e.attrs[C];return L===void 0?void 0:L.trim()}
-function ad(e,C){let t={...C},L=o2(e,"color");L!==void 0&&L!=="inherit"&&(t.color=_7(L,C.color)??C.color);let n=(l,u)=>{if(l===void 0||l==="inherit")return u;if(l==="none")return null;let x=hC(l);return x!==void 0?{ref:x}:l==="currentColor"?t.color:_7(l,t.color)??u};t.fill=n(o2(e,"fill"),C.fill),t.stroke=n(o2(e,"stroke"),C.stroke);let i=(l,u)=>{let x=o2(e,l);if(x===void 0||x==="inherit")return u;let p=x.endsWith("%")?parseFloat(x)/100:parseFloat(x);return Number.isFinite(p)?p:u};t.fillOpacity=q5(i("fill-opacity",C.fillOpacity)),t.strokeOpacity=q5(i("stroke-opacity",C.strokeOpacity)),t.opacity=C.opacity*q5(i("opacity",1)),t.strokeWidth=Math.max(0,i("stroke-width",C.strokeWidth)),t.miterLimit=Math.max(1,i("stroke-miterlimit",C.miterLimit)),t.dashOffset=i("stroke-dashoffset",C.dashOffset);let s=o2(e,"fill-rule");(s==="evenodd"||s==="nonzero")&&(t.fillRule=s);let r=o2(e,"stroke-linecap");(r==="butt"||r==="round"||r==="square")&&(t.cap=r);let o=o2(e,"stroke-linejoin");o==="miter"||o==="round"||o==="bevel"?t.join=o:(o==="miter-clip"||o==="arcs")&&(t.join="miter");let a=o2(e,"stroke-dasharray");if(a!==void 0&&a!=="inherit"){let l=a==="none"?[]:a.split(/[\s,]+/).filter(Boolean).map(Number),u=l.length>0&&l.every(x=>Number.isFinite(x)&&x>=0)&&l.some(x=>x>0);t.dash=u?l.length%2===1?[...l,...l]:l:void 0}return t}
-function hC(e){let C=e===void 0?null:/^url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(e);return C?C[1]:void 0}
-function cd(e,C,t){let L=C.get(e);if(!L)return null;if(L.name==="linearGradient"||L.name==="radialGradient"){let n=ci(L,C,0);if(n.length===0)return null;if(n.length===1)return n[0].paint;let i=0,s=0,r=0,o=0,a=0;for(let l=0;l+1<n.length;l++){let u=Math.max(0,n[l+1].offset-n[l].offset);for(let x of[n[l],n[l+1]])s+=x.paint.color.r*u,r+=x.paint.color.g*u,o+=x.paint.color.b*u,a+=x.paint.opacity*u;i+=2*u}return i>0?{color:{r:Math.round(s/i),g:Math.round(r/i),b:Math.round(o/i)},opacity:a/i}:n[0].paint}if(L.name==="pattern"){let n=li(L,t);return n?{color:n,opacity:Ld}:null}return null}
-function ci(e,C,t){let L=e.children.filter(i=>i.name==="stop").map(i=>{let s=o2(i,"offset")??"0",r=q5(s.endsWith("%")?parseFloat(s)/100:parseFloat(s)||0),o=_7(o2(i,"stop-color")??"black",O7)??O7,a=q5(parseFloat(o2(i,"stop-opacity")??"1"));return{offset:r,paint:{color:o,opacity:Number.isFinite(a)?a:1}}});if(L.length>0||t>N7)return L;let n=C.get(P7(e)??"");return n?ci(n,C,t+1):[]}
-function li(e,C){for(let t of e.children){for(let n of["fill","stroke"]){let i=o2(t,n);if(i&&i!=="none"&&hC(i)===void 0){let s=i==="currentColor"?C:_7(i,C);if(s)return s}}let L=li(t,C);if(L)return L}}
-function si(e){let C=e.attrs,t=L=>K4(L)??0;switch(e.name){case"path":return C.d??"";case"rect":{let L=t(C.width),n=t(C.height);if(!(L>0&&n>0))return"";let i=t(C.x),s=t(C.y),r=K4(C.rx),o=K4(C.ry);return r===void 0&&(r=o),o===void 0&&(o=r),r=Math.min(Math.max(0,r??0),L/2),o=Math.min(Math.max(0,o??0),n/2),r>0&&o>0?`M${i+r} ${s}H${i+L-r}A${r} ${o} 0 0 1 ${i+L} ${s+o}V${s+n-o}A${r} ${o} 0 0 1 ${i+L-r} ${s+n}H${i+r}A${r} ${o} 0 0 1 ${i} ${s+n-o}V${s+o}A${r} ${o} 0 0 1 ${i+r} ${s}Z`:`M${i} ${s}H${i+L}V${s+n}H${i}Z`}case"circle":case"ellipse":{let L=t(C.cx),n=t(C.cy),i=e.name==="circle"?t(C.r):t(C.rx),s=e.name==="circle"?t(C.r):t(C.ry);return i>0&&s>0?`M${L+i} ${n}A${i} ${s} 0 1 1 ${L-i} ${n}A${i} ${s} 0 1 1 ${L+i} ${n}Z`:""}case"line":return`M${t(C.x1)} ${t(C.y1)}L${t(C.x2)} ${t(C.y2)}`;case"polyline":case"polygon":{let L=(C.points??"").trim().split(/[\s,]+/).filter(Boolean).map(Number);if(L.length<4||L.some(i=>!Number.isFinite(i)))return"";let n=`M${L[0]} ${L[1]}`;for(let i=2;i+1<L.length;i+=2)n+=`L${L[i]} ${L[i+1]}`;return e.name==="polygon"?n+"Z":n}default:return}}
-function r3(e,C){return[e[0]*C[0]+e[2]*C[1],e[1]*C[0]+e[3]*C[1],e[0]*C[2]+e[2]*C[3],e[1]*C[2]+e[3]*C[3],e[0]*C[4]+e[2]*C[5]+e[4],e[1]*C[4]+e[3]*C[5]+e[5]]}
-function uC(e){if(e===void 0||e.trim()==="")return I7;let C=I7,t=/\s*(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)\s*,?/gy,L=0;for(let n=t.exec(e);n;n=t.exec(e)){L=t.lastIndex;let i=n[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);if(i.some(s=>!Number.isFinite(s)))throw new l2(`unreadable transform ${n[0]}`);C=r3(C,ld(n[1],i))}if(e.slice(L).trim()!=="")throw new l2(`unreadable transform ${e}`);return C}
-function ld(e,C){let[t=0,L,n]=C;switch(e){case"matrix":if(C.length!==6)throw new l2("matrix() takes six numbers");return C;case"translate":return[1,0,0,1,t,L??0];case"scale":return[t,0,0,L??t,0,0];case"rotate":{let i=t*Math.PI/180,s=Math.cos(i),r=Math.sin(i),o=[s,r,-r,s,0,0];return L===void 0||n===void 0?o:r3(r3([1,0,0,1,L,n],o),[1,0,0,1,-L,-n])}case"skewX":return[1,0,Math.tan(t*Math.PI/180),1,0,0];case"skewY":return[1,Math.tan(t*Math.PI/180),0,1,0,0];default:return I7}}
-function _7(e,C){let t=e.trim().toLowerCase();if(t==="currentcolor")return C;let L=/^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(t);if(L){let i=L[1],s=i.length===3?[...i].map(r=>r+r).join(""):i;return{r:parseInt(s.slice(0,2),16),g:parseInt(s.slice(2,4),16),b:parseInt(s.slice(4,6),16)}}let n=/^rgba?\(([^)]*)\)$/.exec(t);if(n){let i=n[1].split(/[\s,/]+/).filter(Boolean);if(i.length<3)return;let s=u=>u.endsWith("%")?parseFloat(u)/100*255:parseFloat(u),[r,o,a]=i.slice(0,3).map(s);if(![r,o,a].every(Number.isFinite))return;let l=u=>Math.min(255,Math.max(0,Math.round(u)));return{r:l(r),g:l(o),b:l(a)}}return ud[t]}
-var q5=e=>Number.isFinite(e)?Math.min(1,Math.max(0,e)):1;
-function Ai(e){let C=e.trim().split(/\s+/,1)[0].toLowerCase();if(C==="latex"||C==="tex")return"latex";if(C==="tikz")return"tikz"}
-function Ei(e,C){return C!=="latex"||bi(e)?!0:/\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/.test(e)}
-function bi(e){return/^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(e)||/\\begin\{document\}/.test(e)}
-var yi=["\\documentclass[dvisvgm,border=1pt]{standalone}",`\\makeatletter${Di}\\makeatother`,"\\usepackage{amsmath,amssymb}","\\usepackage{tikz}",`\\usetikzlibrary{${xd}}`,"\\usepackage{pgfplots}","\\pgfplotsset{compat=1.18}","\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary}","\\usepackage{chemfig}","\\usepackage{circuitikz}","\\usepackage{tikz-cd}","\\usepackage{siunitx}"];
-var ui=/^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usepgfplotslibrary|usepgflibrary|usegdlibrary)\b[^\n]*$/gm;
-function pd(e){let C=/\\addplot3\s*\+?/g,t="",L=0;for(let n=C.exec(e);n;n=C.exec(e)){let i=xi(e,n.index+n[0].length),s;if(e[i]==="["){let l=pi(e,i,"[","]");if(l<0)continue;s={open:i,close:l},i=xi(e,l+1)}if(e[i]!=="(")continue;let r=pi(e,i,"(",")");if(r<0)continue;let o=e.slice(i+1,r),a=s?e.slice(s.open+1,s.close):"";if(!(/(?:^|[^A-Za-z\\])y(?![A-Za-z])|\\y(?![A-Za-z])/.test(o)||/samples\s+y|y\s+domain|variable\s+y/.test(a)))if(s){let l=a.trim()===""?"":", ";t+=`${e.slice(L,s.close)}${l}samples y=0`,L=s.close}else{let l=n.index+n[0].length;t+=`${e.slice(L,l)}[samples y=0]`,L=l}}return t+e.slice(L)}
-function xi(e,C){for(;C<e.length&&/\s/.test(e[C]);)C++;return C}
-function pi(e,C,t,L){let n=0;for(let i=C;i<e.length;i++)if(e[i]===t)n++;else if(e[i]===L&&--n===0)return i;return-1}
-function ki(e,C){let t=pd(e.replace(/^\s*\n/,"").replace(/\s+$/,"").replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g,(o,a,l)=>`shader=${a?"{":""}${l?"faceted":"flat"}`).replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g,(o,a)=>a?`colorbar${a}, colorbar sampled`:"colorbar sampled"));if(C==="latex"&&bi(t)){let o=/^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(t),a=o?t:`\\documentclass[dvisvgm,border=1pt]{standalone}
-${t}`,l=`\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\\PassOptionsToPackage{dvisvgm}{graphicx}\\makeatletter\\AddToHook{class/standalone/after}{${Di}}\\makeatother`,u=a.replace(/\\documentclass\s*(?:\[([^\]]*)\])?\s*\{/,(p,h)=>h===void 0?"\\documentclass[dvisvgm]{":/(?:^|,)\s*dvisvgm\s*(?:,|$)/.test(h)?`\\documentclass[${h}]{`:`\\documentclass[${h},dvisvgm]{`);return{text:`${l}
-${u.replace(/\\begin\{document\}/,"\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}")}
-`,offset:o?1:2,baseline:"bottom",fontSize:hd(a)}}let L=[...t.matchAll(ui)].map(o=>o[0].trim()),n=L.length>0?t.replace(ui,""):t;C==="tikz"&&!/\\begin\{tikzpicture\}|\\tikz\b/.test(n)&&(n=`\\begin{tikzpicture}
-${n}
-\\end{tikzpicture}`);let i=[...yi,Bi,...L,"\\begin{document}"],s=C==="tikz"&&n!==t&&n.startsWith(`\\begin{tikzpicture}
-`)&&!t.startsWith("\\begin{tikzpicture}"),r=i.length+(s?1:0);return{text:`${i.join(`
-`)}
-${n}
-\\end{document}
-`,offset:r,baseline:"bottom",fontSize:10,format:!0}}
-var dC=`${[...yi,Bi,"\\begin{document}","\\end{document}"].join(`
-`)}
-`;
-function wi(e){let C=2166136261;for(let t of`4
-${e}
-${dC}`)C=Math.imul(C^t.charCodeAt(0),16777619);return`kittex-${(C>>>0).toString(16).padStart(8,"0")}`}
-function Fi(e){return["latex","-ini","-no-shell-escape","-interaction=nonstopmode","-halt-on-error","-no-mktex=tex","-no-mktex=tfm","-no-mktex=pk",`-jobname=${e}`,"&latex","mylatexformat.ltx",`${e}.tex`]}
-function vi(e){return e===void 0?[...U5]:[...U5.slice(0,-2),`-fmt=${e}`,...U5.slice(-2)]}
-var di=/^\\begin\{(equation|align|gather|multline|flalign|alignat|eqnarray)\*?\}/;
-function Si(e,C){let t=e.trim();if(!C){let i=[...hi.slice(0,3),"\\usepackage[active]{preview}","\\begin{document}"];return{text:`${i.join(`
-`)}
-\\begin{preview}$${t}$\\end{preview}
-\\end{document}
-`,offset:i.length,baseline:"origin",fontSize:10}}let L=[...hi,"\\begin{document}"],n=di.test(t)?t:`\\[
-${t}
-\\]`;return{text:`${L.join(`
-`)}
-${n}
-\\end{document}
-`,offset:L.length+(di.test(t)?0:1),baseline:"bottom",fontSize:10}}
-function hd(e){let C=/\\documentclass\s*\[([^\]]*)\]/.exec(e)?.[1]??"",t=/(?:^|,)\s*(\d{1,2}(?:\.\d+)?)pt\s*(?:,|$)/.exec(C)?.[1],L=t===void 0?10:Number(t);return L>=5&&L<=25?L:10}
-function fC(e){return 72.27/72/e.fontSize}
-var fd=new RegExp(String.raw`\\(?:${dd.map(e=>e.replace(/[*]/g,"\\*")).join("|")})(?![A-Za-z@])`);
-var md=new Set(["shellesc","minted","pythontex","sagetex","bashful","gnuplottex","asymptote","svg","epstopdf","auto-pst-pdf","pst-pdf","luacode","luatextra","luapackageloader","fontspec","filecontents","catchfile","verbatim","fancyvrb","listings","import","standalone","datatool","csvsimple","readarray","pgfplotstable","xstring","docmute","subfiles","embedfile","attachfile","attachfile2","write18","pstricks","pst-node"]);
-var gd=/\\(?:usepackage|RequirePackage|documentclass|LoadClass|usetikzlibrary|usepgfplotslibrary|usepgflibrary)\s*(?:\[[^\]]*\]\s*)?(?:\{([^}]*)\}|([^\s{\\][^\s\\]*))/g;
-var Md=/\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{([^}\\\n]*)\}/g;
-var Ad=/\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{\s*\\[A-Za-z]/;
-function Ri(e){if(e.length>24e3)return"source longer than 24000 characters";if(e.includes("^^"))return"uses ^^ character notation";if(/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(e))return"holds control characters";let C=fd.exec(e);if(C)return`uses ${C[0]}`;let t=/\\[A-Za-z]*@[A-Za-z@]*/.exec(e);if(t)return`uses ${t[0]}`;if(/\\begin\{(?:luacode\*?|filecontents\*?|verbatimwrite|VerbatimOut|lstlisting|minted|pycode|sagesilent|sageblock|bash|asy|asydef)\}/.test(e))return"uses an environment that runs code or writes files";for(let n of e.matchAll(gd)){let i=(n[1]??n[2]??"").split(",");for(let s of i){let r=s.trim();if(fi(r))return`reads ${r}`;if(/^\\(?:usepackage|RequirePackage)/.test(n[0])&&md.has(r))return`uses the ${r} package`}}for(let n of e.matchAll(Md)){let i=n[1].trim();if(i!==""&&fi(i))return`reads ${i}`}if(Ad.test(e))return"reads a plot file named by a macro";if(/\bgnuplot\b|\\addplot[^;]*\bshell\b/.test(e))return"runs gnuplot or a shell";let L=/(?:^|[\s{=,(])((?:~|\$HOME|\$\{HOME\})\/|\.\.[/\\]|\/+(?:home|root|etc|Users|private|var|tmp|proc|sys|dev|run|mnt|media|srv|opt|usr|Library|Volumes|System|boot|snap|nix)\b)/.exec(e);if(L)return`names a path outside the picture (${L[1]})`}
-function fi(e){return/^[/\\~]|^[A-Za-z]:|\.\.|^\.|\$|\||[`"'<>]|^\s*-/.test(e)||/[/\\]\./.test(e)}
-var Ti=64*1024*1024;
-function Oi(e){return["bwrap",...Ii(e,void 0),"true"]}
-function Ii(e,C,t=[]){let L=["--ro-bind","/","/","--dev","/dev","--proc","/proc"];for(let n of e)L.push("--tmpfs",n);for(let n of t)L.push("--ro-bind",n,n);return C!==void 0&&L.push("--bind",C,C,"--chdir",C),L.push("--unshare-all","--die-with-parent","--new-session"),L}
-function Pi(e,C,t,L=[]){let n=[...e];return t.bwrap&&(n=["bwrap",...Ii(t.bwrap.hide,C,L),...n]),t.prlimit&&(n=["prlimit",`--fsize=${Ti}`,`--cpu=${Ni}`,...n]),n}
-var U5=["latex","-no-shell-escape","-interaction=nonstopmode","-halt-on-error","-no-mktex=tex","-no-mktex=tfm","-no-mktex=pk",`-jobname=${V5}`,`${V5}.tex`];
-function _i(e){return["dvisvgm","--no-fonts","--exact-bbox","--no-specials=ps,pdf,html",`--libgs=${e}/no-ghostscript`,"--no-mktexmf","--cache=none",`--tmpdir=${e}`,"--page=1","--stdout","--verbosity=1",`${V5}.dvi`]}
-function zi(e){return{shell_escape:"f",openin_any:"p",openout_any:"p",TEXMFOUTPUT:e,HOME:e,MKTEXTEX:"0",MKTEXTFM:"0",MKTEXPK:"0",MKTEXMF:"0",MKTEXFMT:"0",max_print_line:"1000",error_line:"254",half_error_line:"238"}}
-function Wi(e){return`${(e&&e.startsWith("/")?e:"/tmp").replace(/\/+$/,"")}/kittex-tex.XXXXXXXXXX`}
-function $i(e){return/^\/(?:[^\n/]+\/)*kittex-tex\.[A-Za-z0-9]{10}$/.test(e)&&!e.includes("/../")&&!e.includes("/./")}
-function Gi(e,C=0){let t=e.split(/\r?\n/),L=t.findIndex(s=>s.startsWith("! "));if(L<0)return/No pages of output/.test(e)?"the picture is empty":/Emergency stop|Fatal error/.test(e)?"TeX stopped":"TeX failed";let n=t[L].slice(2).trim().replace(/\.$/,"");n=n.replace(/^(?:LaTeX|Package \S+|Class \S+) Error:\s*/,"");let i;for(let s of t.slice(L+1,L+12)){let r=/^l\.(\d+) (.*)$/.exec(s);if(r){let o=Number(r[1])-C;if(o>=1&&(i=o),/^Undefined control sequence$/.test(n)){let a=/(\\[A-Za-z@]+|\\.)\s*$/.exec(r[2])?.[1];a&&(n+=` ${a}`)}break}}return i===void 0?n:`${n} (line ${i})`}
-function W7(e){return z7(e).l>.5?{r:24,g:24,b:24}:{r:255,g:255,b:255}}
-function $7(e,C,t){if(e.r<=2&&e.g<=2&&e.b<=2)return C.ink;if(e.r>=253&&e.g>=253&&e.b>=253)return"erase";let L=z7(e),n=z7(C.ink).l,i=z7(C.background).l,s=L.l;if(i<.5){let r=n+L.l*(i-n),o=Math.hypot(L.a,L.b),a=gC(o/.12)*gC(1-Math.abs(L.l-.55)/.4);s=r+(L.l-r)*a}if(s===L.l&&!(t&&Math.abs(s-i)<.3))return{...e};if(t&&Math.abs(s-i)<.3){let r=n>=i?1:-1;s=gC(i+r*.3)}return bd(s,L.a,L.b)}
-var mC=e=>{let C=e/255;return C<=.04045?C/12.92:((C+.055)/1.055)**2.4};
-var Ed=e=>(e<=.0031308?12.92*e:1.055*e**(1/2.4)-.055)*255;
-function z7(e){let C=mC(e.r),t=mC(e.g),L=mC(e.b),n=Math.cbrt(.4122214708*C+.5363325363*t+.0514459929*L),i=Math.cbrt(.2119034982*C+.6806995451*t+.1073969566*L),s=Math.cbrt(.0883024619*C+.2817188376*t+.6299787005*L);return{l:.2104542553*n+.793617785*i-.0040720468*s,a:1.9779984951*n-2.428592205*i+.4505937099*s,b:.0259040371*n+.7827717662*i-.808675766*s}}
-function Hi(e,C,t){let L=(e+.3963377774*C+.2158037573*t)**3,n=(e-.1055613458*C-.0638541728*t)**3,i=(e-.0894841775*C-1.291485548*t)**3;return[4.0767416621*L-3.3077115913*n+.2309699292*i,-1.2684380046*L+2.6097574011*n-.3413193965*i,-.0041960863*L-.7034186147*n+1.707614701*i]}
-function bd(e,C,t){let L=a=>Hi(e,C*a,t*a).every(l=>l>=-1e-6&&l<=1.000001),n=1;if(!L(1)){let a=0,l=1;for(let u=0;u<20;u++){let x=(a+l)/2;L(x)?a=x:l=x}n=a}let[i,s,r]=Hi(e,C*n,t*n),o=a=>Math.min(255,Math.max(0,Math.round(Ed(Math.min(1,Math.max(0,a))))));return{r:o(i),g:o(s),b:o(r)}}
-var gC=e=>Math.min(1,Math.max(0,e));
-function Dd(e,C){return pC(e,{baseline:C.baseline,emPerUnit:fC(C)})}
-var S6=class{width;height;stride;acc;constructor(C,t){this.width=C,this.height=t,this.stride=C+2,this.acc=new Float32Array(this.stride*t)}fill(C,t){let L=C.length,n=C[L-2],i=C[L-1];for(let s=0;s<L;s+=2){let r=C[s],o=C[s+1];this.line(n,i,r,o,t),n=r,i=o}}line(C,t,L,n,i){if(t===n)return;let s=this.width;if(C>=0&&L>=0&&C<=s&&L<=s){this.edge(C,t,L,n,i);return}let r=[0,1];for(let o of[0,s])(C-o)*(L-o)<0&&r.push((o-C)/(L-C));r.sort((o,a)=>o-a);for(let o=1;o<r.length;o++){let a=r[o-1],l=r[o],u=C+(L-C)*a,x=C+(L-C)*l,p=t+(n-t)*a,h=t+(n-t)*l;this.edge(Math.min(s,Math.max(0,u)),p,Math.min(s,Math.max(0,x)),h,i)}}edge(C,t,L,n,i){if(t===n)return;let s=i,r=C,o=t,a=L,l=n;o>l&&(s=-i,r=L,o=n,a=C,l=t);let u=this.height;if(l<=0||o>=u)return;let x=this.acc,p=this.stride,h=(a-r)/(l-o),d=r;o<0&&(d-=o*h);let m=Math.max(0,Math.floor(o)),E=Math.min(u,Math.ceil(l));for(let w=m;w<E;w++){let b=w*p,B=Math.min(w+1,l)-Math.max(w,o),y=d+h*B,S=B*s,D=d<y?d:y,k=d<y?y:d,F=Math.floor(D),N=F,U=Math.ceil(k),q=U;if(q<=N+1){let K=.5*(d+y)-F;x[b+N]+=S-S*K,x[b+N+1]+=S*K}else{let K=1/(k-D),P=D-F,j=.5*K*(1-P)*(1-P),W=k-U+1,G=.5*K*W*W;if(x[b+N]+=S*j,q===N+2)x[b+N+1]+=S*(1-j-G);else{let J=K*(1.5-P);x[b+N+1]+=S*(J-j);for(let e1=N+2;e1<q-1;e1++)x[b+e1]+=S*K;let C1=J+(q-N-3)*K;x[b+q-1]+=S*(1-C1-G)}x[b+q]+=S*G}d=y}}toAlphaEvenOdd(){let{width:C,height:t,stride:L,acc:n}=this,i=new Uint8Array(C*t);for(let s=0;s<t;s++){let r=0,o=s*L,a=s*C;for(let l=0;l<C;l++){r+=n[o+l];let u=(r<0?-r:r)%2;u>1&&(u=2-u),i[a+l]=u*255+.5|0}}return i}toAlpha(C){let{width:t,height:L,stride:n,acc:i}=this,s=new Uint8Array(t*L);for(let r=0;r<L;r++){let o=0,a=r*n,l=r*t;for(let u=0;u<t;u++){o+=i[a+u];let x=o<0?-o:o,p=x>=1?255:x*255+.5|0;s[l+u]=C?C[p]:p}}return s}};
-export{S6,W7,$7,dC,U5,l2,j5,Ci,Oi,Pi,ki,Ai,Ei,_i,Fi,wi,$i,Wi,vi,Zh,Qh,Kh,Yh,Jh,Si,zi,Gi,Dd,Ri};
+import{__esm,init_FontData,init_Wrapper3,init_mfrac,CommonMfracMixin,SvgWrapper,MmlMfrac,DIRECTION,BBox,init_BBox,init_msqrt,MmlMsqrt,init_mroot,MmlMroot,init_mfenced,MmlMfenced,LineBBox,init_LineBBox,init_msubsup,MmlMsub,MmlMsup,MmlMsubsup,init_munderover,MmlMunder,MmlMover,MmlMunderover,init_mmultiscripts,init_string,split,MmlMmultiscripts,isPercent,Styles,TRBL,__kittexLate}from'./p20.js';export*from'./p20.js';
+var init_mfrac2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mfrac.js"() {
+    init_FontData();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mfrac.js
+var SvgMfrac;
+var init_mfrac3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mfrac.js"() {
+    init_Wrapper3();
+    init_mfrac2();
+    init_mfrac();
+    SvgMfrac = (function() {
+      var _a2;
+      const Base2 = CommonMfracMixin(SvgWrapper);
+      return _a2 = class SvgMfrac extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          this.standardSvgNodes(parents);
+          const { linethickness, bevelled } = this.node.attributes.getList("linethickness", "bevelled");
+          const display = this.isDisplay();
+          if (bevelled) {
+            this.makeBevelled(display);
+          } else {
+            const thickness = this.length2em(String(linethickness), 0.06);
+            if (thickness === 0) {
+              this.makeAtop(display);
+            } else {
+              this.makeFraction(display, thickness);
+            }
+          }
+        }
+        makeFraction(display, t) {
+          const svg = this.dom;
+          const { numalign, denomalign } = this.node.attributes.getList("numalign", "denomalign");
+          const [num3, den] = this.childNodes;
+          const nbox = num3.getOuterBBox();
+          const dbox = den.getOuterBBox();
+          const tex = this.font.params;
+          const a = tex.axis_height;
+          const d = 0.1;
+          const pad2 = this.node.getProperty("withDelims") ? 0 : tex.nulldelimiterspace;
+          const W = Math.max((nbox.L + nbox.w + nbox.R) * nbox.rscale, (dbox.L + dbox.w + dbox.R) * dbox.rscale);
+          const nx = this.getAlignX(W, nbox, numalign) + d + pad2;
+          const dx = this.getAlignX(W, dbox, denomalign) + d + pad2;
+          const { T, u, v } = this.getTUV(display, t);
+          num3.toSVG(svg);
+          num3.place(nx, a + T + Math.max(nbox.d * nbox.rscale, u));
+          den.toSVG(svg);
+          den.place(dx, a - T - Math.max(dbox.h * dbox.rscale, v));
+          this.adaptor.append(svg[0], this.svg("rect", {
+            width: this.fixed(W + 2 * d),
+            height: this.fixed(t),
+            x: this.fixed(pad2),
+            y: this.fixed(a - t / 2)
+          }));
+        }
+        makeAtop(display) {
+          const svg = this.dom;
+          const { numalign, denomalign } = this.node.attributes.getList("numalign", "denomalign");
+          const [num3, den] = this.childNodes;
+          const nbox = num3.getOuterBBox();
+          const dbox = den.getOuterBBox();
+          const tex = this.font.params;
+          const pad2 = this.node.getProperty("withDelims") ? 0 : tex.nulldelimiterspace;
+          const W = Math.max((nbox.L + nbox.w + nbox.R) * nbox.rscale, (dbox.L + dbox.w + dbox.R) * dbox.rscale);
+          const nx = this.getAlignX(W, nbox, numalign) + pad2;
+          const dx = this.getAlignX(W, dbox, denomalign) + pad2;
+          const { u, v } = this.getUVQ(display);
+          num3.toSVG(svg);
+          num3.place(nx, u);
+          den.toSVG(svg);
+          den.place(dx, -v);
+        }
+        makeBevelled(display) {
+          const svg = this.dom;
+          const [num3, den] = this.childNodes;
+          const { u, v, delta, nbox, dbox } = this.getBevelData(display);
+          const w = (nbox.L + nbox.w + nbox.R) * nbox.rscale;
+          num3.toSVG(svg);
+          this.bevel.toSVG(svg);
+          den.toSVG(svg);
+          num3.place(nbox.L * nbox.rscale, u);
+          this.bevel.place(w - delta / 2, 0);
+          den.place(w + this.bevel.getOuterBBox().w + dbox.L * dbox.rscale - delta, v);
+        }
+      }, _a2.kind = MmlMfrac.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/msqrt.js
+function CommonMsqrtMixin(Base2) {
+  return class CommonMsqrtMixin extends Base2 {
+    get base() {
+      return 0;
+    }
+    get root() {
+      return null;
+    }
+    combineRootBBox(_bbox, _sbox, _H) {
+    }
+    getPQ(sbox) {
+      const t = this.font.params.rule_thickness;
+      const s = this.font.params.surd_height;
+      const p = this.node.attributes.get("displaystyle") ? this.font.params.x_height : t;
+      const q = sbox.h + sbox.d > this.surdH ? (sbox.h + sbox.d - (this.surdH - t - s - p / 2)) / 2 : s + p / 4;
+      return [p, q];
+    }
+    getRootDimens(_sbox, _H) {
+      return [0, 0, 0, 0];
+    }
+    rootWidth() {
+      return 1.25;
+    }
+    getStretchedSurd() {
+      const t = this.font.params.rule_thickness;
+      const s = this.font.params.surd_height;
+      const p = this.node.attributes.get("displaystyle") ? this.font.params.x_height : t;
+      const { h, d } = this.childNodes[this.base].getOuterBBox();
+      this.surdH = h + d + t + s + p / 4;
+      this.surd.getStretchedVariant([this.surdH - d, d], true);
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.surd = this.createMo("√");
+      this.surd.canStretch(DIRECTION.Vertical);
+      this.getStretchedSurd();
+    }
+    computeBBox(bbox, recompute = false) {
+      bbox.empty();
+      const surdbox = this.surd.getBBox();
+      const basebox = new BBox(this.childNodes[this.base].getOuterBBox());
+      const q = this.getPQ(surdbox)[1];
+      const t = this.font.params.rule_thickness;
+      const s = this.font.params.surd_height;
+      const H2 = basebox.h + q + t;
+      const [x2] = this.getRootDimens(surdbox, H2);
+      bbox.h = H2 + s;
+      this.combineRootBBox(bbox, surdbox, H2);
+      bbox.combine(surdbox, x2, H2 - surdbox.h);
+      bbox.combine(basebox, x2 + surdbox.w, 0);
+      bbox.clean();
+      this.setChildPWidths(recompute);
+    }
+    invalidateBBox() {
+      super.invalidateBBox();
+      this.surd.childNodes[0].invalidateBBox();
+    }
+  };
+}
+var init_msqrt2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/msqrt.js"() {
+    init_BBox();
+    init_FontData();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/msqrt.js
+var SvgMsqrt;
+var init_msqrt3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/msqrt.js"() {
+    init_Wrapper3();
+    init_msqrt2();
+    init_msqrt();
+    SvgMsqrt = (function() {
+      var _a2;
+      const Base2 = CommonMsqrtMixin(SvgWrapper);
+      return _a2 = class SvgMsqrt extends Base2 {
+        constructor() {
+          super(...arguments);
+          this.dx = 0;
+        }
+        addRoot(_ROOT, _root, _sbox, _H) {
+          return 0;
+        }
+        toSVG(parents) {
+          const surd = this.surd;
+          const base = this.childNodes[this.base];
+          const root2 = this.root ? this.childNodes[this.root] : null;
+          const sbox = surd.getBBox();
+          const bbox = base.getOuterBBox();
+          const q = this.getPQ(sbox)[1];
+          const t = this.font.params.surd_height * this.bbox.scale;
+          const H2 = bbox.h + q + t;
+          const SVG2 = this.standardSvgNodes(parents);
+          surd.toSVG(SVG2);
+          const dx = this.addRoot(SVG2, root2, sbox, H2);
+          const BASE = this.adaptor.append(SVG2[0], this.svg("g"));
+          base.toSVG([BASE]);
+          surd.place(dx, H2 - sbox.h);
+          base.place(dx + sbox.w, 0);
+          this.adaptor.append(SVG2[SVG2.length - 1], this.svg("rect", {
+            width: this.fixed(bbox.w),
+            height: this.fixed(t),
+            x: this.fixed(dx + sbox.w),
+            y: this.fixed(H2 - t)
+          }));
+        }
+      }, _a2.kind = MmlMsqrt.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mroot.js
+function CommonMrootMixin(Base2) {
+  return class CommonMrootMixin extends Base2 {
+    get root() {
+      return 1;
+    }
+    combineRootBBox(BBOX, sbox, H2) {
+      const bbox = this.childNodes[this.root].getOuterBBox();
+      const h = this.getRootDimens(sbox, H2)[1];
+      BBOX.combine(bbox, 0, h);
+    }
+    getRootDimens(sbox, H2) {
+      const surd = this.surd;
+      const bbox = this.childNodes[this.root].getOuterBBox();
+      const offset = (surd.size < 0 ? 0.5 : 0.6) * sbox.w;
+      const { w, rscale } = bbox;
+      const W = Math.max(w, offset / rscale);
+      const dx = Math.max(0, W - w);
+      const h = this.rootHeight(bbox, sbox, surd.size, H2);
+      const x2 = W * rscale - offset;
+      return [x2, h, dx];
+    }
+    rootHeight(rbox, sbox, size, H2) {
+      const h = sbox.h + sbox.d;
+      const b = (size < 0 ? 1.9 : 0.55 * h) - (h - H2);
+      return b + Math.max(0, rbox.d * rbox.rscale);
+    }
+    rootWidth() {
+      const bbox = this.childNodes[this.root].getOuterBBox();
+      return 0.4 + bbox.w * bbox.rscale;
+    }
+  };
+}
+var init_mroot2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mroot.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mroot.js
+var SvgMroot;
+var init_mroot3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mroot.js"() {
+    init_mroot2();
+    init_mroot();
+    init_msqrt3();
+    SvgMroot = (function() {
+      var _a2;
+      const Base2 = CommonMrootMixin(SvgMsqrt);
+      return _a2 = class SvgMroot extends Base2 {
+        addRoot(ROOT, root2, sbox, H2) {
+          root2.toSVG(ROOT);
+          const [x2, h, dx] = this.getRootDimens(sbox, H2);
+          const bbox = root2.getOuterBBox();
+          root2.place(dx * bbox.rscale, h);
+          return x2;
+        }
+      }, _a2.kind = MmlMroot.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mfenced.js
+function CommonMfencedMixin(Base2) {
+  return class CommonMfencedMixin extends Base2 {
+    createMrow() {
+      const mmlFactory = this.node.factory;
+      const mrow = mmlFactory.create("inferredMrow");
+      mrow.inheritAttributesFrom(this.node);
+      this.mrow = this.wrap(mrow);
+      this.mrow.parent = this;
+    }
+    addMrowChildren() {
+      const mfenced = this.node;
+      const mrow = this.mrow;
+      this.addMo(mfenced.open);
+      if (this.childNodes.length) {
+        mrow.childNodes.push(this.childNodes[0]);
+      }
+      let i2 = 0;
+      for (const child of this.childNodes.slice(1)) {
+        this.addMo(mfenced.separators[i2++]);
+        mrow.childNodes.push(child);
+      }
+      this.addMo(mfenced.close);
+      mrow.stretchChildren();
+    }
+    addMo(node) {
+      if (!node)
+        return;
+      const mo = this.wrap(node);
+      this.mrow.childNodes.push(mo);
+      mo.parent = this.mrow;
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.mrow = null;
+      this.createMrow();
+      this.addMrowChildren();
+    }
+    computeBBox(bbox, recompute = false) {
+      bbox.updateFrom(this.mrow.getOuterBBox());
+      this.setChildPWidths(recompute);
+    }
+    get breakCount() {
+      return this.mrow.breakCount;
+    }
+    computeLineBBox(i2) {
+      return this.mrow.getLineBBox(i2);
+    }
+  };
+}
+var init_mfenced2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mfenced.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mfenced.js
+var SvgMfenced;
+var init_mfenced3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mfenced.js"() {
+    init_Wrapper3();
+    init_mfenced2();
+    init_mfenced();
+    SvgMfenced = (function() {
+      var _a2;
+      const Base2 = CommonMfencedMixin(SvgWrapper);
+      return _a2 = class SvgMfenced extends Base2 {
+        toSVG(parents) {
+          const svg = this.standardSvgNodes(parents);
+          this.setChildrenParent(this.mrow);
+          this.mrow.toSVG(svg);
+          this.setChildrenParent(this);
+        }
+        setChildrenParent(parent) {
+          for (const child of this.childNodes) {
+            child.parent = parent;
+          }
+        }
+      }, _a2.kind = MmlMfenced.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/msubsup.js
+function CommonMsubMixin(Base2) {
+  var _a2;
+  return _a2 = class CommonMsubMixin extends Base2 {
+    get scriptChild() {
+      return this.childNodes[this.node.sub];
+    }
+    getOffset() {
+      const x2 = this.baseIsChar ? 0 : this.getAdjustedIc();
+      return [x2, -this.getV()];
+    }
+  }, _a2.useIC = false, _a2;
+}
+function CommonMsupMixin(Base2) {
+  return class CommonMsupMixin extends Base2 {
+    get scriptChild() {
+      return this.childNodes[this.node.sup];
+    }
+    getOffset() {
+      const x2 = this.getAdjustedIc() - (this.baseRemoveIc ? 0 : this.baseIc);
+      return [x2, this.getU()];
+    }
+  };
+}
+function CommonMsubsupMixin(Base2) {
+  var _a2;
+  return _a2 = class CommonMsubsupMixin extends Base2 {
+    constructor() {
+      super(...arguments);
+      this.UVQ = null;
+    }
+    get subChild() {
+      return this.childNodes[this.node.sub];
+    }
+    get supChild() {
+      return this.childNodes[this.node.sup];
+    }
+    get scriptChild() {
+      return this.supChild;
+    }
+    getUVQ(subbox = this.subChild.getOuterBBox(), supbox = this.supChild.getOuterBBox()) {
+      const base = this.baseCore;
+      const bbox = base.getLineBBox(base.breakCount);
+      if (this.UVQ)
+        return this.UVQ;
+      const tex = this.font.params;
+      const t = 3 * tex.rule_thickness;
+      const subscriptshift = this.length2em(this.node.attributes.get("subscriptshift"), tex.sub2);
+      const drop = this.baseCharZero(bbox.d * this.baseScale + tex.sub_drop * subbox.rscale);
+      const supd = supbox.d * supbox.rscale;
+      const subh = subbox.h * subbox.rscale;
+      let [u, v] = [this.getU(), Math.max(drop, subscriptshift)];
+      let q = u - supd - (subh - v);
+      if (q < t) {
+        v += t - q;
+        const p = 4 / 5 * tex.x_height - (u - supd);
+        if (p > 0) {
+          u += p;
+          v -= p;
+        }
+      }
+      u = Math.max(this.length2em(this.node.attributes.get("superscriptshift"), u), u);
+      v = Math.max(this.length2em(this.node.attributes.get("subscriptshift"), v), v);
+      q = u - supd - (subh - v);
+      this.UVQ = [u, -v, q];
+      return this.UVQ;
+    }
+    appendScripts(bbox) {
+      const [subbox, supbox] = [
+        this.subChild.getOuterBBox(),
+        this.supChild.getOuterBBox()
+      ];
+      const w = this.getBaseWidth();
+      const x2 = this.getAdjustedIc();
+      const [u, v] = this.getUVQ();
+      const y = bbox.d - this.baseChild.getLineBBox(this.baseChild.breakCount).d;
+      bbox.combine(subbox, w + (this.baseIsChar ? 0 : x2), v - y);
+      bbox.combine(supbox, w + x2, u - y);
+      bbox.w += this.font.params.scriptspace;
+      return bbox;
+    }
+  }, _a2.useIC = false, _a2;
+}
+var init_msubsup2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/msubsup.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/scriptbase.js
+function CommonScriptbaseMixin(Base2) {
+  var _a2;
+  return _a2 = class CommonScriptbaseMixin extends Base2 {
+    get baseChild() {
+      return this.childNodes[this.node.base];
+    }
+    get scriptChild() {
+      return this.childNodes[1];
+    }
+    getBaseCore() {
+      let core = this.getSemanticBase() || this.childNodes[0];
+      let node = core === null || core === void 0 ? void 0 : core.node;
+      while (core && (core.childNodes.length === 1 && (node.isKind("mrow") || node.isKind("TeXAtom") || node.isKind("mstyle") || node.isKind("mpadded") && !node.getProperty("vbox") || node.isKind("mphantom") || node.isKind("semantics")) || node.isKind("munderover") && core.isMathAccent)) {
+        this.setBaseAccentsFor(core);
+        core = core.childNodes[0];
+        node = core === null || core === void 0 ? void 0 : core.node;
+      }
+      if (!core) {
+        this.baseHasAccentOver = this.baseHasAccentUnder = false;
+      }
+      return core || this.childNodes[0];
+    }
+    setBaseAccentsFor(core) {
+      if (core.node.isKind("munderover")) {
+        if (this.baseHasAccentOver === null) {
+          this.baseHasAccentOver = !!core.node.attributes.get("accent");
+        }
+        if (this.baseHasAccentUnder === null) {
+          this.baseHasAccentUnder = !!core.node.attributes.get("accentunder");
+        }
+      }
+    }
+    getSemanticBase() {
+      const fence = this.node.attributes.getExplicit("data-semantic-fencepointer");
+      return this.getBaseFence(this.baseChild, fence);
+    }
+    getBaseFence(fence, id) {
+      if (!fence || !fence.node.attributes || !id) {
+        return null;
+      }
+      if (fence.node.attributes.getExplicit("data-semantic-id") === id) {
+        return fence;
+      }
+      for (const child of fence.childNodes) {
+        const result = this.getBaseFence(child, id);
+        if (result) {
+          return result;
+        }
+      }
+      return null;
+    }
+    getBaseScale() {
+      let child = this.baseCore;
+      let scale2 = 1;
+      while (child && child !== this) {
+        const bbox = child.getOuterBBox();
+        scale2 *= bbox.rscale;
+        child = child.parent;
+      }
+      return scale2;
+    }
+    getBaseIc() {
+      return this.baseCore.getOuterBBox().ic * this.baseScale;
+    }
+    getAdjustedIc() {
+      return this.baseIc ? 1.05 * this.baseIc + 0.05 : 0;
+    }
+    isCharBase() {
+      const base = this.baseCore;
+      return (base.node.isKind("mo") && base.size === null || base.node.isKind("mi") || base.node.isKind("mn")) && base.bbox.rscale === 1 && Array.from(base.getText()).length === 1;
+    }
+    checkLineAccents() {
+      if (!this.node.isKind("munderover"))
+        return;
+      if (this.node.isKind("mover")) {
+        this.isLineAbove = this.isLineAccent(this.scriptChild);
+      } else if (this.node.isKind("munder")) {
+        this.isLineBelow = this.isLineAccent(this.scriptChild);
+      } else {
+        const mml = this;
+        this.isLineAbove = this.isLineAccent(mml.overChild);
+        this.isLineBelow = this.isLineAccent(mml.underChild);
+      }
+    }
+    isLineAccent(script2) {
+      const node = script2.coreMO().node;
+      return node.isToken && node.getText() === "―";
+    }
+    getBaseWidth() {
+      const bbox = this.baseChild.getLineBBox(this.baseChild.breakCount);
+      return bbox.w * bbox.rscale - (this.baseRemoveIc ? this.baseIc : 0) + this.font.params.extra_ic;
+    }
+    getOffset() {
+      return [0, 0];
+    }
+    baseCharZero(n) {
+      const largeop2 = !!this.baseCore.node.attributes.get("largeop");
+      const sized = !!(this.baseCore.node.isKind("mo") && this.baseCore.size);
+      const scale2 = this.baseScale;
+      return this.baseIsChar && !largeop2 && !sized && scale2 === 1 ? 0 : n;
+    }
+    getV() {
+      const base = this.baseCore;
+      const bbox = base.getLineBBox(base.breakCount);
+      const sbox = this.scriptChild.getOuterBBox();
+      const tex = this.font.params;
+      const subscriptshift = this.length2em(this.node.attributes.get("subscriptshift"), tex.sub1);
+      return Math.max(this.baseCharZero(bbox.d * this.baseScale + tex.sub_drop * sbox.rscale), subscriptshift, sbox.h * sbox.rscale - 4 / 5 * tex.x_height);
+    }
+    getU() {
+      const base = this.baseCore;
+      const bbox = base.getLineBBox(base.breakCount);
+      const sbox = this.scriptChild.getOuterBBox();
+      const tex = this.font.params;
+      const attr = this.node.attributes.getList("displaystyle", "superscriptshift");
+      const prime = this.node.getProperty("texprimestyle");
+      const p = prime ? tex.sup3 : attr.displaystyle ? tex.sup1 : tex.sup2;
+      const superscriptshift = this.length2em(attr.superscriptshift, p);
+      return Math.max(this.baseCharZero(bbox.h * this.baseScale - tex.sup_drop * sbox.rscale), superscriptshift, sbox.d * sbox.rscale + 1 / 4 * tex.x_height);
+    }
+    hasMovableLimits() {
+      const display = this.node.attributes.get("displaystyle");
+      const mo = this.baseChild.coreMO().node;
+      return !display && !!mo.attributes.get("movablelimits");
+    }
+    getOverKU(basebox, overbox) {
+      const accent = this.node.attributes.get("accent");
+      const tex = this.font.params;
+      const d = overbox.d * overbox.rscale;
+      const t = tex.rule_thickness * tex.separation_factor;
+      const delta = this.baseHasAccentOver ? t : 0;
+      const T = this.isLineAbove ? 3 * tex.rule_thickness : t;
+      const k = (accent ? T : Math.max(tex.big_op_spacing1, tex.big_op_spacing3 - Math.max(0, d))) - delta;
+      return [k, basebox.h * basebox.rscale + k + d];
+    }
+    getUnderKV(basebox, underbox) {
+      const accent = this.node.attributes.get("accentunder");
+      const tex = this.font.params;
+      const h = underbox.h * underbox.rscale;
+      const t = tex.rule_thickness * tex.separation_factor;
+      const delta = this.baseHasAccentUnder ? t : 0;
+      const T = this.isLineBelow ? 3 * tex.rule_thickness : t;
+      const k = (accent ? T : Math.max(tex.big_op_spacing2, tex.big_op_spacing4 - h)) - delta;
+      return [k, -(basebox.d * basebox.rscale + k + h)];
+    }
+    getDeltaW(boxes, delta = [0, 0, 0]) {
+      const align = this.node.attributes.get("align");
+      const widths = boxes.map((box) => box.w * box.rscale);
+      widths[0] -= this.baseRemoveIc && !this.baseCore.node.attributes.get("largeop") ? this.baseIc : 0;
+      const w = Math.max(...widths);
+      const dw = [];
+      let m = 0;
+      for (const i2 of widths.keys()) {
+        dw[i2] = (align === "center" ? (w - widths[i2]) / 2 : align === "right" ? w - widths[i2] : 0) + delta[i2];
+        if (dw[i2] < m) {
+          m = -dw[i2];
+        }
+      }
+      if (m) {
+        for (const i2 of dw.keys()) {
+          dw[i2] += m;
+        }
+      }
+      [1, 2].map((i2) => dw[i2] += boxes[i2] ? boxes[i2].dx * boxes[0].rscale : 0);
+      return dw;
+    }
+    getDelta(script2, noskew = false) {
+      const accent = this.node.attributes.get("accent");
+      let { sk, ic } = this.baseCore.getOuterBBox();
+      if (accent) {
+        sk -= script2.getOuterBBox().sk;
+      }
+      return ((accent && !noskew ? sk : 0) + this.font.skewIcFactor * ic) * this.baseScale;
+    }
+    stretchChildren() {
+      const stretchy = [];
+      for (const child of this.childNodes) {
+        if (child.canStretch(DIRECTION.Horizontal)) {
+          stretchy.push(child);
+        }
+      }
+      const count = stretchy.length;
+      const nodeCount = this.childNodes.length;
+      if (count && nodeCount > 1) {
+        let W = 0;
+        const all = count > 1 && count === nodeCount;
+        for (const child of this.childNodes) {
+          const noStretch = child.stretch.dir === DIRECTION.None;
+          if (all || noStretch) {
+            const { w, rscale } = child.getOuterBBox(noStretch);
+            if (w * rscale > W)
+              W = w * rscale;
+          }
+        }
+        for (const child of stretchy) {
+          const core = child.coreMO();
+          if (core.size === null) {
+            core.getStretchedVariant([W / child.coreRScale()]);
+          }
+        }
+      }
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.baseScale = 1;
+      this.baseIc = 0;
+      this.baseRemoveIc = false;
+      this.baseIsChar = false;
+      this.baseHasAccentOver = null;
+      this.baseHasAccentUnder = null;
+      this.isLineAbove = false;
+      this.isLineBelow = false;
+      this.isMathAccent = false;
+      const core = this.baseCore = this.getBaseCore();
+      if (!core)
+        return;
+      this.setBaseAccentsFor(core);
+      this.baseScale = this.getBaseScale();
+      this.baseIc = this.getBaseIc();
+      this.baseIsChar = this.isCharBase();
+      this.isMathAccent = this.baseIsChar && this.scriptChild && this.scriptChild.coreMO().node.getProperty("mathaccent") !== void 0;
+      this.checkLineAccents();
+      this.baseRemoveIc = !this.isLineAbove && !this.isLineBelow && (!this.constructor.useIC || this.isMathAccent);
+    }
+    computeBBox(bbox, recompute = false) {
+      bbox.empty();
+      bbox.append(this.baseChild.getOuterBBox());
+      this.appendScripts(bbox);
+      bbox.clean();
+      this.setChildPWidths(recompute);
+    }
+    appendScripts(bbox) {
+      const w = this.getBaseWidth();
+      const [x2, y] = this.getOffset();
+      bbox.combine(this.scriptChild.getOuterBBox(), w + x2, y);
+      bbox.w += this.font.params.scriptspace;
+      return bbox;
+    }
+    get breakCount() {
+      if (this._breakCount < 0) {
+        this._breakCount = this.node.isEmbellished ? this.coreMO().embellishedBreakCount : !this.node.linebreakContainer ? this.childNodes[0].breakCount : 0;
+      }
+      return this._breakCount;
+    }
+    breakTop(mrow, child) {
+      return this.node.linebreakContainer || !this.parent || this.node.childIndex(child.node) ? mrow : this.parent.breakTop(mrow, this);
+    }
+    computeLineBBox(i2) {
+      const n = this.breakCount;
+      if (!n)
+        return LineBBox.from(this.getOuterBBox(), this.linebreakOptions.lineleading);
+      const bbox = this.baseChild.getLineBBox(i2).copy();
+      if (i2 < n) {
+        if (i2 === 0) {
+          this.addLeftBorders(bbox);
+        }
+        this.addMiddleBorders(bbox);
+      } else {
+        this.appendScripts(bbox);
+        this.addMiddleBorders(bbox);
+        this.addRightBorders(bbox);
+      }
+      return bbox;
+    }
+  }, _a2.useIC = true, _a2;
+}
+var init_scriptbase = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/scriptbase.js"() {
+    init_LineBBox();
+    init_FontData();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/scriptbase.js
+var SvgScriptbase;
+var init_scriptbase2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/scriptbase.js"() {
+    init_Wrapper3();
+    init_scriptbase();
+    SvgScriptbase = (function() {
+      var _a2;
+      const Base2 = CommonScriptbaseMixin(SvgWrapper);
+      return _a2 = class SvgScriptbase extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          const svg = this.standardSvgNodes(parents);
+          const w = this.getBaseWidth();
+          const [x2, v] = this.getOffset();
+          this.baseChild.toSVG(svg);
+          this.baseChild.place(0, 0);
+          this.scriptChild.toSVG([svg[svg.length - 1]]);
+          this.scriptChild.place(w + x2, v);
+        }
+      }, _a2.kind = "scriptbase", _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/msubsup.js
+var SvgMsub;
+var SvgMsup;
+var SvgMsubsup;
+var init_msubsup3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/msubsup.js"() {
+    init_msubsup2();
+    init_scriptbase2();
+    init_msubsup();
+    SvgMsub = (function() {
+      var _a2;
+      const Base2 = CommonMsubMixin(SvgScriptbase);
+      return _a2 = class SvgMsub extends Base2 {
+      }, _a2.kind = MmlMsub.prototype.kind, _a2;
+    })();
+    SvgMsup = (function() {
+      var _a2;
+      const Base2 = CommonMsupMixin(SvgScriptbase);
+      return _a2 = class SvgMsup extends Base2 {
+      }, _a2.kind = MmlMsup.prototype.kind, _a2;
+    })();
+    SvgMsubsup = (function() {
+      var _a2;
+      const Base2 = CommonMsubsupMixin(SvgScriptbase);
+      return _a2 = class SvgMsubsup extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          const svg = this.standardSvgNodes(parents);
+          const [base, sup, sub] = [this.baseChild, this.supChild, this.subChild];
+          const w = this.getBaseWidth();
+          const x2 = this.getAdjustedIc();
+          const [u, v] = this.getUVQ();
+          base.toSVG(svg);
+          const tail = [svg[svg.length - 1]];
+          sup.toSVG(tail);
+          sub.toSVG(tail);
+          base.place(0, 0);
+          sub.place(w + (this.baseIsChar ? 0 : x2), v);
+          sup.place(w + x2, u);
+        }
+      }, _a2.kind = MmlMsubsup.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/munderover.js
+function CommonMunderMixin(Base2) {
+  return class CommonMunderMixin extends Base2 {
+    get scriptChild() {
+      return this.childNodes[this.node.under];
+    }
+    constructor(...args) {
+      super(...args);
+      this.stretchChildren();
+    }
+    computeBBox(bbox, recompute = false) {
+      if (this.hasMovableLimits()) {
+        super.computeBBox(bbox, recompute);
+        return;
+      }
+      bbox.empty();
+      const basebox = this.baseChild.getOuterBBox();
+      const underbox = this.scriptChild.getOuterBBox();
+      const v = this.getUnderKV(basebox, underbox)[1];
+      const delta = this.isLineBelow ? 0 : this.getDelta(this.scriptChild, true);
+      const [bw, uw] = this.getDeltaW([basebox, underbox], [0, -delta]);
+      bbox.combine(basebox, bw, 0);
+      bbox.combine(underbox, uw, v);
+      bbox.d += this.font.params.big_op_spacing5;
+      bbox.clean();
+      this.setChildPWidths(recompute);
+    }
+  };
+}
+function CommonMoverMixin(Base2) {
+  return class CommonMoverMixin extends Base2 {
+    get scriptChild() {
+      return this.childNodes[this.node.over];
+    }
+    constructor(...args) {
+      super(...args);
+      this.stretchChildren();
+    }
+    computeBBox(bbox) {
+      if (this.hasMovableLimits()) {
+        super.computeBBox(bbox);
+        return;
+      }
+      bbox.empty();
+      const basebox = this.baseChild.getOuterBBox();
+      const overbox = this.scriptChild.getOuterBBox();
+      if (this.node.attributes.get("accent")) {
+        basebox.h = Math.max(basebox.h, this.font.params.x_height * this.baseScale);
+      }
+      const u = this.getOverKU(basebox, overbox)[1];
+      const delta = this.isLineAbove ? 0 : this.getDelta(this.scriptChild);
+      const [bw, ow] = this.getDeltaW([basebox, overbox], [0, delta]);
+      bbox.combine(basebox, bw, 0);
+      bbox.combine(overbox, ow, u);
+      bbox.h += this.font.params.big_op_spacing5;
+      bbox.clean();
+    }
+  };
+}
+function CommonMunderoverMixin(Base2) {
+  return class CommonMunderoverMixin extends Base2 {
+    get underChild() {
+      return this.childNodes[this.node.under];
+    }
+    get overChild() {
+      return this.childNodes[this.node.over];
+    }
+    get subChild() {
+      return this.underChild;
+    }
+    get supChild() {
+      return this.overChild;
+    }
+    constructor(...args) {
+      super(...args);
+      this.stretchChildren();
+    }
+    computeBBox(bbox) {
+      if (this.hasMovableLimits()) {
+        super.computeBBox(bbox);
+        return;
+      }
+      bbox.empty();
+      const overbox = this.overChild.getOuterBBox();
+      const basebox = this.baseChild.getOuterBBox();
+      const underbox = this.underChild.getOuterBBox();
+      if (this.node.attributes.get("accent")) {
+        basebox.h = Math.max(basebox.h, this.font.params.x_height * this.baseScale);
+      }
+      const u = this.getOverKU(basebox, overbox)[1];
+      const v = this.getUnderKV(basebox, underbox)[1];
+      const odelta = this.getDelta(this.overChild);
+      const udelta = this.getDelta(this.underChild, true);
+      const [bw, uw, ow] = this.getDeltaW([basebox, underbox, overbox], [0, this.isLineBelow ? 0 : -udelta, this.isLineAbove ? 0 : odelta]);
+      bbox.combine(basebox, bw, 0);
+      bbox.combine(overbox, ow, u);
+      bbox.combine(underbox, uw, v);
+      const z = this.font.params.big_op_spacing5;
+      bbox.h += z;
+      bbox.d += z;
+      bbox.clean();
+    }
+  };
+}
+var init_munderover2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/munderover.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/munderover.js
+var SvgMunder;
+var SvgMover;
+var SvgMunderover;
+var init_munderover3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/munderover.js"() {
+    init_msubsup3();
+    init_munderover2();
+    init_munderover();
+    SvgMunder = (function() {
+      var _a2;
+      const Base2 = CommonMunderMixin(SvgMsub);
+      return _a2 = class SvgMunder extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          if (this.hasMovableLimits()) {
+            super.toSVG(parents);
+            return;
+          }
+          const svg = this.standardSvgNodes(parents);
+          const [base, script2] = [this.baseChild, this.scriptChild];
+          const [bbox, sbox] = [base.getOuterBBox(), script2.getOuterBBox()];
+          base.toSVG(svg);
+          script2.toSVG(svg);
+          const delta = this.isLineBelow ? 0 : this.getDelta(this.scriptChild, true);
+          const v = this.getUnderKV(bbox, sbox)[1];
+          const [bx, sx] = this.getDeltaW([bbox, sbox], [0, -delta]);
+          base.place(bx, 0);
+          script2.place(sx, v);
+        }
+      }, _a2.kind = MmlMunder.prototype.kind, _a2;
+    })();
+    SvgMover = (function() {
+      var _a2;
+      const Base2 = CommonMoverMixin(SvgMsup);
+      return _a2 = class SvgMover extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          if (this.hasMovableLimits()) {
+            super.toSVG(parents);
+            return;
+          }
+          const svg = this.standardSvgNodes(parents);
+          const [base, script2] = [this.baseChild, this.scriptChild];
+          const [bbox, sbox] = [base.getOuterBBox(), script2.getOuterBBox()];
+          base.toSVG(svg);
+          script2.toSVG(svg);
+          const delta = this.isLineAbove ? 0 : this.getDelta(this.scriptChild);
+          const u = this.getOverKU(bbox, sbox)[1];
+          const [bx, sx] = this.getDeltaW([bbox, sbox], [0, delta]);
+          base.place(bx, 0);
+          script2.place(sx, u);
+        }
+      }, _a2.kind = MmlMover.prototype.kind, _a2;
+    })();
+    SvgMunderover = (function() {
+      var _a2;
+      const Base2 = CommonMunderoverMixin(SvgMsubsup);
+      return _a2 = class SvgMunderover extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          if (this.hasMovableLimits()) {
+            super.toSVG(parents);
+            return;
+          }
+          const svg = this.standardSvgNodes(parents);
+          const [base, over, under] = [
+            this.baseChild,
+            this.overChild,
+            this.underChild
+          ];
+          const [bbox, obox, ubox] = [
+            base.getOuterBBox(),
+            over.getOuterBBox(),
+            under.getOuterBBox()
+          ];
+          base.toSVG(svg);
+          under.toSVG(svg);
+          over.toSVG(svg);
+          const odelta = this.getDelta(this.overChild);
+          const udelta = this.getDelta(this.underChild, true);
+          const u = this.getOverKU(bbox, obox)[1];
+          const v = this.getUnderKV(bbox, ubox)[1];
+          const [bx, ux, ox] = this.getDeltaW([bbox, ubox, obox], [0, this.isLineBelow ? 0 : -udelta, this.isLineAbove ? 0 : odelta]);
+          base.place(bx, 0);
+          under.place(ux, v);
+          over.place(ox, u);
+        }
+      }, _a2.kind = MmlMunderover.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mmultiscripts.js
+function CommonMmultiscriptsMixin(Base2) {
+  return class CommonMmultiscriptsMixin extends Base2 {
+    combinePrePost(pre, post) {
+      const bbox = new BBox(pre);
+      bbox.combine(post, 0, 0);
+      return bbox;
+    }
+    getScriptData() {
+      const data = this.scriptData = {
+        base: null,
+        sub: BBox.empty(),
+        sup: BBox.empty(),
+        psub: BBox.empty(),
+        psup: BBox.empty(),
+        numPrescripts: 0,
+        numScripts: 0
+      };
+      const lists = this.getScriptBBoxLists();
+      this.combineBBoxLists(data.sub, data.sup, lists.subList, lists.supList);
+      this.combineBBoxLists(data.psub, data.psup, lists.psubList, lists.psupList);
+      data.base = lists.base[0];
+      data.numPrescripts = lists.psubList.length;
+      data.numScripts = lists.subList.length;
+    }
+    getScriptBBoxLists() {
+      const lists = {
+        base: [],
+        subList: [],
+        supList: [],
+        psubList: [],
+        psupList: []
+      };
+      let script2 = "base";
+      for (const child of this.childNodes) {
+        if (child.node.isKind("mprescripts")) {
+          script2 = "psubList";
+        } else {
+          lists[script2].push(child.getOuterBBox());
+          script2 = NextScript[script2];
+        }
+      }
+      this.firstPrescript = lists.subList.length + lists.supList.length + 2;
+      this.padLists(lists.subList, lists.supList);
+      this.padLists(lists.psubList, lists.psupList);
+      return lists;
+    }
+    padLists(list1, list22) {
+      if (list1.length > list22.length) {
+        list22.push(BBox.empty());
+      }
+    }
+    combineBBoxLists(bbox1, bbox2, list1, list22) {
+      for (let i2 = 0; i2 < list1.length; i2++) {
+        const [w1, h1, d1] = this.getScaledWHD(list1[i2]);
+        const [w2, h2, d2] = this.getScaledWHD(list22[i2]);
+        const w = Math.max(w1, w2);
+        bbox1.w += w;
+        bbox2.w += w;
+        if (h1 > bbox1.h)
+          bbox1.h = h1;
+        if (d1 > bbox1.d)
+          bbox1.d = d1;
+        if (h2 > bbox2.h)
+          bbox2.h = h2;
+        if (d2 > bbox2.d)
+          bbox2.d = d2;
+      }
+    }
+    getScaledWHD(bbox) {
+      const { w, h, d, rscale } = bbox;
+      return [w * rscale, h * rscale, d * rscale];
+    }
+    getCombinedUV() {
+      const data = this.scriptData;
+      const sub = this.combinePrePost(data.sub, data.psub);
+      const sup = this.combinePrePost(data.sup, data.psup);
+      return this.getUVQ(sub, sup);
+    }
+    addPrescripts(bbox, u, v) {
+      const data = this.scriptData;
+      if (data.numPrescripts) {
+        const scriptspace = this.font.params.scriptspace;
+        bbox.combine(data.psup, scriptspace, u);
+        bbox.combine(data.psub, scriptspace, v);
+      }
+      return bbox;
+    }
+    addPostscripts(bbox, u, v) {
+      const data = this.scriptData;
+      if (data.numScripts) {
+        const x2 = bbox.w;
+        bbox.combine(data.sup, x2, u);
+        bbox.combine(data.sub, x2, v);
+        bbox.w += this.font.params.scriptspace;
+      }
+      return bbox;
+    }
+    constructor(...args) {
+      super(...args);
+      this.scriptData = null;
+      this.firstPrescript = 0;
+      this.getScriptData();
+    }
+    appendScripts(bbox) {
+      bbox.empty();
+      const [u, v] = this.getCombinedUV();
+      this.addPrescripts(bbox, u, v);
+      bbox.append(this.scriptData.base);
+      this.addPostscripts(bbox, u, v);
+      bbox.clean();
+      return bbox;
+    }
+    computeLineBBox(i2) {
+      const n = this.baseChild.breakCount;
+      const cbox = this.baseChild.getLineBBox(i2).copy();
+      let bbox = cbox;
+      const [u, v] = this.getCombinedUV();
+      if (i2 === 0) {
+        bbox = LineBBox.from(this.addPrescripts(BBox.zero(), u, v), this.linebreakOptions.lineleading);
+        bbox.append(cbox);
+        this.addLeftBorders(bbox);
+        bbox.L = this.bbox.L;
+      } else if (i2 === n) {
+        bbox = this.addPostscripts(bbox, u, v);
+        this.addRightBorders(bbox);
+        bbox.R = this.bbox.R;
+      }
+      this.addMiddleBorders(bbox);
+      return bbox;
+    }
+    getUVQ(subbox, supbox) {
+      if (!this.UVQ) {
+        let [u, v, q] = [0, 0, 0];
+        if (subbox.w === 0) {
+          u = this.getU();
+        } else if (supbox.w === 0) {
+          u = -this.getV();
+        } else {
+          [u, v, q] = super.getUVQ(subbox, supbox);
+        }
+        this.UVQ = [u, v, q];
+      }
+      return this.UVQ;
+    }
+  };
+}
+var NextScript;
+var init_mmultiscripts2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mmultiscripts.js"() {
+    init_BBox();
+    init_LineBBox();
+    NextScript = {
+      base: "subList",
+      subList: "supList",
+      supList: "subList",
+      psubList: "psupList",
+      psupList: "psubList"
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mmultiscripts.js
+function AlignX(align) {
+  return {
+    left: (_w, _W) => 0,
+    center: (w, W) => (W - w) / 2,
+    right: (w, W) => W - w
+  }[align] || ((_w, _W) => 0);
+}
+var SvgMmultiscripts;
+var init_mmultiscripts3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mmultiscripts.js"() {
+    init_mmultiscripts2();
+    init_msubsup3();
+    init_mmultiscripts();
+    init_string();
+    SvgMmultiscripts = (function() {
+      var _a2;
+      const Base2 = CommonMmultiscriptsMixin(SvgMsubsup);
+      return _a2 = class SvgMmultiscripts extends Base2 {
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          const svg = this.standardSvgNodes(parents);
+          const data = this.scriptData;
+          const scriptalign = this.node.getProperty("scriptalign") || "right left";
+          const [preAlign, postAlign] = split(scriptalign + " " + scriptalign);
+          const [u, v] = this.getCombinedUV();
+          let x2 = 0;
+          if (data.numPrescripts) {
+            x2 = this.addScripts(this.dom[0], this.font.params.scriptspace, u, v, this.firstPrescript, data.numPrescripts, preAlign);
+          }
+          const base = this.baseChild;
+          base.toSVG(svg);
+          base.place(x2, 0);
+          if (this.breakCount)
+            x2 = 0;
+          x2 += base.getLineBBox(base.breakCount).w;
+          if (data.numScripts) {
+            this.addScripts(this.dom[this.dom.length - 1], x2, u, v, 1, data.numScripts, postAlign);
+          }
+        }
+        addScripts(svg, x2, u, v, i2, n, align) {
+          const adaptor = this.adaptor;
+          const alignX = AlignX(align);
+          const supRow = adaptor.append(svg, this.svg("g"));
+          const subRow = adaptor.append(svg, this.svg("g"));
+          this.place(x2, u, supRow);
+          this.place(x2, v, subRow);
+          const m = i2 + 2 * n;
+          let dx = 0;
+          while (i2 < m) {
+            const [sub, sup] = [this.childNodes[i2++], this.childNodes[i2++]];
+            const [subbox, supbox] = [sub.getOuterBBox(), sup.getOuterBBox()];
+            const [subr, supr] = [subbox.rscale, supbox.rscale];
+            const w = Math.max(subbox.w * subr, supbox.w * supr);
+            sub.toSVG([subRow]);
+            sup.toSVG([supRow]);
+            sub.place(dx + alignX(subbox.w * subr, w), 0);
+            sup.place(dx + alignX(supbox.w * supr, w), 0);
+            dx += w;
+          }
+          return x2 + dx;
+        }
+      }, _a2.kind = MmlMmultiscripts.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/util/numeric.js
+function sum(A) {
+  return A.reduce((a, b) => a + b, 0);
+}
+function max(A) {
+  return A.reduce((a, b) => Math.max(a, b), 0);
+}
+var init_numeric = __esm({
+  "node_modules/@mathjax/src/mjs/util/numeric.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mtable.js
+function CommonMtableMixin(Base2) {
+  return class CommonMtableMixin extends Base2 {
+    get tableRows() {
+      return this.childNodes;
+    }
+    findContainer() {
+      let node = this;
+      let parent = node.parent;
+      while (parent && (parent.node.notParent || parent.node.isKind("mrow"))) {
+        node = parent;
+        parent = parent.parent;
+      }
+      this.container = parent;
+      this.containerI = node.node.childPosition();
+    }
+    getPercentageWidth() {
+      if (this.hasLabels) {
+        this.bbox.pwidth = BBox.fullWidth;
+      } else {
+        const width = this.node.attributes.get("width");
+        if (isPercent(width)) {
+          this.bbox.pwidth = width;
+        }
+      }
+    }
+    stretchRows() {
+      const equal = this.node.attributes.get("equalrows");
+      const HD = equal ? this.getEqualRowHeight() : 0;
+      const { H: H2, D } = equal ? this.getTableData() : { H: [0], D: [0] };
+      const rows = this.tableRows;
+      for (let i2 = 0; i2 < this.numRows; i2++) {
+        const hd = equal ? [(HD + H2[i2] - D[i2]) / 2, (HD - H2[i2] + D[i2]) / 2] : null;
+        rows[i2].stretchChildren(hd);
+      }
+    }
+    stretchColumns() {
+      const swidths = this.getColumnAttributes("columnwidth", 0);
+      for (let i2 = 0; i2 < this.numCols; i2++) {
+        const width = typeof this.cWidths[i2] === "number" ? this.cWidths[i2] : null;
+        this.stretchColumn(i2, width);
+        if (width !== null) {
+          this.breakColumn(i2, width, swidths[i2]);
+        }
+      }
+    }
+    stretchColumn(i2, W) {
+      const stretchy = [];
+      for (const row of this.tableRows) {
+        const cell = row.getChild(i2);
+        if (cell) {
+          const child = cell.childNodes[0];
+          if (child.stretch.dir === DIRECTION.None && child.canStretch(DIRECTION.Horizontal)) {
+            stretchy.push(child);
+          }
+        }
+      }
+      const count = stretchy.length;
+      if (count && W === null) {
+        W = 0;
+        const all = count === this.childNodes.length;
+        for (const row of this.tableRows) {
+          const cell = row.getChild(i2);
+          if (cell) {
+            const child = cell.childNodes[0];
+            const noStretch = child.stretch.dir === DIRECTION.None;
+            if (all || noStretch) {
+              const { w } = child.getBBox(noStretch);
+              if (w > W) {
+                W = w;
+              }
+            }
+          }
+        }
+      }
+      if (W !== null) {
+        const TW = this.getTableData().W;
+        for (const child of stretchy) {
+          let w = child.getBBox().w;
+          child.coreMO().getStretchedVariant([Math.max(W, w) / child.coreRScale()]);
+          w = child.getBBox().w;
+          if (w > TW[i2]) {
+            TW[i2] = w;
+          }
+        }
+      }
+    }
+    breakColumn(i2, W, type) {
+      if (this.jax.math.root.attributes.get("overflow") !== "linebreak" || !this.jax.math.display) {
+        return;
+      }
+      const { H: H2, D } = this.getTableData();
+      let j = 0;
+      let w = 0;
+      for (const row of this.tableRows) {
+        const cell = row.getChild(i2);
+        if (cell) {
+          const r = row.getBBox().rscale;
+          const bbox2 = cell.getBBox();
+          if (cell && bbox2.w * r > W) {
+            cell.childNodes[0].breakToWidth(W);
+            const align = row.node.attributes.get("rowalign");
+            this.updateHDW(cell, i2, j, align, H2, D);
+          }
+          if (bbox2.w * r > w) {
+            w = bbox2.w * r;
+          }
+        }
+        const bbox = row.getBBox();
+        bbox.h = H2[j];
+        bbox.d = D[j];
+        j++;
+      }
+      if (type === "fit" || type === "auto" || isPercent(type) || w > this.cWidths[i2]) {
+        this.cWidths[i2] = w;
+      }
+    }
+    getTableData() {
+      if (this.data) {
+        return this.data;
+      }
+      const H2 = new Array(this.numRows).fill(0);
+      const D = new Array(this.numRows).fill(0);
+      const W = new Array(this.numCols).fill(0);
+      const NH = new Array(this.numRows);
+      const ND = new Array(this.numRows);
+      const LW = [0];
+      const rows = this.tableRows;
+      for (let j = 0; j < rows.length; j++) {
+        const row = rows[j];
+        const align = row.node.attributes.get("rowalign");
+        for (let i2 = 0; i2 < row.numCells; i2++) {
+          const cell = row.getChild(i2);
+          this.updateHDW(cell, i2, j, align, H2, D, W);
+          this.recordPWidthCell(cell, i2);
+        }
+        NH[j] = H2[j];
+        ND[j] = D[j];
+        if (row.labeled) {
+          this.updateHDW(row.childNodes[0], 0, j, align, H2, D, LW);
+        }
+        row.bbox.h = H2[j];
+        row.bbox.d = D[j];
+      }
+      const L = LW[0];
+      this.data = { H: H2, D, W, NH, ND, L };
+      return this.data;
+    }
+    updateHDW(cell, i2, j, align, H2, D, W = null) {
+      let { h, d, w } = cell.getBBox();
+      const scale2 = cell.parent.bbox.rscale;
+      if (cell.parent.bbox.rscale !== 1) {
+        h *= scale2;
+        d *= scale2;
+        w *= scale2;
+      }
+      if (this.node.getProperty("useHeight")) {
+        if (h < 0.75)
+          h = 0.75;
+        if (d < 0.25)
+          d = 0.25;
+      }
+      align = cell.node.attributes.get("rowalign") || align;
+      if (!Object.hasOwn(this.adjustHD, align)) {
+        align = "other";
+      }
+      this.adjustHD[align](h, d, H2, D, j);
+      if (W && w > W[i2])
+        W[i2] = w;
+    }
+    recordPWidthCell(cell, i2) {
+      if (cell.childNodes[0] && cell.childNodes[0].getBBox().pwidth) {
+        this.pwidthCells.push([cell, i2]);
+      }
+    }
+    setColumnPWidths() {
+      const W = this.cWidths;
+      for (const [cell, i2] of this.pwidthCells) {
+        if (cell.setChildPWidths(false, W[i2])) {
+          cell.invalidateBBox();
+          cell.getBBox();
+        }
+      }
+    }
+    getBBoxHD(height2) {
+      const [align, row] = this.getAlignmentRow();
+      if (row === null) {
+        const a = this.font.params.axis_height;
+        const h2 = height2 / 2;
+        const HD = {
+          top: [0, height2],
+          center: [h2, h2],
+          bottom: [height2, 0],
+          baseline: [h2, h2],
+          axis: [h2 + a, h2 - a]
+        };
+        return HD[align] || [h2, h2];
+      } else {
+        const y = this.getVerticalPosition(row, align);
+        return [y, height2 - y];
+      }
+    }
+    getBBoxLR() {
+      var _a2;
+      if (this.hasLabels) {
+        const attributes = this.node.attributes;
+        const side = attributes.get("side");
+        let [pad2, align] = this.getPadAlignShift(side);
+        const labels = this.hasLabels && !!attributes.get("data-width-includes-label");
+        if (labels && this.frame && this.fSpace[0]) {
+          pad2 -= this.fSpace[0];
+        }
+        return align === "center" && !labels ? [pad2, pad2] : side === "left" ? [pad2, 0] : [0, pad2];
+      }
+      return [((_a2 = this.bbox) === null || _a2 === void 0 ? void 0 : _a2.L) || 0, 0];
+    }
+    getPadAlignShift(side) {
+      const { L } = this.getTableData();
+      const sep = this.length2em(this.node.attributes.get("minlabelspacing"));
+      let pad2 = L + sep;
+      const [lpad, rpad] = this.styles == null ? ["", ""] : [this.styles.get("padding-left"), this.styles.get("padding-right")];
+      if (lpad || rpad) {
+        pad2 = Math.max(pad2, this.length2em(lpad || "0"), this.length2em(rpad || "0"));
+      }
+      let [align, shift] = this.getAlignShift();
+      if (align === side) {
+        shift = side === "left" ? Math.max(pad2, shift) - pad2 : Math.min(-pad2, shift) + pad2;
+      }
+      return [pad2, align, shift];
+    }
+    getWidth() {
+      return this.pWidth || this.getBBox().w;
+    }
+    adjustWideTable() {
+      const attributes = this.node.attributes;
+      if (attributes.get("width") !== "auto")
+        return;
+      const [pad2, align] = this.getPadAlignShift(attributes.get("side"));
+      const W = Math.max(this.containerWidth / 10, this.containerWidth - pad2 - (align === "center" ? pad2 : 0));
+      if (this.naturalWidth() > W) {
+        this.adjustColumnWidths(W);
+      }
+    }
+    naturalWidth() {
+      const CW = this.getComputedWidths();
+      return sum(CW.concat(this.cLines, this.cSpace)) + 2 * this.fLine + this.fSpace[0] + this.fSpace[2];
+    }
+    getEqualRowHeight() {
+      const { H: H2, D } = this.getTableData();
+      const HD = Array.from(H2.keys()).map((i2) => H2[i2] + D[i2]);
+      return Math.max(...HD);
+    }
+    getComputedWidths() {
+      const W = this.getTableData().W;
+      let CW = Array.from(W.keys()).map((i2) => {
+        return typeof this.cWidths[i2] === "number" ? this.cWidths[i2] : W[i2];
+      });
+      if (this.node.attributes.get("equalcolumns")) {
+        CW = Array(CW.length).fill(max(CW));
+      }
+      return CW;
+    }
+    getColumnWidths() {
+      const width = this.node.attributes.get("width");
+      if (this.node.attributes.get("equalcolumns")) {
+        return this.getEqualColumns(width);
+      }
+      const swidths = this.getColumnAttributes("columnwidth", 0);
+      if (width === "auto") {
+        return this.getColumnWidthsAuto(swidths);
+      }
+      if (isPercent(width)) {
+        return this.getColumnWidthsPercent(swidths);
+      }
+      return this.getColumnWidthsFixed(swidths, this.length2em(width));
+    }
+    getEqualColumns(width) {
+      const n = Math.max(1, this.numCols);
+      let cwidth;
+      if (width === "auto") {
+        const { W } = this.getTableData();
+        cwidth = max(W);
+      } else if (isPercent(width)) {
+        cwidth = this.percent(1 / n);
+      } else {
+        const w = sum([].concat(this.cLines, this.cSpace)) + this.fSpace[0] + this.fSpace[2];
+        cwidth = Math.max(0, this.length2em(width) - w) / n;
+      }
+      return Array(this.numCols).fill(cwidth);
+    }
+    getColumnWidthsAuto(swidths) {
+      return swidths.map((x2) => {
+        if (x2 === "auto" || x2 === "fit")
+          return null;
+        if (isPercent(x2))
+          return x2;
+        return this.length2em(x2);
+      });
+    }
+    getColumnWidthsPercent(swidths) {
+      const hasFit = swidths.includes("fit");
+      const { W } = hasFit ? this.getTableData() : { W: null };
+      return Array.from(swidths.keys()).map((i2) => {
+        const x2 = swidths[i2];
+        if (x2 === "fit")
+          return null;
+        if (x2 === "auto")
+          return hasFit ? W[i2] : null;
+        if (isPercent(x2))
+          return x2;
+        return this.length2em(x2);
+      });
+    }
+    getColumnWidthsFixed(swidths, width) {
+      const indices = Array.from(swidths.keys());
+      const fit = indices.filter((i2) => swidths[i2] === "fit");
+      const auto = indices.filter((i2) => swidths[i2] === "auto");
+      const n = fit.length || auto.length;
+      const { W } = n ? this.getTableData() : { W: null };
+      const cwidth = width - sum([].concat(this.cLines, this.cSpace)) - this.fSpace[0] - this.fSpace[2];
+      let dw = cwidth;
+      indices.forEach((i2) => {
+        const x2 = swidths[i2];
+        dw -= x2 === "fit" || x2 === "auto" ? W[i2] : this.length2em(x2, cwidth);
+      });
+      const fw = n && dw > 0 ? dw / n : 0;
+      return indices.map((i2) => {
+        const x2 = swidths[i2];
+        if (x2 === "fit")
+          return W[i2] + fw;
+        if (x2 === "auto")
+          return W[i2] + (fit.length === 0 ? fw : 0);
+        return this.length2em(x2, cwidth);
+      });
+    }
+    adjustColumnWidths(width) {
+      const { W } = this.getTableData();
+      const swidths = this.getColumnAttributes("columnwidth", 0);
+      const indices = Array.from(swidths.keys());
+      const fit = indices.filter((i2) => swidths[i2] === "fit").sort((a, b) => W[b] - W[a]);
+      const auto = indices.filter((i2) => swidths[i2] === "auto").sort((a, b) => W[b] - W[a]);
+      const percent2 = indices.filter((i2) => isPercent(swidths[i2])).sort((a, b) => W[b] - W[a]);
+      const fixed = indices.filter((i2) => swidths[i2] !== "fit" && swidths[i2] !== "auto" && !isPercent(swidths[i2])).sort((a, b) => W[b] - W[a]);
+      const columns = [...fit, ...auto, ...percent2, ...fixed];
+      if (!columns.length)
+        return;
+      this.cWidths = indices.map((i2) => typeof this.cWidths[i2] === "number" ? this.cWidths[i2] : W[i2]);
+      const cwidth = width - sum([].concat(this.cLines, this.cSpace)) - this.fSpace[0] - this.fSpace[2];
+      let dw = sum(this.cWidths) - cwidth;
+      let w = 0;
+      let n = 0;
+      while (n < columns.length) {
+        w += W[columns[n++]];
+        if (w && dw / w < (__kittexLate.BREAK_BELOW?.()))
+          break;
+      }
+      dw = 1 - dw / w;
+      columns.slice(0, n).forEach((i2) => this.cWidths[i2] *= dw);
+    }
+    getVerticalPosition(i2, align) {
+      const equal = this.node.attributes.get("equalrows");
+      const { H: H2, D } = this.getTableData();
+      const HD = equal ? this.getEqualRowHeight() : 0;
+      const space = this.getRowHalfSpacing();
+      let y = this.fLine;
+      for (let j = 0; j < i2; j++) {
+        y += space[j] + (equal ? HD : H2[j] + D[j]) + space[j + 1] + this.rLines[j];
+      }
+      const [h, d] = equal ? [(HD + H2[i2] - D[i2]) / 2, (HD - H2[i2] + D[i2]) / 2] : [H2[i2], D[i2]];
+      const offset = {
+        top: 0,
+        center: space[i2] + (h + d) / 2,
+        bottom: space[i2] + h + d + space[i2 + 1],
+        baseline: space[i2] + h,
+        axis: space[i2] + h - 0.25
+      };
+      y += offset[align] || 0;
+      return y;
+    }
+    getFrameSpacing() {
+      const fspace = this.fframe ? this.convertLengths(this.getAttributeArray("framespacing")) : [0, 0];
+      fspace[2] = fspace[0];
+      const padding2 = this.node.attributes.get("data-array-padding");
+      if (padding2) {
+        const [L, R] = this.convertLengths(split(padding2));
+        fspace[0] = L;
+        fspace[2] = R;
+      }
+      return fspace;
+    }
+    getEmHalfSpacing(fspace, space, scale2 = 1) {
+      const spaceEm = this.addEm(space, 2 / scale2);
+      spaceEm.unshift(this.em(fspace[0] * scale2));
+      spaceEm.push(this.em(fspace[1] * scale2));
+      return spaceEm;
+    }
+    getRowHalfSpacing() {
+      const space = this.rSpace.map((x2) => x2 / 2);
+      space.unshift(this.fSpace[1]);
+      space.push(this.fSpace[1]);
+      return space;
+    }
+    getColumnHalfSpacing() {
+      const space = this.cSpace.map((x2) => x2 / 2);
+      space.unshift(this.fSpace[0]);
+      space.push(this.fSpace[2]);
+      return space;
+    }
+    getAlignmentRow() {
+      const [align, row] = split(this.node.attributes.get("align"));
+      if (row == null)
+        return [align, null];
+      let i2 = parseInt(row);
+      if (i2 < 0)
+        i2 += this.numRows + 1;
+      return [align, i2 < 1 || i2 > this.numRows ? null : i2 - 1];
+    }
+    getColumnAttributes(name, i2 = 1) {
+      const n = this.numCols - i2;
+      const columns = this.getAttributeArray(name);
+      if (columns.length === 0)
+        return null;
+      while (columns.length < n) {
+        columns.push(columns[columns.length - 1]);
+      }
+      if (columns.length > n) {
+        columns.splice(n);
+      }
+      return columns;
+    }
+    getRowAttributes(name, i2 = 1) {
+      const n = this.numRows - i2;
+      const rows = this.getAttributeArray(name);
+      if (rows.length === 0)
+        return null;
+      while (rows.length < n) {
+        rows.push(rows[rows.length - 1]);
+      }
+      if (rows.length > n) {
+        rows.splice(n);
+      }
+      return rows;
+    }
+    getAttributeArray(name) {
+      const value = this.node.attributes.get(name);
+      if (!value)
+        return [this.node.attributes.getDefault(name)];
+      return split(value);
+    }
+    addEm(list3, n = 1) {
+      if (!list3)
+        return null;
+      return list3.map((x2) => this.em(x2 / n));
+    }
+    convertLengths(list3) {
+      if (!list3)
+        return null;
+      return list3.map((x2) => this.length2em(x2));
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.numCols = 0;
+      this.numRows = 0;
+      this.data = null;
+      this.pwidthCells = [];
+      this.pWidth = 0;
+      this.adjustHD = {
+        top: (h, d, H2, D, j) => {
+          if (h > H2[j]) {
+            D[j] -= h - H2[j];
+            H2[j] = h;
+          }
+          if (h + d > H2[j] + D[j]) {
+            D[j] = h + d - H2[j];
+          }
+        },
+        bottom: (h, d, H2, D, j) => {
+          if (d > D[j]) {
+            H2[j] -= d - D[j];
+            D[j] = d;
+          }
+          if (h + d > H2[j] + D[j]) {
+            H2[j] = h + d - D[j];
+          }
+        },
+        center: (h, d, H2, D, j) => {
+          if (h + d > H2[j] + D[j]) {
+            H2[j] = D[j] = (h + d) / 2;
+          }
+        },
+        other: (h, d, H2, D, j) => {
+          if (h > H2[j]) {
+            H2[j] = h;
+          }
+          if (d > D[j]) {
+            D[j] = d;
+          }
+        }
+      };
+      this.numCols = max(this.tableRows.map((row) => row.numCells));
+      this.numRows = this.childNodes.length;
+      this.hasLabels = this.childNodes.reduce((value, row) => value || row.node.isKind("mlabeledtr"), false);
+      this.findContainer();
+      this.isTop = !this.container || this.container.node.isKind("math") && !this.container.parent;
+      if (this.isTop) {
+        this.jax.table = this;
+      }
+      this.getPercentageWidth();
+      const attributes = this.node.attributes;
+      const frame2 = attributes.get("frame");
+      this.frame = frame2 !== "none";
+      this.fframe = this.frame || attributes.get("data-frame-styles") !== void 0;
+      this.fLine = this.frame ? 0.07 : 0;
+      this.fSpace = this.getFrameSpacing();
+      this.cSpace = this.convertLengths(this.getColumnAttributes("columnspacing"));
+      this.rSpace = this.convertLengths(this.getRowAttributes("rowspacing"));
+      this.cLines = this.getColumnAttributes("columnlines").map((x2) => x2 === "none" ? 0 : 0.07);
+      this.rLines = this.getRowAttributes("rowlines").map((x2) => x2 === "none" ? 0 : 0.07);
+      this.cWidths = this.getColumnWidths();
+      this.adjustWideTable();
+      this.stretchColumns();
+      this.stretchRows();
+    }
+    getStyles() {
+      super.getStyles();
+      const frame2 = this.node.attributes.get("data-frame-styles");
+      if (!frame2)
+        return;
+      if (!this.styles) {
+        this.styles = new Styles("");
+      }
+      const fstyles = frame2.split(/ /);
+      for (const i2 of TRBL.keys()) {
+        const style = fstyles[i2];
+        if (style === "none")
+          continue;
+        this.styles.set(`border-${TRBL[i2]}`, `.07em ${style}`);
+      }
+    }
+    computeBBox(bbox, _recompute = false) {
+      const { H: H2, D } = this.getTableData();
+      let height2, width;
+      if (this.node.attributes.get("equalrows")) {
+        const HD = this.getEqualRowHeight();
+        height2 = sum([].concat(this.rLines, this.rSpace)) + HD * this.numRows;
+      } else {
+        height2 = sum(H2.concat(D, this.rLines, this.rSpace));
+      }
+      height2 += 2 * (this.fLine + this.fSpace[1]);
+      width = this.naturalWidth();
+      const w = this.node.attributes.get("width");
+      if (w !== "auto") {
+        width = Math.max(this.length2em(w, 0) + 2 * this.fLine, width);
+      }
+      const [h, d] = this.getBBoxHD(height2);
+      bbox.h = h;
+      bbox.d = d;
+      bbox.w = width;
+      const [L, R] = this.getBBoxLR();
+      bbox.L = L;
+      bbox.R = R;
+      if (!isPercent(w)) {
+        this.setColumnPWidths();
+      }
+    }
+    setChildPWidths(_recompute, cwidth, _clear) {
+      const width = this.node.attributes.get("width");
+      if (!isPercent(width))
+        return false;
+      if (!this.hasLabels) {
+        this.bbox.pwidth = "";
+        this.container.bbox.pwidth = "";
+      }
+      const { w, L, R } = this.bbox;
+      const labelInWidth = this.node.attributes.get("data-width-includes-label");
+      const W = Math.max(w, this.length2em(width, Math.max(cwidth, L + w + R))) - (labelInWidth ? L + R : 0);
+      const cols = this.node.attributes.get("equalcolumns") ? Array(this.numCols).fill(this.percent(1 / Math.max(1, this.numCols))) : this.getColumnAttributes("columnwidth", 0);
+      this.cWidths = this.getColumnWidthsFixed(cols, W);
+      this.pWidth = this.naturalWidth();
+      if (this.isTop) {
+        this.bbox.w = this.pWidth;
+      }
+      this.setColumnPWidths();
+      if (this.pWidth !== w) {
+        this.parent.invalidateBBox();
+      }
+      return this.pWidth !== w;
+    }
+    getAlignShift() {
+      return this.isTop ? super.getAlignShift() : [this.container.getChildAlign(this.containerI), 0];
+    }
+  };
+}
+export{init_numeric,CommonMtableMixin,init_mfrac3,init_msqrt3,init_mroot3,init_mfenced3,init_msubsup3,init_munderover3,init_mmultiscripts3,SvgMfrac,SvgMsqrt,SvgMroot,SvgMfenced,SvgMsub,SvgMsup,SvgMsubsup,SvgMunder,SvgMover,SvgMunderover,SvgMmultiscripts};

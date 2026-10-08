@@ -1,91 +1,1503 @@
-import{Y4,es,Od,Pd,_d,zd,Id}from'./p21.js';export*from'./p21.js';
-var X2=Uint8Array;
-var F2=Uint16Array;
-var DC=Int32Array;
-var yC=new X2([0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0,0]);
-var kC=new X2([0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,0,0]);
-var ji=new X2([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]);
-var Xi=function(e,C){for(var t=new F2(31),L=0;L<31;++L)t[L]=C+=1<<e[L-1];for(var n=new DC(t[30]),L=1;L<30;++L)for(var i=t[L];i<t[L+1];++i)n[i]=i-t[L]<<5|L;return{b:t,r:n}};
-var Ki=Xi(yC,2);
-var yd=Ki.b;
-var AC=Ki.r;
-yd[28]=258,AC[258]=28;
-var Qi=Xi(kC,0);
-var eE=Qi.b;
-var qi=Qi.r;
-var EC=new F2(32768);
-for(F1=0;F1<32768;++F1)b3=(F1&43690)>>1|(F1&21845)<<1,b3=(b3&52428)>>2|(b3&13107)<<2,b3=(b3&61680)>>4|(b3&3855)<<4,EC[F1]=((b3&65280)>>8|(b3&255)<<8)>>1;
-var b3;
-var F1;
-var Q5=(function(e,C,t){for(var L=e.length,n=0,i=new F2(C);n<L;++n)e[n]&&++i[e[n]-1];var s=new F2(C);for(n=1;n<C;++n)s[n]=s[n-1]+i[n-1]<<1;var r;if(t){r=new F2(1<<C);var o=15-C;for(n=0;n<L;++n)if(e[n])for(var a=n<<4|e[n],l=C-e[n],u=s[e[n]-1]++<<l,x=u|(1<<l)-1;u<=x;++u)r[EC[u]>>o]=a}else for(r=new F2(L),n=0;n<L;++n)e[n]&&(r[n]=EC[s[e[n]-1]++]>>15-e[n]);return r});
-var Q4=new X2(288);
-for(F1=0;F1<144;++F1)Q4[F1]=8;
-var F1;
-for(F1=144;F1<256;++F1)Q4[F1]=9;
-var F1;
-for(F1=256;F1<280;++F1)Q4[F1]=7;
-var F1;
-for(F1=280;F1<288;++F1)Q4[F1]=8;
-var F1;
-var G7=new X2(32);
-for(F1=0;F1<32;++F1)G7[F1]=5;
-var F1;
-var kd=Q5(Q4,9,0);
-var Bd=Q5(G7,5,0);
-var Zi=function(e){return(e+7)/8|0};
-var wd=function(e,C,t){return(C==null||C<0)&&(C=0),(t==null||t>e.length)&&(t=e.length),new X2(e.subarray(C,t))};
-var D3=function(e,C,t){t<<=C&7;var L=C/8|0;e[L]|=t,e[L+1]|=t>>8};
-var X5=function(e,C,t){t<<=C&7;var L=C/8|0;e[L]|=t,e[L+1]|=t>>8,e[L+2]|=t>>16};
-var MC=function(e,C){for(var t=[],L=0;L<e.length;++L)e[L]&&t.push({s:L,f:e[L]});var n=t.length,i=t.slice();if(!n)return{t:Ji,l:0};if(n==1){var s=new X2(t[0].s+1);return s[t[0].s]=1,{t:s,l:1}}t.sort(function(y,S){return y.f-S.f}),t.push({s:-1,f:25001});var r=t[0],o=t[1],a=0,l=1,u=2;for(t[0]={s:-1,f:r.f+o.f,l:r,r:o};l!=n-1;)r=t[t[a].f<t[u].f?a++:u++],o=t[a!=l&&t[a].f<t[u].f?a++:u++],t[l++]={s:-1,f:r.f+o.f,l:r,r:o};for(var x=i[0].s,L=1;L<n;++L)i[L].s>x&&(x=i[L].s);var p=new F2(x+1),h=bC(t[l-1],p,0);if(h>C){var L=0,d=0,m=h-C,E=1<<m;for(i.sort(function(S,D){return p[D.s]-p[S.s]||S.f-D.f});L<n;++L){var w=i[L].s;if(p[w]>C)d+=E-(1<<h-p[w]),p[w]=C;else break}for(d>>=m;d>0;){var b=i[L].s;p[b]<C?d-=1<<C-p[b]++-1:++L}for(;L>=0&&d;--L){var B=i[L].s;p[B]==C&&(--p[B],++d)}h=C}return{t:new X2(p),l:h}};
-var bC=function(e,C,t){return e.s==-1?Math.max(bC(e.l,C,t+1),bC(e.r,C,t+1)):C[e.s]=t};
-var Ui=function(e){for(var C=e.length;C&&!e[--C];);for(var t=new F2(++C),L=0,n=e[0],i=1,s=function(o){t[L++]=o},r=1;r<=C;++r)if(e[r]==n&&r!=C)++i;else{if(!n&&i>2){for(;i>138;i-=138)s(32754);i>2&&(s(i>10?i-11<<5|28690:i-3<<5|12305),i=0)}else if(i>3){for(s(n),--i;i>6;i-=6)s(8304);i>2&&(s(i-3<<5|8208),i=0)}for(;i--;)s(n);i=1,n=e[r]}return{c:t.subarray(0,L),n:C}};
-var K5=function(e,C){for(var t=0,L=0;L<C.length;++L)t+=e[L]*C[L];return t};
-var Yi=function(e,C,t){var L=t.length,n=Zi(C+2);e[n]=L&255,e[n+1]=L>>8,e[n+2]=e[n]^255,e[n+3]=e[n+1]^255;for(var i=0;i<L;++i)e[n+i+4]=t[i];return(n+4+L)*8};
-var Vi=function(e,C,t,L,n,i,s,r,o,a,l){D3(C,l++,t),++n[256];for(var u=MC(n,15),x=u.t,p=u.l,h=MC(i,15),d=h.t,m=h.l,E=Ui(x),w=E.c,b=E.n,B=Ui(d),y=B.c,S=B.n,D=new F2(19),k=0;k<w.length;++k)++D[w[k]&31];for(var k=0;k<y.length;++k)++D[y[k]&31];for(var F=MC(D,7),N=F.t,U=F.l,q=19;q>4&&!N[ji[q-1]];--q);var K=a+5<<3,P=K5(n,Q4)+K5(i,G7)+s,j=K5(n,x)+K5(i,d)+s+14+3*q+K5(D,N)+2*D[16]+3*D[17]+7*D[18];if(o>=0&&K<=P&&K<=j)return Yi(C,l,e.subarray(o,o+a));var W,G,J,C1;if(D3(C,l,1+(j<P)),l+=2,j<P){W=Q5(x,p,0),G=x,J=Q5(d,m,0),C1=d;var e1=Q5(N,U,0);D3(C,l,b-257),D3(C,l+5,S-1),D3(C,l+10,q-4),l+=14;for(var k=0;k<q;++k)D3(C,l+3*k,N[ji[k]]);l+=3*q;for(var l1=[w,y],p1=0;p1<2;++p1)for(var h1=l1[p1],k=0;k<h1.length;++k){var d1=h1[k]&31;D3(C,l,e1[d1]),l+=N[d1],d1>15&&(D3(C,l,h1[k]>>5&127),l+=h1[k]>>12)}}else W=kd,G=Q4,J=Bd,C1=G7;for(var k=0;k<r;++k){var u1=L[k];if(u1>255){var d1=u1>>18&31;X5(C,l,W[d1+257]),l+=G[d1+257],d1>7&&(D3(C,l,u1>>23&31),l+=yC[d1]);var y1=u1&31;X5(C,l,J[y1]),l+=C1[y1],y1>3&&(X5(C,l,u1>>5&8191),l+=kC[y1])}else X5(C,l,W[u1]),l+=G[u1]}return X5(C,l,W[256]),l+G[256]};
-var Fd=new DC([65540,131080,131088,131104,262176,1048704,1048832,2114560,2117632]);
-var Ji=new X2(0);
-var vd=function(e,C,t,L,n,i){var s=i.z||e.length,r=new X2(L+s+5*(1+Math.ceil(s/7e3))+n),o=r.subarray(L,r.length-n),a=i.l,l=(i.r||0)&7;if(C){l&&(o[0]=i.r>>3);for(var u=Fd[C-1],x=u>>13,p=u&8191,h=(1<<t)-1,d=i.p||new F2(32768),m=i.h||new F2(h+1),E=Math.ceil(t/3),w=2*E,b=function(y6){return(e[y6]^e[y6+1]<<E^e[y6+2]<<w)&h},B=new DC(25e3),y=new F2(288),S=new F2(32),D=0,k=0,F=i.i||0,N=0,U=i.w||0,q=0;F+2<s;++F){var K=b(F),P=F&32767,j=m[K];if(d[P]=j,m[K]=P,U<=F){var W=s-F;if((D>7e3||N>24576)&&(W>423||!a)){l=Vi(e,o,0,B,y,S,k,N,q,F-q,l),N=D=k=0,q=F;for(var G=0;G<286;++G)y[G]=0;for(var G=0;G<30;++G)S[G]=0}var J=2,C1=0,e1=p,l1=P-j&32767;if(W>2&&K==b(F-l1))for(var p1=Math.min(x,W)-1,h1=Math.min(32767,F),d1=Math.min(258,W);l1<=h1&&--e1&&P!=j;){if(e[F+J]==e[F+J-l1]){for(var u1=0;u1<d1&&e[F+u1]==e[F+u1-l1];++u1);if(u1>J){if(J=u1,C1=l1,u1>p1)break;for(var y1=Math.min(l1,u1-2),w2=0,G=0;G<y1;++G){var g3=F-l1+G&32767,N5=d[g3],n3=g3-N5&32767;n3>w2&&(w2=n3,j=g3)}}}P=j,j=d[P],l1+=P-j&32767}if(C1){B[N++]=268435456|AC[J]<<18|qi[C1];var M3=AC[J]&31,O5=qi[C1]&31;k+=yC[M3]+kC[O5],++y[257+M3],++S[O5],U=F+J,++D}else B[N++]=e[F],++y[e[F]]}}for(F=Math.max(F,U);F<s;++F)B[N++]=e[F],++y[e[F]];l=Vi(e,o,a,B,y,S,k,N,q,F-q,l),a||(i.r=l&7|o[l/8|0]<<3,l-=7,i.h=m,i.p=d,i.i=F,i.w=U)}else{for(var F=i.w||0;F<s+a;F+=65535){var D6=F+65535;D6>=s&&(o[l/8|0]=a,D6=s),l=Yi(o,l+1,e.subarray(F,D6))}i.i=s}return wd(r,0,L+Zi(l)+n)};
-var Cs=function(){var e=1,C=0;return{p:function(t){for(var L=e,n=C,i=t.length|0,s=0;s!=i;){for(var r=Math.min(s+2655,i);s<r;++s)n+=L+=t[s];L=(L&65535)+15*(L>>16),n=(n&65535)+15*(n>>16)}e=L,C=n},d:function(){return e%=65521,C%=65521,(e&255)<<24|(e&65280)<<8|(C&255)<<8|C>>8}}};
-var Sd=function(e,C,t,L,n){if(!n&&(n={l:1},C.dictionary)){var i=C.dictionary.subarray(-32768),s=new X2(i.length+e.length);s.set(i),s.set(e,i.length),e=s,n.w=i.length}return vd(e,C.level==null?6:C.level,C.mem==null?n.l?Math.ceil(Math.max(8,Math.min(13,Math.log(e.length)))*1.5):20:12+C.mem,t,L,n)};
-var ts=function(e,C,t){for(;t;++C)e[C]=t,t>>>=8};
-var Rd=function(e,C){var t=C.level,L=t==0?0:t<6?1:t==9?3:2;if(e[0]=120,e[1]=L<<6|(C.dictionary&&32),e[1]|=31-(e[0]<<8|e[1])%31,C.dictionary){var n=Cs();n.p(C.dictionary),ts(e,2,n.d())}};
-function BC(e,C){C||(C={});var t=Cs();t.p(e);var L=Sd(e,C,C.dictionary?6:2,4);return Rd(L,C),ts(L,L.length-4,t.d()),L}
-var Td=typeof TextDecoder<"u"&&new TextDecoder;
-var Nd=0;
-try{Td.decode(Ji,{stream:!0}),Nd=1}catch{}
-var ns=Uint8Array.of(137,80,78,71,13,10,26,10);
-var Z4=Y4+12+768;
-function is(e,C,t,L,n,i){let s=new Uint8Array(13),r=new DataView(s.buffer);return r.setUint32(0,C),r.setUint32(4,t),s.set([8,3,0,0,0],8),cs([ns,z2("IHDR",s),z2("PLTE",as(L)),z2("tRNS",os(L,n,i)),z2("IDAT",BC($d(e,C,t),{level:6})),z2("IEND",new Uint8Array(0))])}
-function ss(e,C,t){let L=C*t,n=new Map,i=new Map;for(let u=0;u<L;u++){let x=e[4*u+3];if(x===0)continue;let p=e[4*u]<<16|e[4*u+1]<<8|e[4*u+2];n.size<=256&&n.set(p*256+x,0),i.set(p,(i.get(p)??0)+x)}let s=new Uint8Array(L),r=[0,0,0],o=[0];if(n.size<=255){let u=new Map;for(let x of n.keys()){u.set(x,u.size+1);let p=Math.floor(x/256);r.push(p>>16&255,p>>8&255,p&255),o.push(x%256)}for(let x=0;x<L;x++){let p=e[4*x+3];if(p===0)continue;let h=e[4*x]<<16|e[4*x+1]<<8|e[4*x+2];s[x]=u.get(h*256+p)}}else{let u=new Map;for(let B=0;B<L;B++){if(e[4*B+3]<es)continue;let y=e[4*B]<<16|e[4*B+1]<<8|e[4*B+2];u.set(y,(u.get(y)??0)+1)}let x=(B,y,S)=>{let D=[];for(let[k]of[...B].sort((F,N)=>N[1]-F[1])){let F=[k>>16&255,k>>8&255,k&255];if(D.every(N=>wC(N,F)>S)&&D.push(F),D.length>=y)break}return D},p=x(i,Od,Pd),h=x(u,_d,zd),d=Math.min(Id,Math.floor((255-h.length)/p.length));r=[0,0,0],o=[0];for(let B of p)for(let y=1;y<=d;y++)r.push(...B),o.push(Math.round(255*y/d));let m=r.length/3;for(let B of h)r.push(...B),o.push(255);let E=(B,y,S)=>{let D=y.get(S);if(D===void 0){let k=[S>>16&255,S>>8&255,S&255];D=0;for(let F=1;F<B.length;F++)wC(B[F],k)<wC(B[D],k)&&(D=F);y.set(S,D)}return D},w=new Map,b=new Map;for(let B=0;B<L;B++){let y=e[4*B+3];if(y===0)continue;let S=e[4*B]<<16|e[4*B+1]<<8|e[4*B+2];if(y>=es&&h.length>0){s[B]=m+E(h,b,S);continue}let D=Math.max(1,Math.round(y*d/255));s[B]=1+E(p,w,S)*d+D-1}}let a=new Uint8Array(13),l=new DataView(a.buffer);return l.setUint32(0,C),l.setUint32(4,t),a.set([8,3,0,0,0],8),cs([ns,z2("IHDR",a),z2("PLTE",Uint8Array.from(r)),z2("tRNS",Uint8Array.from(o)),z2("IDAT",BC(Wd(s,C,t,1),{level:9})),z2("IEND",new Uint8Array(0))])}
-function wC(e,C){return(e[0]-C[0])**2+(e[1]-C[1])**2+(e[2]-C[2])**2}
-function Wd(e,C,t,L){let n=C*L,i=new Uint8Array(t*(n+1)),s=[new Uint8Array(n),new Uint8Array(n),new Uint8Array(n),new Uint8Array(n)],r=o=>{let a=0;for(let l=0;l<o.length;l++)a+=o[l]<128?o[l]:256-o[l];return a};for(let o=0;o<t;o++){let a=o*n,l=o>0?a-n:-1,[u,x,p,h]=s;for(let w=0;w<n;w++){let b=e[a+w],B=w>=L?e[a+w-L]:0,y=l>=0?e[l+w]:0,S=l>=0&&w>=L?e[l+w-L]:0;u[w]=b,x[w]=b-B&255,p[w]=b-y&255;let D=B+y-S,k=D>B?D-B:B-D,F=D>y?D-y:y-D,N=D>S?D-S:S-D;h[w]=b-(k<=F&&k<=N?B:F<=N?y:S)&255}let d=0,m=1/0;for(let w=0;w<4;w++){let b=r(s[w]);b<m&&(m=b,d=w)}let E=[0,1,2,4][d];i[o*(n+1)]=E,i.set(s[d],o*(n+1)+1)}return i}
-function q7(e,C,t,L){let n=new DataView(e.buffer,e.byteOffset,e.byteLength);if(!(e.length>Z4+12+256&&n.getUint32(Y4)===768&&e[Y4+4]===80&&e[Y4+5]===76&&e[Y4+6]===84&&e[Y4+7]===69&&n.getUint32(Z4)===256&&e[Z4+4]===116&&e[Z4+5]===82&&e[Z4+6]===78&&e[Z4+7]===83))throw new Error("recolorPng: not a kittex palette PNG");let s=e.slice();return s.set(z2("PLTE",as(C)),Y4),s.set(z2("tRNS",os(C,t,L)),Z4),s}
-function T6(e,C,t){let L=j7(C),n=j7(t);if(!(Math.abs(L-n)>.001))return e;let i=H7(Ls(L)*e+Ls(n)*(1-e));return Math.min(1,Math.max(0,(i-n)/(L-n)))}
-function rs(e,C,t,L){let n=L.gamma<.01?1:1/L.gamma,i=(1-j7(C)+j7(t))*.5,s=e+(e**n-e)*i;return Math.min(1,Math.max(0,s*(1+L.contrast*.01)))}
-function os(e,C,t){let L=new Uint8Array(256);for(let n=0;n<256;n++)!C||n===0||n===255&&!t?L[n]=n:L[n]=Math.round(255*(t?rs(n/255,e,C,t):T6(n/255,e,C)));return L}
-var H7=e=>e<=.04045?e/12.92:((e+.055)/1.055)**2.4;
-var Ls=e=>e<=.0031308?e*12.92:1.055*e**(1/2.4)-.055;
-var j7=e=>.2126*H7(R6(e.r)/255)+.7152*H7(R6(e.g)/255)+.0722*H7(R6(e.b)/255);
-function as(e){let C=new Uint8Array(768),t=R6(e.r),L=R6(e.g),n=R6(e.b);for(let i=0;i<768;i+=3)C[i]=t,C[i+1]=L,C[i+2]=n;return C}
-var R6=e=>Math.min(255,Math.max(0,Math.round(e)))||0;
-function $d(e,C,t){let L=new Uint8Array(t*(C+1));for(let n=0;n<t;n++)L.set(e.subarray(n*C,n*C+C),n*(C+1)+1);return L}
-function z2(e,C){let t=new Uint8Array(12+C.length),L=new DataView(t.buffer);L.setUint32(0,C.length);for(let n=0;n<4;n++)t[4+n]=e.charCodeAt(n);return t.set(C,8),L.setUint32(8+C.length,Hd(t,4,8+C.length)),t}
-var Gd;
-function Hd(e,C,t){let L=Gd??=Uint32Array.from({length:256},(i,s)=>{let r=s;for(let o=0;o<8;o++)r=r&1?3988292384^r>>>1:r>>>1;return r>>>0}),n=4294967295;for(let i=C;i<t;i++)n=L[(n^e[i])&255]^n>>>8;return(n^4294967295)>>>0}
-function cs(e){let C=new Uint8Array(e.reduce((L,n)=>L+n.length,0)),t=0;for(let L of e)C.set(L,t),t+=L.length;return C}
-var U7=class{constructor(C,t){this.width=C;this.height=t;this.pixels=new Uint8Array(C*t*4)}width;height;pixels;paint(C,t,L,n,i,s,r,o){let a=this.pixels,l=this.width,u=s==="erase",x=u?0:s.r,p=u?0:s.g,h=u?0:s.b,d=Math.min(1,Math.max(0,r))/255;for(let m=0;m<i;m++){let E=L+m;if(!(E<0||E>=this.height))for(let w=0;w<n;w++){let b=C[m*n+w];if(b===0)continue;let B=t+w;if(B<0||B>=l)continue;let y=E*l+B,S=b*d;if(o){let F=o[y];if(F===0)continue;S=S*F/255}let D=1-S,k=y*4;u?(a[k]=a[k]*D+.5,a[k+1]=a[k+1]*D+.5,a[k+2]=a[k+2]*D+.5,a[k+3]=a[k+3]*D+.5):(a[k]=x*S+a[k]*D+.5,a[k+1]=p*S+a[k+1]*D+.5,a[k+2]=h*S+a[k+2]*D+.5,a[k+3]=255*S+a[k+3]*D+.5)}}}straight(C){let t=this.pixels,L=new Uint8Array(t.length),n=new Map;for(let i=0;i<t.length;i+=4){let s=t[i+3];if(s===0)continue;let r=s>>1,o=(t[i]*255+r)/s|0,a=(t[i+1]*255+r)/s|0,l=(t[i+2]*255+r)/s|0,u=o>255?255:o,x=a>255?255:a,p=l>255?255:l;if(L[i]=u,L[i+1]=x,L[i+2]=p,!C||s===255){L[i+3]=s;continue}let h=u<<16|x<<8|p,d=n.get(h);if(!d){if(n.size>=4096){L[i+3]=Math.round(255*T6(s/255,{r:u,g:x,b:p},C));continue}d=jd({r:u,g:x,b:p},C),n.set(h,d)}L[i+3]=d[s]}return L}};
-function jd(e,C){let t=new Uint8Array(256);for(let L=0;L<256;L++)t[L]=L===0||L===255?L:Math.round(255*T6(L/255,e,C));return t}
-function V7(e,C){let t=[];return ls(e,C,.05,L=>{L.length>=6&&t.push(L)}),t}
-function vC(e,C,t=.05){let L=[];return ls(e,C,t,(n,i)=>{n.length>=4&&L.push({points:n,closed:i})}),L}
-function ls(e,C,t,L){let n=[],[i,s,r,o,a,l]=C,u=(q,K)=>i*q+r*K+a,x=(q,K)=>s*q+o*K+l,p=0,h=0,d=0,m=0,E=0,w=0,b="",B=(q=!1)=>{n.length>0&&L(n,q),n=[]},y=()=>{n.length===0&&n.push(u(p,h),x(p,h))},S=(q,K)=>{y(),n.push(u(q,K),x(q,K)),p=q,h=K},D=(q,K,P,j)=>{y();let W=u(p,h),G=x(p,h),J=u(q,K),C1=x(q,K),e1=u(P,j),l1=x(P,j),p1=W-2*J+e1,h1=G-2*C1+l1,d1=Math.min(100,Math.ceil(Math.sqrt(Math.hypot(p1,h1)/(4*t))));for(let u1=1;u1<d1;u1++){let y1=u1/d1,w2=1-y1;n.push(w2*w2*W+2*w2*y1*J+y1*y1*e1,w2*w2*G+2*w2*y1*C1+y1*y1*l1)}n.push(e1,l1),p=P,h=j},k=(q,K,P,j,W,G)=>{y();let J=u(p,h),C1=x(p,h),e1=u(q,K),l1=x(q,K),p1=u(P,j),h1=x(P,j),d1=u(W,G),u1=x(W,G),y1=Math.hypot(J-2*e1+p1,C1-2*l1+h1),w2=Math.hypot(e1-2*p1+d1,l1-2*h1+u1),g3=Math.min(100,Math.ceil(Math.sqrt(.75*Math.max(y1,w2)/t)));for(let N5=1;N5<g3;N5++){let n3=N5/g3,M3=1-n3,O5=M3*M3*M3,D6=3*M3*M3*n3,y6=3*M3*n3*n3,Cn=n3*n3*n3;n.push(O5*J+D6*e1+y6*p1+Cn*d1,O5*C1+D6*l1+y6*h1+Cn*u1)}n.push(d1,u1),p=W,h=G},F=(q,K,P,j,W,G,J)=>{for(let C1 of qd(p,h,q,K,P,j,W,G,J))k(...C1);p=G,h=J},N=new FC(e),U="";for(;N.skip(),!N.done();){let q=N.command();if(q)U=q;else{if(!U||U==="Z"||U==="z")break;U==="M"?U="L":U==="m"&&(U="l")}let K=U===U.toLowerCase(),P=K?p:0,j=K?h:0,W=U.toUpperCase(),G=NaN,J=NaN;if(W==="Z")B(!0),p=d,h=m;else if(W==="M"){let C1=N.number()+P,e1=N.number()+j;if(Number.isNaN(C1+e1))break;B(),p=d=C1,h=m=e1}else if(W==="L"){let C1=N.number()+P,e1=N.number()+j;if(Number.isNaN(C1+e1))break;S(C1,e1)}else if(W==="H"){let C1=N.number()+P;if(Number.isNaN(C1))break;S(C1,h)}else if(W==="V"){let C1=N.number()+j;if(Number.isNaN(C1))break;S(p,C1)}else if(W==="C"||W==="S"){let C1,e1;W==="C"?(C1=N.number()+P,e1=N.number()+j):b==="C"||b==="S"?(C1=2*p-E,e1=2*h-w):(C1=p,e1=h);let l1=N.number()+P,p1=N.number()+j,h1=N.number()+P,d1=N.number()+j;if(Number.isNaN(C1+e1+l1+p1+h1+d1))break;k(C1,e1,l1,p1,h1,d1),G=l1,J=p1}else if(W==="Q"||W==="T"){let C1,e1;W==="Q"?(C1=N.number()+P,e1=N.number()+j):b==="Q"||b==="T"?(C1=2*p-E,e1=2*h-w):(C1=p,e1=h);let l1=N.number()+P,p1=N.number()+j;if(Number.isNaN(C1+e1+l1+p1))break;D(C1,e1,l1,p1),G=C1,J=e1}else if(W==="A"){let C1=N.number(),e1=N.number(),l1=N.number(),p1=N.flag(),h1=N.flag(),d1=N.number()+P,u1=N.number()+j;if(Number.isNaN(C1+e1+l1+p1+h1+d1+u1))break;F(C1,e1,l1,p1===1,h1===1,d1,u1)}else break;E=G,w=J,b=W}B()}
-var FC=class{constructor(C){this.s=C}s;i=0;done(){return this.i>=this.s.length}skip(){for(;this.i<this.s.length;){let C=this.s.charCodeAt(this.i);if(C===32||C===44||C===9||C===10||C===13||C===12)this.i++;else break}}command(){let C=this.s[this.i];return"MmLlHhVvCcSsQqTtAaZz".includes(C)?(this.i++,C):""}number(){this.skip();let C=this.s,t=this.i,L=t;(C[L]==="+"||C[L]==="-")&&L++;let n=L;for(;L<C.length&&C.charCodeAt(L)>=48&&C.charCodeAt(L)<=57;)L++;if(C[L]===".")for(L++;L<C.length&&C.charCodeAt(L)>=48&&C.charCodeAt(L)<=57;)L++;if(L===n||L===n+1&&C[n]===".")return NaN;if(C[L]==="e"||C[L]==="E"){let i=L+1;(C[i]==="+"||C[i]==="-")&&i++;let s=i;for(;i<C.length&&C.charCodeAt(i)>=48&&C.charCodeAt(i)<=57;)i++;i>s&&(L=i)}return this.i=L,Number(C.slice(t,L))}flag(){this.skip();let C=this.s[this.i];return C==="0"||C==="1"?(this.i++,C==="1"?1:0):NaN}};
-function qd(e,C,t,L,n,i,s,r,o){if(e===r&&C===o)return[];if(t=Math.abs(t),L=Math.abs(L),t===0||L===0)return[[e,C,r,o,r,o]];let a=n*Math.PI/180,l=Math.cos(a),u=Math.sin(a),x=(e-r)/2,p=(C-o)/2,h=l*x+u*p,d=-u*x+l*p,m=h*h/(t*t)+d*d/(L*L);m>1&&(t*=Math.sqrt(m),L*=Math.sqrt(m));let E=t*t*L*L-t*t*d*d-L*L*h*h,w=t*t*d*d+L*L*h*h,b=Math.sqrt(Math.max(0,E/w));i===s&&(b=-b);let B=b*t*d/L,y=-b*L*h/t,S=l*B-u*y+(e+r)/2,D=u*B+l*y+(C+o)/2,k=(e1,l1,p1,h1)=>Math.atan2(e1*h1-l1*p1,e1*p1+l1*h1),F=k(1,0,(h-B)/t,(d-y)/L),N=k((h-B)/t,(d-y)/L,(-h-B)/t,(-d-y)/L);!s&&N>0&&(N-=2*Math.PI),s&&N<0&&(N+=2*Math.PI);let U=Math.max(1,Math.ceil(Math.abs(N)/(Math.PI/2)-1e-9)),q=N/U,K=4/3*Math.tan(q/4),P=e1=>{let l1=Math.cos(e1),p1=Math.sin(e1);return[S+t*l1*l-L*p1*u,D+t*l1*u+L*p1*l,-t*p1*l-L*l1*u,-t*p1*u+L*l1*l]},j=[],[W,G,J,C1]=P(F);for(let e1=1;e1<=U;e1++){let[l1,p1,h1,d1]=P(F+e1*q),u1=e1===U?r:l1,y1=e1===U?o:p1;j.push([W+K*J,G+K*C1,u1-K*h1,y1-K*d1,u1,y1]),W=u1,G=y1,J=h1,C1=d1}return j}
-function SC(e,C){let t=C.width/2;if(!(t>0))return[];let L=[];for(let n of Ud(e,C))Vd(n,t,C,L);for(let n of L)Kd(n)<0&&Qd(n);return L}
-function Ud(e,C){let t=C.dash;if(!t||t.length===0)return[...e];let L=t.reduce((i,s)=>i+s,0);if(!(L>=.5))return[...e];let n=[];for(let i of e){let s=i.points.slice();i.closed&&s.push(s[0],s[1]);let r=((C.dashOffset??0)%L+L)%L,o=0;for(;r>=t[o];)r-=t[o],o=(o+1)%t.length;let a=t[o]-r,l=o%2===0,u=l?[s[0],s[1]]:[];for(let x=0;x+3<s.length;x+=2){let p=s[x],h=s[x+1],d=s[x+2],m=s[x+3],E=Math.hypot(d-p,m-h),w=0;for(;E-w>a;){w+=a;let b=w/E,B=p+(d-p)*b,y=h+(m-h)*b;if(l){if(u.push(B,y),n.push({points:u,closed:!1}),n.length>2e4)return[...e];u=[]}else u=[B,y];l=!l,o=(o+1)%t.length,a=t[o]}a-=E-w,l&&u.push(d,m)}l&&u.length>=4&&n.push({points:u,closed:!1})}return n}
-function Vd(e,C,t,L){let n=[];for(let x=0;x+1<e.points.length;x+=2){let p=e.points[x],h=e.points[x+1],d=n.length;d>=2&&Math.abs(p-n[d-2])<.01&&Math.abs(h-n[d-1])<.01||n.push(p,h)}let i=e.closed;i&&n.length>=4&&Math.abs(n[0]-n[n.length-2])<.01&&Math.abs(n[1]-n[n.length-1])<.01&&(n.length-=2);let s=n.length/2;if(s<2){if(s===1&&t.cap!=="butt"&&e.points.length>=4){let x=n[0],p=n[1];L.push(t.cap==="round"?RC(x,p,C):[x-C,p-C,x+C,p-C,x+C,p+C,x-C,p+C])}return}s===2&&(i=!1);let r=i?s:s-1,o=new Float64Array(r),a=new Float64Array(r);for(let x=0;x<r;x++){let p=(x+1)%s,h=n[2*p]-n[2*x],d=n[2*p+1]-n[2*x+1],m=Math.hypot(h,d);o[x]=h/m,a[x]=d/m}for(let x=0;x<r;x++){let p=(x+1)%s,h=-a[x]*C,d=o[x]*C,m=n[2*x],E=n[2*x+1],w=n[2*p],b=n[2*p+1];L.push([m+h,E+d,w+h,b+d,w-h,b-d,m-h,E-d])}let l=i?0:1,u=i?s-1:s-2;for(let x=l;x<=u;x++){let p=(x-1+r)%r,h=x%r;Xd(n[2*x],n[2*x+1],o[p],a[p],o[h],a[h],C,t,L)}i||(us(n[0],n[1],-o[0],-a[0],C,t.cap,L),us(n[2*s-2],n[2*s-1],o[r-1],a[r-1],C,t.cap,L))}
-function Xd(e,C,t,L,n,i,s,r,o){let a=t*i-L*n,l=t*n+L*i,u=Math.atan2(Math.abs(a),l);if(s*u<.02)return;let x=a>0?-1:1,p=e+x*-L*s,h=C+x*t*s,d=e+x*-i*s,m=C+x*n*s;if(r.join==="round"&&s*u>.25){o.push(RC(e,C,s));return}if(r.join==="miter"){let E=1/Math.sqrt(Math.max(1e-12,(1+l)/2));if(E<=r.miterLimit){let w=-L-i,b=t+n,B=Math.hypot(w,b);if(B>1e-9){w=w/B*x*s*E,b=b/B*x*s*E,o.push([e,C,p,h,e+w,C+b,d,m]);return}}}o.push([e,C,p,h,d,m])}
-function us(e,C,t,L,n,i,s){if(i==="round")s.push(RC(e,C,n));else if(i==="square"){let r=-L*n,o=t*n,a=e+t*n,l=C+L*n;s.push([e+r,C+o,a+r,l+o,a-r,l-o,e-r,C-o])}}
-function RC(e,C,t){let L=t<=.05?6:Math.min(128,Math.max(6,Math.ceil(Math.PI/Math.acos(1-.05/t)))),n=[];for(let i=0;i<L;i++){let s=2*Math.PI*i/L;n.push(e+t*Math.cos(s),C+t*Math.sin(s))}return n}
-function Kd(e){let C=0,t=e.length,L=e[t-2],n=e[t-1];for(let i=0;i<t;i+=2)C+=L*e[i+1]-e[i]*n,L=e[i],n=e[i+1];return C/2}
-function Qd(e){for(let C=0,t=e.length-2;C<t;C+=2,t-=2){let L=e[C],n=e[C+1];e[C]=e[t],e[C+1]=e[t+1],e[t]=L,e[t+1]=n}}
-export{is,V7,U7,vC,SC,ss,q7,T6};
+import{__esm,init_BBox,init_FontData,init_string,init_numeric,init_Styles,init_Wrapper3,init_mtable,CommonMtableMixin,SvgWrapper,MmlMtable,DIRECTION,init_mtr,MmlMtr,MmlMlabeledtr,init_mtd,MmlMtd,split,init_maction,init_MathItem,MmlMaction,STATE,init_menclose,MmlMenclose,__kittexLate}from'./p21.js';export*from'./p21.js';
+__kittexLate.BREAK_BELOW=()=>BREAK_BELOW;
+var BREAK_BELOW;
+var init_mtable2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mtable.js"() {
+    init_BBox();
+    init_FontData();
+    init_string();
+    init_numeric();
+    init_Styles();
+    BREAK_BELOW = 0.333;
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtable.js
+var CLASSPREFIX;
+var SvgMtable;
+var init_mtable3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtable.js"() {
+    init_Wrapper3();
+    init_mtable2();
+    init_mtable();
+    CLASSPREFIX = "mjx-";
+    SvgMtable = (function() {
+      var _a2;
+      const Base2 = CommonMtableMixin(SvgWrapper);
+      return _a2 = class SvgMtable extends Base2 {
+        placeRows(svg) {
+          const equal = this.node.attributes.get("equalrows");
+          const { H: H2, D } = this.getTableData();
+          const HD = this.getEqualRowHeight();
+          const rSpace = this.getRowHalfSpacing();
+          const rLines = [this.fLine, ...this.rLines, this.fLine];
+          let y = this.getBBox().h - rLines[0];
+          for (let i2 = 0; i2 < this.numRows; i2++) {
+            const row = this.childNodes[i2];
+            [row.H, row.D] = this.getRowHD(equal, HD, H2[i2], D[i2]);
+            [row.tSpace, row.bSpace] = [rSpace[i2], rSpace[i2 + 1]];
+            [row.tLine, row.bLine] = [rLines[i2], rLines[i2 + 1]];
+            row.toSVG([svg]);
+            row.place(0, y - rSpace[i2] - row.H);
+            y -= rSpace[i2] + row.H + row.D + rSpace[i2 + 1] + rLines[i2 + 1];
+          }
+        }
+        getRowHD(equal, HD, H2, D) {
+          return equal ? [(HD + H2 - D) / 2, (HD - H2 + D) / 2] : [H2, D];
+        }
+        handleColor() {
+          super.handleColor();
+          const rect = this.firstChild();
+          if (rect) {
+            this.adaptor.setAttribute(rect, "width", this.fixed(this.getWidth()));
+          }
+        }
+        handleColumnLines(svg) {
+          if (this.node.attributes.get("columnlines") === "none")
+            return;
+          const lines2 = this.getColumnAttributes("columnlines");
+          if (!lines2)
+            return;
+          const cSpace = this.getColumnHalfSpacing();
+          const cLines = this.cLines;
+          const cWidth = this.getComputedWidths();
+          let x2 = this.fLine;
+          for (let i2 = 0; i2 < lines2.length; i2++) {
+            x2 += cSpace[i2] + cWidth[i2] + cSpace[i2 + 1];
+            if (lines2[i2] !== "none") {
+              this.adaptor.append(svg, this.makeVLine(x2, lines2[i2], cLines[i2]));
+            }
+            x2 += cLines[i2];
+          }
+        }
+        handleRowLines(svg) {
+          if (this.node.attributes.get("rowlines") === "none")
+            return;
+          const lines2 = this.getRowAttributes("rowlines");
+          if (!lines2)
+            return;
+          const equal = this.node.attributes.get("equalrows");
+          const { H: H2, D } = this.getTableData();
+          const HD = this.getEqualRowHeight();
+          const rSpace = this.getRowHalfSpacing();
+          const rLines = this.rLines;
+          let y = this.getBBox().h - this.fLine;
+          for (let i2 = 0; i2 < lines2.length; i2++) {
+            const [rH, rD] = this.getRowHD(equal, HD, H2[i2], D[i2]);
+            y -= rSpace[i2] + rH + rD + rSpace[i2 + 1];
+            if (lines2[i2] !== "none") {
+              this.adaptor.append(svg, this.makeHLine(y, lines2[i2], rLines[i2]));
+            }
+            y -= rLines[i2];
+          }
+        }
+        handleFrame(svg) {
+          if (this.frame && this.fLine) {
+            const { h, d, w } = this.getBBox();
+            const style = this.node.attributes.get("frame");
+            this.adaptor.append(svg, this.makeFrame(w, h, d, style));
+          }
+        }
+        handlePWidth(svg) {
+          if (!this.pWidth) {
+            return 0;
+          }
+          const { w, L, R } = this.getBBox();
+          const W = L + this.pWidth + R;
+          const align = this.getAlignShift()[0];
+          const max2 = Math.max(this.isTop ? W : 0, this.container.getWrapWidth(this.containerI));
+          const CW = max2 - L - R;
+          const dw = w - (this.pWidth > CW ? CW : this.pWidth);
+          const dx = align === "left" ? 0 : align === "right" ? dw : dw / 2;
+          if (dx) {
+            const table2 = this.svg("g", {}, this.adaptor.childNodes(svg));
+            this.place(dx, 0, table2);
+            this.adaptor.append(svg, table2);
+          }
+          return dx;
+        }
+        lineClass(style) {
+          return CLASSPREFIX + style;
+        }
+        makeFrame(w, h, d, style) {
+          const t = this.fLine;
+          return this.svg("rect", this.setLineThickness(t, style, {
+            "data-frame": true,
+            class: this.lineClass(style),
+            width: this.fixed(w - t),
+            height: this.fixed(h + d - t),
+            x: this.fixed(t / 2),
+            y: this.fixed(t / 2 - d)
+          }));
+        }
+        makeVLine(x2, style, t) {
+          const { h, d } = this.getBBox();
+          const dt = style === "dotted" ? t / 2 : 0;
+          const X = this.fixed(x2 + t / 2);
+          return this.svg("line", this.setLineThickness(t, style, {
+            "data-line": "v",
+            class: this.lineClass(style),
+            x1: X,
+            y1: this.fixed(dt - d),
+            x2: X,
+            y2: this.fixed(h - dt)
+          }));
+        }
+        makeHLine(y, style, t) {
+          const w = this.getBBox().w;
+          const dt = style === "dotted" ? t / 2 : 0;
+          const Y = this.fixed(y - t / 2);
+          return this.svg("line", this.setLineThickness(t, style, {
+            "data-line": "h",
+            class: this.lineClass(style),
+            x1: this.fixed(dt),
+            y1: Y,
+            x2: this.fixed(w - dt),
+            y2: Y
+          }));
+        }
+        setLineThickness(t, style, properties) {
+          if (t !== 0.07) {
+            properties["stroke-thickness"] = this.fixed(t);
+            if (style !== "solid") {
+              properties["stroke-dasharray"] = (style === "dotted" ? "0," : "") + this.fixed(2 * t);
+            }
+          }
+          return properties;
+        }
+        handleLabels(svg, _parent, dx) {
+          if (!this.hasLabels)
+            return;
+          const labels = this.labels;
+          const attributes = this.node.attributes;
+          const side = attributes.get("side");
+          this.spaceLabels();
+          this.isTop ? this.topTable(svg, labels, side) : this.subTable(svg, labels, side, dx);
+        }
+        spaceLabels() {
+          const adaptor = this.adaptor;
+          const h = this.getBBox().h;
+          const L = this.getTableData().L;
+          const space = this.getRowHalfSpacing();
+          let y = h - this.fLine;
+          let current = adaptor.firstChild(this.labels);
+          for (let i2 = 0; i2 < this.numRows; i2++) {
+            const row = this.childNodes[i2];
+            if (row.node.isKind("mlabeledtr")) {
+              const cell = row.childNodes[0];
+              y -= space[i2] + row.H;
+              row.placeCell(cell, {
+                x: 0,
+                y,
+                w: L,
+                lSpace: 0,
+                rSpace: 0,
+                lLine: 0,
+                rLine: 0
+              });
+              y -= row.D + space[i2 + 1] + this.rLines[i2];
+              current = adaptor.next(current);
+            } else {
+              y -= space[i2] + row.H + row.D + space[i2 + 1] + this.rLines[i2];
+            }
+          }
+        }
+        topTable(svg, labels, side) {
+          const adaptor = this.adaptor;
+          const { h, d, w, L, R } = this.getBBox();
+          const W = L + (this.pWidth || w) + R;
+          const LW = this.getTableData().L;
+          const [, align, shift] = this.getPadAlignShift(side);
+          const dx = shift + (align === "right" ? -W : align === "center" ? -W / 2 : 0) + L;
+          const matrix = "matrix(1 0 0 -1 0 0)";
+          const scale2 = `scale(${this.jax.fixed(this.font.params.x_height * 1e3 / this.metrics.ex, 2)})`;
+          const transform = `translate(0 ${this.fixed(h)}) ${matrix} ${scale2}`;
+          const table2 = this.svg("svg", {
+            "data-table": true,
+            preserveAspectRatio: align === "left" ? "xMinYMid" : align === "right" ? "xMaxYMid" : "xMidYMid",
+            viewBox: `${this.fixed(-dx)} ${this.fixed(-h)} 1 ${this.fixed(h + d)}`
+          }, [this.svg("g", { transform: matrix }, adaptor.childNodes(svg))]);
+          labels = this.svg("svg", {
+            "data-labels": true,
+            preserveAspectRatio: side === "left" ? "xMinYMid" : "xMaxYMid",
+            viewBox: [
+              side === "left" ? 0 : this.fixed(LW),
+              this.fixed(-h),
+              1,
+              this.fixed(h + d)
+            ].join(" ")
+          }, [labels]);
+          adaptor.append(svg, this.svg("g", { transform }, [table2, labels]));
+          this.place(-L, 0, svg);
+        }
+        subTable(svg, labels, side, dx) {
+          const adaptor = this.adaptor;
+          const { w, L, R } = this.getBBox();
+          const W = L + (this.pWidth || w) + R;
+          const labelW = this.getTableData().L;
+          const align = this.getAlignShift()[0];
+          const CW = Math.max(W, this.container.getWrapWidth(this.containerI));
+          this.place(side === "left" ? (align === "left" ? 0 : align === "right" ? W - CW + dx : (W - CW) / 2 + dx) - L : (align === "left" ? CW : align === "right" ? W + dx : (CW + W) / 2 + dx) - L - labelW, 0, labels);
+          adaptor.append(svg, labels);
+        }
+        constructor(factory, node, parent = null) {
+          super(factory, node, parent);
+          const def2 = { "data-labels": true };
+          if (this.isTop) {
+            def2.transform = "matrix(1 0 0 -1 0 0)";
+          }
+          this.labels = this.svg("g", def2);
+        }
+        toSVG(parents) {
+          const svg = this.standardSvgNodes(parents)[0];
+          this.placeRows(svg);
+          this.handleColumnLines(svg);
+          this.handleRowLines(svg);
+          this.handleFrame(svg);
+          const dx = this.handlePWidth(svg);
+          this.handleLabels(svg, parents[0], dx);
+        }
+      }, _a2.kind = MmlMtable.prototype.kind, _a2.styles = {
+        'g[data-mml-node="mtable"] > line[data-line], svg[data-table] > g > line[data-line]': {
+          "stroke-width": "70px",
+          fill: "none"
+        },
+        'g[data-mml-node="mtable"] > rect[data-frame], svg[data-table] > g > rect[data-frame]': {
+          "stroke-width": "70px",
+          fill: "none"
+        },
+        'g[data-mml-node="mtable"] > .mjx-dashed, svg[data-table] > g > .mjx-dashed': {
+          "stroke-dasharray": "140"
+        },
+        'g[data-mml-node="mtable"] > .mjx-dotted, svg[data-table] > g > .mjx-dotted': {
+          "stroke-linecap": "round",
+          "stroke-dasharray": "0,140"
+        },
+        'g[data-mml-node="mtable"] > g > svg': {
+          overflow: "visible"
+        }
+      }, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mtr.js
+function CommonMtrMixin(Base2) {
+  return class CommonMtrMixin extends Base2 {
+    get numCells() {
+      return this.childNodes.length;
+    }
+    get labeled() {
+      return false;
+    }
+    get tableCells() {
+      return this.childNodes;
+    }
+    getChild(i2) {
+      return this.childNodes[i2];
+    }
+    getChildBBoxes() {
+      return this.childNodes.map((cell) => cell.getBBox());
+    }
+    stretchChildren(HD = null) {
+      const stretchy = [];
+      const children = this.labeled ? this.childNodes.slice(1) : this.childNodes;
+      for (const mtd of children) {
+        const child = mtd.childNodes[0];
+        if (child.canStretch(DIRECTION.Vertical)) {
+          stretchy.push(child);
+        }
+      }
+      const count = stretchy.length;
+      const nodeCount = this.childNodes.length;
+      if (count && nodeCount > 1 && !HD) {
+        let H2 = 0;
+        let D = 0;
+        const all = count > 1 && count === nodeCount;
+        for (const mtd of children) {
+          const child = mtd.childNodes[0];
+          const noStretch = child.stretch.dir === DIRECTION.None;
+          if (all || noStretch) {
+            const { h, d } = child.getBBox(noStretch);
+            if (h > H2) {
+              H2 = h;
+            }
+            if (d > D) {
+              D = d;
+            }
+          }
+        }
+        HD = [H2, D];
+      }
+      if (HD) {
+        for (const child of stretchy) {
+          const rscale = child.coreRScale();
+          child.coreMO().getStretchedVariant(HD.map((x2) => x2 * rscale));
+        }
+      }
+    }
+    get fixesPWidth() {
+      return false;
+    }
+  };
+}
+function CommonMlabeledtrMixin(Base2) {
+  return class CommonMlabeledtrMixin extends Base2 {
+    get numCells() {
+      return Math.max(0, this.childNodes.length - 1);
+    }
+    get labeled() {
+      return true;
+    }
+    get tableCells() {
+      return this.childNodes.slice(1);
+    }
+    getChild(i2) {
+      return this.childNodes[i2 + 1];
+    }
+    getChildBBoxes() {
+      return this.childNodes.slice(1).map((cell) => cell.getBBox());
+    }
+  };
+}
+var init_mtr2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mtr.js"() {
+    init_FontData();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtr.js
+var SvgMtr;
+var SvgMlabeledtr;
+var init_mtr3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtr.js"() {
+    init_Wrapper3();
+    init_mtr2();
+    init_mtr();
+    SvgMtr = (function() {
+      var _a2;
+      const Base2 = CommonMtrMixin(SvgWrapper);
+      return _a2 = class SvgMtr extends Base2 {
+        placeCell(cell, sizes) {
+          const { x: x2, y, lSpace, w, rSpace, lLine, rLine } = sizes;
+          const scale2 = 1 / this.getBBox().rscale;
+          const [h, d] = [this.H * scale2, this.D * scale2];
+          const [t, b] = [this.tSpace * scale2, this.bSpace * scale2];
+          const [dx, dy] = cell.placeCell(x2 + lSpace, y, w, h, d);
+          const W = lSpace + w + rSpace;
+          cell.placeColor(-(dx + lSpace + lLine / 2), -(d + b + dy), W + (lLine + rLine) / 2, h + d + t + b);
+          return W + rLine;
+        }
+        placeCells(svg) {
+          const parent = this.parent;
+          const cSpace = parent.getColumnHalfSpacing();
+          const cLines = [parent.fLine, ...parent.cLines, parent.fLine];
+          const cWidth = parent.getComputedWidths();
+          const scale2 = 1 / this.getBBox().rscale;
+          let x2 = cLines[0];
+          for (let i2 = 0; i2 < this.numCells; i2++) {
+            const child = this.getChild(i2);
+            child.toSVG(svg);
+            x2 += this.placeCell(child, {
+              x: x2,
+              y: 0,
+              lSpace: cSpace[i2] * scale2,
+              rSpace: cSpace[i2 + 1] * scale2,
+              w: cWidth[i2] * scale2,
+              lLine: cLines[i2] * scale2,
+              rLine: cLines[i2 + 1] * scale2
+            });
+          }
+        }
+        placeColor() {
+          const scale2 = 1 / this.getBBox().rscale;
+          const adaptor = this.adaptor;
+          const child = this.firstChild();
+          if (child && adaptor.kind(child) === "rect" && adaptor.getAttribute(child, "data-bgcolor")) {
+            const [TL, BL] = [this.tLine / 2 * scale2, this.bLine / 2 * scale2];
+            const [TS, BS] = [this.tSpace * scale2, this.bSpace * scale2];
+            const [H2, D] = [this.H * scale2, this.D * scale2];
+            adaptor.setAttribute(child, "y", this.fixed(-(D + BS + BL)));
+            adaptor.setAttribute(child, "width", this.fixed(this.parent.getWidth() * scale2));
+            adaptor.setAttribute(child, "height", this.fixed(TL + TS + H2 + D + BS + BL));
+          }
+        }
+        toSVG(parents) {
+          const svg = this.standardSvgNodes(parents);
+          this.placeCells(svg);
+          this.placeColor();
+        }
+      }, _a2.kind = MmlMtr.prototype.kind, _a2;
+    })();
+    SvgMlabeledtr = (function() {
+      var _a2;
+      const Base2 = CommonMlabeledtrMixin(SvgMtr);
+      return _a2 = class SvgMlabeledtr extends Base2 {
+        toSVG(parents) {
+          super.toSVG(parents);
+          const child = this.childNodes[0];
+          if (child) {
+            child.toSVG([this.parent.labels]);
+          }
+        }
+      }, _a2.kind = MmlMlabeledtr.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/mtd.js
+function CommonMtdMixin(Base2) {
+  return class CommonMtdMixin extends Base2 {
+    get fixesPWidth() {
+      return false;
+    }
+    invalidateBBox() {
+      this.bboxComputed = false;
+      this.lineBBox = [];
+    }
+    getWrapWidth(_j) {
+      const table2 = this.parent.parent;
+      const row = this.parent;
+      const i2 = this.node.childPosition() - (row.labeled ? 1 : 0);
+      return typeof table2.cWidths[i2] === "number" ? table2.cWidths[i2] : table2.getTableData().W[i2];
+    }
+    getChildAlign(_i) {
+      return this.node.attributes.get("columnalign");
+    }
+  };
+}
+var init_mtd2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/mtd.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtd.js
+var SvgMtd;
+var init_mtd3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/mtd.js"() {
+    init_Wrapper3();
+    init_mtd2();
+    init_mtd();
+    SvgMtd = (function() {
+      var _a2;
+      const Base2 = CommonMtdMixin(SvgWrapper);
+      return _a2 = class SvgMtd extends Base2 {
+        placeCell(x2, y, W, H2, D) {
+          const bbox = this.getBBox();
+          const h = Math.max(bbox.h, 0.75);
+          const d = Math.max(bbox.d, 0.25);
+          const calign = this.node.attributes.get("columnalign");
+          const ralign = this.node.attributes.get("rowalign");
+          const alignX = this.getAlignX(W, bbox, calign);
+          const alignY = this.getAlignY(H2, D, h, d, ralign);
+          this.place(x2 + alignX, y + alignY);
+          return [alignX, alignY];
+        }
+        placeColor(x2, y, W, H2) {
+          const adaptor = this.adaptor;
+          const child = this.firstChild();
+          if (child && adaptor.kind(child) === "rect" && adaptor.getAttribute(child, "data-bgcolor")) {
+            adaptor.setAttribute(child, "x", this.fixed(x2));
+            adaptor.setAttribute(child, "y", this.fixed(y));
+            adaptor.setAttribute(child, "width", this.fixed(W));
+            adaptor.setAttribute(child, "height", this.fixed(H2));
+          }
+        }
+      }, _a2.kind = MmlMtd.prototype.kind, _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/maction.js
+function CommonMactionMixin(Base2) {
+  return class CommonMactionMixin extends Base2 {
+    get selected() {
+      const selection = this.node.attributes.get("selection");
+      const i2 = Math.max(1, Math.min(this.childNodes.length, selection)) - 1;
+      return this.childNodes[i2] || this.wrap(this.node.selected);
+    }
+    getParameters() {
+      const offsets = this.node.attributes.get("data-offsets");
+      const [dx, dy] = split(offsets || "");
+      this.tipDx = this.length2em(dx || TooltipData.dx);
+      this.tipDy = this.length2em(dy || TooltipData.dy);
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      const actions = this.constructor.actions;
+      const action = this.node.attributes.get("actiontype");
+      const [handler, data] = actions.get(action) || [
+        ((_node, _data) => {
+        }),
+        {}
+      ];
+      this.action = handler;
+      this.data = data;
+      this.getParameters();
+    }
+    computeBBox(bbox, recompute = false) {
+      bbox.updateFrom(this.selected.getOuterBBox());
+      this.selected.setChildPWidths(recompute);
+    }
+    get breakCount() {
+      return this.node.isEmbellished ? this.selected.coreMO().embellishedBreakCount : this.selected.breakCount;
+    }
+    computeLineBBox(i2) {
+      return this.getChildLineBBox(this.selected, i2);
+    }
+  };
+}
+var TooltipData;
+var init_maction2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/maction.js"() {
+    init_string();
+    TooltipData = {
+      dx: ".2em",
+      dy: ".1em",
+      postDelay: 600,
+      clearDelay: 100,
+      hoverTimer: /* @__PURE__ */ new Map(),
+      clearTimer: /* @__PURE__ */ new Map(),
+      stopTimers: (node, data) => {
+        if (data.clearTimer.has(node)) {
+          clearTimeout(data.clearTimer.get(node));
+          data.clearTimer.delete(node);
+        }
+        if (data.hoverTimer.has(node)) {
+          clearTimeout(data.hoverTimer.get(node));
+          data.hoverTimer.delete(node);
+        }
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/maction.js
+var SvgMaction;
+var init_maction3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/maction.js"() {
+    init_Wrapper3();
+    init_maction2();
+    init_maction2();
+    init_maction();
+    init_MathItem();
+    SvgMaction = (function() {
+      var _a2;
+      const Base2 = CommonMactionMixin(SvgWrapper);
+      return _a2 = class SvgMaction extends Base2 {
+        setEventHandler(type, handler, dom = null) {
+          (dom ? [dom] : this.dom).forEach((node) => node.addEventListener(type, handler));
+        }
+        Px(m) {
+          return this.px(m);
+        }
+        toSVG(parents) {
+          if (this.toEmbellishedSVG(parents))
+            return;
+          const svg = this.standardSvgNodes(parents);
+          const child = this.selected;
+          let i2 = 0;
+          this.dom.forEach((node) => {
+            const { h, d, w } = child.getLineBBox(i2++);
+            this.adaptor.append(node, this.svg("rect", {
+              width: this.fixed(w),
+              height: this.fixed(h + d),
+              x: i2 === 1 ? this.fixed(-this.dx) : 0,
+              y: this.fixed(-d),
+              fill: "none",
+              "pointer-events": "all"
+            }));
+          });
+          child.toSVG(svg);
+          const bbox = child.getOuterBBox();
+          if (child.dom) {
+            child.place(bbox.L * bbox.rscale, 0);
+          }
+          this.action(this, this.data);
+        }
+      }, _a2.kind = MmlMaction.prototype.kind, _a2.styles = JSON.parse(`{
+ "[jax=\\"SVG\\"] mjx-tool":{"display":"inline-block","position":"relative","width":0,"height":0},
+ "[jax=\\"SVG\\"] mjx-tool > mjx-tip":{"position":"absolute","top":0,"left":0},
+ "mjx-tool > mjx-tip":{"display":"inline-block","line-height":0,"padding":".2em","border":"1px solid #888","background-color":"#F8F8F8","color":"black","box-shadow":"2px 2px 5px #AAAAAA"},
+ "g[data-mml-node=\\"maction\\"][data-toggle]":{"cursor":"pointer"},
+ "mjx-status":{"display":"block","position":"fixed","left":"1em","bottom":"1em","min-width":"25%","padding":".2em .4em","border":"1px solid #888","font-size":"90%","background-color":"#F8F8F8","color":"black"},
+ "g[data-mjx-collapsed]":{"fill":"#55F"},
+ "@media (prefers-color-scheme: dark) /* svg maction */":{
+  "mjx-tool > mjx-tip":{"background-color":"#303030","color":"#E0E0E0","box-shadow":"2px 2px 5px #000"},
+  "mjx-status":{"background-color":"#303030","color":"#E0E0E0"},
+  "g[data-mjx-collapsed]":{"fill":"#88F"}
+ }
+}`), _a2.actions = /* @__PURE__ */ new Map([
+        [
+          "toggle",
+          [
+            (node, _data) => {
+              node.dom.forEach((dom) => {
+                node.adaptor.setAttribute(dom, "data-toggle", node.node.attributes.get("selection"));
+              });
+              const math = node.factory.jax.math;
+              const document = node.factory.jax.document;
+              const mml = node.node;
+              node.setEventHandler("click", (event) => {
+                if (!math.end.node) {
+                  math.start.node = math.end.node = math.typesetRoot;
+                  math.start.n = math.end.n = 0;
+                }
+                mml.nextToggleSelection();
+                math.rerender(document, mml.attributes.get("data-maction-id") ? STATE.ENRICHED : STATE.RERENDER);
+                event.stopPropagation();
+              });
+            },
+            {}
+          ]
+        ],
+        [
+          "tooltip",
+          [
+            (node, data) => {
+              const tip = node.childNodes[1];
+              if (!tip)
+                return;
+              for (const dom of node.dom) {
+                const rect = node.firstChild(dom);
+                if (tip.node.isKind("mtext")) {
+                  const text = tip.node.getText();
+                  node.adaptor.insert(node.svg("title", {}, [node.text(text)]), rect);
+                } else {
+                  const adaptor = node.adaptor;
+                  const container = node.jax.container;
+                  const math = node.node.factory.create("math", {}, [node.childNodes[1].node]);
+                  const tool = node.html("mjx-tool", {}, [node.html("mjx-tip")]);
+                  const hidden = adaptor.append(rect, node.svg("foreignObject", { style: { display: "none" } }, [
+                    tool
+                  ]));
+                  node.jax.processMath(node.jax.factory.wrap(math), adaptor.firstChild(tool));
+                  node.childNodes[1].node.parent = node.node;
+                  node.setEventHandler("mouseover", (event) => {
+                    data.stopTimers(dom, data);
+                    data.hoverTimer.set(dom, setTimeout(() => {
+                      adaptor.setStyle(tool, "left", "0");
+                      adaptor.setStyle(tool, "top", "0");
+                      adaptor.append(container, tool);
+                      const tbox = adaptor.nodeBBox(tool);
+                      const nbox = adaptor.nodeBBox(dom);
+                      const dx = (nbox.right - tbox.left) / node.metrics.em + node.tipDx;
+                      const dy = (nbox.bottom - tbox.bottom) / node.metrics.em + node.tipDy;
+                      adaptor.setStyle(tool, "left", node.Px(dx));
+                      adaptor.setStyle(tool, "top", node.Px(dy));
+                    }, data.postDelay));
+                    event.stopPropagation();
+                  }, dom);
+                  node.setEventHandler("mouseout", (event) => {
+                    data.stopTimers(dom, data);
+                    const timer = setTimeout(() => adaptor.append(hidden, tool), data.clearDelay);
+                    data.clearTimer.set(dom, timer);
+                    event.stopPropagation();
+                  }, dom);
+                }
+              }
+            },
+            TooltipData
+          ]
+        ],
+        [
+          "statusline",
+          [
+            (node, data) => {
+              const tip = node.childNodes[1];
+              if (!tip)
+                return;
+              if (tip.node.isKind("mtext")) {
+                const adaptor = node.adaptor;
+                const text = tip.node.getText();
+                node.dom.forEach((dom) => adaptor.setAttribute(dom, "data-statusline", text));
+                node.setEventHandler("mouseover", (event) => {
+                  if (data.status === null) {
+                    const body = adaptor.body(adaptor.document);
+                    data.status = adaptor.append(body, node.html("mjx-status", {}, [node.text(text)]));
+                  }
+                  event.stopPropagation();
+                });
+                node.setEventHandler("mouseout", (event) => {
+                  if (data.status) {
+                    adaptor.remove(data.status);
+                    data.status = null;
+                  }
+                  event.stopPropagation();
+                });
+              }
+            },
+            {
+              status: null
+            }
+          ]
+        ]
+      ]), _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Notation.js
+var ARROWX;
+var ARROWDX;
+var ARROWY;
+var THICKNESS;
+var PADDING;
+var SOLID2;
+var sideIndex;
+var sideNames;
+var fullBBox;
+var fullBorder;
+var arrowHead;
+var arrowBBoxHD;
+var arrowBBoxW;
+var arrowDef;
+var diagonalArrowDef;
+var arrowBBox;
+var CommonBorder;
+var CommonBorder2;
+var CommonDiagonalStrike;
+var CommonDiagonalArrow;
+var CommonArrow;
+var init_Notation = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Notation.js"() {
+    ARROWX = 4;
+    ARROWDX = 1;
+    ARROWY = 2;
+    THICKNESS = 0.067;
+    PADDING = 0.2;
+    SOLID2 = THICKNESS + "em solid";
+    sideIndex = { top: 0, right: 1, bottom: 2, left: 3 };
+    sideNames = Object.keys(sideIndex);
+    fullBBox = ((node) => new Array(4).fill(node.thickness + node.padding));
+    fullBorder = ((node) => new Array(4).fill(node.thickness));
+    arrowHead = (node) => {
+      return Math.max(node.padding, node.thickness * (node.arrowhead.x + node.arrowhead.dx + 1));
+    };
+    arrowBBoxHD = (node, TRBL2) => {
+      if (node.childNodes[0]) {
+        const { h, d } = node.childNodes[0].getBBox();
+        TRBL2[0] = TRBL2[2] = Math.max(0, node.thickness * node.arrowhead.y - (h + d) / 2);
+      }
+      return TRBL2;
+    };
+    arrowBBoxW = (node, TRBL2) => {
+      if (node.childNodes[0]) {
+        const { w } = node.childNodes[0].getBBox();
+        TRBL2[1] = TRBL2[3] = Math.max(0, node.thickness * node.arrowhead.y - w / 2);
+      }
+      return TRBL2;
+    };
+    arrowDef = {
+      up: [-Math.PI / 2, false, true, "verticalstrike"],
+      down: [Math.PI / 2, false, true, "verticakstrike"],
+      right: [0, false, false, "horizontalstrike"],
+      left: [Math.PI, false, false, "horizontalstrike"],
+      updown: [Math.PI / 2, true, true, "verticalstrike uparrow downarrow"],
+      leftright: [0, true, false, "horizontalstrike leftarrow rightarrow"]
+    };
+    diagonalArrowDef = {
+      updiagonal: [-1, 0, false, "updiagonalstrike northeastarrow"],
+      northeast: [-1, 0, false, "updiagonalstrike updiagonalarrow"],
+      southeast: [1, 0, false, "downdiagonalstrike"],
+      northwest: [1, Math.PI, false, "downdiagonalstrike"],
+      southwest: [-1, Math.PI, false, "updiagonalstrike"],
+      northeastsouthwest: [
+        -1,
+        0,
+        true,
+        "updiagonalstrike northeastarrow updiagonalarrow southwestarrow"
+      ],
+      northwestsoutheast: [
+        1,
+        0,
+        true,
+        "downdiagonalstrike northwestarrow southeastarrow"
+      ]
+    };
+    arrowBBox = {
+      up: (node) => arrowBBoxW(node, [arrowHead(node), 0, node.padding, 0]),
+      down: (node) => arrowBBoxW(node, [node.padding, 0, arrowHead(node), 0]),
+      right: (node) => arrowBBoxHD(node, [0, arrowHead(node), 0, node.padding]),
+      left: (node) => arrowBBoxHD(node, [0, node.padding, 0, arrowHead(node)]),
+      updown: (node) => arrowBBoxW(node, [arrowHead(node), 0, arrowHead(node), 0]),
+      leftright: (node) => arrowBBoxHD(node, [0, arrowHead(node), 0, arrowHead(node)])
+    };
+    CommonBorder = function(render) {
+      return (side) => {
+        const i2 = sideIndex[side];
+        return [
+          side,
+          {
+            renderer: render,
+            bbox: (node) => {
+              const bbox = [0, 0, 0, 0];
+              bbox[i2] = node.thickness + node.padding;
+              return bbox;
+            },
+            border: (node) => {
+              const bbox = [0, 0, 0, 0];
+              bbox[i2] = node.thickness;
+              return bbox;
+            }
+          }
+        ];
+      };
+    };
+    CommonBorder2 = function(render) {
+      return (name, side1, side2) => {
+        const i1 = sideIndex[side1];
+        const i2 = sideIndex[side2];
+        return [
+          name,
+          {
+            renderer: render,
+            bbox: (node) => {
+              const t = node.thickness + node.padding;
+              const bbox = [0, 0, 0, 0];
+              bbox[i1] = bbox[i2] = t;
+              return bbox;
+            },
+            border: (node) => {
+              const bbox = [0, 0, 0, 0];
+              bbox[i1] = bbox[i2] = node.thickness;
+              return bbox;
+            },
+            remove: side1 + " " + side2
+          }
+        ];
+      };
+    };
+    CommonDiagonalStrike = function(render) {
+      return (name) => {
+        const cname = "mjx-" + name.charAt(0) + "strike";
+        return [
+          name + "diagonalstrike",
+          {
+            renderer: render(cname),
+            bbox: fullBBox
+          }
+        ];
+      };
+    };
+    CommonDiagonalArrow = function(render) {
+      return (name) => {
+        const [c, pi, double, remove] = diagonalArrowDef[name];
+        return [
+          name + "arrow",
+          {
+            renderer: (node, _child) => {
+              const [a, W] = node.arrowAW();
+              const arrow = node.arrow(W, c * (a - pi), double);
+              render(node, arrow);
+            },
+            bbox: (node) => {
+              const { a, x: x2, y } = node.arrowData();
+              const [ax, ay, adx] = [
+                node.arrowhead.x,
+                node.arrowhead.y,
+                node.arrowhead.dx
+              ];
+              const [b, ar] = node.getArgMod(ax + adx, ay);
+              const dy = y + (b > a ? node.thickness * ar * Math.sin(b - a) : 0);
+              const dx = x2 + (b > Math.PI / 2 - a ? node.thickness * ar * Math.sin(b + a - Math.PI / 2) : 0);
+              return [dy, dx, dy, dx];
+            },
+            remove
+          }
+        ];
+      };
+    };
+    CommonArrow = function(render) {
+      return (name) => {
+        const [angle, double, isVertical, remove] = arrowDef[name];
+        return [
+          name + "arrow",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              const [W, offset] = isVertical ? [h + d, "X"] : [w, "Y"];
+              const dd = node.getOffset(offset);
+              const arrow = node.arrow(W, angle, double, offset, dd);
+              render(node, arrow);
+            },
+            bbox: arrowBBox[name],
+            remove
+          }
+        ];
+      };
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/menclose.js
+function CommonMencloseMixin(Base2) {
+  return class CommonMencloseMixin extends Base2 {
+    getParameters() {
+      const attributes = this.node.attributes;
+      const padding2 = attributes.get("data-padding");
+      if (padding2 !== void 0) {
+        this.padding = this.length2em(padding2, PADDING);
+      }
+      const thickness = attributes.get("data-thickness");
+      if (thickness !== void 0) {
+        this.thickness = this.length2em(thickness, THICKNESS);
+      }
+      const arrowhead = attributes.get("data-arrowhead");
+      if (arrowhead !== void 0) {
+        const [x2, y, dx] = split(arrowhead);
+        this.arrowhead = {
+          x: x2 ? parseFloat(x2) : ARROWX,
+          y: y ? parseFloat(y) : ARROWY,
+          dx: dx ? parseFloat(dx) : ARROWDX
+        };
+      }
+    }
+    getNotations() {
+      const Notations = this.constructor.notations;
+      for (const name of split(this.node.attributes.get("notation"))) {
+        const notation = Notations.get(name);
+        if (notation) {
+          this.notations[name] = notation;
+          if (notation.renderChild) {
+            this.renderChild = notation.renderer;
+          }
+        }
+      }
+    }
+    removeRedundantNotations() {
+      for (const name of Object.keys(this.notations)) {
+        if (this.notations[name]) {
+          const remove = this.notations[name].remove || "";
+          for (const notation of remove.split(/ /)) {
+            delete this.notations[notation];
+          }
+        }
+      }
+    }
+    initializeNotations() {
+      for (const name of Object.keys(this.notations)) {
+        const init2 = this.notations[name].init;
+        if (init2) {
+          init2(this);
+        }
+      }
+    }
+    getBBoxExtenders() {
+      const TRBL2 = [0, 0, 0, 0];
+      for (const name of Object.keys(this.notations)) {
+        this.maximizeEntries(TRBL2, this.notations[name].bbox(this));
+      }
+      return TRBL2;
+    }
+    getPadding() {
+      const BTRBL = [0, 0, 0, 0];
+      for (const name of Object.keys(this.notations)) {
+        const border = this.notations[name].border;
+        if (border) {
+          this.maximizeEntries(BTRBL, border(this));
+        }
+      }
+      return [0, 1, 2, 3].map((i2) => this.TRBL[i2] - BTRBL[i2]);
+    }
+    maximizeEntries(X, Y) {
+      for (let i2 = 0; i2 < X.length; i2++) {
+        if (X[i2] < Y[i2]) {
+          X[i2] = Y[i2];
+        }
+      }
+    }
+    getOffset(direction) {
+      const [T, R, B, L] = this.TRBL;
+      const d = (direction === "X" ? R - L : B - T) / 2;
+      return Math.abs(d) > 1e-3 ? d : 0;
+    }
+    getArgMod(w, h) {
+      return [Math.atan2(h, w), Math.sqrt(w * w + h * h)];
+    }
+    arrow(_w, _a2, _double, _offset = "", _dist = 0) {
+      return null;
+    }
+    arrowData() {
+      const [p, t] = [this.padding, this.thickness];
+      const r = t * (this.arrowhead.x + Math.max(1, this.arrowhead.dx));
+      const { h, d, w } = this.childNodes[0].getBBox();
+      const H2 = h + d;
+      const R = Math.sqrt(H2 * H2 + w * w);
+      const x2 = Math.max(p, r * w / R);
+      const y = Math.max(p, r * H2 / R);
+      const [a, W] = this.getArgMod(w + 2 * x2, H2 + 2 * y);
+      return { a, W, x: x2, y };
+    }
+    arrowAW() {
+      const { h, d, w } = this.childNodes[0].getBBox();
+      const [T, R, B, L] = this.TRBL;
+      return this.getArgMod(L + w + R, T + h + d + B);
+    }
+    createMsqrt(child) {
+      const mmlFactory = this.node.factory;
+      const mml = mmlFactory.create("msqrt");
+      mml.inheritAttributesFrom(this.node);
+      mml.childNodes[0] = child.node;
+      const node = this.wrap(mml);
+      node.parent = this;
+      return node;
+    }
+    sqrtTRBL() {
+      const bbox = this.msqrt.getBBox();
+      const cbox = this.msqrt.childNodes[0].getBBox();
+      return [bbox.h - cbox.h, 0, bbox.d - cbox.d, bbox.w - cbox.w];
+    }
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.notations = {};
+      this.renderChild = null;
+      this.msqrt = null;
+      this.padding = PADDING;
+      this.thickness = THICKNESS;
+      this.arrowhead = {
+        x: ARROWX,
+        y: ARROWY,
+        dx: ARROWDX
+      };
+      this.TRBL = [0, 0, 0, 0];
+      this.getParameters();
+      this.getNotations();
+      this.removeRedundantNotations();
+      this.initializeNotations();
+      this.TRBL = this.getBBoxExtenders();
+    }
+    computeBBox(bbox, recompute = false) {
+      const [T, R, B, L] = this.TRBL;
+      const child = this.childNodes[0].getBBox();
+      bbox.combine(child, L, 0);
+      bbox.h += T;
+      bbox.d += B;
+      bbox.w += R;
+      this.setChildPWidths(recompute);
+    }
+  };
+}
+var init_menclose2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/menclose.js"() {
+    init_Notation();
+    init_string();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Notation.js
+var computeLineData;
+var lineData;
+var lineOffset;
+var RenderLine;
+var Border;
+var Border2;
+var DiagonalStrike;
+var DiagonalArrow;
+var Arrow;
+var init_Notation2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Notation.js"() {
+    init_Notation();
+    init_Notation();
+    computeLineData = {
+      top: (h, _d, w, t) => [0, h - t, w, h - t],
+      right: (h, d, w, t) => [w - t, -d, w - t, h],
+      bottom: (_h, d, w, t) => [0, t - d, w, t - d],
+      left: (h, d, _w, t) => [t, -d, t, h],
+      vertical: (h, d, w, _t) => [w / 2, h, w / 2, -d],
+      horizontal: (h, d, w, _t) => [0, (h - d) / 2, w, (h - d) / 2],
+      up: (h, d, w, t) => [t, t - d, w - t, h - t],
+      down: (h, d, w, t) => [t, h - t, w - t, t - d]
+    };
+    lineData = function(node, kind, offset = "") {
+      const { h, d, w } = node.getBBox();
+      const t = node.thickness / 2;
+      return lineOffset(computeLineData[kind](h, d, w, t), node, offset);
+    };
+    lineOffset = function(data, node, offset) {
+      if (offset) {
+        const d = node.getOffset(offset);
+        if (d) {
+          if (offset === "X") {
+            data[0] -= d;
+            data[2] -= d;
+          } else {
+            data[1] -= d;
+            data[3] -= d;
+          }
+        }
+      }
+      return data;
+    };
+    RenderLine = function(line, offset = "") {
+      return (node, _child) => {
+        const L = node.line(lineData(node, line, offset));
+        node.adaptor.append(node.dom[0], L);
+      };
+    };
+    Border = function(side) {
+      return CommonBorder((node, _child) => {
+        node.adaptor.append(node.dom[0], node.line(lineData(node, side)));
+      })(side);
+    };
+    Border2 = function(name, side1, side2) {
+      return CommonBorder2((node, _child) => {
+        node.adaptor.append(node.dom[0], node.line(lineData(node, side1)));
+        node.adaptor.append(node.dom[0], node.line(lineData(node, side2)));
+      })(name, side1, side2);
+    };
+    DiagonalStrike = function(name) {
+      return CommonDiagonalStrike((_cname) => (node, _child) => {
+        node.adaptor.append(node.dom[0], node.line(lineData(node, name)));
+      })(name);
+    };
+    DiagonalArrow = function(name) {
+      return CommonDiagonalArrow((node, arrow) => {
+        node.adaptor.append(node.dom[0], arrow);
+      })(name);
+    };
+    Arrow = function(name) {
+      return CommonArrow((node, arrow) => {
+        node.adaptor.append(node.dom[0], arrow);
+      })(name);
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/output/svg/Wrappers/menclose.js
+var SvgMenclose;
+var init_menclose3 = __esm({
+  "node_modules/@mathjax/src/mjs/output/svg/Wrappers/menclose.js"() {
+    init_Wrapper3();
+    init_menclose2();
+    init_menclose();
+    init_Notation2();
+    SvgMenclose = (function() {
+      var _a2;
+      const Base2 = CommonMencloseMixin(SvgWrapper);
+      return _a2 = class SvgMenclose extends Base2 {
+        line(pq) {
+          const [x1, y1, x2, y2] = pq;
+          return this.svg("line", {
+            x1: this.fixed(x1),
+            y1: this.fixed(y1),
+            x2: this.fixed(x2),
+            y2: this.fixed(y2),
+            "stroke-width": this.fixed(this.thickness)
+          });
+        }
+        box(w, h, d, r = 0) {
+          const t = this.thickness;
+          const def2 = {
+            x: this.fixed(t / 2),
+            y: this.fixed(t / 2 - d),
+            width: this.fixed(w - t),
+            height: this.fixed(h + d - t),
+            fill: "none",
+            "stroke-width": this.fixed(t)
+          };
+          if (r) {
+            def2.rx = this.fixed(r);
+          }
+          return this.svg("rect", def2);
+        }
+        ellipse(w, h, d) {
+          const t = this.thickness;
+          return this.svg("ellipse", {
+            rx: this.fixed((w - t) / 2),
+            ry: this.fixed((h + d - t) / 2),
+            cx: this.fixed(w / 2),
+            cy: this.fixed((h - d) / 2),
+            fill: "none",
+            "stroke-width": this.fixed(t)
+          });
+        }
+        path(join2, ...P) {
+          return this.svg("path", {
+            d: P.map((x2) => typeof x2 === "string" ? x2 : this.fixed(x2)).join(" "),
+            style: { "stroke-width": this.fixed(this.thickness) },
+            "stroke-linecap": "round",
+            "stroke-linejoin": join2,
+            fill: "none"
+          });
+        }
+        fill(...P) {
+          return this.svg("path", {
+            d: P.map((x2) => typeof x2 === "string" ? x2 : this.fixed(x2)).join(" ")
+          });
+        }
+        arrow(W, a, double, offset = "", dist = 0) {
+          const { w, h, d } = this.getBBox();
+          const dw = (W - w) / 2;
+          const m = (h - d) / 2;
+          const t = this.thickness;
+          const t2 = t / 2;
+          const [x2, y, dx] = [t * this.arrowhead.x, t * this.arrowhead.y, t * this.arrowhead.dx];
+          const arrow = double ? this.fill("M", w + dw, m, "l", -(x2 + dx), y, "l", dx, t2 - y, "L", x2 - dw, m + t2, "l", dx, y - t2, "l", -(x2 + dx), -y, "l", x2 + dx, -y, "l", -dx, y - t2, "L", w + dw - x2, m - t2, "l", -dx, t2 - y, "Z") : this.fill("M", w + dw, m, "l", -(x2 + dx), y, "l", dx, t2 - y, "L", -dw, m + t2, "l", 0, -t, "L", w + dw - x2, m - t2, "l", -dx, t2 - y, "Z");
+          const transform = [];
+          if (dist) {
+            transform.push(offset === "X" ? `translate(${this.fixed(-dist)} 0)` : `translate(0 ${this.fixed(dist)})`);
+          }
+          if (a) {
+            const A = this.jax.fixed(-a * 180 / Math.PI);
+            transform.push(`rotate(${A} ${this.fixed(w / 2)} ${this.fixed(m)})`);
+          }
+          if (transform.length) {
+            this.adaptor.setAttribute(arrow, "transform", transform.join(" "));
+          }
+          return arrow;
+        }
+        toSVG(parents) {
+          const svg = this.standardSvgNodes(parents);
+          const left = this.getBBoxExtenders()[3];
+          const def2 = {};
+          if (left > 0) {
+            def2.transform = "translate(" + this.fixed(left) + ", 0)";
+          }
+          const block2 = this.adaptor.append(svg[0], this.svg("g", def2));
+          if (this.renderChild) {
+            this.renderChild(this, block2);
+          } else {
+            this.childNodes[0].toSVG([block2]);
+            this.childNodes[0].place(0, 0);
+          }
+          for (const name of Object.keys(this.notations)) {
+            const notation = this.notations[name];
+            if (!notation.renderChild) {
+              notation.renderer(this, svg[0]);
+            }
+          }
+        }
+      }, _a2.kind = MmlMenclose.prototype.kind, _a2.notations = new Map([
+        Border("top"),
+        Border("right"),
+        Border("bottom"),
+        Border("left"),
+        Border2("actuarial", "top", "right"),
+        Border2("madruwb", "bottom", "right"),
+        DiagonalStrike("up"),
+        DiagonalStrike("down"),
+        [
+          "horizontalstrike",
+          {
+            renderer: RenderLine("horizontal", "Y"),
+            bbox: (node) => [0, node.padding, 0, node.padding]
+          }
+        ],
+        [
+          "verticalstrike",
+          {
+            renderer: RenderLine("vertical", "X"),
+            bbox: (node) => [node.padding, 0, node.padding, 0]
+          }
+        ],
+        [
+          "box",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              node.adaptor.append(node.dom[0], node.box(w, h, d));
+            },
+            bbox: fullBBox,
+            border: fullBorder,
+            remove: "left right top bottom"
+          }
+        ],
+        [
+          "roundedbox",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              const r = node.thickness + node.padding;
+              node.adaptor.append(node.dom[0], node.box(w, h, d, r));
+            },
+            bbox: fullBBox
+          }
+        ],
+        [
+          "circle",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              node.adaptor.append(node.dom[0], node.ellipse(w, h, d));
+            },
+            bbox: fullBBox
+          }
+        ],
+        [
+          "phasorangle",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              const a = node.getArgMod(1.75 * node.padding, h + d)[0];
+              const t = node.thickness / 2;
+              const HD = h + d;
+              const cos = Math.cos(a);
+              node.adaptor.append(node.dom[0], node.path("mitre", "M", w, t - d, "L", t + cos * t, t - d, "L", cos * HD + t, HD - d - t));
+            },
+            bbox: (node) => {
+              const p = node.padding / 2;
+              const t = node.thickness;
+              return [2 * p, p, p + t, 3 * p + t];
+            },
+            border: (node) => [0, 0, node.thickness, 0],
+            remove: "bottom"
+          }
+        ],
+        Arrow("up"),
+        Arrow("down"),
+        Arrow("left"),
+        Arrow("right"),
+        Arrow("updown"),
+        Arrow("leftright"),
+        DiagonalArrow("updiagonal"),
+        DiagonalArrow("northeast"),
+        DiagonalArrow("southeast"),
+        DiagonalArrow("northwest"),
+        DiagonalArrow("southwest"),
+        DiagonalArrow("northeastsouthwest"),
+        DiagonalArrow("northwestsoutheast"),
+        [
+          "longdiv",
+          {
+            renderer: (node, _child) => {
+              const { w, h, d } = node.getBBox();
+              const t = node.thickness / 2;
+              const p = node.padding;
+              node.adaptor.append(node.dom[0], node.path("round", "M", t, t - d, "a", p - t / 2, (h + d) / 2 - 4 * t, 0, "0,1", 0, h + d - 2 * t, "L", w - t, h - t));
+            },
+            bbox: (node) => {
+              const p = node.padding;
+              const t = node.thickness;
+              return [p + t, p, p, 2 * p + t / 2];
+            }
+          }
+        ],
+        [
+          "radical",
+          {
+            renderer: (node, child) => {
+              node.msqrt.toSVG([child]);
+              const left = node.sqrtTRBL()[3];
+              node.place(-left, 0, child);
+            },
+            init: (node) => {
+              node.msqrt = node.createMsqrt(node.childNodes[0]);
+            },
+            bbox: (node) => node.sqrtTRBL(),
+            renderChild: true
+          }
+        ]
+      ]), _a2;
+    })();
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/semantics.js
+function CommonSemanticsMixin(Base2) {
+  return class CommonSemanticsMixin extends Base2 {
+    computeBBox(bbox, _recompute = false) {
+      if (this.childNodes.length) {
+        const { w, h, d } = this.childNodes[0].getBBox();
+        bbox.w = w;
+        bbox.h = h;
+        bbox.d = d;
+      }
+    }
+    get breakCount() {
+      return this.node.isEmbellished ? this.coreMO().embellishedBreakCount : this.childNodes[0].breakCount;
+    }
+  };
+}
+var init_semantics2 = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Wrappers/semantics.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Wrappers/XmlNode.js
+function CommonXmlNodeMixin(Base2) {
+  class CommonXmlNodeMixin2 extends Base2 {
+    constructor(factory, node, parent = null) {
+      super(factory, node, parent);
+      this.rscale = this.getRScale();
+    }
+    computeBBox(bbox, _recompute = false) {
+      const xml = this.node.getXML();
+      const hdw = this.getHDW(xml, "use", "force");
+      const { h, d, w } = hdw ? this.splitHDW(hdw) : this.measureXmlNode(xml);
+      bbox.w = w;
+      bbox.h = h;
+      bbox.d = d;
+    }
+    getHTML() {
+      const adaptor = this.adaptor;
+      let html2 = adaptor.clone(this.node.getXML());
+      const styles = this.getFontStyles();
+      const hdw = this.getHDW(html2, "force");
+      if (hdw || this.jax.options.scale !== 1) {
+        html2 = this.addHDW(html2, styles);
+      }
+      return this.html("mjx-html", { variant: this.parent.variant, style: styles }, [html2]);
+    }
+    getHDW(xml, use2, force = use2) {
+      const option = this.jax.options.htmlHDW;
+      const hdw = this.adaptor.getAttribute(xml, "data-mjx-hdw");
+      return hdw && (option === use2 || option === force) ? hdw : null;
+    }
+    splitHDW(hdw) {
+      const scale2 = 1 / this.metrics.scale;
+      const [h, d, w] = split(hdw).map((x2) => this.length2em(x2 || "0") * scale2);
+      return { h, d, w };
+    }
+    getFontStyles() {
+      var _a2;
+      const adaptor = this.adaptor;
+      const metrics = this.metrics;
+      return {
+        "font-family": ((_a2 = this.parent.styles) === null || _a2 === void 0 ? void 0 : _a2.get("font-family")) || metrics.family || adaptor.fontFamily(adaptor.parent(this.jax.math.start.node)) || "initial",
+        "font-size": this.jax.fixed(metrics.em * this.rscale) + "px"
+      };
+    }
+    measureXmlNode(xml) {
+      const adaptor = this.adaptor;
+      const content = this.html("mjx-xml-block", { style: { display: "inline-block" } }, [adaptor.clone(xml)]);
+      const base = this.html("mjx-baseline", {
+        style: { display: "inline-block", width: 0, height: 0 }
+      });
+      const style = this.getFontStyles();
+      const node = this.html("mjx-measure-xml", { style }, [base, content]);
+      const container = this.jax.container;
+      adaptor.append(adaptor.parent(this.jax.math.start.node), container);
+      adaptor.append(container, node);
+      const metrics = this.metrics;
+      const em2 = metrics.em * metrics.scale * this.rscale;
+      const { left, right, bottom, top } = adaptor.nodeBBox(content);
+      const w = (right - left) / em2;
+      const h = (adaptor.nodeBBox(base).top - top) / em2;
+      const d = (bottom - top) / em2 - h;
+      adaptor.remove(container);
+      adaptor.remove(node);
+      return { w, h, d };
+    }
+    getStyles() {
+    }
+    getScale() {
+    }
+    getVariant() {
+    }
+  }
+  CommonXmlNodeMixin2.autoStyle = false;
+  CommonXmlNodeMixin2.styles = {
+    "mjx-measure-xml": {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      display: "inline-block",
+      "line-height": "normal",
+      "white-space": "normal"
+    },
+    "mjx-html": {
+      display: "inline-block",
+      "line-height": "normal",
+      "text-align": "initial",
+      "white-space": "initial"
+    },
+    "mjx-html-holder": {
+      display: "block",
+      position: "absolute",
+      top: 0,
+      left: 0,
+      bottom: 0,
+      right: 0
+    }
+  };
+  return CommonXmlNodeMixin2;
+}
+export{init_semantics2,CommonSemanticsMixin,CommonXmlNodeMixin,init_mtable3,init_mtr3,init_mtd3,init_maction3,init_menclose3,SvgMtable,SvgMtr,SvgMlabeledtr,SvgMtd,SvgMaction,SvgMenclose};

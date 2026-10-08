@@ -10,16 +10,22 @@
 // held up. MathJax and the font tables sit behind a lazy require
 // (bundle.mjs): loading the mod evaluates none of them. No dynamic import():
 // the engine refuses a module holding one.
+//
+// The plugin directory inspects files up to 256 KiB and holds a bigger one
+// for review, so every file stays under that (PART_BYTES per part; the font
+// tables are cut into constants that fit, split.mjs).
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { bundleCore } from './bundle.mjs'
-import { splitModule } from './split.mjs'
+import { escapeHidden, splitModule } from './split.mjs'
 
 const OUT = 'plugin/hooks'
 const PARTS = 'core-parts'
-/** Claude Code reads plugin files up to 1 MiB (1,048,576 bytes); stay well under it. */
-const MAX_FILE_BYTES = 900 * 1024
+/** The plugin directory inspects files up to 256 KiB (Claude Code itself reads plugin files up to 1 MiB). */
+const MAX_FILE_BYTES = 256 * 1024
+/** Bytes per part, where a cut allows it: room under MAX_FILE_BYTES for the imports and exports. */
+const PART_BYTES = 240 * 1024
 /** AST nodes per part: about 10 ms of the engine's scan each. */
 const PART_NODES = 9000
 
@@ -35,11 +41,11 @@ if (!bundled.includes(PLACEHOLDER)) throw new Error('build: no BUILD_ID placehol
 const code = bundled.replace(PLACEHOLDER, `"kittex-build:${digest.digest('hex').slice(0, 16)}"`)
 // The legal comments esbuild gathered at the end, after the export list.
 const legal = code.slice(code.lastIndexOf('export{')).replace(/^export\{[^}]*\};?/, '').trim()
-const { entry, parts } = splitModule(code, { budget: PART_NODES, dir: `./${PARTS}` })
+const { entry, parts } = splitModule(code, { budget: PART_NODES, maxBytes: PART_BYTES, dir: `./${PARTS}` })
 
 rmSync(join(OUT, PARTS), { recursive: true, force: true })
 mkdirSync(join(OUT, PARTS), { recursive: true })
-const files = [[join(OUT, 'core.js'), `${entry}${legal ? `\n${legal}\n` : ''}`], ...parts.map(part => [join(OUT, PARTS, part.file), part.source])]
+const files = [[join(OUT, 'core.js'), escapeHidden(`${entry}${legal ? `\n${legal}\n` : ''}`)], ...parts.map(part => [join(OUT, PARTS, part.file), part.source])]
 let total = 0
 let failed = false
 for (const [file, source] of files) {

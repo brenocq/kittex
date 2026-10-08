@@ -14,3 +14,5 @@ export interface SplitOptions {
 export function splitModule(code: string, options?: SplitOptions): { entry: string; parts: Part[] }
 export function jsonTables(code: string): string
 export function countNodes(node: unknown): number
+export function jsonLayout(value: unknown, depth?: number): string
+export function escapeHidden(source: string): string

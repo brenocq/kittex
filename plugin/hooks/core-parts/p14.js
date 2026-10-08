@@ -1,39 +1,1915 @@
-import{M,e3,$1,K1,t7,a1,O,H,d2,m1,T2,p2,R,Q1,v4,qe,j1,h6,g,Y0,s2,G2,r9,Qe,S1,t2,d0,L2,L9,P4,x1,Q,X,o3,s6,q1,A2,s1,t1,_,B4,j2,L1,O8,A,f,w1,h2,a6,p3,h3,n1,_6,B3,H2,I1}from'./p13.js';export*from'./p13.js';
-var $l=M(()=>{e3();$1();K1();t7();new a1("mathtools-macros",{shoveleft:[O.HandleShove,H.Align.LEFT],shoveright:[O.HandleShove,H.Align.RIGHT],xleftrightarrow:[O.xArrow,8596,10,10],xLeftarrow:[O.xArrow,8656,12,7],xRightarrow:[O.xArrow,8658,7,12],xLeftrightarrow:[O.xArrow,8660,12,12],xhookleftarrow:[O.xArrow,8617,10,5],xhookrightarrow:[O.xArrow,8618,5,10],xmapsto:[O.xArrow,8614,10,10],xrightharpoondown:[O.xArrow,8641,5,10],xleftharpoondown:[O.xArrow,8637,10,5],xrightleftharpoons:[O.xArrow,8652,10,10],xrightharpoonup:[O.xArrow,8640,5,10],xleftharpoonup:[O.xArrow,8636,10,5],xleftrightharpoons:[O.xArrow,8651,10,10],xlongrightarrow:[O.xArrow,10230,7,12,1.45],xlongleftarrow:[O.xArrow,10229,12,7,1.45],xLongrightarrow:[O.xArrow,10233,7,12,1.45],xLongleftarrow:[O.xArrow,10232,12,7,1.45],mathllap:[O.MathLap,"l",!1],mathrlap:[O.MathLap,"r",!1],mathclap:[O.MathLap,"c",!1],clap:[O.MtLap,"c"],textllap:[O.MtLap,"l"],textrlap:[O.MtLap,"r"],textclap:[O.MtLap,"c"],cramped:O.Cramped,crampedllap:[O.MathLap,"l",!0],crampedrlap:[O.MathLap,"r",!0],crampedclap:[O.MathLap,"c",!0],crampedsubstack:[O.Macro,"\\begin{crampedsubarray}{c}#1\\end{crampedsubarray}",1],mathmbox:O.MathMBox,mathmakebox:O.MathMakeBox,overbracket:O.UnderOverBracket,underbracket:O.UnderOverBracket,refeq:O.HandleRef,MoveEqLeft:[O.Macro,"\\hspace{#1em}&\\hspace{-#1em}",1,"2"],Aboxed:O.Aboxed,MakeAboxedCommand:O.MakeAboxedCommand,ArrowBetweenLines:O.ArrowBetweenLines,vdotswithin:O.VDotsWithin,shortvdotswithin:O.ShortVDotsWithin,MTFlushSpaceAbove:O.FlushSpaceAbove,MTFlushSpaceBelow:O.FlushSpaceBelow,DeclarePairedDelimiter:O.DeclarePairedDelimiter,DeclarePairedDelimiterX:O.DeclarePairedDelimiterX,DeclarePairedDelimiterXPP:O.DeclarePairedDelimiterXPP,DeclarePairedDelimiters:O.DeclarePairedDelimiter,DeclarePairedDelimitersX:O.DeclarePairedDelimiterX,DeclarePairedDelimitersXPP:O.DeclarePairedDelimiterXPP,vcentercolon:[O.CenterColon,!0,!0],ordinarycolon:[O.CenterColon,!1],MTThinColon:[O.CenterColon,!0,!0,!0],coloneqq:[O.Relation,":=","\u2254"],Coloneqq:[O.Relation,"::=","\u2A74"],coloneq:[O.Relation,":=","\u2254"],Coloneq:[O.Relation,"::=","\u2A7A"],eqqcolon:[O.Relation,"=:","\u2255"],Eqqcolon:[O.Relation,"=::"],eqcolon:[O.Relation,"=:","\u2255"],Eqcolon:[O.Relation,"=::"],colonapprox:[O.Relation,":\\approx"],Colonapprox:[O.Relation,"::\\approx"],colonsim:[O.Relation,":\\sim"],Colonsim:[O.Relation,"::\\sim"],dblcolon:[O.Relation,"::","\u2237"],approxcolon:[O.Relation,"\\approx:"],Approxcolon:[O.Relation,"\\approx::"],simcolon:[O.Relation,"\\sim:"],Simcolon:[O.Relation,"\\sim::"],colondash:[O.Relation,":-"],Colondash:[O.Relation,"::-"],dashcolon:[O.Relation,"-:","\u2239"],Dashcolon:[O.Relation,"-::"],nuparrow:[O.NArrow,"\u2191",".06em"],ndownarrow:[O.NArrow,"\u2193",".25em"],bigtimes:[O.Macro,"\\mathop{\\Large\\kern-.1em\\boldsymbol{\\times}\\kern-.1em}"],splitfrac:[O.SplitFrac,!1],splitdfrac:[O.SplitFrac,!0],xmathstrut:O.XMathStrut,prescript:O.Prescript,newtagform:[O.NewTagForm,!1],renewtagform:[O.NewTagForm,!0],usetagform:O.UseTagForm,adjustlimits:[O.MacroWithTemplate,"\\mathop{{#1}\\vphantom{{#3}}}_{{#2}\\vphantom{{#4}}}\\mathop{{#3}\\vphantom{{#1}}}_{{#4}\\vphantom{{#2}}}",4,,"_",,"_"],mathtoolsset:O.SetOptions});new a1("mathtools-legacycolonsymbols",{coloneq:[O.Relation,":-"],Coloneq:[O.Relation,"::-"],eqcolon:[O.Relation,"-:","\u2239"],Eqcolon:[O.Relation,"-::"]});new d2("mathtools-environments",m1.environment,{dcases:[O.Array,null,"\\{","","ll",null,".2em","D"],rcases:[O.Array,null,"","\\}","ll",null,".2em"],drcases:[O.Array,null,"","\\}","ll",null,".2em","D"],"dcases*":[O.Cases,null,"{","","D"],"rcases*":[O.Cases,null,"","}"],"drcases*":[O.Cases,null,"","}","D"],"cases*":[O.Cases,null,"{",""],"matrix*":[O.MtMatrix,null,null,null],"pmatrix*":[O.MtMatrix,null,"(",")"],"bmatrix*":[O.MtMatrix,null,"[","]"],"Bmatrix*":[O.MtMatrix,null,"\\{","\\}"],"vmatrix*":[O.MtMatrix,null,"\\vert","\\vert"],"Vmatrix*":[O.MtMatrix,null,"\\Vert","\\Vert"],"smallmatrix*":[O.MtSmallMatrix,null,null,null],psmallmatrix:[O.MtSmallMatrix,null,"(",")","c"],"psmallmatrix*":[O.MtSmallMatrix,null,"(",")"],bsmallmatrix:[O.MtSmallMatrix,null,"[","]","c"],"bsmallmatrix*":[O.MtSmallMatrix,null,"[","]"],Bsmallmatrix:[O.MtSmallMatrix,null,"\\{","\\}","c"],"Bsmallmatrix*":[O.MtSmallMatrix,null,"\\{","\\}"],vsmallmatrix:[O.MtSmallMatrix,null,"\\vert","\\vert","c"],"vsmallmatrix*":[O.MtSmallMatrix,null,"\\vert","\\vert"],Vsmallmatrix:[O.MtSmallMatrix,null,"\\Vert","\\Vert","c"],"Vsmallmatrix*":[O.MtSmallMatrix,null,"\\Vert","\\Vert"],crampedsubarray:[O.Array,null,null,null,null,"0em","0.1em","S'",1],multlined:O.MtMultlined,spreadlines:[O.SpreadLines,!0],lgathered:[O.AmsEqnArray,null,null,null,"l","t",null,".5em","D"],rgathered:[O.AmsEqnArray,null,null,null,"r","t",null,".5em","D"]});new T2("mathtools-delimiters",m1.delimiter,{"\\lparen":"(","\\rparen":")"});new a1("mathtools-characters",{":":[O.CenterColon,!0]})});
-function Hl(e,C){let t=C.parseOptions.options.tags;t!=="base"&&Object.hasOwn(e.tags,t)&&p2.add(t,e.tags[t]);let L=p2.create(C.parseOptions.options.tags).constructor;class n extends L{constructor(){super(),this.mtFormats=new Map,this.mtCurrent=null;let r=C.parseOptions.options.mathtools.tagforms;for(let o of Object.keys(r)){if(!Array.isArray(r[o])||r[o].length!==3)throw new R("InvalidTagFormDef",'The tag form definition for "%1" should be an array of three strings',o);this.mtFormats.set(o,r[o])}}formatTag(r){if(this.mtCurrent){let[o,a,l]=this.mtCurrent;return[o,l?`${l}{${r}}`:r,a]}return super.formatTag(r)}}Gl++;let i="MathtoolsTags-"+Gl;p2.add(i,n),C.parseOptions.options.tags=i}
-var Gl;
-var jl=M(()=>{Q1();v4();Gl=0});
-var e7;
-var ql=M(()=>{qe();j1();K1();e7=class extends h6{get kind(){return"multlined"}EndTable(){if((this.Size()||this.row.length)&&(this.EndEntry(),this.EndRow()),this.table.length>1){let C=this.factory.configuration.options.mathtools,t=C["multlined-gap"],L=C["firstline-afterskip"]||t,n=C["lastline-preskip"]||t,i=g.getChildren(this.table[0])[0];g.getAttribute(i,"columnalign")!==H.Align.RIGHT&&i.appendChild(this.create("node","mspace",[],{width:L}));let s=g.getChildren(this.table[this.table.length-1])[0];if(g.getAttribute(s,"columnalign")!==H.Align.LEFT){let r=g.getChildren(s)[0];r.childNodes.unshift(null);let o=this.create("node","mspace",[],{width:n});g.setChild(r,0,o)}}super.EndTable.call(this)}}});
-function gm(e,C){Y0(e,C);let t=C.parseOptions,L=t.options.mathtools.pairedDelimiters,n=e.handlers.retrieve(s2.NEW_COMMAND);for(let[i,s]of Object.entries(L))n.add(i,new G2(i,O.PairedDelimiters,s));t.options.mathtools.legacycolonsymbols&&e.handlers.add(r9,{},Qe),Hl(e,C)}
-function Mm({data:e}){for(let C of e.getList("mmultiscripts")){if(!C.getProperty("fixPrescript"))continue;let t=g.getChildren(C),L=0;for(let n of[1,2])t[n]||(g.setChild(C,n,e.nodeFactory.create("node","none")),L++);L===2&&t.splice(1,2)}}
-var jz;
-var Ul=M(()=>{S1();t2();d0();j1();L2();L9();P4();$l();t7();jl();ql();jz=x1.create("mathtools",{[Q.HANDLER]:{macro:["mathtools-macros","mathtools-delimiters"],[X.ENVIRONMENT]:["mathtools-environments"],[X.DELIMITER]:["mathtools-delimiters"],[X.CHARACTER]:["mathtools-characters"]},[Q.ITEMS]:{[e7.prototype.kind]:e7},[Q.CONFIG]:gm,[Q.POSTPROCESSORS]:[[Mm,-6]],[Q.OPTIONS]:{mathtools:{"multlined-gap":"1em","multlined-pos":"c","multlined-width":"","firstline-afterskip":"","lastline-preskip":"","smallmatrix-align":"c",shortvdotsadjustabove:".2em",shortvdotsadjustbelow:".2em",centercolon:!1,"centercolon-offset":".04em","thincolon-dx":"-.04em","thincolon-dw":"-.08em","use-unicode":!1,legacycolonsymbols:!1,"prescript-sub-format":"","prescript-sup-format":"","prescript-arg-format":"","allow-mathtoolsset":!0,pairedDelimiters:o3({}),tagforms:o3({})}}})});
-var g5;
-var Vl=M(()=>{s6();q1();j1();A2();g5=class extends s1{constructor(){super(...arguments),this.openCount=0}get kind(){return"auto open"}get isOpen(){return!0}toMml(C=!0,t){if(!C)return super.toMml(C,t);let L=this.factory.configuration.parser,n=this.getProperty("right");if(this.getProperty("smash")){let s=super.toMml(),r=L.create("node","mpadded",[s],{height:0,depth:0});this.Clear(),this.Push(L.create("node","TeXAtom",[r]))}n&&this.Push(new t1(n,L.stack.env,L.configuration).mml());let i=_.fenced(this.factory.configuration,this.getProperty("open"),super.toMml(),this.getProperty("close"),this.getProperty("big"));return g.removeProperties(i,"open","close","texClass"),i}closing(C){return C===this.getProperty("close")&&!this.openCount--}checkItem(C){if(C.getProperty("pre-autoclose"))return s1.fail;if(C.getProperty("autoclose"))return this.getProperty("ignore")?(this.Clear(),[[],!0]):[[this.toMml()],!0];if(C.isKind("mml")&&C.Size()===1){let t=C.toMml();t.isKind("mo")&&t.getText()===this.getProperty("open")&&this.openCount++}return super.checkItem(C)}};g5.errors=Object.assign(Object.create(s1.errors),{stop:["ExtraOrMissingDelims","Extra open or missing close delimiter"]})});
-function L7(e,C){return e>=C[0]&&e<=C[1]}
-function km(e,C,t,L){let n=e.configuration.parser,i=B4.createToken(e,C,t,L),s=L.codePointAt(0);return L.length===1&&!n.stack.env.font&&n.stack.env.vectorFont&&(L7(s,Am)||L7(s,Em)||L7(s,bm)||L7(s,ym)||L7(s,Dm)&&n.stack.env.vectorStar||g.getAttribute(i,"accent"))&&g.setAttribute(i,"mathvariant",n.stack.env.vectorFont),i}
-function Kl(e,C,t,L,n){let i=new t1(L,e.stack.env,e.configuration).mml();e.Push(e.itemFactory.create(C,i));let s=e.GetNext(),r=Zl[s];if(!r)return;let o="",a="",l="",u=n.includes(s);if(s==="{"){l=e.GetArgument(t),o=u?"\\left\\{":"",a=u?"\\right\\}":"";let x=`${o} ${l} ${a}`;e.string=x+e.string.slice(e.i),e.i=0;return}u&&(e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:s,close:r})))}
-function Ql([e,C,t],L,n){return L&&n?`\\left\\langle{${e}}\\middle\\vert{${C}}\\middle\\vert{${t}}\\right\\rangle`:L?`\\langle{${e}}\\vert{${C}}\\vert{${t}}\\rangle`:`\\left\\langle{${e}}\\right\\vert{${C}}\\left\\vert{${t}}\\right\\rangle`}
-function Bm(e,C){let t=e.length,L=[];for(let n=0;n<t;n++)L.push(Array(C?t-n:n+1).join("&")+`\\mqty{${e[n]}}`);return L.join("\\\\ ")}
-var Zl;
-var Xl;
-var Am;
-var Em;
-var bm;
-var Dm;
-var ym;
-var wm;
-var v;
-var Yl=M(()=>{S1();j2();A2();Q1();L1();q1();j1();O8();Zl={"(":")","[":"]","{":"}","|":"|"},Xl=/^(b|B)i(g{1,2})$/,Am=[65,90],Em=[97,122],bm=[913,937],Dm=[945,969],ym=[48,57];wm={Quantity(e,C,t="(",L=")",n=!1,i="",s=""){let r=n?e.GetStar():!1,o=e.GetNext(),a=e.i,l=null;if(o==="\\"){if(e.i++,l=e.GetCS(),!l.match(Xl)){let x=e.create("node","mrow");e.Push(_.fenced(e.configuration,t,x,L)),e.i=a;return}o=e.GetNext()}let u=Zl[o];if(n&&o!=="{")throw new R("MissingArgFor","Missing argument for %1",e.currentCS);if(!u){let x=e.create("node","mrow");e.Push(_.fenced(e.configuration,t,x,L)),e.i=a;return}if(i){let x=e.create("token","mi",{texClass:A.OP},i);s&&g.setAttribute(x,"mathvariant",s),e.Push(e.itemFactory.create("fn",x))}if(o==="{"){let x=e.GetArgument(C);o=n?t:"\\{",u=n?L:"\\}",x=r?`${o} ${x} ${u}`:l?`\\${l}l${o} ${x} \\${l}r${u}`:`\\left${o} ${x} \\right${u}`,e.Push(new t1(x,e.stack.env,e.configuration).mml());return}e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:o,close:u,big:l}))},Eval(e,C){let t=e.GetStar(),L=e.GetNext();if(L==="("||L==="["){e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:L,close:"|",smash:t,right:"\\vphantom{\\int}"}));return}let n="\\left.\\vphantom{\\int}\\right|";if(L==="{"){let i=e.GetArgument(C);n=`\\left.${t?`\\smash{${i}}`:i}\\vphantom{\\int}\\right|`}e.string=e.string.substring(0,e.i)+n+e.string.slice(e.i)},Commutator(e,C,t="[",L="]"){let n=e.GetStar(),i=e.GetNext(),s=null;if(i==="\\"){if(e.i++,s=e.GetCS(),!s.match(Xl))throw new R("MissingArgFor","Missing argument for %1",e.currentCS);i=e.GetNext()}if(i!=="{")throw new R("MissingArgFor","Missing argument for %1",e.currentCS);let r=e.GetArgument(C),o=e.GetArgument(C),a=r+","+o;a=n?`${t} ${a} ${L}`:s?`\\${s}l${t} ${a} \\${s}r${L}`:`\\left${t} ${a} \\right${L}`,e.Push(new t1(a,e.stack.env,e.configuration).mml())},VectorBold(e,C){let t=e.GetStar(),L=e.GetArgument(C),n=e.configuration.nodeFactory.get("token"),i=e.stack.env.font;delete e.stack.env.font,e.configuration.nodeFactory.set("token",km),e.stack.env.vectorFont=t?"bold-italic":"bold",e.stack.env.vectorStar=t;let s=new t1(L,e.stack.env,e.configuration).mml();i&&(e.stack.env.font=i),delete e.stack.env.vectorFont,delete e.stack.env.vectorStar,e.configuration.nodeFactory.set("token",n),e.Push(s)},StarMacro(e,C,t,...L){let n=e.GetStar(),i=[];if(t)for(let r=i.length;r<t;r++)i.push(e.GetArgument(C));let s=L.join(n?"*":"");s=_.substituteArgs(e,i,s),e.string=_.addArgs(e,s,e.string.slice(e.i)),e.i=0,_.checkMaxMacros(e)},OperatorApplication(e,C,t,...L){Kl(e,"fn",C,t,L)},VectorOperator(e,C,t,...L){Kl(e,"mml",C,t,L)},Expression(e,C,t=!0,L=""){L=L||C.slice(1);let n=t?e.GetBrackets(C):null,i=e.create("token","mi",{texClass:A.OP},L);if(n){let s=new t1(n,e.stack.env,e.configuration).mml();i=e.create("node","msup",[i,s])}e.Push(e.itemFactory.create("fn",i)),e.GetNext()==="("&&(e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:"(",close:")"})))},Qqtext(e,C,t){let L=e.GetStar(),n=t||e.GetArgument(C),i=(L?"":"\\quad")+"\\text{"+n+"}\\quad ";e.string=e.string.slice(0,e.i)+i+e.string.slice(e.i)},Differential(e,C,t){let L=e.GetBrackets(C),n=L!=null?"^{"+L+"}":" ",i=e.GetNext()==="(",s=e.GetNext()==="{",r=t+n;if(!(i||s)){r+=e.GetArgument(C,!0)||"";let o=new t1(r,e.stack.env,e.configuration).mml();e.Push(o);return}if(s){r+=e.GetArgument(C);let o=new t1(r,e.stack.env,e.configuration).mml();e.Push(e.create("node","TeXAtom",[o],{texClass:A.OP}));return}e.Push(new t1(r,e.stack.env,e.configuration).mml()),e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:"(",close:")"}))},Derivative(e,C,t,L){let n=e.GetStar(),i=e.GetBrackets(C),s=1,r=[];for(r.push(e.GetArgument(C));e.GetNext()==="{"&&s<t;)r.push(e.GetArgument(C)),s++;let o=!1,a=" ",l=" ";t>2&&r.length>2?(a="^{"+(r.length-1)+"}",o=!0):i!=null&&(t>2&&r.length>1&&(o=!0),a=`^{${i}}`,l=a);let u=n?"\\flatfrac":"\\frac",x=r.length>1?r[0]:"",p=r.length>1?r[1]:r[0],h="";for(let m=2,E;E=r[m];m++)h+=L+" "+E;let d=`${u}{${L}${a}${x}}{${L} ${p}${l} ${h}}`;e.Push(new t1(d,e.stack.env,e.configuration).mml()),e.GetNext()==="("&&(e.i++,e.Push(e.itemFactory.create("auto open").setProperties({open:"(",close:")",ignore:o})))},Bra(e,C){let t=e.GetStar(),L=e.GetArgument(C),n="",i=!1,s=!1;if(e.GetNext()==="\\"){let o=e.i;e.i++;let a=e.GetCS(),l=e.lookup(X.MACRO,a);l&&l.token==="ket"?(i=!0,o=e.i,s=e.GetStar(),e.GetNext()==="{"?n=e.GetArgument(a,!0):(e.i=o,s=!1)):e.i=o}let r="";i?r=t||s?`\\langle{${L}}\\vert{${n}}\\rangle`:`\\left\\langle{${L}}\\middle\\vert{${n}}\\right\\rangle`:r=t?`\\langle{${L}}\\vert`:`\\left\\langle{${L}}\\right\\vert{${n}}`,e.Push(new t1(r,e.stack.env,e.configuration).mml())},Ket(e,C){let t=e.GetStar(),L=e.GetArgument(C),n=t?`\\vert{${L}}\\rangle`:`\\left\\vert{${L}}\\right\\rangle`;e.Push(new t1(n,e.stack.env,e.configuration).mml())},BraKet(e,C){let t=e.GetStar(),L=e.GetArgument(C),n=null;e.GetNext()==="{"&&(n=e.GetArgument(C,!0));let i="";n==null?i=t?`\\langle{${L}}\\vert{${L}}\\rangle`:`\\left\\langle{${L}}\\middle\\vert{${L}}\\right\\rangle`:i=t?`\\langle{${L}}\\vert{${n}}\\rangle`:`\\left\\langle{${L}}\\middle\\vert{${n}}\\right\\rangle`,e.Push(new t1(i,e.stack.env,e.configuration).mml())},KetBra(e,C){let t=e.GetStar(),L=e.GetArgument(C),n=null;e.GetNext()==="{"&&(n=e.GetArgument(C,!0));let i="";n==null?i=t?`\\vert{${L}}\\rangle\\!\\langle{${L}}\\vert`:`\\left\\vert{${L}}\\middle\\rangle\\!\\middle\\langle{${L}}\\right\\vert`:i=t?`\\vert{${L}}\\rangle\\!\\langle{${n}}\\vert`:`\\left\\vert{${L}}\\middle\\rangle\\!\\middle\\langle{${n}}\\right\\vert`,e.Push(new t1(i,e.stack.env,e.configuration).mml())},Expectation(e,C){let t=e.GetStar(),L=t&&e.GetStar(),n=e.GetArgument(C),i=null;e.GetNext()==="{"&&(i=e.GetArgument(C,!0));let s=n&&i?Ql([i,n,i],t,L):t?`\\langle {${n}} \\rangle`:`\\left\\langle {${n}} \\right\\rangle`;e.Push(new t1(s,e.stack.env,e.configuration).mml())},MatrixElement(e,C){let t=e.GetStar(),L=t&&e.GetStar(),n=e.GetArgument(C),i=e.GetArgument(C),s=e.GetArgument(C),r=Ql([n,i,s],t,L);e.Push(new t1(r,e.stack.env,e.configuration).mml())},MatrixQuantity(e,C,t){let L=e.GetStar(),n=e.GetNext(),i=t?"smallmatrix":"array",s="",r="",o="";switch(n){case"{":s=e.GetArgument(C);break;case"(":e.i++,r=L?"\\lgroup":"(",o=L?"\\rgroup":")",s=e.GetUpTo(C,")");break;case"[":e.i++,r="[",o="]",s=e.GetUpTo(C,"]");break;case"|":e.i++,r="|",o="|",s=e.GetUpTo(C,"|");break;default:r="(",o=")";break}let a=(r?"\\left":"")+`${r}\\begin{${i}}{} ${s}\\end{${i}}`+(r?"\\right":"")+o;e.Push(new t1(a,e.stack.env,e.configuration).mml())},IdentityMatrix(e,C){let t=e.GetArgument(C),L=parseInt(t,10);if(isNaN(L))throw new R("InvalidNumber","Invalid number");if(L<=1){e.string="1"+e.string.slice(e.i),e.i=0;return}let n=Array(L).fill("0"),i=[];for(let s=0;s<L;s++){let r=n.slice();r[s]="1",i.push(r.join(" & "))}e.string=i.join("\\\\ ")+e.string.slice(e.i),e.i=0},XMatrix(e,C){let t=e.GetStar(),L=e.GetArgument(C),n=e.GetArgument(C),i=e.GetArgument(C),s=parseInt(n,10),r=parseInt(i,10);if(isNaN(s)||isNaN(r)||r.toString()!==i||s.toString()!==n)throw new R("InvalidNumber","Invalid number");if(s=s<1?1:s,r=r<1?1:r,!t){let a=Array(r).fill(L).join(" & "),l=Array(s).fill(a).join("\\\\ ");e.string=l+e.string.slice(e.i),e.i=0;return}let o="";if(s===1&&r===1)o=L;else if(s===1){let a=[];for(let l=1;l<=r;l++)a.push(`${L}_{${l}}`);o=a.join(" & ")}else if(r===1){let a=[];for(let l=1;l<=s;l++)a.push(`${L}_{${l}}`);o=a.join("\\\\ ")}else{let a=[];for(let l=1;l<=s;l++){let u=[];for(let x=1;x<=r;x++)u.push(`${L}_{{${l}}{${x}}}`);a.push(u.join(" & "))}o=a.join("\\\\ ")}e.string=o+e.string.slice(e.i),e.i=0},PauliMatrix(e,C){let t=e.GetArgument(C),L=t.slice(1);switch(t[0]){case"0":L+=" 1 & 0\\\\ 0 & 1";break;case"1":case"x":L+=" 0 & 1\\\\ 1 & 0";break;case"2":case"y":L+=" 0 & -i\\\\ i & 0";break;case"3":case"z":L+=" 1 & 0\\\\ 0 & -1";break;default:}e.string=L+e.string.slice(e.i),e.i=0},DiagonalMatrix(e,C,t){if(e.GetNext()!=="{")return;let L=e.i;e.GetArgument(C);let n=e.i;e.i=L+1;let i=[],s="",r=e.i;for(;r<n;){try{s=e.GetUpTo(C,",")}catch{e.i=n,i.push(e.string.slice(r,n-1));break}r=e.i,i.push(s)}e.string=Bm(i,t)+e.string.slice(n),e.i=0},AutoClose(e,C,t){let L=e.stack.Top();if(L.isKind("over")&&(L=e.stack.Top(2)),!L.isKind("auto open")||!L.closing(C))return!1;let n=e.create("token","mo",{texClass:t},C);return e.Push(e.itemFactory.create("close").setProperties({"pre-autoclose":!0})),e.Push(e.itemFactory.create("mml",n).setProperties({autoclose:!0})),!0},Vnabla(e,C){let t=e.options.physics.arrowdel?"\\vec{\\gradientnabla}":"{\\gradientnabla}";return e.Push(new t1(t,e.stack.env,e.configuration).mml())},DiffD(e,C){let t=e.options.physics.italicdiff?"d":"{\\rm d}";return e.Push(new t1(t,e.stack.env,e.configuration).mml())},Macro:f.Macro,NamedFn:f.NamedFn,Array:f.Array},v=wm});
-var Jl=M(()=>{$1();Yl();K1();e3();L1();new a1("Physics-automatic-bracing-macros",{quantity:v.Quantity,qty:v.Quantity,pqty:[v.Quantity,"(",")",!0],bqty:[v.Quantity,"[","]",!0],vqty:[v.Quantity,"|","|",!0],Bqty:[v.Quantity,"\\{","\\}",!0],absolutevalue:[v.Quantity,"|","|",!0],abs:[v.Quantity,"|","|",!0],norm:[v.Quantity,"\\|","\\|",!0],evaluated:v.Eval,eval:v.Eval,order:[v.Quantity,"(",")",!0,"O",H.Variant.CALLIGRAPHIC],commutator:v.Commutator,comm:v.Commutator,anticommutator:[v.Commutator,"\\{","\\}"],acomm:[v.Commutator,"\\{","\\}"],poissonbracket:[v.Commutator,"\\{","\\}"],pb:[v.Commutator,"\\{","\\}"]});new w1("Physics-vector-mo",m1.mathchar0mo,{dotproduct:["\u22C5",{mathvariant:H.Variant.BOLD}],vdot:["\u22C5",{mathvariant:H.Variant.BOLD}],crossproduct:"\xD7",cross:"\xD7",cp:"\xD7",gradientnabla:["\u2207",{mathvariant:H.Variant.BOLD}],divsymbol:"\xF7",divisionsymbol:"\xF7"});new w1("Physics-vector-mi",m1.mathchar0mi,{real:["\u211C",{mathvariant:H.Variant.NORMAL}],imaginary:["\u2111",{mathvariant:H.Variant.NORMAL}]});new a1("Physics-vector-macros",{vnabla:v.Vnabla,vectorbold:v.VectorBold,vb:v.VectorBold,vectorarrow:[v.StarMacro,1,"\\vec{\\vb","{#1}}"],va:[v.StarMacro,1,"\\vec{\\vb","{#1}}"],vectorunit:[v.StarMacro,1,"\\hat{\\vb","{#1}}"],vu:[v.StarMacro,1,"\\hat{\\vb","{#1}}"],gradient:[v.OperatorApplication,"\\vnabla","(","["],grad:[v.OperatorApplication,"\\vnabla","(","["],divergence:[v.VectorOperator,"\\vnabla\\vdot","(","["],div:[v.VectorOperator,"\\vnabla\\vdot","(","["],curl:[v.VectorOperator,"\\vnabla\\crossproduct","(","["],laplacian:[v.OperatorApplication,"\\nabla^2","(","["]});new a1("Physics-expressions-macros",{sin:v.Expression,sinh:v.Expression,arcsin:v.Expression,asin:v.Expression,cos:v.Expression,cosh:v.Expression,arccos:v.Expression,acos:v.Expression,tan:v.Expression,tanh:v.Expression,arctan:v.Expression,atan:v.Expression,csc:v.Expression,csch:v.Expression,arccsc:v.Expression,acsc:v.Expression,sec:v.Expression,sech:v.Expression,arcsec:v.Expression,asec:v.Expression,cot:v.Expression,coth:v.Expression,arccot:v.Expression,acot:v.Expression,exp:[v.Expression,!1],log:v.Expression,ln:v.Expression,det:[v.Expression,!1],Pr:[v.Expression,!1],tr:[v.Expression,!1],trace:[v.Expression,!1,"tr"],Tr:[v.Expression,!1],Trace:[v.Expression,!1,"Tr"],rank:v.NamedFn,erf:[v.Expression,!1],Residue:[v.Macro,"\\mathrm{Res}"],Res:[v.OperatorApplication,"\\Residue","(","[","{"],principalvalue:[v.OperatorApplication,"{\\cal P}"],pv:[v.OperatorApplication,"{\\cal P}"],PV:[v.OperatorApplication,"{\\rm P.V.}"],Re:[v.OperatorApplication,"\\mathrm{Re}","{"],Im:[v.OperatorApplication,"\\mathrm{Im}","{"],sine:[v.NamedFn,"sin"],hypsine:[v.NamedFn,"sinh"],arcsine:[v.NamedFn,"arcsin"],asine:[v.NamedFn,"asin"],cosine:[v.NamedFn,"cos"],hypcosine:[v.NamedFn,"cosh"],arccosine:[v.NamedFn,"arccos"],acosine:[v.NamedFn,"acos"],tangent:[v.NamedFn,"tan"],hyptangent:[v.NamedFn,"tanh"],arctangent:[v.NamedFn,"arctan"],atangent:[v.NamedFn,"atan"],cosecant:[v.NamedFn,"csc"],hypcosecant:[v.NamedFn,"csch"],arccosecant:[v.NamedFn,"arccsc"],acosecant:[v.NamedFn,"acsc"],secant:[v.NamedFn,"sec"],hypsecant:[v.NamedFn,"sech"],arcsecant:[v.NamedFn,"arcsec"],asecant:[v.NamedFn,"asec"],cotangent:[v.NamedFn,"cot"],hypcotangent:[v.NamedFn,"coth"],arccotangent:[v.NamedFn,"arccot"],acotangent:[v.NamedFn,"acot"],exponential:[v.NamedFn,"exp"],logarithm:[v.NamedFn,"log"],naturallogarithm:[v.NamedFn,"ln"],determinant:[v.NamedFn,"det"],Probability:[v.NamedFn,"Pr"]});new a1("Physics-quick-quad-macros",{qqtext:v.Qqtext,qq:v.Qqtext,qcomma:[v.Macro,"\\qqtext*{,}"],qc:[v.Macro,"\\qqtext*{,}"],qcc:[v.Qqtext,"c.c."],qif:[v.Qqtext,"if"],qthen:[v.Qqtext,"then"],qelse:[v.Qqtext,"else"],qotherwise:[v.Qqtext,"otherwise"],qunless:[v.Qqtext,"unless"],qgiven:[v.Qqtext,"given"],qusing:[v.Qqtext,"using"],qassume:[v.Qqtext,"assume"],qsince:[v.Qqtext,"since"],qlet:[v.Qqtext,"let"],qfor:[v.Qqtext,"for"],qall:[v.Qqtext,"all"],qeven:[v.Qqtext,"even"],qodd:[v.Qqtext,"odd"],qinteger:[v.Qqtext,"integer"],qand:[v.Qqtext,"and"],qor:[v.Qqtext,"or"],qas:[v.Qqtext,"as"],qin:[v.Qqtext,"in"]});new a1("Physics-derivative-macros",{diffd:v.DiffD,flatfrac:[v.Macro,"\\left.#1\\middle/#2\\right.",2],differential:[v.Differential,"\\diffd"],dd:[v.Differential,"\\diffd"],variation:[v.Differential,"\\delta"],var:[v.Differential,"\\delta"],derivative:[v.Derivative,2,"\\diffd"],dv:[v.Derivative,2,"\\diffd"],partialderivative:[v.Derivative,3,"\\partial"],pderivative:[v.Derivative,3,"\\partial"],pdv:[v.Derivative,3,"\\partial"],functionalderivative:[v.Derivative,2,"\\delta"],fderivative:[v.Derivative,2,"\\delta"],fdv:[v.Derivative,2,"\\delta"]});new a1("Physics-bra-ket-macros",{bra:v.Bra,ket:v.Ket,innerproduct:v.BraKet,ip:v.BraKet,braket:v.BraKet,outerproduct:v.KetBra,dyad:v.KetBra,ketbra:v.KetBra,op:v.KetBra,expectationvalue:v.Expectation,expval:v.Expectation,ev:v.Expectation,matrixelement:v.MatrixElement,matrixel:v.MatrixElement,mel:v.MatrixElement});new a1("Physics-matrix-macros",{matrixquantity:v.MatrixQuantity,mqty:v.MatrixQuantity,pmqty:[v.Macro,"\\mqty(#1)",1],Pmqty:[v.Macro,"\\mqty*(#1)",1],bmqty:[v.Macro,"\\mqty[#1]",1],vmqty:[v.Macro,"\\mqty|#1|",1],smallmatrixquantity:[v.MatrixQuantity,!0],smqty:[v.MatrixQuantity,!0],spmqty:[v.Macro,"\\smqty(#1)",1],sPmqty:[v.Macro,"\\smqty*(#1)",1],sbmqty:[v.Macro,"\\smqty[#1]",1],svmqty:[v.Macro,"\\smqty|#1|",1],matrixdeterminant:[v.Macro,"\\vmqty{#1}",1],mdet:[v.Macro,"\\vmqty{#1}",1],smdet:[v.Macro,"\\svmqty{#1}",1],identitymatrix:v.IdentityMatrix,imat:v.IdentityMatrix,xmatrix:v.XMatrix,xmat:v.XMatrix,zeromatrix:[v.Macro,"\\xmat{0}{#1}{#2}",2],zmat:[v.Macro,"\\xmat{0}{#1}{#2}",2],paulimatrix:v.PauliMatrix,pmat:v.PauliMatrix,diagonalmatrix:v.DiagonalMatrix,dmat:v.DiagonalMatrix,antidiagonalmatrix:[v.DiagonalMatrix,!0],admat:[v.DiagonalMatrix,!0]});new d2("Physics-aux-envs",m1.environment,{smallmatrix:[v.Array,null,null,null,"c","0.333em",".2em","S",1]});new h2("Physics-characters",{"|":[v.AutoClose,A.ORD],")":v.AutoClose,"]":v.AutoClose})});
-var hW;
-var Cu=M(()=>{S1();t2();Vl();Jl();hW=x1.create("physics",{[Q.HANDLER]:{macro:["Physics-automatic-bracing-macros","Physics-vector-macros","Physics-vector-mo","Physics-vector-mi","Physics-derivative-macros","Physics-expressions-macros","Physics-quick-quad-macros","Physics-bra-ket-macros","Physics-matrix-macros"],[X.CHARACTER]:["Physics-characters"],[X.ENVIRONMENT]:["Physics-aux-envs"]},[Q.ITEMS]:{[g5.prototype.kind]:g5},[Q.OPTIONS]:{physics:{italicdiff:!1,arrowdel:!1}}})});
-var d6;
-var Ze=M(()=>{A2();Q1();q1();L1();j1();a6();d6=class e extends t1{get texParser(){return this.configuration.packageData.get("textmacros").texParser}get tags(){return this.texParser.tags}constructor(C,t,L,n){super(C,t,L),this.level=n}mml(){return this.copyLists(),this.configuration.popParser(),this.level!=null?this.create("node","mstyle",this.nodes,{displaystyle:!1,scriptlevel:this.level}):this.nodes.length===1?this.nodes[0]:this.create("node","mrow",this.nodes)}copyLists(){let C=this.texParser.configuration;for(let[t,L]of Object.entries(this.configuration.nodeLists))for(let n of L)C.addNode(t,n);this.configuration.nodeLists={}}Parse(){this.text="",this.nodes=[],this.envStack=[],super.Parse()}saveText(){if(this.text){let C=this.stack.env.mathvariant,t=_.internalText(this,this.text,C?{mathvariant:C}:{});this.text="",this.Push(t)}}Push(C){if(this.text&&this.saveText(),C instanceof p3)return super.Push(C);if(C instanceof h3){this.stack.env.mathcolor=this.stack.env.color;return}C instanceof n1&&(this.addAttributes(C),this.nodes.push(C))}PushMath(C){let t=this.stack.env;for(let L of["mathsize","mathcolor"])t[L]&&!C.attributes.hasExplicit(L)&&(!C.isToken&&!C.isKind("mstyle")&&(C=this.create("node","mstyle",[C])),g.setAttribute(C,L,t[L]));C.isInferred&&(C=this.create("node","mrow",C.childNodes)),C.isKind("TeXAtom")||(C=this.create("node","TeXAtom",[C])),this.nodes.push(C)}addAttributes(C){let t=this.stack.env;if(C.isToken)for(let L of["mathsize","mathcolor","mathvariant"])t[L]&&!C.attributes.hasExplicit(L)&&g.setAttribute(C,L,t[L])}ParseTextArg(C,t){let L=this.GetArgument(C);return t=Object.assign(Object.assign({},this.stack.env),t),new e(L,t,this.configuration).mml()}ParseArg(C){return new e(this.GetArgument(C),this.stack.env,this.configuration).mml()}Error(C,t,...L){throw new R(C,t,...L)}}});
-var z;
-var o9=M(()=>{S1();A2();_6();j2();z={Comment(e,C){for(;e.i<e.string.length&&e.string.charAt(e.i)!==`
-`;)e.i++;e.i++},Math(e,C){e.saveText();let t=e.i,L,n,i=0;for(;n=e.GetNext();)switch(L=e.i++,n){case"\\":e.GetCS()===")"&&(n="\\(");case"$":if(i===0&&C===n){let s=e.texParser.configuration,r=new t1(e.string.substring(t,L),e.stack.env,s).mml();e.PushMath(r);return}break;case"{":i++;break;case"}":i===0&&e.Error("ExtraCloseMissingOpen","Extra close brace or missing open brace"),i--;break}e.Error("MathNotTerminated","Math mode is not properly terminated")},MathModeOnly(e,C){e.Error("MathModeOnly","'%1' allowed only in math mode",C)},Misplaced(e,C){e.Error("Misplaced","Misplaced '%1'",C)},OpenBrace(e,C){let t=e.stack.env;e.envStack.push(t),e.stack.env=Object.assign({},t)},CloseBrace(e,C){e.envStack.length?(e.saveText(),e.stack.env=e.envStack.pop()):e.Error("ExtraCloseMissingOpen","Extra close brace or missing open brace")},OpenQuote(e,C){e.string.charAt(e.i)===C?(e.text+="\u201C",e.i++):e.text+="\u2018"},CloseQuote(e,C){e.string.charAt(e.i)===C?(e.text+="\u201D",e.i++):e.text+="\u2019"},Tilde(e,C){e.text+="\xA0"},Space(e,C){e.text+=" ",e.GetNext()},SelfQuote(e,C){e.text+=C.substring(1)},Insert(e,C,t){e.text+=t},Accent(e,C,t){let L=e.ParseArg(C),n=e.create("token","mo",{},t);e.addAttributes(n),e.Push(e.create("node","mover",[L,n]))},Emph(e,C){let t=e.stack.env.mathvariant==="-tex-mathit"?"normal":"-tex-mathit";e.Push(e.ParseTextArg(C,{mathvariant:t}))},TextFont(e,C,t){e.saveText(),e.Push(e.ParseTextArg(C,{mathvariant:t}))},SetFont(e,C,t){e.saveText(),e.stack.env.mathvariant=t},SetSize(e,C,t){e.saveText(),e.stack.env.mathsize=t},CheckAutoload(e,C){let t=e.configuration.packageData.get("autoload"),L=e.texParser;C=C.slice(1);let n=L.lookup(X.MACRO,C);if(!n||t&&n._func===t.Autoload){if(L.parse(X.MACRO,[L,C]),!n)return;B3(Promise.resolve())}L.parse(X.MACRO,[e,C])},Macro:f.Macro,Spacer:f.Spacer,Hskip:f.Hskip,rule:f.rule,Rule:f.Rule,HandleRef:f.HandleRef,UnderOver:f.UnderOver,Lap:f.Lap,Phantom:f.Phantom,Smash:f.Smash,MmlToken:f.MmlToken}});
-var q3;
-var tu=M(()=>{$1();K1();o9();H2();q3=H.Variant;new h2("text-special",{$:z.Math,"%":z.Comment,"^":z.MathModeOnly,_:z.MathModeOnly,"&":z.Misplaced,"#":z.Misplaced,"~":z.Tilde," ":z.Space,"	":z.Space,"\r":z.Space,"\n":z.Space,"\xA0":z.Tilde,"{":z.OpenBrace,"}":z.CloseBrace,"`":z.OpenQuote,"'":z.CloseQuote});new a1("text-macros",{"(":z.Math,$:z.SelfQuote,_:z.SelfQuote,"%":z.SelfQuote,"{":z.SelfQuote,"}":z.SelfQuote," ":z.SelfQuote,"&":z.SelfQuote,"#":z.SelfQuote,"\\":[z.Macro,"$\\\\$"],"'":[z.Accent,"\xB4"],"\u2019":[z.Accent,"\xB4"],"`":[z.Accent,"`"],"\u2018":[z.Accent,"`"],"^":[z.Accent,"^"],'"':[z.Accent,"\xA8"],"~":[z.Accent,"~"],"=":[z.Accent,"\xAF"],".":[z.Accent,"\u02D9"],u:[z.Accent,"\u02D8"],v:[z.Accent,"\u02C7"],emph:z.Emph,rm:[z.SetFont,q3.NORMAL],mit:[z.SetFont,q3.ITALIC],oldstyle:[z.SetFont,q3.OLDSTYLE],cal:[z.SetFont,q3.CALLIGRAPHIC],it:[z.SetFont,"-tex-mathit"],bf:[z.SetFont,q3.BOLD],sf:[z.SetFont,q3.SANSSERIF],tt:[z.SetFont,q3.MONOSPACE],frak:[z.TextFont,q3.FRAKTUR],Bbb:[z.TextFont,q3.DOUBLESTRUCK],Tiny:[z.SetSize,.5],tiny:[z.SetSize,.6],scriptsize:[z.SetSize,.7],SMALL:[z.SetSize,.7],Small:[z.SetSize,.8],footnotesize:[z.SetSize,.8],small:[z.SetSize,.9],normalsize:[z.SetSize,1],large:[z.SetSize,1.095],Large:[z.SetSize,1.2],LARGE:[z.SetSize,1.44],huge:[z.SetSize,1.73],Huge:[z.SetSize,2.07],HUGE:[z.SetSize,2.49],textnormal:[z.Macro,"{\\rm #1}",1],textup:[z.Macro,"{\\rm #1}",1],textrm:[z.Macro,"{\\rm #1}",1],textit:[z.Macro,"{\\it #1}",1],textbf:[z.Macro,"{\\bf #1}",1],textsf:[z.Macro,"{\\sf #1}",1],texttt:[z.Macro,"{\\tt #1}",1],dagger:[z.Insert,"\u2020"],ddagger:[z.Insert,"\u2021"],S:[z.Insert,"\xA7"],AA:[z.Insert,"\u212B"],ldots:[z.Insert,"\u2026"],vdots:[z.Insert,"\u22EE"],",":[z.Spacer,I1.thinmathspace],":":[z.Spacer,I1.mediummathspace],">":[z.Spacer,I1.mediummathspace],";":[z.Spacer,I1.thickmathspace],"!":[z.Spacer,I1.negativethinmathspace],enspace:[z.Spacer,.5],quad:[z.Spacer,1],qquad:[z.Spacer,2],thinspace:[z.Spacer,I1.thinmathspace],negthinspace:[z.Spacer,I1.negativethinmathspace],hskip:z.Hskip,hspace:z.Hskip,kern:z.Hskip,mskip:z.Hskip,mspace:z.Hskip,mkern:z.Hskip,rule:z.rule,Rule:[z.Rule],Space:[z.Rule,"blank"],color:z.CheckAutoload,textcolor:z.CheckAutoload,colorbox:z.CheckAutoload,fcolorbox:z.CheckAutoload,href:z.CheckAutoload,style:z.CheckAutoload,class:z.CheckAutoload,data:z.CheckAutoload,cssId:z.CheckAutoload,unicode:z.CheckAutoload,U:z.CheckAutoload,char:z.CheckAutoload,ref:[z.HandleRef,!1],eqref:[z.HandleRef,!0],underline:[z.UnderOver,"2015"],llap:z.Lap,rlap:z.Lap,phantom:z.Phantom,vphantom:[z.Phantom,1,0],hphantom:[z.Phantom,0,1],smash:z.Smash,mmlToken:z.MmlToken})});
-export{d6,Ze,o9,tu,z,Ul,Cu};
+import{__esm,init_MmlNode,AbstractMmlTokenNode,TEXCLASS,AbstractMmlNode,AbstractMmlBaseNode,init_Attributes,AbstractMmlLayoutNode,INHERIT,init_string,indentAttributes,split,init_mo,MmlMo,XMLNode,init_math,init_mi,init_mn,init_mtext,MmlMath,MmlMi,MmlMn,MmlMtext,TextNode,init_NodeFactory,AbstractNodeFactory,init_Options,lookup,TEXCLASSNAMES,toEntity,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions}from'./p13.js';export*from'./p13.js';
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mspace.js
+var MmlMspace;
+var init_mspace = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mspace.js"() {
+    init_MmlNode();
+    MmlMspace = class _MmlMspace extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.NONE;
+      }
+      setTeXclass(prev) {
+        return prev;
+      }
+      get kind() {
+        return "mspace";
+      }
+      get arity() {
+        return 0;
+      }
+      get isSpacelike() {
+        return !this.attributes.hasExplicit("linebreak") && this.canBreak;
+      }
+      get hasNewline() {
+        const linebreak = this.attributes.get("linebreak");
+        return this.canBreak && (linebreak === "newline" || linebreak === "indentingnewline");
+      }
+      get canBreak() {
+        return !this.attributes.hasOneOf(_MmlMspace.NONSPACELIKE) && String(this.attributes.get("width")).trim().charAt(0) !== "-";
+      }
+    };
+    MmlMspace.NONSPACELIKE = [
+      "height",
+      "depth",
+      "style",
+      "mathbackground",
+      "background"
+    ];
+    MmlMspace.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { width: "0em", height: "0ex", depth: "0ex", linebreak: "auto", indentshift: "auto", indentalign: "auto", indenttarget: "", indentalignfirst: "indentalign", indentshiftfirst: "indentshift", indentalignlast: "indentalign", indentshiftlast: "indentshift" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/ms.js
+var MmlMs;
+var init_ms = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/ms.js"() {
+    init_MmlNode();
+    MmlMs = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "ms";
+      }
+    };
+    MmlMs.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { lquote: '"', rquote: '"' });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mrow.js
+var MmlMrow;
+var MmlInferredMrow;
+var init_mrow = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mrow.js"() {
+    init_MmlNode();
+    MmlMrow = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this._core = null;
+      }
+      get kind() {
+        return "mrow";
+      }
+      get isSpacelike() {
+        for (const child of this.childNodes) {
+          if (!child.isSpacelike) {
+            return false;
+          }
+        }
+        return true;
+      }
+      get isEmbellished() {
+        let embellished = false;
+        let i2 = 0;
+        for (const child of this.childNodes) {
+          if (child) {
+            if (child.isEmbellished) {
+              if (embellished) {
+                return false;
+              }
+              embellished = true;
+              this._core = i2;
+            } else if (!child.isSpacelike) {
+              return false;
+            }
+          }
+          i2++;
+        }
+        return embellished;
+      }
+      core() {
+        if (!this.isEmbellished || this._core == null) {
+          return this;
+        }
+        return this.childNodes[this._core];
+      }
+      coreMO() {
+        if (!this.isEmbellished || this._core == null) {
+          return this;
+        }
+        return this.childNodes[this._core].coreMO();
+      }
+      nonSpaceLength() {
+        let n = 0;
+        for (const child of this.childNodes) {
+          if (child && !child.isSpacelike) {
+            n++;
+          }
+        }
+        return n;
+      }
+      firstNonSpace() {
+        for (const child of this.childNodes) {
+          if (child && !child.isSpacelike) {
+            return child;
+          }
+        }
+        return null;
+      }
+      lastNonSpace() {
+        let i2 = this.childNodes.length;
+        while (--i2 >= 0) {
+          const child = this.childNodes[i2];
+          if (child && !child.isSpacelike) {
+            return child;
+          }
+        }
+        return null;
+      }
+      setTeXclass(prev) {
+        if (this.getProperty("open") != null || this.getProperty("close") != null) {
+          this.getPrevClass(prev);
+          prev = null;
+          for (const child of this.childNodes) {
+            prev = child.setTeXclass(prev);
+          }
+          if (this.texClass == null) {
+            this.texClass = TEXCLASS.INNER;
+          }
+          return this;
+        }
+        for (const child of this.childNodes) {
+          prev = child.setTeXclass(prev);
+        }
+        if (this.childNodes[0]) {
+          this.updateTeXclass(this.childNodes[0]);
+        }
+        return prev;
+      }
+    };
+    MmlMrow.defaults = Object.assign({}, AbstractMmlNode.defaults);
+    MmlInferredMrow = class extends MmlMrow {
+      get kind() {
+        return "inferredMrow";
+      }
+      get isInferred() {
+        return true;
+      }
+      get notParent() {
+        return true;
+      }
+      toString() {
+        return "[" + this.childNodes.join(",") + "]";
+      }
+    };
+    MmlInferredMrow.defaults = MmlMrow.defaults;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfrac.js
+var MmlMfrac;
+var init_mfrac = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfrac.js"() {
+    init_MmlNode();
+    MmlMfrac = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "mfrac";
+      }
+      get arity() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        if (!display || level > 0) {
+          level++;
+        }
+        const numalign = this.attributes.get("numalign");
+        const denalign = this.attributes.get("denomalign");
+        const numAttributes = this.addInheritedAttributes(Object.assign({}, attributes), {
+          numalign,
+          indentshift: "0",
+          indentalignfirst: numalign,
+          indentshiftfirst: "0",
+          indentalignlast: "indentalign",
+          indentshiftlast: "indentshift"
+        });
+        const denAttributes = this.addInheritedAttributes(Object.assign({}, attributes), {
+          denalign,
+          indentshift: "0",
+          indentalignfirst: denalign,
+          indentshiftfirst: "0",
+          indentalignlast: "indentalign",
+          indentshiftlast: "indentshift"
+        });
+        this.childNodes[0].setInheritedAttributes(numAttributes, false, level, prime);
+        this.childNodes[1].setInheritedAttributes(denAttributes, false, level, true);
+      }
+    };
+    MmlMfrac.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { linethickness: "medium", numalign: "center", denomalign: "center", bevelled: false });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msqrt.js
+var MmlMsqrt;
+var init_msqrt = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msqrt.js"() {
+    init_MmlNode();
+    MmlMsqrt = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "msqrt";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, _prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, true);
+      }
+    };
+    MmlMsqrt.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { "data-vertical-align": "bottom" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mroot.js
+var MmlMroot;
+var init_mroot = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mroot.js"() {
+    init_MmlNode();
+    MmlMroot = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mroot";
+      }
+      get arity() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        this.childNodes[1].setTeXclass(null);
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, true);
+        this.childNodes[1].setInheritedAttributes(attributes, false, level + 2, prime);
+      }
+    };
+    MmlMroot.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { "data-vertical-align": "bottom" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mstyle.js
+var MmlMstyle;
+var init_mstyle = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mstyle.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMstyle = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "mstyle";
+      }
+      get notParent() {
+        return this.childNodes[0] && this.childNodes[0].childNodes.length === 1;
+      }
+      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
+        this.attributes.setInherited("displaystyle", display);
+        this.attributes.setInherited("scriptlevel", level);
+        super.setInheritedAttributes(attributes, display, level, prime);
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        let scriptlevel = this.attributes.getExplicit("scriptlevel");
+        if (scriptlevel != null) {
+          scriptlevel = scriptlevel.toString();
+          if (scriptlevel.match(/^\s*[-+]/)) {
+            level += parseInt(scriptlevel);
+          } else {
+            level = parseInt(scriptlevel);
+          }
+          prime = false;
+        }
+        const displaystyle = this.attributes.getExplicit("displaystyle");
+        if (displaystyle != null) {
+          display = displaystyle === true;
+          prime = false;
+        }
+        const cramped = this.attributes.getExplicit("data-cramped");
+        if (cramped != null) {
+          prime = cramped;
+        }
+        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MmlMstyle.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { scriptlevel: INHERIT, displaystyle: INHERIT, scriptsizemultiplier: 1 / Math.sqrt(2), scriptminsize: ".4em", mathbackground: INHERIT, mathcolor: INHERIT, dir: INHERIT, infixlinebreakstyle: "before" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/merror.js
+var MmlMerror;
+var init_merror = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/merror.js"() {
+    init_MmlNode();
+    MmlMerror = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "merror";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+    };
+    MmlMerror.defaults = Object.assign({}, AbstractMmlNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mpadded.js
+var MmlMpadded;
+var init_mpadded = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mpadded.js"() {
+    init_MmlNode();
+    MmlMpadded = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "mpadded";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        if (!this.getProperty("vbox")) {
+          return super.setTeXclass(prev);
+        }
+        this.getPrevClass(prev);
+        this.texClass = TEXCLASS.ORD;
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+    };
+    MmlMpadded.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { width: "", height: "", depth: "", lspace: 0, voffset: 0 });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mphantom.js
+var MmlMphantom;
+var init_mphantom = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mphantom.js"() {
+    init_MmlNode();
+    MmlMphantom = class extends AbstractMmlLayoutNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mphantom";
+      }
+    };
+    MmlMphantom.defaults = Object.assign({}, AbstractMmlLayoutNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfenced.js
+var MmlMfenced;
+var init_mfenced = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfenced.js"() {
+    init_MmlNode();
+    MmlMfenced = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.INNER;
+        this.separators = [];
+        this.open = null;
+        this.close = null;
+      }
+      get kind() {
+        return "mfenced";
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        if (this.open) {
+          prev = this.open.setTeXclass(prev);
+        }
+        if (this.childNodes[0]) {
+          prev = this.childNodes[0].setTeXclass(prev);
+        }
+        for (let i2 = 1, m = this.childNodes.length; i2 < m; i2++) {
+          if (this.separators[i2 - 1]) {
+            prev = this.separators[i2 - 1].setTeXclass(prev);
+          }
+          if (this.childNodes[i2]) {
+            prev = this.childNodes[i2].setTeXclass(prev);
+          }
+        }
+        if (this.close) {
+          prev = this.close.setTeXclass(prev);
+        }
+        if (!this.open || !this.close) {
+          this.updateTeXclass(this.open || this.childNodes[0] || this.close);
+        }
+        return prev;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.addFakeNodes();
+        for (const child of [this.open, this.close].concat(this.separators)) {
+          if (child) {
+            child.setInheritedAttributes(attributes, display, level, prime);
+          }
+        }
+        super.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+      addFakeNodes() {
+        let { open, close, separators } = this.attributes.getList("open", "close", "separators");
+        open = open.replace(/[ \t\n\r]/g, "");
+        close = close.replace(/[ \t\n\r]/g, "");
+        separators = separators.replace(/[ \t\n\r]/g, "");
+        if (open) {
+          this.open = this.fakeNode(open, { fence: true, form: "prefix" }, TEXCLASS.OPEN);
+        }
+        if (separators) {
+          while (separators.length < this.childNodes.length - 1) {
+            separators += separators.charAt(separators.length - 1);
+          }
+          let i2 = 0;
+          for (const child of this.childNodes.slice(1)) {
+            if (child) {
+              this.separators.push(this.fakeNode(separators.charAt(i2++)));
+            }
+          }
+        }
+        if (close) {
+          this.close = this.fakeNode(close, { fence: true, form: "postfix" }, TEXCLASS.CLOSE);
+        }
+      }
+      fakeNode(c, properties = {}, texClass = null) {
+        const text = this.factory.create("text").setText(c);
+        const node = this.factory.create("mo", properties, [text]);
+        node.texClass = texClass;
+        node.parent = this;
+        return node;
+      }
+    };
+    MmlMfenced.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { open: "(", close: ")", separators: "," });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/menclose.js
+var MmlMenclose;
+var init_menclose = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/menclose.js"() {
+    init_MmlNode();
+    MmlMenclose = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "menclose";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        prev = this.childNodes[0].setTeXclass(prev);
+        this.updateTeXclass(this.childNodes[0]);
+        return prev;
+      }
+    };
+    MmlMenclose.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { notation: "longdiv" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maction.js
+var MmlMaction;
+var init_maction = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maction.js"() {
+    init_MmlNode();
+    MmlMaction = class extends AbstractMmlNode {
+      get kind() {
+        return "maction";
+      }
+      get arity() {
+        return 1;
+      }
+      get selected() {
+        const selection = this.attributes.get("selection");
+        const i2 = Math.max(1, Math.min(this.childNodes.length, selection)) - 1;
+        return this.childNodes[i2] || this.factory.create("mrow");
+      }
+      get isEmbellished() {
+        return this.selected.isEmbellished;
+      }
+      get isSpacelike() {
+        return this.selected.isSpacelike;
+      }
+      core() {
+        return this.selected.core();
+      }
+      coreMO() {
+        return this.selected.coreMO();
+      }
+      verifyAttributes(options3) {
+        super.verifyAttributes(options3);
+        if (this.attributes.get("actiontype") !== "toggle" && this.attributes.hasExplicit("selection")) {
+          this.attributes.unset("selection");
+        }
+      }
+      setTeXclass(prev) {
+        if (this.attributes.get("actiontype") === "tooltip" && this.childNodes[1]) {
+          this.childNodes[1].setTeXclass(null);
+        }
+        const selected = this.selected;
+        prev = selected.setTeXclass(prev);
+        this.updateTeXclass(selected);
+        return prev;
+      }
+      nextToggleSelection() {
+        let selection = Math.max(1, parseInt(this.attributes.get("selection")) + 1);
+        if (selection > this.childNodes.length) {
+          selection = 1;
+        }
+        this.attributes.set("selection", selection);
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        var _a2, _b2;
+        if (this.attributes.get("actiontype").toLowerCase() !== "tooltip") {
+          super.setChildInheritedAttributes(attributes, display, level, prime);
+          return;
+        }
+        (_a2 = this.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.setInheritedAttributes(attributes, display, level, prime);
+        (_b2 = this.childNodes[1]) === null || _b2 === void 0 ? void 0 : _b2.setInheritedAttributes(attributes, false, 1, false);
+      }
+    };
+    MmlMaction.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { actiontype: "toggle", selection: 1 });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msubsup.js
+var MmlMsubsup;
+var MmlMsub;
+var MmlMsup;
+var init_msubsup = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msubsup.js"() {
+    init_MmlNode();
+    MmlMsubsup = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "msubsup";
+      }
+      get arity() {
+        return 3;
+      }
+      get base() {
+        return 0;
+      }
+      get sub() {
+        return 1;
+      }
+      get sup() {
+        return 2;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        const nodes = this.childNodes;
+        nodes[0].setInheritedAttributes(attributes, display, level, prime);
+        nodes[1].setInheritedAttributes(attributes, false, level + 1, prime || this.sub === 1);
+        if (!nodes[2]) {
+          return;
+        }
+        nodes[2].setInheritedAttributes(attributes, false, level + 1, prime || this.sub === 2);
+      }
+    };
+    MmlMsubsup.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { subscriptshift: "", superscriptshift: "" });
+    MmlMsub = class extends MmlMsubsup {
+      get kind() {
+        return "msub";
+      }
+      get arity() {
+        return 2;
+      }
+    };
+    MmlMsub.defaults = Object.assign({}, MmlMsubsup.defaults);
+    MmlMsup = class extends MmlMsubsup {
+      get kind() {
+        return "msup";
+      }
+      get arity() {
+        return 2;
+      }
+      get sup() {
+        return 1;
+      }
+      get sub() {
+        return 2;
+      }
+    };
+    MmlMsup.defaults = Object.assign({}, MmlMsubsup.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/munderover.js
+var MmlMunderover;
+var MmlMunder;
+var MmlMover;
+var init_munderover = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/munderover.js"() {
+    init_MmlNode();
+    MmlMunderover = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "munderover";
+      }
+      get arity() {
+        return 3;
+      }
+      get base() {
+        return 0;
+      }
+      get under() {
+        return 1;
+      }
+      get over() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        const nodes = this.childNodes;
+        nodes[0].setInheritedAttributes(attributes, display, level, prime || !!nodes[this.over]);
+        const force = !!(!display && nodes[0].coreMO().attributes.get("movablelimits"));
+        const ACCENTS = this.constructor.ACCENTS;
+        nodes[1].setInheritedAttributes(attributes, false, this.getScriptlevel(ACCENTS[1], force, level), prime || this.under === 1);
+        this.setInheritedAccent(1, ACCENTS[1], display, level, prime, force);
+        if (!nodes[2]) {
+          return;
+        }
+        nodes[2].setInheritedAttributes(attributes, false, this.getScriptlevel(ACCENTS[2], force, level), prime || this.under === 2);
+        this.setInheritedAccent(2, ACCENTS[2], display, level, prime, force);
+      }
+      getScriptlevel(accent, force, level) {
+        if (force || !this.attributes.get(accent)) {
+          level++;
+        }
+        return level;
+      }
+      setInheritedAccent(n, accent, display, level, prime, force) {
+        const node = this.childNodes[n];
+        if (!this.attributes.hasExplicit(accent) && node.isEmbellished) {
+          const value = node.coreMO().attributes.get("accent");
+          this.attributes.setInherited(accent, value);
+          if (value !== this.attributes.getDefault(accent)) {
+            node.setInheritedAttributes({}, display, this.getScriptlevel(accent, force, level), prime);
+          }
+        }
+      }
+    };
+    MmlMunderover.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { accent: false, accentunder: false, align: "center" });
+    MmlMunderover.ACCENTS = ["", "accentunder", "accent"];
+    MmlMunder = class extends MmlMunderover {
+      get kind() {
+        return "munder";
+      }
+      get arity() {
+        return 2;
+      }
+    };
+    MmlMunder.defaults = Object.assign({}, MmlMunderover.defaults);
+    MmlMover = class extends MmlMunderover {
+      get kind() {
+        return "mover";
+      }
+      get arity() {
+        return 2;
+      }
+      get over() {
+        return 1;
+      }
+      get under() {
+        return 2;
+      }
+    };
+    MmlMover.defaults = Object.assign({}, MmlMunderover.defaults);
+    MmlMover.ACCENTS = ["", "accent", "accentunder"];
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mmultiscripts.js
+var MmlMmultiscripts;
+var MmlMprescripts;
+var MmlNone;
+var init_mmultiscripts = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mmultiscripts.js"() {
+    init_MmlNode();
+    init_msubsup();
+    MmlMmultiscripts = class extends MmlMsubsup {
+      get kind() {
+        return "mmultiscripts";
+      }
+      get arity() {
+        return 1;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, prime);
+        let prescripts = false;
+        for (let i2 = 1, n = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mprescripts")) {
+            if (!prescripts) {
+              prescripts = true;
+              if (i2 % 2 === 0) {
+                const none = this.factory.create("none");
+                this.childNodes.splice(i2, 0, none);
+                none.parent = this;
+                i2++;
+              }
+            }
+          } else {
+            const primestyle = prime || n % 2 === 0;
+            child.setInheritedAttributes(attributes, false, level + 1, primestyle);
+            n++;
+          }
+        }
+        if (this.childNodes.length % 2 === (prescripts ? 1 : 0)) {
+          this.appendChild(this.factory.create("none"));
+          this.childNodes[this.childNodes.length - 1].setInheritedAttributes(attributes, false, level + 1, prime);
+        }
+      }
+      verifyChildren(options3) {
+        let prescripts = false;
+        const fix = options3["fixMmultiscripts"];
+        for (let i2 = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mprescripts")) {
+            if (prescripts) {
+              child.mError(child.kind + " can only appear once in " + this.kind, options3, true);
+            } else {
+              prescripts = true;
+              if (i2 % 2 === 0 && !fix) {
+                this.mError("There must be an equal number of prescripts of each type", options3);
+              }
+            }
+          }
+        }
+        if (this.childNodes.length % 2 === (prescripts ? 1 : 0) && !fix) {
+          this.mError("There must be an equal number of scripts of each type", options3);
+        }
+        super.verifyChildren(options3);
+      }
+    };
+    MmlMmultiscripts.defaults = Object.assign({}, MmlMsubsup.defaults);
+    MmlMprescripts = class extends AbstractMmlNode {
+      get kind() {
+        return "mprescripts";
+      }
+      get arity() {
+        return 0;
+      }
+      verifyTree(options3) {
+        super.verifyTree(options3);
+        if (this.parent && !this.parent.isKind("mmultiscripts")) {
+          this.mError(this.kind + " must be a child of mmultiscripts", options3, true);
+        }
+      }
+    };
+    MmlMprescripts.defaults = Object.assign({}, AbstractMmlNode.defaults);
+    MmlNone = class extends AbstractMmlNode {
+      get kind() {
+        return "none";
+      }
+      get arity() {
+        return 0;
+      }
+      verifyTree(options3) {
+        super.verifyTree(options3);
+        if (this.parent && !this.parent.isKind("mmultiscripts")) {
+          this.mError(this.kind + " must be a child of mmultiscripts", options3, true);
+        }
+      }
+    };
+    MmlNone.defaults = Object.assign({}, AbstractMmlNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtable.js
+var MmlMtable;
+var init_mtable = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtable.js"() {
+    init_MmlNode();
+    init_string();
+    MmlMtable = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.properties = {
+          useHeight: true
+        };
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mtable";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setInheritedAttributes(attributes, display, level, prime) {
+        for (const name of indentAttributes) {
+          if (attributes[name]) {
+            this.attributes.setInherited(name, attributes[name][1]);
+          }
+          if (this.attributes.hasExplicit(name)) {
+            this.attributes.unset(name);
+          }
+        }
+        super.setInheritedAttributes(attributes, display, level, prime);
+      }
+      setChildInheritedAttributes(attributes, display, level, _prime) {
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtr")) {
+            this.replaceChild(this.factory.create("mtr"), child).appendChild(child);
+          }
+        }
+        display = !!(this.attributes.getExplicit("displaystyle") || this.attributes.getDefault("displaystyle"));
+        attributes = this.addInheritedAttributes(attributes, {
+          columnalign: this.attributes.get("columnalign"),
+          rowalign: "center",
+          "data-break-align": this.attributes.get("data-break-align")
+        });
+        const cramped = this.attributes.getExplicit("data-cramped");
+        const ralign = split(this.attributes.get("rowalign"));
+        for (const child of this.childNodes) {
+          attributes.rowalign[1] = ralign.shift() || attributes.rowalign[1];
+          child.setInheritedAttributes(attributes, display, level, !!cramped);
+        }
+      }
+      verifyChildren(options3) {
+        let mtr = null;
+        const factory = this.factory;
+        for (let i2 = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mtr")) {
+            mtr = null;
+          } else {
+            const isMtd = child.isKind("mtd");
+            if (mtr) {
+              this.removeChild(child);
+              i2--;
+            } else {
+              mtr = this.replaceChild(factory.create("mtr"), child);
+            }
+            mtr.appendChild(isMtd ? child : factory.create("mtd", {}, [child]));
+            if (!options3["fixMtables"]) {
+              child.parent.removeChild(child);
+              child.parent = this;
+              if (isMtd) {
+                mtr.appendChild(factory.create("mtd"));
+              }
+              const merror = child.mError("Children of " + this.kind + " must be mtr or mlabeledtr", options3, isMtd);
+              mtr.childNodes[mtr.childNodes.length - 1].appendChild(merror);
+            }
+          }
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+    };
+    MmlMtable.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { align: "axis", rowalign: "baseline", columnalign: "center", groupalign: "{left}", alignmentscope: true, columnwidth: "auto", width: "auto", rowspacing: "1ex", columnspacing: ".8em", rowlines: "none", columnlines: "none", frame: "none", framespacing: "0.4em 0.5ex", equalrows: false, equalcolumns: false, displaystyle: false, side: "right", minlabelspacing: "0.8em", "data-break-align": "top" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtr.js
+var MmlMtr;
+var MmlMlabeledtr;
+var init_mtr = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtr.js"() {
+    init_MmlNode();
+    init_Attributes();
+    init_string();
+    MmlMtr = class extends AbstractMmlNode {
+      get kind() {
+        return "mtr";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtd")) {
+            this.replaceChild(this.factory.create("mtd"), child).appendChild(child);
+          }
+        }
+        const calign = split(this.attributes.get("columnalign"));
+        const balign = split(this.attributes.get("data-break-align"));
+        if (this.arity === 1) {
+          calign.unshift(this.parent.attributes.get("side"));
+          balign.unshift("top");
+        }
+        attributes = this.addInheritedAttributes(attributes, {
+          rowalign: this.attributes.get("rowalign"),
+          columnalign: "center",
+          "data-break-align": "top"
+        });
+        for (const child of this.childNodes) {
+          attributes.columnalign[1] = calign.shift() || attributes.columnalign[1];
+          attributes["data-vertical-align"] = [
+            this.kind,
+            balign.shift() || attributes["data-break-align"][1]
+          ];
+          child.setInheritedAttributes(attributes, display, level, prime);
+        }
+      }
+      verifyChildren(options3) {
+        if (this.parent && !this.parent.isKind("mtable")) {
+          this.mError(this.kind + " can only be a child of an mtable", options3, true);
+          return;
+        }
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtd")) {
+            const mtd = this.replaceChild(this.factory.create("mtd"), child);
+            mtd.appendChild(child);
+            if (!options3["fixMtables"]) {
+              child.mError("Children of " + this.kind + " must be mtd", options3);
+            }
+          }
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+    };
+    MmlMtr.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { rowalign: INHERIT, columnalign: INHERIT, groupalign: INHERIT, "data-break-align": "top" });
+    MmlMlabeledtr = class extends MmlMtr {
+      get kind() {
+        return "mlabeledtr";
+      }
+      get arity() {
+        return 1;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtd.js
+var MmlMtd;
+var init_mtd = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtd.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMtd = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "mtd";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "columnalign";
+      }
+      verifyChildren(options3) {
+        if (this.parent && !this.parent.isKind("mtr")) {
+          this.mError(this.kind + " can only be a child of an mtr or mlabeledtr", options3, true);
+          return;
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+    };
+    MmlMtd.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { rowspan: 1, columnspan: 1, rowalign: INHERIT, columnalign: INHERIT, groupalign: INHERIT, "data-vertical-align": "top" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maligngroup.js
+var MmlMaligngroup;
+var init_maligngroup = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maligngroup.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMaligngroup = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "maligngroup";
+      }
+      get isSpacelike() {
+        return true;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
+        super.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MmlMaligngroup.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { groupalign: INHERIT });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/malignmark.js
+var MmlMalignmark;
+var init_malignmark = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/malignmark.js"() {
+    init_MmlNode();
+    MmlMalignmark = class extends AbstractMmlNode {
+      get kind() {
+        return "malignmark";
+      }
+      get arity() {
+        return 0;
+      }
+      get isSpacelike() {
+        return true;
+      }
+    };
+    MmlMalignmark.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { edge: "left" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mglyph.js
+var MmlMglyph;
+var init_mglyph = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mglyph.js"() {
+    init_MmlNode();
+    MmlMglyph = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mglyph";
+      }
+      verifyAttributes(options3) {
+        const { src, fontfamily, index } = this.attributes.getList("src", "fontfamily", "index");
+        if (src === "" && (fontfamily === "" || index === "")) {
+          this.mError("mglyph must have either src or fontfamily and index attributes", options3, true);
+        } else {
+          super.verifyAttributes(options3);
+        }
+      }
+    };
+    MmlMglyph.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { alt: "", src: "", index: "", width: "auto", height: "auto", valign: "0em" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/semantics.js
+var MmlSemantics;
+var MmlAnnotationXML;
+var MmlAnnotation;
+var init_semantics = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/semantics.js"() {
+    init_MmlNode();
+    MmlSemantics = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "semantics";
+      }
+      get arity() {
+        return 1;
+      }
+      get notParent() {
+        return true;
+      }
+    };
+    MmlSemantics.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { definitionUrl: null, encoding: null });
+    MmlAnnotationXML = class extends AbstractMmlNode {
+      get kind() {
+        return "annotation-xml";
+      }
+      setChildInheritedAttributes() {
+      }
+    };
+    MmlAnnotationXML.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { definitionUrl: null, encoding: null, cd: "mathmlkeys", name: "", src: null });
+    MmlAnnotation = class extends MmlAnnotationXML {
+      constructor() {
+        super(...arguments);
+        this.properties = {
+          isChars: true
+        };
+      }
+      get kind() {
+        return "annotation";
+      }
+    };
+    MmlAnnotation.defaults = Object.assign({}, MmlAnnotationXML.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/TeXAtom.js
+var TeXAtom;
+var init_TeXAtom = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/TeXAtom.js"() {
+    init_MmlNode();
+    init_mo();
+    TeXAtom = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "TeXAtom";
+      }
+      get arity() {
+        return -1;
+      }
+      get notParent() {
+        return true;
+      }
+      constructor(factory, attributes, children) {
+        super(factory, attributes, children);
+        this.texclass = TEXCLASS.ORD;
+        this.setProperty("texClass", this.texClass);
+      }
+      setTeXclass(prev) {
+        this.childNodes[0].setTeXclass(null);
+        return this.adjustTeXclass(prev);
+      }
+      adjustTeXclass(prev) {
+        return prev;
+      }
+    };
+    TeXAtom.defaults = Object.assign({}, AbstractMmlBaseNode.defaults);
+    TeXAtom.prototype.adjustTeXclass = MmlMo.prototype.adjustTeXclass;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mathchoice.js
+var MathChoice;
+var init_mathchoice = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mathchoice.js"() {
+    init_MmlNode();
+    MathChoice = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "MathChoice";
+      }
+      get arity() {
+        return 4;
+      }
+      get notParent() {
+        return true;
+      }
+      setInheritedAttributes(attributes, display, level, prime) {
+        const selection = display ? 0 : Math.max(0, Math.min(level, 2)) + 1;
+        const child = this.childNodes[selection] || this.factory.create("mrow");
+        this.parent.replaceChild(child, this);
+        child.setInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MathChoice.defaults = Object.assign({}, AbstractMmlBaseNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/HtmlNode.js
+var HtmlNode;
+var init_HtmlNode = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/HtmlNode.js"() {
+    init_MmlNode();
+    HtmlNode = class extends XMLNode {
+      get kind() {
+        return "html";
+      }
+      getHTML() {
+        return this.getXML();
+      }
+      setHTML(html2, adaptor = null) {
+        try {
+          adaptor.getAttribute(html2, "data-mjx-hdw");
+        } catch (_error) {
+          html2 = adaptor.node("span", {}, [html2]);
+        }
+        return this.setXML(html2, adaptor);
+      }
+      getSerializedHTML() {
+        return this.adaptor.outerHTML(this.xml);
+      }
+      textContent() {
+        return this.adaptor.textContent(this.xml);
+      }
+      toString() {
+        const kind = this.adaptor.kind(this.xml);
+        return `HTML=<${kind}>...</${kind}>`;
+      }
+      verifyTree(options3) {
+        if (this.parent && !this.parent.isToken) {
+          this.mError("HTML can only be a child of a token element", options3, true);
+          return;
+        }
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MML.js
+var MML;
+var init_MML = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MML.js"() {
+    init_MmlNode();
+    init_math();
+    init_mi();
+    init_mn();
+    init_mo();
+    init_mtext();
+    init_mspace();
+    init_ms();
+    init_mrow();
+    init_mfrac();
+    init_msqrt();
+    init_mroot();
+    init_mstyle();
+    init_merror();
+    init_mpadded();
+    init_mphantom();
+    init_mfenced();
+    init_menclose();
+    init_maction();
+    init_msubsup();
+    init_munderover();
+    init_mmultiscripts();
+    init_mtable();
+    init_mtr();
+    init_mtd();
+    init_maligngroup();
+    init_malignmark();
+    init_mglyph();
+    init_semantics();
+    init_TeXAtom();
+    init_mathchoice();
+    init_HtmlNode();
+    MML = {
+      [MmlMath.prototype.kind]: MmlMath,
+      [MmlMi.prototype.kind]: MmlMi,
+      [MmlMn.prototype.kind]: MmlMn,
+      [MmlMo.prototype.kind]: MmlMo,
+      [MmlMtext.prototype.kind]: MmlMtext,
+      [MmlMspace.prototype.kind]: MmlMspace,
+      [MmlMs.prototype.kind]: MmlMs,
+      [MmlMrow.prototype.kind]: MmlMrow,
+      [MmlInferredMrow.prototype.kind]: MmlInferredMrow,
+      [MmlMfrac.prototype.kind]: MmlMfrac,
+      [MmlMsqrt.prototype.kind]: MmlMsqrt,
+      [MmlMroot.prototype.kind]: MmlMroot,
+      [MmlMstyle.prototype.kind]: MmlMstyle,
+      [MmlMerror.prototype.kind]: MmlMerror,
+      [MmlMpadded.prototype.kind]: MmlMpadded,
+      [MmlMphantom.prototype.kind]: MmlMphantom,
+      [MmlMfenced.prototype.kind]: MmlMfenced,
+      [MmlMenclose.prototype.kind]: MmlMenclose,
+      [MmlMaction.prototype.kind]: MmlMaction,
+      [MmlMsub.prototype.kind]: MmlMsub,
+      [MmlMsup.prototype.kind]: MmlMsup,
+      [MmlMsubsup.prototype.kind]: MmlMsubsup,
+      [MmlMunder.prototype.kind]: MmlMunder,
+      [MmlMover.prototype.kind]: MmlMover,
+      [MmlMunderover.prototype.kind]: MmlMunderover,
+      [MmlMmultiscripts.prototype.kind]: MmlMmultiscripts,
+      [MmlMprescripts.prototype.kind]: MmlMprescripts,
+      [MmlNone.prototype.kind]: MmlNone,
+      [MmlMtable.prototype.kind]: MmlMtable,
+      [MmlMlabeledtr.prototype.kind]: MmlMlabeledtr,
+      [MmlMtr.prototype.kind]: MmlMtr,
+      [MmlMtd.prototype.kind]: MmlMtd,
+      [MmlMaligngroup.prototype.kind]: MmlMaligngroup,
+      [MmlMalignmark.prototype.kind]: MmlMalignmark,
+      [MmlMglyph.prototype.kind]: MmlMglyph,
+      [MmlSemantics.prototype.kind]: MmlSemantics,
+      [MmlAnnotation.prototype.kind]: MmlAnnotation,
+      [MmlAnnotationXML.prototype.kind]: MmlAnnotationXML,
+      [TeXAtom.prototype.kind]: TeXAtom,
+      [MathChoice.prototype.kind]: MathChoice,
+      [TextNode.prototype.kind]: TextNode,
+      [XMLNode.prototype.kind]: XMLNode,
+      [HtmlNode.prototype.kind]: HtmlNode
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlFactory.js
+var MmlFactory;
+var init_MmlFactory = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlFactory.js"() {
+    init_NodeFactory();
+    init_MML();
+    MmlFactory = class extends AbstractNodeFactory {
+      get MML() {
+        return this.node;
+      }
+    };
+    MmlFactory.defaultNodes = MML;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/Visitor.js
+var AbstractVisitor;
+var init_Visitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/Visitor.js"() {
+    AbstractVisitor = class _AbstractVisitor {
+      static methodName(kind) {
+        return "visit" + (kind.charAt(0).toUpperCase() + kind.substring(1)).replace(/[^a-z0-9_]/gi, "_") + "Node";
+      }
+      constructor(factory) {
+        this.nodeHandlers = /* @__PURE__ */ new Map();
+        for (const kind of factory.getKinds()) {
+          const method = this[_AbstractVisitor.methodName(kind)];
+          if (method) {
+            this.nodeHandlers.set(kind, method);
+          }
+        }
+      }
+      visitTree(tree, ...args) {
+        return this.visitNode(tree, ...args);
+      }
+      visitNode(node, ...args) {
+        const handler = this.nodeHandlers.get(node.kind) || this.visitDefault;
+        return handler.call(this, node, ...args);
+      }
+      visitDefault(node, ...args) {
+        if ("childNodes" in node) {
+          for (const child of node.childNodes) {
+            this.visitNode(child, ...args);
+          }
+        }
+      }
+      setNodeHandler(kind, handler) {
+        this.nodeHandlers.set(kind, handler);
+      }
+      removeNodeHandler(kind) {
+        this.nodeHandlers.delete(kind);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlVisitor.js
+var DATAMJX;
+var MmlVisitor;
+var init_MmlVisitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlVisitor.js"() {
+    init_MmlNode();
+    init_mi();
+    init_MmlFactory();
+    init_Visitor();
+    init_Options();
+    DATAMJX = "data-mjx-";
+    MmlVisitor = class extends AbstractVisitor {
+      constructor(factory = null) {
+        if (!factory) {
+          factory = new MmlFactory();
+        }
+        super(factory);
+      }
+      visitTextNode(_node, ..._args) {
+      }
+      visitXMLNode(_node, ..._args) {
+      }
+      visitHtmlNode(_node, ..._args) {
+      }
+      getKind(node) {
+        const kind = node.kind;
+        return lookup(kind, this.constructor.rename, kind);
+      }
+      getAttributeList(node) {
+        const CLASS = this.constructor;
+        const defaults = lookup(node.kind, CLASS.defaultAttributes, {});
+        const attributes = Object.assign({}, defaults, this.getDataAttributes(node), node.attributes.getAllAttributes());
+        const variants = CLASS.variants;
+        if (Object.hasOwn(attributes, "mathvariant")) {
+          if (Object.hasOwn(variants, attributes.mathvariant)) {
+            attributes.mathvariant = variants[attributes.mathvariant];
+          } else if (node.getProperty("ignore-variant")) {
+            delete attributes.mathvariant;
+          }
+        }
+        return attributes;
+      }
+      getDataAttributes(node) {
+        const data = {};
+        const variant = node.attributes.getExplicit("mathvariant");
+        const variants = this.constructor.variants;
+        if (variant && (node.getProperty("ignore-variant") || Object.hasOwn(variants, variant))) {
+          this.setDataAttribute(data, "variant", variant);
+        }
+        if (node.getProperty("variantForm")) {
+          this.setDataAttribute(data, "alternate", "1");
+        }
+        if (node.getProperty("pseudoscript")) {
+          this.setDataAttribute(data, "pseudoscript", "true");
+        }
+        if (node.getProperty("autoOP") === false) {
+          this.setDataAttribute(data, "auto-op", "false");
+        }
+        const vbox = node.getProperty("vbox");
+        if (vbox) {
+          this.setDataAttribute(data, "vbox", vbox);
+        }
+        const scriptalign = node.getProperty("scriptalign");
+        if (scriptalign) {
+          this.setDataAttribute(data, "script-align", scriptalign);
+        }
+        const accent = node.getProperty("mathaccent");
+        if (accent !== void 0) {
+          if (accent && !node.isMathAccent() || !accent && !node.isMathAccentWithWidth()) {
+            this.setDataAttribute(data, "mathaccent", accent.toString());
+          }
+        }
+        const texclass = node.getProperty("texClass");
+        if (texclass !== void 0) {
+          let setclass = true;
+          if (texclass === TEXCLASS.OP && node.isKind("mi")) {
+            const name = node.getText();
+            setclass = !(name.length > 1 && name.match(MmlMi.operatorName));
+          }
+          if (setclass) {
+            this.setDataAttribute(data, "texclass", texclass < 0 ? "NONE" : TEXCLASSNAMES[texclass]);
+          }
+        }
+        if (node.getProperty("smallmatrix")) {
+          this.setDataAttribute(data, "smallmatrix", "true");
+        }
+        return data;
+      }
+      setDataAttribute(data, name, value) {
+        data[DATAMJX + name] = value;
+      }
+    };
+    MmlVisitor.rename = {
+      TeXAtom: "mrow"
+    };
+    MmlVisitor.variants = {
+      "-tex-calligraphic": "script",
+      "-tex-bold-calligraphic": "bold-script",
+      "-tex-oldstyle": "normal",
+      "-tex-bold-oldstyle": "bold",
+      "-tex-mathit": "italic"
+    };
+    MmlVisitor.defaultAttributes = {
+      math: {
+        xmlns: "http://www.w3.org/1998/Math/MathML"
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/SerializedMmlVisitor.js
+var SerializedMmlVisitor;
+var init_SerializedMmlVisitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/SerializedMmlVisitor.js"() {
+    init_MmlVisitor();
+    init_string();
+    SerializedMmlVisitor = class extends MmlVisitor {
+      visitTree(node) {
+        return this.visitNode(node, "");
+      }
+      visitTextNode(node, _space) {
+        return this.quoteHTML(node.getText());
+      }
+      visitXMLNode(node, space) {
+        return space + node.getSerializedXML();
+      }
+      visitHtmlNode(node, _space) {
+        return node.getSerializedHTML();
+      }
+      visitInferredMrowNode(node, space) {
+        const mml = [];
+        for (const child of node.childNodes) {
+          mml.push(this.visitNode(child, space));
+        }
+        return mml.join("\n");
+      }
+      visitAnnotationNode(node, space) {
+        const children = this.childNodeMml(node, "", "");
+        return `${space}<annotation${this.getAttributes(node)}>${children}</annotation>`;
+      }
+      visitDefault(node, space) {
+        const kind = this.getKind(node);
+        const [nl, endspace] = node.isToken || node.childNodes.length === 0 ? ["", ""] : ["\n", space];
+        const children = this.childNodeMml(node, space + "  ", nl);
+        const childNode = children.match(/\S/) ? nl + children + endspace : "";
+        return `${space}<${kind}${this.getAttributes(node)}>${childNode}</${kind}>`;
+      }
+      childNodeMml(node, space, nl) {
+        let mml = "";
+        for (const child of node.childNodes) {
+          mml += this.visitNode(child, space) + nl;
+        }
+        return mml;
+      }
+      getAttributes(node) {
+        const attr = [];
+        const attributes = this.getAttributeList(node);
+        for (const name of Object.keys(attributes)) {
+          const value = String(attributes[name]);
+          if (value === void 0)
+            continue;
+          attr.push(name + '="' + this.quoteHTML(value) + '"');
+        }
+        return attr.length ? " " + attr.join(" ") : "";
+      }
+      quoteHTML(value) {
+        return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\uD800-\uDBFF]./g, this.toEntity).replace(/[\u0080-\uD7FF\uE000-\uFFFF]/g, this.toEntity);
+      }
+      toEntity(c) {
+        return toEntity(c);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/FunctionList.js
+var FunctionList;
+var init_FunctionList = __esm({
+  "node_modules/@mathjax/src/mjs/util/FunctionList.js"() {
+    init_PrioritizedList();
+    FunctionList = class extends PrioritizedList {
+      constructor(list3 = null) {
+        super();
+        if (list3) {
+          this.addList(list3);
+        }
+      }
+      addList(list3) {
+        for (const item of list3) {
+          if (Array.isArray(item)) {
+            this.add(item[0], item[1]);
+          } else {
+            this.add(item);
+          }
+        }
+      }
+      execute(...data) {
+        for (const item of this) {
+          const result = item.item(...data);
+          if (result === false) {
+            return false;
+          }
+        }
+        return true;
+      }
+      asyncExecute(...data) {
+        let i2 = -1;
+        const items = this.items;
+        return new Promise((ok, fail2) => {
+          (function execute() {
+            while (++i2 < items.length) {
+              const result = items[i2].item(...data);
+              if (result instanceof Promise) {
+                result.then(execute).catch((err) => fail2(err));
+                return;
+              }
+              if (result === false) {
+                ok(false);
+                return;
+              }
+            }
+            ok(true);
+          })();
+        });
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/InputJax.js
+var AbstractInputJax;
+var init_InputJax = __esm({
+  "node_modules/@mathjax/src/mjs/core/InputJax.js"() {
+    init_Options();
+    init_FunctionList();
+    AbstractInputJax = class {
+      constructor(options3 = {}) {
+        this.adaptor = null;
+        this.mmlFactory = null;
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.preFilters = new FunctionList(this.options.preFilters);
+        this.postFilters = new FunctionList(this.options.postFilters);
+      }
+      get name() {
+        return this.constructor.NAME;
+      }
+      setAdaptor(adaptor) {
+        this.adaptor = adaptor;
+      }
+      setMmlFactory(mmlFactory) {
+        this.mmlFactory = mmlFactory;
+      }
+      initialize() {
+      }
+      reset(..._args) {
+      }
+      get processStrings() {
+        return true;
+      }
+      findMath(_node, _options) {
+        return [];
+      }
+      executeFilters(filters, math, document, data) {
+        const args = { math, document, data };
+        filters.execute(args);
+        return args.data;
+      }
+    };
+    AbstractInputJax.NAME = "generic";
+    AbstractInputJax.OPTIONS = {
+      preFilters: [],
+      postFilters: []
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/OutputJax.js
+var AbstractOutputJax;
+var init_OutputJax = __esm({
+  "node_modules/@mathjax/src/mjs/core/OutputJax.js"() {
+    init_Options();
+    init_FunctionList();
+    AbstractOutputJax = class {
+      constructor(options3 = {}) {
+        this.adaptor = null;
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.preFilters = new FunctionList(this.options.preFilters);
+        this.postFilters = new FunctionList(this.options.postFilters);
+      }
+      get name() {
+        return this.constructor.NAME;
+      }
+      setAdaptor(adaptor) {
+        this.adaptor = adaptor;
+      }
+      initialize() {
+      }
+      reset(..._args) {
+      }
+      getMetrics(_document) {
+      }
+      styleSheet(_document) {
+        return null;
+      }
+      pageElements(_document) {
+        return null;
+      }
+      executeFilters(filters, math, document, data) {
+        const args = { math, document, data };
+        filters.execute(args);
+        return args.data;
+      }
+    };
+    AbstractOutputJax.NAME = "generic";
+    AbstractOutputJax.OPTIONS = {
+      preFilters: [],
+      postFilters: []
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/LinkedList.js
+var END;
+var ListItem;
+var LinkedList;
+var init_LinkedList = __esm({
+  "node_modules/@mathjax/src/mjs/util/LinkedList.js"() {
+    END = /* @__PURE__ */ Symbol();
+    ListItem = class {
+      constructor(data = null) {
+        this.next = null;
+        this.prev = null;
+        this.data = data;
+      }
+    };
+    LinkedList = class _LinkedList {
+      constructor(...args) {
+        this.list = new ListItem(END);
+        this.list.next = this.list.prev = this.list;
+        this.push(...args);
+      }
+      isBefore(a, b) {
+        return a < b;
+      }
+      push(...args) {
+        for (const data of args) {
+          const item = new ListItem(data);
+          item.next = this.list;
+          item.prev = this.list.prev;
+          this.list.prev = item;
+          item.prev.next = item;
+        }
+        return this;
+      }
+      pop() {
+        const item = this.list.prev;
+        if (item.data === END) {
+          return null;
+        }
+        this.list.prev = item.prev;
+        item.prev.next = this.list;
+        item.next = item.prev = null;
+        return item.data;
+      }
+      unshift(...args) {
+        for (const data of args.slice(0).reverse()) {
+          const item = new ListItem(data);
+          item.next = this.list.next;
+          item.prev = this.list;
+          this.list.next = item;
+          item.next.prev = item;
+        }
+        return this;
+      }
+      shift() {
+        const item = this.list.next;
+        if (item.data === END) {
+          return null;
+        }
+        this.list.next = item.next;
+        item.next.prev = this.list;
+        item.next = item.prev = null;
+        return item.data;
+      }
+      remove(...items) {
+        const map = /* @__PURE__ */ new Map();
+        for (const item2 of items) {
+          map.set(item2, true);
+        }
+        let item = this.list.next;
+        while (item.data !== END) {
+          const next = item.next;
+          if (map.has(item.data)) {
+            item.prev.next = item.next;
+            item.next.prev = item.prev;
+            item.next = item.prev = null;
+          }
+          item = next;
+        }
+        return this;
+      }
+      clear() {
+        this.list.next.prev = this.list.prev.next = null;
+        this.list.next = this.list.prev = this.list;
+        return this;
+      }
+      *[Symbol.iterator]() {
+        let current = this.list.next;
+        while (current.data !== END) {
+          yield current.data;
+          current = current.next;
+        }
+      }
+      *reversed() {
+        let current = this.list.prev;
+        while (current.data !== END) {
+          yield current.data;
+          current = current.prev;
+        }
+      }
+      insert(data, isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        const item = new ListItem(data);
+        let cur = this.list.next;
+        while (cur.data !== END && isBefore(cur.data, item.data)) {
+          cur = cur.next;
+        }
+        item.prev = cur.prev;
+        item.next = cur;
+        cur.prev.next = cur.prev = item;
+        return this;
+      }
+      sort(isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        const lists = [];
+        for (const item of this) {
+          lists.push(new _LinkedList(item));
+        }
+        this.list.next = this.list.prev = this.list;
+        while (lists.length > 1) {
+          const l1 = lists.shift();
+          const l2 = lists.shift();
+          l1.merge(l2, isBefore);
+          lists.push(l1);
+        }
+        if (lists.length) {
+          this.list = lists[0].list;
+        }
+        return this;
+      }
+      merge(list3, isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        let lcur = this.list.next;
+        let mcur = list3.list.next;
+        while (lcur.data !== END && mcur.data !== END) {
+          if (isBefore(mcur.data, lcur.data)) {
+            [mcur.prev.next, lcur.prev.next] = [lcur, mcur];
+            [mcur.prev, lcur.prev] = [lcur.prev, mcur.prev];
+            [this.list.prev.next, list3.list.prev.next] = [list3.list, this.list];
+            [this.list.prev, list3.list.prev] = [list3.list.prev, this.list.prev];
+            [lcur, mcur] = [mcur.next, lcur];
+          } else {
+            lcur = lcur.next;
+          }
+        }
+        if (mcur.data !== END) {
+          this.list.prev.next = list3.list.next;
+          list3.list.next.prev = this.list.prev;
+          list3.list.prev.next = this.list;
+          this.list.prev = list3.list.prev;
+          list3.list.next = list3.list.prev = list3.list;
+        }
+        return this;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MathList.js
+var AbstractMathList;
+var init_MathList = __esm({
+  "node_modules/@mathjax/src/mjs/core/MathList.js"() {
+    init_LinkedList();
+    AbstractMathList = class extends LinkedList {
+      isBefore(a, b) {
+        return a.start.i < b.start.i || a.start.i === b.start.i && a.start.n < b.start.n;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/BitField.js
+function BitFieldClass(...names) {
+  const bits = class extends BitField {
+  };
+  bits.allocate(...names);
+  return bits;
+}
+var BitField;
+var init_BitField = __esm({
+  "node_modules/@mathjax/src/mjs/util/BitField.js"() {
+    BitField = class _BitField {
+      constructor() {
+        this.bits = 0;
+      }
+      static allocate(...names) {
+        for (const name of names) {
+          if (this.has(name)) {
+            throw new Error("Bit already allocated for " + name);
+          }
+          if (this.next === _BitField.MAXBIT) {
+            throw new Error("Maximum number of bits already allocated");
+          }
+          this.names.set(name, this.next);
+          this.next <<= 1;
+        }
+      }
+      static has(name) {
+        return this.names.has(name);
+      }
+      set(name) {
+        this.bits |= this.getBit(name);
+      }
+      clear(name) {
+        this.bits &= ~this.getBit(name);
+      }
+      isSet(name) {
+        return !!(this.bits & this.getBit(name));
+      }
+      reset() {
+        this.bits = 0;
+      }
+      getBit(name) {
+        const bit = this.constructor.names.get(name);
+        if (!bit) {
+          throw new Error("Unknown bit-field name: " + name);
+        }
+        return bit;
+      }
+    };
+    BitField.MAXBIT = 1 << 31;
+    BitField.next = 1;
+    BitField.names = /* @__PURE__ */ new Map();
+  }
+});
+export{init_InputJax,init_OutputJax,init_MathList,init_MmlFactory,init_BitField,AbstractInputJax,AbstractOutputJax,AbstractMathList,MmlFactory,BitFieldClass,init_FunctionList,FunctionList,init_Visitor,AbstractVisitor,init_mrow,MmlMrow,MmlInferredMrow,init_ms,MmlMs,init_merror,MmlMerror,init_mspace,MmlMspace,init_mpadded,MmlMpadded,init_mphantom,MmlMphantom,init_mfrac,MmlMfrac,init_msqrt,MmlMsqrt,init_mroot,MmlMroot,init_mfenced,MmlMfenced,init_msubsup,MmlMsub,MmlMsup,MmlMsubsup,init_munderover,MmlMunder,MmlMover,MmlMunderover,init_mmultiscripts,MmlMmultiscripts,init_mtable,MmlMtable,init_mtr,MmlMtr,MmlMlabeledtr,init_mtd,MmlMtd,init_maction,MmlMaction,init_menclose,MmlMenclose,init_semantics,MmlSemantics,MmlAnnotation,MmlAnnotationXML,init_mglyph,MmlMglyph,init_TeXAtom,TeXAtom,init_HtmlNode,HtmlNode,init_SerializedMmlVisitor,SerializedMmlVisitor};
