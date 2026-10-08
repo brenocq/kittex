@@ -1807,10 +1807,10 @@ const slot = (index: number) => `\ue000${index}\ue001`
 type Item = { kind: 'note'; text: string }
 
 /** Marks a preview in planned markdown: open, its index, separator, the preview, close (private-use characters). */
-const MARK_OPEN = ''
-const MARK_SEP = ''
-const MARK_CLOSE = ''
-const MARK = /(\d+)([^]*)/g
+const MARK_OPEN = '\uE002'
+const MARK_SEP = '\uE003'
+const MARK_CLOSE = '\uE004'
+const MARK = /\uE002(\d+)\uE003([^\uE004]*)\uE004/g
 
 interface InlineMark {
   tex: string
@@ -2211,7 +2211,7 @@ function quoteColumnsFor(width: number, depth: number): number {
 
 /** Planned markdown without its inline marks and item slots (an item stands as one letter): what the replays read. */
 function unmarked(markdown: string): string {
-  return markdown.replace(/\d+|/g, '').replace(/\d+/g, 'x')
+  return markdown.replace(/\uE002\d+\uE003|\uE004/g, '').replace(/\uE000\d+\uE001/g, 'x')
 }
 
 /** The previews that are drawn over (see InlineMark) and the spans they are found by. */

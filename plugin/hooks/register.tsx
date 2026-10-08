@@ -11,8 +11,7 @@
 // engine and puts an Image where each preview was. Anything that fails falls
 // back to what the engine would have drawn.
 
-import { update } from 'claude-code'
-import type { EngineInterface, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
+import type { EngineInterface, FsEntry, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
 
 import {
   cellProbes,
@@ -240,7 +239,8 @@ export const register: Register = (on, options) => {
   const latex = options.latex === 'off' ? 'off' : 'auto'
   texAllowed = !off && latex === 'auto' && math.block !== 'unicode'
 
-  // /kittex-doctor (doctor.ts), whatever the options.
+  // /kittex-doctor (doctor.ts), whatever the options: kittex's own command,
+  // answered here (a registered command has no core); no other command is hooked.
   on('command.run', { command: 'kittex-doctor' }, $ => runDoctor($, options))
 
   // ─── Setup ─────────────────────────────────────────────────────────────────
@@ -304,14 +304,14 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     if (result.deny === undefined && typeof result.value === 'string') await refreshInk($, result.value).catch(() => undefined)
     return result
-  }).catch(($, e, next) => next(e))
+  })
 
   // Prose wraps at maxProseWidth: inline images are placed by it.
   on('config.set', { key: 'maxProseWidth' }, async ($, e, next) => {
     const result = await next(e)
     if (result.deny === undefined) await refreshProseWidth($).catch(() => undefined)
     return result
-  }).catch(($, e, next) => next(e))
+  })
 
   // ─── Instructions to the model ─────────────────────────────────────────────
 
@@ -359,7 +359,7 @@ export const register: Register = (on, options) => {
       }
     }
     return entered
-  }).catch(($, e, next) => next(e))
+  })
 
   // A new conversation in the same process: /clear, and a compaction (which
   // drops the turn that carried the instructions). The hooks only observe: a
@@ -377,13 +377,13 @@ export const register: Register = (on, options) => {
     // Another conversation resumed: it holds what it was composed with (recorded, or not).
     if (e.source === 'resume') composesFresh = false
     return result
-  }).catch(($, e, next) => next(e))
+  })
 
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined) composesFresh = true
     return result
-  }).catch(($, e, next) => next(e))
+  })
 
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
@@ -400,7 +400,7 @@ export const register: Register = (on, options) => {
       done.resolve()
       if (e.final) flushGates.delete(e.message_id)
     }
-  }).catch(($, e, next) => next(e))
+  })
 
 
   // A landed block is told from the others by its transcript row: the row a
@@ -424,7 +424,7 @@ export const register: Register = (on, options) => {
       // drawn by its text
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  })
 
   // ─── Landed replies ────────────────────────────────────────────────────────
 
@@ -1243,7 +1243,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
  * BLOCK_LIMIT the oldest is dropped (drawn as it streamed if it redraws).
  */
 async function storeBlock($: $, id: string, entry: Streaming, records: readonly PreviewRecord[], raw?: number): Promise<void> {
-  await update($, { ...BLOCKS, id }, block => {
+  await updateBlock($, id, block => {
     const kept: StreamedBlock = { records: [...(block?.records ?? []), ...records] }
     const at = raw ?? block?.raw
     return at === undefined ? kept : { ...kept, raw: at }
@@ -1251,8 +1251,24 @@ async function storeBlock($: $, id: string, entry: Streaming, records: readonly 
   if (entry.stored) return
   entry.stored = true
   storedBlocks.push(id)
-  await update($, RECENT, list => [...(list ?? []).filter(one => one !== id), id].slice(-RECENT_BLOCKS))
+  await updateRecent($, list => [...(list ?? []).filter(one => one !== id), id].slice(-RECENT_BLOCKS))
   while (storedBlocks.length > BLOCK_LIMIT) await $.state.set({ ...BLOCKS, id: storedBlocks.shift()! }, null)
+}
+
+/** kittex.blocks[id] changed by `change`: read, changed, written while no other write came between (else again). */
+async function updateBlock($: $, id: string, change: (block: StreamedBlock | null | undefined) => StreamedBlock): Promise<void> {
+  for (;;) {
+    const { value, version } = await $.state.get({ ...BLOCKS, id })
+    if ((await $.state.set({ ...BLOCKS, id }, change(value), { ifVersion: version })).isSet) return
+  }
+}
+
+/** kittex.recent changed by `change`, as updateBlock does. */
+async function updateRecent($: $, change: (list: readonly string[] | undefined) => string[]): Promise<void> {
+  for (;;) {
+    const { value, version } = await $.state.get(RECENT)
+    if ((await $.state.set(RECENT, change(value), { ifVersion: version })).isSet) return
+  }
 }
 
 /** The message whose stream a row's text starts with (the longest such, so the newest of two that begin alike). */
@@ -1696,7 +1712,7 @@ async function pruneCache($: $): Promise<void> {
 
 async function pruneFolder($: $, folder: string | undefined, limit: number, name: RegExp): Promise<void> {
   if (!folder) return
-  let files: Awaited<ReturnType<typeof $.fs.list>>
+  let files: FsEntry[]
   try {
     files = await $.fs.list(folder)
   } catch {

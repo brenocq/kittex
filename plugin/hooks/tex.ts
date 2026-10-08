@@ -282,8 +282,8 @@ export function sandboxBinds(paths: readonly string[], hide: readonly string[]):
 
 /** The extra paths every confined command of a job binds back, and the variables it runs with (a sandbox's PATH). */
 function sandboxed(setup: Pick<TexSetup, 'confinement' | 'sandbox'>): { binds: string[]; env: Record<string, string> } {
-  const on = setup.confinement.bwrap !== undefined
-  return { binds: on ? (setup.sandbox?.binds ?? []) : [], env: on && setup.sandbox?.path ? { PATH: setup.sandbox.path } : {} }
+  const jailed = setup.confinement.bwrap !== undefined
+  return { binds: jailed ? (setup.sandbox?.binds ?? []) : [], env: jailed && setup.sandbox?.path ? { PATH: setup.sandbox.path } : {} }
 }
 
 /** Whether `dvisvgm --help` lists `--libgs`; a help that isn't dvisvgm's (no `--no-specials`) counts as yes. */
