@@ -1,4 +1,349 @@
-import{Scanner2,init_errors,init_engine,__toCommonJS,engine_exports,GlyphError,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES}from'./p33.js';export*from'./p33.js';
+import{NORMAL,DIAGRAM_ENVS2,makeLine,scanInline,restAt,looksLikeFence,findClose,onlySpaceAfter,isListItem,fenceOpen,trimEndLength,displayOpen,standsAlone,startsBlock,endsTable,delimitsTable,closesFence,init_errors,init_engine,__toCommonJS,engine_exports,GlyphError,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES}from'./p33.js';export*from'./p33.js';
+// core/src/scan/scanner.ts
+var Output = class {
+  segments = [];
+  parts = [];
+  textStart = 0;
+  textEnd = 0;
+  text(text, start) {
+    if (text === "") return;
+    if (this.parts.length === 0) this.textStart = start;
+    this.parts.push(text);
+    this.textEnd = start + text.length;
+  }
+  line(line) {
+    this.text(line.raw, line.start);
+  }
+  lines(lines2) {
+    for (const line of lines2) this.line(line);
+  }
+  segment(segment) {
+    if (segment.kind === "text") return this.text(segment.text, segment.start);
+    this.flushText();
+    this.segments.push(segment);
+  }
+  take() {
+    this.flushText();
+    const segments = this.segments;
+    this.segments = [];
+    return segments;
+  }
+  flushText() {
+    if (this.parts.length === 0) return;
+    const text = this.parts.length === 1 ? this.parts[0] : this.parts.join("");
+    this.segments.push({ kind: "text", text, start: this.textStart, end: this.textEnd });
+    this.parts = [];
+  }
+};
+function openEnvironment(lines2) {
+  let depth = 0;
+  for (const line of lines2) {
+    depth += line.text.split("\\begin{").length - 1;
+    depth -= line.text.split("\\end{").length - 1;
+  }
+  return depth > 0;
+}
+var Scanner2 = class {
+  constructor(maxHeldLines, diagrams = false, maxDiagramLines = 400) {
+    this.maxHeldLines = maxHeldLines;
+    this.diagrams = diagrams;
+    this.maxDiagramLines = maxDiagramLines;
+  }
+  maxHeldLines;
+  diagrams;
+  maxDiagramLines;
+  state = NORMAL;
+  flags = { prevBlank: true, prevCode: false, inList: false };
+  /** Prose lines of the open paragraph not yet returned. */
+  para = [];
+  /** The paragraph's last line while a paragraph is open (its lines may already be returned). */
+  paraLast = null;
+  /** Display kinds whose openers are ignored on lines starting before the given offset. */
+  ignore = /* @__PURE__ */ new Map();
+  /** Lines waiting to be processed; a display block that gives up pushes its lines back on top. */
+  frames = [];
+  out = new Output();
+  partial = "";
+  offset = 0;
+  /** The start offsets of the lines read as rows of a GFM table (its header included). */
+  rows = /* @__PURE__ */ new Set();
+  /** The table whose rows go on, at its blockquote depth (null outside a table). */
+  table = null;
+  isRow = (line) => this.rows.has(line.start);
+  /** Lines a held block may hold before it is released as text. */
+  holdLimit(st) {
+    const diagram = st.t === "mathfence" ? st.diagram !== void 0 : DIAGRAM_ENVS2.has(st.kind);
+    return diagram ? this.maxDiagramLines : this.maxHeldLines;
+  }
+  push(delta, final) {
+    const text = this.partial + delta;
+    const lines2 = [];
+    let from = 0;
+    for (let nl = text.indexOf("\n"); nl >= 0; nl = text.indexOf("\n", from)) {
+      lines2.push(this.line(text.slice(from, nl + 1)));
+      from = nl + 1;
+    }
+    this.partial = text.slice(from);
+    if (final && this.partial !== "") {
+      lines2.push(this.line(this.partial));
+      this.partial = "";
+    }
+    this.frames.push({ lines: lines2, i: 0 });
+    this.drain();
+    if (final) this.finish();
+    else this.settle();
+    return this.out.take();
+  }
+  line(raw) {
+    const line = makeLine(raw, this.offset);
+    this.offset = line.end;
+    return line;
+  }
+  drain() {
+    while (this.frames.length > 0) {
+      const frame2 = this.frames[this.frames.length - 1];
+      if (frame2.i >= frame2.lines.length) this.frames.pop();
+      else this.process(frame2.lines[frame2.i++]);
+    }
+  }
+  /** End of a streaming batch: return what is settled, release what was held too long. */
+  settle() {
+    const st = this.state;
+    if (st.t === "display" && st.lines.length > this.holdLimit(st)) {
+      this.out.lines(st.lines);
+      this.state = { t: "released", kind: st.kind, depth: st.depth };
+    } else if (st.t === "mathfence" && st.lines.length > this.holdLimit(st)) {
+      this.out.lines(st.lines);
+      this.state = { t: "fence", ch: st.ch, len: st.len, indent: st.indent, depth: st.depth };
+    }
+    if (this.para.length > 0) {
+      const { segments, cut } = scanInline(this.para, true, this.isRow);
+      for (const segment of segments) this.out.segment(segment);
+      let keep = 0;
+      while (keep < this.para.length && this.para[keep].start < cut) keep++;
+      this.para = this.para.slice(keep);
+      if (this.para.length > this.maxHeldLines) this.endParagraph();
+    }
+  }
+  /** End of the input: open display blocks give up, an open math fence is text. */
+  finish() {
+    for (; ; ) {
+      const st = this.state;
+      if (st.t === "display") {
+        this.giveUp(st, Infinity, []);
+        this.drain();
+        continue;
+      }
+      if (st.t === "mathfence") this.out.lines(st.lines);
+      this.state = NORMAL;
+      break;
+    }
+    this.endParagraph();
+  }
+  process(line) {
+    const st = this.state;
+    switch (st.t) {
+      case "fence":
+        if (line.depth < st.depth) break;
+        this.out.line(line);
+        if (this.closesFence(line, st)) this.state = NORMAL;
+        this.after(line);
+        return;
+      case "mathfence":
+        if (line.depth < st.depth) {
+          this.out.lines(st.lines);
+          break;
+        }
+        st.lines.push(line);
+        if (this.closesFence(line, st)) this.closeMathFence(st);
+        this.after(line);
+        return;
+      case "display": {
+        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
+        if (rest !== null && line.blank && !st.lines.at(-1).blank && openEnvironment(st.lines)) {
+          st.lines.push(line);
+          return;
+        }
+        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) return this.giveUp(st, line.start, [line]);
+        const close = findClose(st.kind, rest, 0);
+        if (!close) {
+          st.lines.push(line);
+          return;
+        }
+        if (close.ok && onlySpaceAfter(rest, close.end)) return this.closeDisplay(st, line, close.pos, close.end);
+        return this.giveUp(st, line.end, [line]);
+      }
+      case "released": {
+        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
+        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) break;
+        const close = findClose(st.kind, rest, 0);
+        if (close && !(close.ok && onlySpaceAfter(rest, close.end))) break;
+        this.out.line(line);
+        if (close) this.state = NORMAL;
+        this.after(line);
+        return;
+      }
+      case "normal":
+        break;
+    }
+    this.state = NORMAL;
+    this.normal(line);
+  }
+  normal(line) {
+    const flags = this.flags;
+    const before = { ...flags };
+    this.tableRow(line);
+    if (line.blank) {
+      this.endParagraph();
+      this.out.line(line);
+      this.after(line);
+      return;
+    }
+    const listItem = (line.indent <= 3 || flags.inList) && isListItem(line.body);
+    if (listItem) flags.inList = true;
+    else if (line.indent < 2 && flags.prevBlank) flags.inList = false;
+    if (line.indent >= 4 && !flags.inList && (flags.prevBlank || flags.prevCode)) {
+      this.endParagraph();
+      this.out.line(line);
+      this.after(line, true);
+      return;
+    }
+    if (line.indent <= 3 || flags.inList) {
+      const fence = fenceOpen(line.body.slice(0, trimEndLength(line.body)));
+      if (fence) {
+        this.endParagraph();
+        const common = { ch: fence.ch, len: fence.len, indent: line.indent, depth: line.depth };
+        if (fence.math || this.diagrams && fence.diagram) {
+          this.state = { t: "mathfence", ...common, lines: [line], ...fence.math ? {} : { diagram: fence.diagram } };
+        } else {
+          this.state = { t: "fence", ...common };
+          this.out.line(line);
+        }
+        this.after(line);
+        return;
+      }
+      const open = displayOpen(line.body, this.diagrams);
+      if (open && line.start >= (this.ignore.get(open.kind) ?? -1)) {
+        this.endParagraph();
+        if (open.oneLine) {
+          const start = line.start + line.bodyStart;
+          const end = start + open.oneLine.end;
+          this.out.text(line.raw.slice(0, line.bodyStart), line.start);
+          this.math(open.delimiter, open.oneLine.tex, line.raw.slice(line.bodyStart, line.bodyStart + open.oneLine.end), start, end, this.diagrams && DIAGRAM_ENVS2.has(open.kind) ? "env" : void 0);
+          this.out.text(line.raw.slice(line.bodyStart + open.oneLine.end), end);
+          this.after(line);
+        } else {
+          this.state = { t: "display", kind: open.kind, delimiter: open.delimiter, from: open.from, depth: line.depth, lines: [line], flags: before };
+        }
+        return;
+      }
+    }
+    if (!(this.paraLast && this.continues(this.paraLast, line))) this.endParagraph();
+    this.para.push(line);
+    this.paraLast = line;
+    this.after(line);
+  }
+  continues(prev, line) {
+    if (line.depth !== prev.depth) return false;
+    if (prev.indent <= 3 && standsAlone(prev.body)) return false;
+    return !((line.indent <= 3 || this.flags.inList) && startsBlock(line.body));
+  }
+  /**
+   * Follows GFM tables (marked's reading), before the line joins a paragraph:
+   * a delimiter row right under a prose line makes that line a header and
+   * starts a table; its rows go on until a blank line, a change of quote
+   * depth or a line that starts another block.
+   */
+  tableRow(line) {
+    if (this.table && (line.blank || line.depth !== this.table.depth || endsTable(line.body))) this.table = null;
+    if (this.table) {
+      this.rows.add(line.start);
+      return;
+    }
+    const header = this.paraLast;
+    if (header && header.depth === line.depth && delimitsTable(header.body, line.body)) {
+      this.rows.add(header.start);
+      this.rows.add(line.start);
+      this.table = { depth: line.depth };
+    }
+  }
+  endParagraph() {
+    if (this.para.length > 0) {
+      for (const segment of scanInline(this.para, false, this.isRow).segments) this.out.segment(segment);
+      this.para = [];
+    }
+    this.paraLast = null;
+  }
+  after(line, code = false) {
+    this.flags.prevBlank = line.blank;
+    this.flags.prevCode = code;
+  }
+  closesFence(line, fence) {
+    const rest = restAt(line, fence.depth);
+    let i2 = 0;
+    let cols = 0;
+    for (; i2 < rest.length; i2++) {
+      const c = rest.charCodeAt(i2);
+      if (c === 32) cols++;
+      else if (c === 9) cols += 4 - cols % 4;
+      else break;
+    }
+    return cols <= Math.max(3, fence.indent) && closesFence(rest.slice(i2), fence.ch, fence.len);
+  }
+  closeMathFence(st) {
+    this.state = NORMAL;
+    const lines2 = st.lines;
+    const first = lines2[0];
+    const last = lines2[lines2.length - 1];
+    const tex = lines2.slice(1, -1).map((l) => restAt(l, st.depth)).join("\n").trim();
+    if (tex === "") return this.out.lines(lines2);
+    const start = first.start + first.bodyStart;
+    const lastRest = restAt(last, st.depth);
+    const end = last.start + (last.prefixEnds[st.depth] ?? 0) + trimEndLength(lastRest);
+    this.emitBlock(lines2, start, end, "fence", tex, st.diagram);
+  }
+  closeDisplay(st, line, closePos, closeEnd) {
+    const lines2 = [...st.lines, line];
+    const first = lines2[0];
+    const inner = [first.body.slice(st.from), ...lines2.slice(1, -1).map((l) => restAt(l, st.depth)), restAt(line, st.depth).slice(0, closePos)];
+    if (inner.join("\n").trim() === "") return this.giveUp(st, line.end, [line]);
+    let tex;
+    if (st.delimiter === "env") {
+      inner[0] = first.body;
+      inner[inner.length - 1] = restAt(line, st.depth).slice(0, closeEnd);
+      tex = inner.join("\n").trim();
+    } else {
+      tex = inner.join("\n").trim();
+    }
+    this.state = NORMAL;
+    const start = first.start + first.bodyStart;
+    const end = line.start + (line.prefixEnds[st.depth] ?? 0) + closeEnd;
+    this.emitBlock(lines2, start, end, st.delimiter, tex, this.diagrams && DIAGRAM_ENVS2.has(st.kind) ? "env" : void 0);
+    this.after(line);
+  }
+  /** Emits a closed block: the text before its opening delimiter, the math, the rest of its last line. */
+  emitBlock(lines2, start, end, delimiter, tex, diagram) {
+    const first = lines2[0];
+    const last = lines2[lines2.length - 1];
+    const source = lines2.map((l) => l.raw).join("");
+    this.out.text(source.slice(0, start - first.start), first.start);
+    this.math(delimiter, tex, source.slice(start - first.start, end - first.start), start, end, diagram);
+    this.out.text(last.raw.slice(end - last.start), end);
+  }
+  math(delimiter, tex, raw, start, end, diagram) {
+    this.out.segment({ kind: "math", display: true, tex, raw, delimiter, start, end, ...diagram ? { diagram } : {} });
+  }
+  /**
+   * A display block that was not one: its lines (and `more`) are processed again
+   * as ordinary lines, its kind of opener ignored on lines starting before `until`.
+   */
+  giveUp(st, until, more) {
+    this.ignore.set(st.kind, Math.max(this.ignore.get(st.kind) ?? -1, until));
+    this.flags = st.flags;
+    this.state = NORMAL;
+    this.frames.push({ lines: [...st.lines, ...more], i: 0 });
+  }
+};
 // core/src/scan/index.ts
 function scan(markdown, options3 = {}) {
   return new Scanner2(Infinity, options3.diagrams === true, Infinity).push(markdown, true);
@@ -594,6 +939,7 @@ function tokenText(el) {
 }
 // core/src/unicode/layout.ts
 var tight = false;
+var tableWidth;
 function layoutMath(root2, display, compact = false) {
   if (root2.name !== "math") fail(`root <${root2.name}>`);
   const options3 = typeof compact === "boolean" ? { compact } : compact;
@@ -608,35 +954,53 @@ function layoutMath(root2, display, compact = false) {
       inner = solid[0].row;
       solid = inner.items.filter((item) => item.box.width > 0);
     }
-    return breakRow(inner, width) ?? row.box;
+    const broken = breakRow(inner, width);
+    if (broken || !options3.breakTables) return broken ?? row.box;
+    let room = width;
+    for (let attempt = 0; attempt < 3 && room > 0; attempt++) {
+      tableWidth = room;
+      const box = layoutRow(elements(root2), ctx).box;
+      if (box.width <= width) return box;
+      room -= box.width - width;
+    }
+    return row.box;
   } finally {
     tight = false;
+    tableWidth = void 0;
   }
 }
-function breakRow(row, width) {
+function breakRow(row, width, indent = 0, sums = false) {
   const { parts, breaks } = row;
   if (!parts || !breaks || breaks.length === 0) return void 0;
   const lines2 = [];
-  const stops = [...breaks.filter((b) => b > 0 && b < parts.length), parts.length];
+  const stops = [...breaks.filter((b) => b > 0 && b < parts.length && (!sums || !multiplies(parts, b))), parts.length];
   let start = 0;
   while (start < parts.length) {
     let end = -1;
+    const room = lines2.length === 0 ? width : width - indent;
     for (const stop of stops) {
       if (stop <= start) continue;
-      if (trimmed(parts.slice(start, stop)).width <= width) end = stop;
+      if (trimmed(parts.slice(start, stop), lines2.length === 0).width <= room) end = stop;
       else break;
     }
     if (end < 0) return void 0;
-    lines2.push(trimmed(parts.slice(start, end)));
+    const line = lines2.length === 0 ? trimmed(parts.slice(start, end), true) : trimmed(parts.slice(start, end));
+    lines2.push(lines2.length === 0 || indent === 0 ? line : hcat([blank(indent, height(line), line.base), line]));
     start = end;
   }
   if (lines2.length < 2) return void 0;
   return vstack(lines2, "left", lines2[0].base);
 }
-function trimmed(parts) {
+function multiplies(parts, at) {
+  let i2 = at;
+  while (i2 < parts.length && isBlank2(parts[i2])) i2++;
+  const part = parts[i2];
+  return part !== void 0 && PRODUCT.test(part.rows[part.base].join("").trimStart());
+}
+function trimmed(parts, keepStart = false) {
   let from = 0;
   let to = parts.length;
-  while (from < to && isBlank2(parts[from])) from++;
+  while (!keepStart && from < to && isBlank2(parts[from])) from++;
   while (to > from && isBlank2(parts[to - 1])) to--;
   return from < to ? hcat(parts.slice(from, to)) : blank(0);
 }
@@ -1601,6 +1965,64 @@ function oneLineTable(el, rowEls, ctx) {
   }
   return textBox(rows.map((row, r) => r < rows.length - 1 ? row.replace(/[,;]$/, "") : row).join("; "));
 }
+function breakCells(rows, widths, gaps, room) {
+  const total = () => widths.reduce((n, w) => n + w, 0) + gaps.reduce((n, g) => n + g.space, 0);
+  const order = widths.map((_, c) => c).sort((a, b) => widths[b] - widths[a]);
+  for (const c of order) {
+    const over = total() - room;
+    if (over <= 0) return;
+    for (let target = Math.max(1, widths[c] - over); target < widths[c]; target++) {
+      const broken = rows.map((r) => {
+        const cell = r[c];
+        return !cell || cell.box.width <= target ? cell?.box : breakCell(cell, target);
+      });
+      if (broken.some((box, r) => rows[r][c] && !box)) continue;
+      broken.forEach((box, r) => {
+        if (box) rows[r][c].box = box;
+      });
+      widths[c] = Math.max(0, ...rows.map((r) => r[c]?.box.width ?? 0));
+      break;
+    }
+  }
+  if (total() > room) fail("table too wide to break");
+}
+function breakCell(cell, width) {
+  const first = cell.row?.items.find((item) => item.box.width > 0);
+  const parts = cell.row?.parts ?? [];
+  let lead = 0;
+  for (let i2 = 0; i2 < parts.length && isBlank2(parts[i2]); i2++) lead += parts[i2].width;
+  const indent = first?.cls === "REL" ? lead + first.box.width + 1 : 0;
+  const row = cell.row;
+  return row && (breakRow(row, width, indent, true) ?? breakRow(row, width, indent)) || (height(cell.box) === 1 ? breakText(cell.box, width, indent, true) ?? breakText(cell.box, width, indent) : void 0);
+}
+var PRODUCT = /^[⋅×÷∘∗·]/u;
+var CONTINUES = /^[-+−±∓=<>≤≥≠≈≡∼≃≅∝→←↔⇒⇐⇔↦⋅×÷∘∪∩∧∨⊂⊃⊆⊇∈∉≺≻⪯⪰≼≽∣]/u;
+function breakText(box, width, indent, sums = false) {
+  const words2 = [[]];
+  for (const cell of box.rows[0]) {
+    if (cell === " " && words2.at(-1).some((c) => c !== " ")) words2.push([]);
+    else words2.at(-1).push(cell);
+  }
+  const lines2 = [];
+  let line = [];
+  const size = (ws) => ws.reduce((n, w2) => n + w2.length, 0) + Math.max(0, ws.length - 1);
+  const room = () => lines2.length === 0 ? width : width - indent;
+  for (const word of words2.filter((w2) => w2.length > 0)) {
+    line.push(word);
+    while (size(line) > room()) {
+      let at = line.length - 1;
+      while (at > 0 && !(CONTINUES.test(line[at].join("")) && !(sums && PRODUCT.test(line[at].join(""))))) at--;
+      if (at === 0) return void 0;
+      lines2.push(line.slice(0, at));
+      line = line.slice(at);
+    }
+  }
+  lines2.push(line);
+  if (lines2.length < 2) return void 0;
+  const rows = lines2.map((ws, i2) => [...Array(i2 === 0 ? 0 : indent).fill(" "), ...ws.flatMap((w2, k) => k === 0 ? w2 : [" ", ...w2])]);
+  const w = Math.max(...rows.map((r) => r.length));
+  return { rows: rows.map((r) => [...r, ...Array(w - r.length).fill(" ")]), width: w, base: 0 };
+}
 function table(el, ctx) {
   const cellCtx = ctx.compact ? { twoD: false, display: false, level: ctx.level, compact: true } : { twoD: ctx.twoD, display: el.attrs.displaystyle === "true", level: ctx.level };
   const rowEls = elements(el);
@@ -1626,7 +2048,8 @@ function table(el, ctx) {
         if (cellEl.name !== "mtd") fail(`<${cellEl.name}> in mtr`);
         if ((cellEl.attrs.rowspan ?? "1") !== "1" || (cellEl.attrs.columnspan ?? "1") !== "1") fail("spanning cell");
         const align = alignOf(cellEl.attrs.columnalign ?? pick(rowAligns ?? tableAligns, c));
-        return { box: layoutRow(elements(cellEl), cellCtx).box, align };
+        const row = layoutRow(elements(cellEl), cellCtx);
+        return { box: row.box, align, row };
       })
     );
     labels.push(label);
@@ -1640,6 +2063,7 @@ function table(el, ctx) {
     return line === "none" ? { space, line: "" } : { space: Math.max(3, space | 1), line: line === "dashed" ? "┆" : "│" };
   });
   const tall = rows.some((r) => r.some((cell) => height(cell.box) > 1));
+  if (tableWidth !== void 0 && ctx.level === 0) breakCells(rows, widths, gaps, tableWidth);
   const rowBoxes = rows.map((r) => {
     const up = Math.max(0, ...r.map((cell) => above(cell.box)));
     const down = Math.max(0, ...r.map((cell) => below(cell.box)));

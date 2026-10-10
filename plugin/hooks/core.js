@@ -1,4 +1,4 @@
-import{BUILD_ID,DIAGRAM_ENVS,FORMAT_SOURCE,GHOSTTY_BUILTIN_FONT,GlyphError,INLINE_OVERFLOW,JOB_NAME,LATEX_ARGV,MAX_IMAGE_BYTES,MAX_IMAGE_SIDE,MAX_PICTURE_ROWS,MAX_PIXELS,MAX_TEX_LENGTH,MAX_TEX_SOURCE,MIN_DISPLAY_SCALE,MIN_INLINE_SCALE,MIN_PICTURE_SCALE,PREAMBLE_VERSION,SvgError,TexError,XmlError,adaptColor,assumedBackground,blockParts,bwrapProbe,cellProbe,cellProbes,charsOf,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,confined,createLineScanner,detectTerminal,diagramDocument,diagramFence,drawsEmojiSequences,drawsPicture,dvisvgmArgv,emPxForCell,encodePng,engineHyperlinks,fontCell,fontFileArgv,formatArgv,formatName,imageColumns,imageInkBackground,imageInkCurve,init,initTypeset,inkAlpha,isJobDir,jobDirTemplate,latexArgv,layoutHeading,layoutList,layoutProse,layoutQuote,layoutTable,matchesFamily,mathDocument,mathEmPx,measure,measureDisplay,measureDisplayResult,measureInline,measureInlineResult,measurePicture2,odArgv,parseFontFile,parseOd,previewDisplay,previewInline,previewWidth,proseBlocks,rasterize,readFontMetrics,readTerminalColors,recolorPng,renderDisplay,renderDisplayResult,renderInline,renderInlineResult,renderPicture,scan,strokeWeight,texEnvironment,texError,texFormula,texPicture,texToMathML2,textBaseline,textLayout,textWidth,toBase64,toHex,toUnicode,typeset,typesetLoaded,unsafeTex,visibleProse,wrapLine,wrapRows}from'./core-parts/p35.js';
+import{BUILD_ID,DIAGRAM_ENVS,FORMAT_SOURCE,GHOSTTY_BUILTIN_FONT,GlyphError,INLINE_OVERFLOW,JOB_NAME,LATEX_ARGV,MAX_IMAGE_BYTES,MAX_IMAGE_SIDE,MAX_PICTURE_ROWS,MAX_PIXELS,MAX_TEX_LENGTH,MAX_TEX_SOURCE,MIN_DISPLAY_SCALE,MIN_INLINE_SCALE,MIN_PICTURE_SCALE,PREAMBLE_VERSION,SvgError,TexError,XmlError,adaptColor,assumedBackground,blockParts,bwrapProbe,cellProbe,cellProbeRan,cellProbes,charsOf,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,confined,coreTextFontArgv,createLineScanner,detectTerminal,diagramDocument,diagramFence,drawsEmojiSequences,drawsPicture,dvisvgmArgv,emPxForCell,encodePng,engineHyperlinks,faceIndexOf,fontCell,fontFileArgv,formatArgv,formatName,imageColumns,imageInkBackground,imageInkCurve,init,initTypeset,inkAlpha,isJobDir,jobDirTemplate,latexArgv,layoutHeading,layoutList,layoutProse,layoutQuote,layoutTable,matchesFamily,mathDocument,mathEmPx,measure,measureDisplay,measureDisplayResult,measureInline,measureInlineResult,measurePicture2,odArgv,parseCoreTextFont,parseFontFile,parseOd,previewDisplay,previewInline,previewWidth,proseBlocks,rasterize,readFontMetrics,readTerminalColors,recolorPng,renderDisplay,renderDisplayResult,renderInline,renderInlineResult,renderPicture,scan,strokeWeight,texEnvironment,texError,texFormula,texPicture,texToMathML2,textBaseline,textLayout,textWidth,toBase64,toHex,toUnicode,typeset,typesetLoaded,ulimitProbe,unsafeTex,visibleProse,wrapLine,wrapRows}from'./core-parts/p35.js';
 export {
   BUILD_ID,
   DIAGRAM_ENVS,
@@ -26,6 +26,7 @@ export {
   blockParts,
   bwrapProbe,
   cellProbe,
+  cellProbeRan,
   cellProbes,
   charsOf,
   chooseInk,
@@ -34,6 +35,7 @@ export {
   claudeThemeScheme,
   colorProbes,
   confined,
+  coreTextFontArgv,
   createLineScanner,
   detectTerminal,
   diagramDocument,
@@ -44,6 +46,7 @@ export {
   emPxForCell,
   encodePng,
   engineHyperlinks,
+  faceIndexOf,
   fontCell,
   fontFileArgv,
   formatArgv,
@@ -72,6 +75,7 @@ export {
   measureInlineResult,
   measurePicture2 as measurePicture,
   odArgv,
+  parseCoreTextFont,
   parseFontFile,
   parseOd,
   previewDisplay,
@@ -102,6 +106,7 @@ export {
   toUnicode,
   typeset,
   typesetLoaded,
+  ulimitProbe,
   unsafeTex,
   visibleProse,
   wrapLine,

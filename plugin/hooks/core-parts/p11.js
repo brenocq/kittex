@@ -500,6 +500,7 @@ var MAX_ROWS = 200;
 var RULE_MAX = 40;
 var REPLY_INDENT = 2;
 var EMPTY = { text: "", source: [] };
+var FLATNESS = 0.05;
 var MAX_DEPTH = 2e4;
 var MAX_ELEMENTS = 2e5;
 var ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
@@ -509,6 +510,9 @@ var MAX_PICTURE_NUMBERS = 2e6;
 var MAX_VISITS = 4e5;
 var MAX_USE_DEPTH = 8;
 var PATTERN_OPACITY = 0.35;
+var GRADIENT_BANDS = 64;
+var MAX_PATTERN_OPS = 6e3;
+var MAX_SERVER_CLIPS = 64;
 var BLACK = { r: 0, g: 0, b: 0 };
 var IDENTITY = [1, 0, 0, 1, 0, 0];
 var NAMED = JSON.parse(`{
@@ -545,7 +549,9 @@ var MAX_INKS = 6;
 var MAX_LEVELS = 24;
 var SOLID = 248;
 var SOLID_COLOURS = 104;
-var FLATNESS = 0.05;
+var CANDIDATES = 4096;
+var COVER_TAIL = 5e-3;
+var FARTHEST_SLOTS = 40;
 var MIN_DASH_PERIOD = 0.5;
 var MAX_DASHES = 2e4;
 var NO_JOIN = 0.02;
@@ -638,6 +644,22 @@ var AUTO_THEMES = { dark: "dark-theme.auto.conf", light: "light-theme.auto.conf"
 var MATH_X_HEIGHT = 0.4306;
 var X_HEIGHT_RATIO = 0.92;
 var GHOSTTY_BUILTIN_FONT = { unitsPerEm: 1e3, ascender: 1020, descender: -300, lineGap: 0, xHeight: 550, weight: 400, advance: 600 };
+var CORETEXT_FONT_JXA = `ObjC['import']('AppKit')
+function run(argv) {
+  const attrs = $.NSMutableDictionary.alloc.init
+  attrs.setObjectForKey($(argv[0]), 'NSFontFamilyAttribute')
+  const all = $.NSFontDescriptor.fontDescriptorWithFontAttributes(attrs).matchingFontDescriptorsWithMandatoryKeys($.NSSet.setWithObject('NSFontFamilyAttribute'))
+  const faces = []
+  for (let i = 0; i < all.count; i++) {
+    const d = all.objectAtIndex(i)
+    const url = d.objectForKey('NSCTFontFileURLAttribute')
+    const name = key => { const v = d.objectForKey(key); return v.isNil() ? '' : v.js }
+    if (!url.isNil()) faces.push({ file: url.path.js, style: name('NSFontFaceAttribute'), postscript: name('NSFontNameAttribute'), family: name('NSFontFamilyAttribute') })
+  }
+  const want = (argv[1] || 'Regular').toLowerCase()
+  const face = faces.find(f => f.style.toLowerCase() === want) || faces.find(f => f.style.toLowerCase() === 'regular') || faces[0]
+  return face ? [face.file, face.postscript, face.family].join('\\n') : ''
+}`;
 var CLAUDE_THEME_TEXT = {
   dark: "rgb(255,255,255)",
   light: "rgb(0,0,0)",
@@ -649,7 +671,7 @@ var CLAUDE_THEME_TEXT = {
 var ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
 var MIN_INLINE_SCALE = 0.85;
 var INLINE_OVERFLOW = 0.06;
-var BUILD_ID = "kittex-build:b8f59c04d8066b24";
+var BUILD_ID = "kittex-build:b96914c5c9b25d68";
 var MAX_TEX_LENGTH = 4096;
 var MAX_PIXELS = 16e6;
 var MAX_IMAGE_SIDE = 4096;
@@ -1588,4 +1610,4 @@ var init_Parser = __esm({
     };
   }
 });
-export{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,TexError,GlyphError,init_errors,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,IDENTITY,MAX_VISITS,PATTERN_OPACITY,NAMED,STANDALONE_NO_PS,TIKZ_LIBRARIES,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,PLTE_AT,SOLID,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,FLATNESS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};
+export{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,TexError,GlyphError,init_errors,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,PATTERN_OPACITY,GRADIENT_BANDS,NAMED,STANDALONE_NO_PS,TIKZ_LIBRARIES,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};

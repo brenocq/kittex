@@ -1,9 +1,9 @@
-import{layoutMath,parseXml2,lines,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,initTypeset,GlyphError,measure,MIN_DISPLAY_SCALE,TexError,TOO_LARGE,MAX_PIXELS,rasterize,encodePng,recolorPng,MIN_INLINE_SCALE,INK_EDGE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,typeset,texToMathML2,INLINE_OVERFLOW,CACHE_LIMIT,assumedBackground,MAX_PICTURE_ROWS,adaptColor,measurePicture,MIN_PICTURE_SCALE,rasterizePicture,encodePicturePng,pictureOutlines}from'./p34.js';export*from'./p34.js';
+import{layoutMath,parseXml2,lines,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,initTypeset,GlyphError,measure,MIN_DISPLAY_SCALE,TexError,TOO_LARGE,MAX_PIXELS,rasterize,encodePng,recolorPng,MIN_INLINE_SCALE,INK_EDGE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,typeset,texToMathML2,INLINE_OVERFLOW,CACHE_LIMIT,assumedBackground,MAX_PICTURE_ROWS,adaptColor,measurePicture,MIN_PICTURE_SCALE,rasterizePicture,encodePicturePng,pictureOutlines}from'./p34.js';export*from'./p34.js';
 // core/src/unicode/index.ts
 function toUnicode(mathml, options3) {
   try {
     const breakWidth = options3.breakLines ? options3.maxWidth : void 0;
-    const box = layoutMath(parseXml2(mathml), options3.display, { compact: options3.display && options3.compact === true, breakWidth, tight: options3.tight });
+    const box = layoutMath(parseXml2(mathml), options3.display, { compact: options3.display && options3.compact === true, breakWidth, tight: options3.tight, breakTables: options3.breakTables });
     if (!options3.display && box.rows.length !== 1 && breakWidth === void 0) return null;
     if (options3.maxWidth !== void 0 && box.width > options3.maxWidth) return null;
     return { lines: lines(box), baseline: box.base, width: box.width };
@@ -674,6 +674,9 @@ var cellProbePython = {
   parse: parseWinsize
 };
 var cellProbes = [cellProbe, cellProbePython];
+function cellProbeRan(exitCode, stdout) {
+  return exitCode === 1 || exitCode === 0 && /^\s*\d+\s+\d+\s+\d+\s+\d+\s*$/m.test(stdout);
+}
 function emPxForCell(cell, emScale = 1.15) {
   return cell.cellWidth / 0.6 * emScale;
 }
@@ -722,15 +725,18 @@ function kittyLayout(font, height2, cell, options3) {
   const adjust = options3.kittyAdjust;
   const ceilPx = (units, em3) => Math.ceil(Math.round(units / upm * em3 * 64) / 64);
   const lineUnits = font.ascender - font.descender + font.lineGap;
+  const coreText = options3.platform === "darwin";
+  const roundPx = (units, em3) => Math.round(units / upm * em3);
+  const lineAt = (em3) => coreText ? roundPx(font.ascender, em3) + roundPx(-font.descender, em3) + roundPx(Math.max(0, font.lineGap), em3) : ceilPx(lineUnits, em3);
   const wide = (em3) => !font.advance || adjust?.cellWidth !== void 0 || Math.abs(ceilPx(font.advance, em3) - cell.cellWidth) <= 1;
   let em2;
   let own;
   let dpi = 96;
   if (options3.sizePt && options3.sizePt > 0) {
-    search: for (const extra of [0, 1, 2]) {
+    search: for (const extra of coreText ? [0] : [0, 1, 2]) {
       for (const d of dpis(options3.platform)) {
         const e = options3.sizePt * d / 72;
-        const h = ceilPx(lineUnits, e) + extra;
+        const h = lineAt(e) + extra;
         if (wide(e) && kittyMetric(h, adjust?.cellHeight, d) === cell.cellHeight) {
           ;
           [em2, own, dpi] = [e, h, d];
@@ -751,7 +757,7 @@ function kittyLayout(font, height2, cell, options3) {
     em2 = (low + high) / 2;
   }
   const cellHeight = cell.cellHeight;
-  let baseline = ceilPx(font.ascender, em2);
+  let baseline = coreText ? roundPx(font.ascender, em2) : ceilPx(font.ascender, em2);
   if (adjust?.baseline) {
     const moved = kittyMetric(baseline, adjust.baseline, dpi) - baseline;
     const shift = moved >= 0 ? Math.min(moved, baseline - 1) : Math.max(moved, baseline - cellHeight + 1);
@@ -782,10 +788,11 @@ function ghosttyLayout(font, height2, cell, options3) {
   let em2;
   if (options3.sizePt && options3.sizePt > 0) {
     for (const d of dpis(options3.platform)) {
-      const p = Math.round(Math.round(options3.sizePt * 64) * d / 72 / 64);
+      const exact = options3.sizePt * d / 72;
+      const p = options3.platform === "darwin" ? exact : Math.round(Math.round(options3.sizePt * 64) * d / 72 / 64);
       if (p > 0 && fits2(p)) {
         ppem = p;
-        em2 = options3.sizePt * d / 72;
+        em2 = exact;
         break;
       }
     }
@@ -961,6 +968,63 @@ function matchesFamily(match, family) {
   const want = family.trim().toLowerCase();
   return match.families.some((f) => f.toLowerCase() === want);
 }
+function coreTextFontArgv(family, style) {
+  return ["osascript", "-l", "JavaScript", "-e", CORETEXT_FONT_JXA, family, style ?? ""];
+}
+function parseCoreTextFont(stdout) {
+  const [file, postscript, family] = stdout.split("\n").map((line) => line.trim());
+  if (!file?.startsWith("/")) return void 0;
+  return { file, index: 0, families: family ? [family] : [], postscript: postscript ?? "" };
+}
+async function faceIndexOf(read, postscript) {
+  const exact = async (offset, length4) => {
+    const bytes = await read(offset, length4);
+    return bytes && bytes.length >= length4 ? bytes : void 0;
+  };
+  const header = await exact(0, 12);
+  if (!header || tag2(header, 0) !== "ttcf") return 0;
+  const count = u32(header, 8);
+  if (count > 64) return 0;
+  const offsets = await exact(12, 4 * count);
+  if (!offsets) return 0;
+  for (let index = 0; index < count; index++) {
+    const start = u32(offsets, 4 * index);
+    const face = await exact(start, 12);
+    if (!face) continue;
+    const numTables = u162(face, 4);
+    if (numTables === 0 || numTables > 1024) continue;
+    const dir = await exact(start + 12, 16 * numTables);
+    if (!dir) continue;
+    for (let i2 = 0; i2 < numTables; i2++) {
+      if (tag2(dir, 16 * i2) !== "name") continue;
+      const name = await exact(u32(dir, 16 * i2 + 8), Math.min(u32(dir, 16 * i2 + 12), 1 << 16));
+      if (name && postscriptNames(name).includes(postscript)) return index;
+    }
+  }
+  return 0;
+}
+function postscriptNames(name) {
+  if (name.length < 6) return [];
+  const count = u162(name, 2);
+  const strings = u162(name, 4);
+  const out = [];
+  for (let r = 0; r < count && 6 + 12 * r + 12 <= name.length; r++) {
+    const at = 6 + 12 * r;
+    if (u162(name, at + 6) !== 6) continue;
+    const platform = u162(name, at);
+    const length4 = u162(name, at + 8);
+    const from = strings + u162(name, at + 10);
+    if (from + length4 > name.length) continue;
+    const bytes = name.subarray(from, from + length4);
+    if (platform === 1) out.push(String.fromCharCode(...bytes));
+    else {
+      let text = "";
+      for (let k = 0; k + 1 < bytes.length; k += 2) text += String.fromCharCode(u162(bytes, k));
+      out.push(text);
+    }
+  }
+  return out;
+}
 function odArgv(path, offset, length4) {
   return ["od", "-An", "-v", "-tu1", "-j", String(offset), "-N", String(length4), path];
 }
@@ -1083,6 +1147,7 @@ function detectKind(env) {
     case "iTerm.app":
       return "iterm2";
   }
+  if (env.TERM_PROGRAM !== void 0 && OTHER_PROGRAMS.has(env.TERM_PROGRAM)) return "other";
   if (term === "wezterm") return "wezterm";
   if (env.LC_TERMINAL === "iTerm2") return "iterm2";
   if (isSet(env.KITTY_WINDOW_ID) || isSet(env.KITTY_PID)) return "kitty";
@@ -1091,6 +1156,7 @@ function detectKind(env) {
   if (isSet(env.ITERM_SESSION_ID)) return "iterm2";
   return "other";
 }
+var OTHER_PROGRAMS = /* @__PURE__ */ new Set(["Apple_Terminal", "vscode", "WarpTerminal", "Hyper", "Tabby"]);
 function detectMultiplexer(env) {
   const term = env.TERM ?? "";
   if (isSet(env.TMUX) || env.TERM_PROGRAM === "tmux" || /^tmux(-|$)/.test(term)) return "tmux";
@@ -1160,14 +1226,16 @@ function measureDisplay(tex, env) {
   try {
     result = typesetDisplay(tex, env);
   } catch (error) {
-    const form = error instanceof GlyphError ? previewForms(tex, previewWidth(env.maxColumns))[0] : void 0;
+    const width = previewWidth(env.maxColumns);
+    const form = error instanceof GlyphError ? previewForms(tex, width)[0] ?? tableForms(tex, width)[0] : void 0;
     if (form) return { columns: Math.max(1, Math.min(255, env.maxColumns)), rows: Math.min(255, form.lines.length), scale: 1 };
     throw error;
   }
   const box = measure(result, rasterOptions(env));
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale));
   const forms = previewForms(tex, previewWidth(env.maxColumns));
-  const reserved = forms.length === 0 || forms.some((form) => form.lines.length <= box.rows) ? box : measure(result, rasterOptions(env, Math.min(255, ...forms.map((form) => form.lines.length))));
+  const fits2 = (form) => form.lines.length <= box.rows;
+  const reserved = forms.length === 0 || forms.some(fits2) || tableForms(tex, previewWidth(env.maxColumns)).some(fits2) ? box : measure(result, rasterOptions(env, Math.min(255, ...forms.map((form) => form.lines.length))));
   if (reserved.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE);
   return reserved;
 }
@@ -1191,7 +1259,8 @@ function renderDisplay(tex, env, minRows) {
   return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) };
 }
 function previewDisplay(tex, env, rows) {
-  const result = previewForms(tex, env.maxColumns).find((form) => rows === void 0 || form.lines.length <= rows);
+  const fits2 = (form) => rows === void 0 || form.lines.length <= rows;
+  const result = previewForms(tex, env.maxColumns).find(fits2) ?? tableForms(tex, env.maxColumns).find(fits2);
   if (!result) return null;
   if (rows === void 0 || result.lines.length === rows) return result.lines;
   const blank2 = " ".repeat(result.width);
@@ -1286,17 +1355,22 @@ ${tex}`;
 function previewForms(tex, maxWidth) {
   return ["stacked", "compact", "lines"].flatMap((form) => unicodeFor(tex, form, maxWidth) ?? []);
 }
+function tableForms(tex, maxWidth) {
+  return ["stackedRows", "compactRows"].flatMap((form) => unicodeFor(tex, form, maxWidth) ?? []);
+}
 var unicodeCache = /* @__PURE__ */ new Map();
 function unicodeFor(tex, form, maxWidth) {
   if (tex.length > MAX_TEX_LENGTH) return null;
   const key = `${form}${maxWidth ?? ""}
 ${tex}`;
   if (unicodeCache.has(key)) return remember(unicodeCache, key) ?? null;
-  const display = form === "stacked" || form === "compact";
+  const breakTables = form === "stackedRows" || form === "compactRows";
+  const display = form === "stacked" || form === "compact" || breakTables;
   const breakLines = form !== "inline" && form !== "tight";
   let result;
   try {
-    result = toUnicode(texToMathML2(tex, { display }), { display, maxWidth, compact: form === "compact", breakLines, tight: form === "tight" });
+    const compact = form === "compact" || form === "compactRows";
+    result = toUnicode(texToMathML2(tex, { display }), { display, maxWidth, compact, breakLines, breakTables, tight: form === "tight" });
   } catch {
     result = null;
   }
@@ -1397,4 +1471,4 @@ function renderDisplayResult(result, env, minRows) {
   if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE);
   return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png };
 }
-export{MAX_IMAGE_BYTES,cellProbe,cellProbes,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,detectTerminal,drawsEmojiSequences,emPxForCell,fontCell,fontFileArgv,imageColumns,imageInkBackground,imageInkCurve,init,matchesFamily,mathEmPx,measureDisplay,measureDisplayResult,measureInline,measureInlineResult,measurePicture2,odArgv,parseFontFile,parseOd,previewDisplay,previewInline,previewWidth,readFontMetrics,readTerminalColors,renderDisplay,renderDisplayResult,renderInline,renderInlineResult,renderPicture,texFormula,textBaseline,textLayout,toBase64,toHex,toUnicode};
+export{MAX_IMAGE_BYTES,cellProbe,cellProbeRan,cellProbes,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,coreTextFontArgv,detectTerminal,drawsEmojiSequences,emPxForCell,faceIndexOf,fontCell,fontFileArgv,imageColumns,imageInkBackground,imageInkCurve,init,matchesFamily,mathEmPx,measureDisplay,measureDisplayResult,measureInline,measureInlineResult,measurePicture2,odArgv,parseCoreTextFont,parseFontFile,parseOd,previewDisplay,previewInline,previewWidth,readFontMetrics,readTerminalColors,renderDisplay,renderDisplayResult,renderInline,renderInlineResult,renderPicture,texFormula,textBaseline,textLayout,toBase64,toHex,toUnicode};

@@ -1390,6 +1390,9 @@ var init_macros = __esm({
       mathbbm: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
       mathbbmss: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
       mathds: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
+      // LaTeX's own, which work in math there: \emph as italic text, \ensuremath as its argument.
+      emph: [BaseMethods_default.Macro, "\\textit{#1}", 1],
+      ensuremath: [BaseMethods_default.Macro, "{#1}", 1],
       ...ARROW_MACROS
     };
     new CommandMap("kittex-macros", MACROS);
@@ -1427,7 +1430,7 @@ function multiply2(m, n) {
     m[1] * n[4] + m[3] * n[5] + m[5]
   ];
 }
-function apply(m, x2, y) {
+function apply2(m, x2, y) {
   return [m[0] * x2 + m[2] * y + m[4], m[1] * x2 + m[3] * y + m[5]];
 }
 function translate2(x2, y) {
@@ -1440,8 +1443,8 @@ function isAxisAligned(m) {
   return m[1] === 0 && m[2] === 0 || m[0] === 0 && m[3] === 0;
 }
 function mapBox(m, [x0, y0, x1, y1]) {
-  const [ax, ay] = apply(m, x0, y0);
-  const [bx, by] = apply(m, x1, y1);
+  const [ax, ay] = apply2(m, x0, y0);
+  const [bx, by] = apply2(m, x1, y1);
   return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
 }
 function intersect(a, b) {
@@ -1573,13 +1576,13 @@ function flatten(segments, m = (__kittexLate.IDENTITY2?.()), steps = 8) {
   let [x2, y, sx, sy] = [0, 0, 0, 0];
   for (const s of segments) {
     if (s.c === "M") {
-      current = { points: [apply(m, s.x, s.y)], closed: false };
+      current = { points: [apply2(m, s.x, s.y)], closed: false };
       lines2.push(current);
       [x2, y, sx, sy] = [s.x, s.y, s.x, s.y];
       continue;
     }
     if (!current) {
-      current = { points: [apply(m, x2, y)], closed: false };
+      current = { points: [apply2(m, x2, y)], closed: false };
       lines2.push(current);
     }
     if (s.c === "Z") {
@@ -1587,7 +1590,7 @@ function flatten(segments, m = (__kittexLate.IDENTITY2?.()), steps = 8) {
       current = void 0;
       [x2, y] = [sx, sy];
     } else if (s.c === "L") {
-      current.points.push(apply(m, s.x, s.y));
+      current.points.push(apply2(m, s.x, s.y));
       [x2, y] = [s.x, s.y];
     } else {
       for (let k = 1; k <= steps; k++) {
@@ -1595,7 +1598,7 @@ function flatten(segments, m = (__kittexLate.IDENTITY2?.()), steps = 8) {
         const u = 1 - t;
         const px2 = u * u * u * x2 + 3 * u * u * t * s.x1 + 3 * u * t * t * s.x2 + t * t * t * s.x;
         const py = u * u * u * y + 3 * u * u * t * s.y1 + 3 * u * t * t * s.y2 + t * t * t * s.y;
-        current.points.push(apply(m, px2, py));
+        current.points.push(apply2(m, px2, py));
       }
       ;
       [x2, y] = [s.x, s.y];
@@ -1641,4 +1644,4 @@ function signedArea2(polygon) {
   }
   return area2 / 2;
 }
-export{signedArea2,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply,clipPolygon,EmpheqUtil,rememberLabels,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_EmpheqUtil,init_fonts,init_macros};
+export{signedArea2,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,EmpheqUtil,rememberLabels,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_EmpheqUtil,init_fonts,init_macros};

@@ -1,5 +1,788 @@
-import{u16,shft,wbits,hTree,clim,flt,fdt,hMap,flm,fdm,wbits16,fleb,fdeb,i32,u8,revfl,revfd,slc,PLTE_AT,SOLID,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,FLATNESS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,__kittexLate}from'./p31.js';export*from'./p31.js';
-__kittexLate.et=()=>et;__kittexLate.ln=()=>ln;
+import{STANDALONE_NO_PS,TIKZ_LIBRARIES,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,__kittexLate}from'./p31.js';export*from'./p31.js';
+__kittexLate.clamp01=()=>clamp01;
+var clamp01 = (v) => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+// core/src/diagram/tex.ts
+function diagramFence(info) {
+  const lang = info.trim().split(/\s+/, 1)[0].toLowerCase();
+  if (lang === "latex" || lang === "tex") return "latex";
+  if (lang === "tikz") return "tikz";
+  return void 0;
+}
+function drawsPicture(source, lang) {
+  if (lang !== "latex") return true;
+  if (isDocument(source)) return hasBody(source);
+  return /\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/.test(source);
+}
+function isDocument(source) {
+  return /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(source) || /\\begin\{document\}/.test(source);
+}
+function hasBody(source) {
+  const start = /\\begin\{document\}/.exec(source);
+  if (!start) return false;
+  const end = source.indexOf("\\end{document}", start.index);
+  const body = source.slice(start.index + start[0].length, end < 0 ? void 0 : end);
+  return body.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, "$1$2").trim() !== "";
+}
+var FRAGMENT_PREAMBLE = [
+  "\\documentclass[dvisvgm,border=1pt]{standalone}",
+  `\\makeatletter${STANDALONE_NO_PS}\\makeatother`,
+  "\\usepackage{amsmath,amssymb}",
+  "\\usepackage{tikz}",
+  `\\usetikzlibrary{${TIKZ_LIBRARIES}}`,
+  "\\usepackage{pgfplots}",
+  "\\pgfplotsset{compat=1.18}",
+  // pgfplots' own libraries: polar axes, groups of plots, box plots, more colormaps, patch plots and ternary axes.
+  "\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary}",
+  "\\usepackage{chemfig}",
+  "\\usepackage{circuitikz}",
+  "\\usepackage{tikz-cd}",
+  "\\usepackage{siunitx}"
+];
+var PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usepgfplotslibrary|usepgflibrary|usegdlibrary)\b[^\n]*$/gm;
+function curvesSampledOnce(source) {
+  const start = /\\addplot3\s*\+?/g;
+  let out = "";
+  let from = 0;
+  for (let match = start.exec(source); match; match = start.exec(source)) {
+    let at = skipBlanks(source, match.index + match[0].length);
+    let options3;
+    if (source[at] === "[") {
+      const close2 = matchingBracket(source, at, "[", "]");
+      if (close2 < 0) continue;
+      options3 = { open: at, close: close2 };
+      at = skipBlanks(source, close2 + 1);
+    }
+    if (source[at] !== "(") continue;
+    const close = matchingBracket(source, at, "(", ")");
+    if (close < 0) continue;
+    const triple = source.slice(at + 1, close);
+    const optionText = options3 ? source.slice(options3.open + 1, options3.close) : "";
+    if (/(?:^|[^A-Za-z\\])y(?![A-Za-z])|\\y(?![A-Za-z])/.test(triple) || /samples\s+y|y\s+domain|variable\s+y/.test(optionText)) continue;
+    if (options3) {
+      const separator = optionText.trim() === "" ? "" : ", ";
+      out += `${source.slice(from, options3.close)}${separator}samples y=0`;
+      from = options3.close;
+    } else {
+      const end = match.index + match[0].length;
+      out += `${source.slice(from, end)}[samples y=0]`;
+      from = end;
+    }
+  }
+  return out + source.slice(from);
+}
+function skipBlanks(text, at) {
+  while (at < text.length && /\s/.test(text[at])) at++;
+  return at;
+}
+function matchingBracket(text, open, opening, closing) {
+  let depth = 0;
+  for (let at = open; at < text.length; at++) {
+    if (text[at] === opening) depth++;
+    else if (text[at] === closing && --depth === 0) return at;
+  }
+  return -1;
+}
+function diagramDocument(source, lang) {
+  const trimmed2 = curvesSampledOnce(
+    source.replace(/^\s*\n/, "").replace(/\s+$/, "").replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g, (_, brace, faceted) => `shader=${brace ? "{" : ""}${faceted ? "faceted" : "flat"}`).replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g, (_, side) => side ? `colorbar${side}, colorbar sampled` : "colorbar sampled")
+  );
+  if (lang === "latex" && isDocument(trimmed2)) {
+    const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed2);
+    const body2 = hasClass ? trimmed2 : `\\documentclass[dvisvgm,border=1pt]{standalone}
+${trimmed2}`;
+    const head2 = `\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\\PassOptionsToPackage{dvisvgm}{graphicx}\\makeatletter\\AddToHook{class/standalone/after}{${STANDALONE_NO_PS}}\\makeatother`;
+    const classed = body2.replace(
+      /\\documentclass\s*(?:\[([^\]]*)\])?\s*\{/,
+      (_, options3) => options3 === void 0 ? "\\documentclass[dvisvgm]{" : /(?:^|,)\s*dvisvgm\s*(?:,|$)/.test(options3) ? `\\documentclass[${options3}]{` : `\\documentclass[${options3},dvisvgm]{`
+    );
+    const text = `${head2}
+${classed.replace(/\\begin\{document\}/, "\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}")}
+`;
+    return { text, offset: hasClass ? 1 : 2, baseline: "bottom", fontSize: documentFontSize(body2) };
+  }
+  const moved = [...trimmed2.matchAll(PREAMBLE_LINE)].map((match) => match[0].trim());
+  let body = moved.length > 0 ? trimmed2.replace(PREAMBLE_LINE, "") : trimmed2;
+  if (lang === "tikz" && !/\\begin\{tikzpicture\}|\\tikz\b/.test(body)) body = `\\begin{tikzpicture}
+${body}
+\\end{tikzpicture}`;
+  const head = [...FRAGMENT_PREAMBLE, DUMP_POINT, ...moved, "\\begin{document}"];
+  const wrapped = lang === "tikz" && body !== trimmed2 && body.startsWith("\\begin{tikzpicture}\n") && !trimmed2.startsWith("\\begin{tikzpicture}");
+  const offset = head.length + (wrapped ? 1 : 0);
+  return { text: `${head.join("\n")}
+${body}
+\\end{document}
+`, offset, baseline: "bottom", fontSize: 10, format: true };
+}
+var FORMAT_SOURCE = `${[...FRAGMENT_PREAMBLE, DUMP_POINT, "\\begin{document}", "\\end{document}"].join("\n")}
+`;
+function formatName(versions) {
+  let hash = 2166136261;
+  for (const char of `${PREAMBLE_VERSION}
+${versions}
+${FORMAT_SOURCE}`) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return `kittex-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+function formatArgv(name) {
+  return ["latex", "-ini", "-no-shell-escape", "-interaction=nonstopmode", "-halt-on-error", "-no-mktex=tex", "-no-mktex=tfm", "-no-mktex=pk", `-jobname=${name}`, "&latex", "mylatexformat.ltx", `${name}.tex`];
+}
+function latexArgv(format) {
+  return format === void 0 ? [...LATEX_ARGV] : [...LATEX_ARGV.slice(0, -2), `-fmt=${format}`, ...LATEX_ARGV.slice(-2)];
+}
+var DISPLAY_ENV = /^\\begin\{(equation|align|gather|multline|flalign|alignat|eqnarray)\*?\}/;
+function mathDocument(tex, display) {
+  const body = tex.trim();
+  if (!display) {
+    const head2 = [...MATH_PREAMBLE.slice(0, 3), "\\usepackage[active]{preview}", "\\begin{document}"];
+    return { text: `${head2.join("\n")}
+\\begin{preview}$${body}$\\end{preview}
+\\end{document}
+`, offset: head2.length, baseline: "origin", fontSize: 10 };
+  }
+  const head = [...MATH_PREAMBLE, "\\begin{document}"];
+  const math = DISPLAY_ENV.test(body) ? body : `\\[
+${body}
+\\]`;
+  return { text: `${head.join("\n")}
+${math}
+\\end{document}
+`, offset: head.length + (DISPLAY_ENV.test(body) ? 0 : 1), baseline: "bottom", fontSize: 10 };
+}
+function documentFontSize(source) {
+  const options3 = /\\documentclass\s*\[([^\]]*)\]/.exec(source)?.[1] ?? "";
+  const size = /(?:^|,)\s*(\d{1,2}(?:\.\d+)?)pt\s*(?:,|$)/.exec(options3)?.[1];
+  const n = size === void 0 ? 10 : Number(size);
+  return n >= 5 && n <= 25 ? n : 10;
+}
+function emPerUnit(document) {
+  return 72.27 / 72 / document.fontSize;
+}
+var REFUSED_PATTERN = new RegExp(String.raw`\\(?:${REFUSED_COMMANDS.map((name) => name.replace(/[*]/g, "\\*")).join("|")})(?![A-Za-z@])`);
+var REFUSED_PACKAGES = /* @__PURE__ */ new Set([
+  "shellesc",
+  "minted",
+  "pythontex",
+  "sagetex",
+  "bashful",
+  "gnuplottex",
+  "asymptote",
+  "svg",
+  "epstopdf",
+  "auto-pst-pdf",
+  "pst-pdf",
+  "luacode",
+  "luatextra",
+  "luapackageloader",
+  "fontspec",
+  "filecontents",
+  "catchfile",
+  "verbatim",
+  "fancyvrb",
+  "listings",
+  "import",
+  "standalone",
+  "datatool",
+  "csvsimple",
+  "readarray",
+  "pgfplotstable",
+  "xstring",
+  "docmute",
+  "subfiles",
+  "embedfile",
+  "attachfile",
+  "attachfile2",
+  "write18",
+  "pstricks",
+  "pst-node"
+]);
+var FILE_COMMAND = /\\(?:usepackage|RequirePackage|documentclass|LoadClass|usetikzlibrary|usepgfplotslibrary|usepgflibrary)\s*(?:\[[^\]]*\]\s*)?(?:\{([^}]*)\}|([^\s{\\][^\s\\]*))/g;
+var PLOT_FILE = /\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{([^}\\\n]*)\}/g;
+var PLOT_FILE_MACRO = /\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{\s*\\[A-Za-z]/;
+function unsafeTex(source) {
+  if (source.length > MAX_TEX_SOURCE) return `source longer than ${MAX_TEX_SOURCE} characters`;
+  if (source.includes("^^")) return "uses ^^ character notation";
+  if (/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(source)) return "holds control characters";
+  const refused = REFUSED_PATTERN.exec(source);
+  if (refused) return `uses ${refused[0]}`;
+  const internal = /\\[A-Za-z]*@[A-Za-z@]*/.exec(source);
+  if (internal) return `uses ${internal[0]}`;
+  if (/\\begin\{(?:luacode\*?|filecontents\*?|verbatimwrite|VerbatimOut|lstlisting|minted|pycode|sagesilent|sageblock|bash|asy|asydef)\}/.test(source)) return "uses an environment that runs code or writes files";
+  for (const match of source.matchAll(FILE_COMMAND)) {
+    const names = (match[1] ?? match[2] ?? "").split(",");
+    for (const raw of names) {
+      const name = raw.trim();
+      if (unsafePath(name)) return `reads ${name}`;
+      if (/^\\(?:usepackage|RequirePackage)/.test(match[0]) && REFUSED_PACKAGES.has(name)) return `uses the ${name} package`;
+    }
+  }
+  for (const match of source.matchAll(PLOT_FILE)) {
+    const name = match[1].trim();
+    if (name !== "" && unsafePath(name)) return `reads ${name}`;
+  }
+  if (PLOT_FILE_MACRO.test(source)) return "reads a plot file named by a macro";
+  if (/\bgnuplot\b|\\addplot[^;]*\bshell\b/.test(source)) return "runs gnuplot or a shell";
+  const path = /(?:^|[\s{=,(])((?:~|\$HOME|\$\{HOME\})\/|\.\.[/\\]|\/+(?:home|root|etc|Users|private|var|tmp|proc|sys|dev|run|mnt|media|srv|opt|usr|Library|Volumes|System|boot|snap|nix)\b)/.exec(source);
+  if (path) return `names a path outside the picture (${path[1]})`;
+  return void 0;
+}
+function unsafePath(name) {
+  return /^[/\\~]|^[A-Za-z]:|\.\.|^\.|\$|\||[`"'<>]|^\s*-/.test(name) || /[/\\]\./.test(name);
+}
+var MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+function bwrapProbe(hide) {
+  return ["bwrap", ...bwrapMounts(hide, void 0), "true"];
+}
+function bwrapMounts(hide, dir, readable = []) {
+  const args = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"];
+  for (const path of hide) args.push("--tmpfs", path);
+  for (const path of readable) args.push("--ro-bind", path, path);
+  if (dir !== void 0) args.push("--bind", dir, dir, "--chdir", dir);
+  args.push("--unshare-all", "--die-with-parent", "--new-session");
+  return args;
+}
+var ULIMIT_SCRIPT = `ulimit -f ${MAX_OUTPUT_BYTES / 1024} && ulimit -t ${MAX_CPU_SECONDS} && exec "$@"`;
+function ulimited(argv) {
+  return ["/bin/sh", "-c", ULIMIT_SCRIPT, "kittex-tex", ...argv];
+}
+function ulimitProbe() {
+  return ulimited(["true"]);
+}
+function confined(argv, dir, confinement, readable = []) {
+  let out = [...argv];
+  if (confinement.bwrap) out = ["bwrap", ...bwrapMounts(confinement.bwrap.hide, dir, readable), ...out];
+  if (confinement.prlimit) out = ["prlimit", `--fsize=${MAX_OUTPUT_BYTES}`, `--cpu=${MAX_CPU_SECONDS}`, ...out];
+  else if (confinement.ulimit) out = ulimited(out);
+  return out;
+}
+var LATEX_ARGV = [
+  "latex",
+  "-no-shell-escape",
+  "-interaction=nonstopmode",
+  "-halt-on-error",
+  "-no-mktex=tex",
+  "-no-mktex=tfm",
+  "-no-mktex=pk",
+  `-jobname=${JOB_NAME}`,
+  `${JOB_NAME}.tex`
+];
+function dvisvgmArgv(dir) {
+  return ["dvisvgm", "--no-fonts", "--exact-bbox", "--no-specials=ps,pdf,html", `--libgs=${dir}/no-ghostscript`, "--no-mktexmf", "--cache=none", `--tmpdir=${dir}`, "--page=1", "--stdout", "--verbosity=1", `${JOB_NAME}.dvi`];
+}
+function texEnvironment(dir) {
+  return {
+    shell_escape: "f",
+    openin_any: "p",
+    openout_any: "p",
+    TEXMFOUTPUT: dir,
+    HOME: dir,
+    MKTEXTEX: "0",
+    MKTEXTFM: "0",
+    MKTEXPK: "0",
+    MKTEXMF: "0",
+    MKTEXFMT: "0",
+    max_print_line: "1000",
+    error_line: "254",
+    half_error_line: "238"
+  };
+}
+function jobDirTemplate(tmpdir) {
+  const base = (tmpdir && tmpdir.startsWith("/") ? tmpdir : "/tmp").replace(/\/+$/, "");
+  return `${base}/kittex-tex.XXXXXXXXXX`;
+}
+function isJobDir(path) {
+  return /^\/(?:[^\n/]+\/)*kittex-tex\.[A-Za-z0-9]{10}$/.test(path) && !path.includes("/../") && !path.includes("/./");
+}
+function texError(log, offset = 0) {
+  const lines2 = log.split(/\r?\n/);
+  const at = lines2.findIndex((line2) => line2.startsWith("! "));
+  if (at < 0) {
+    if (/No pages of output/.test(log)) return "the picture is empty";
+    return /Emergency stop|Fatal error/.test(log) ? "TeX stopped" : "TeX failed";
+  }
+  let message = lines2[at].slice(2).trim().replace(/\.$/, "");
+  message = message.replace(/^(?:LaTeX|Package \S+|Class \S+) Error:\s*/, "");
+  let line;
+  if (/^Undefined control sequence$/.test(message)) {
+    const first = (lines2[at + 1] ?? "").replace(/^l\.\d+ /, "");
+    const token2 = /(\\[A-Za-z@]+|\\.)\s*$/.exec(first)?.[1];
+    if (token2) message += ` ${token2}`;
+  }
+  for (const next of lines2.slice(at + 1, at + 12)) {
+    const context2 = /^l\.(\d+) (.*)$/.exec(next);
+    if (context2) {
+      const n = Number(context2[1]) - offset;
+      if (n >= 1) line = n;
+      break;
+    }
+  }
+  return line === void 0 ? message : `${message} (line ${line})`;
+}
+// core/src/diagram/color.ts
+function assumedBackground(ink) {
+  return oklab(ink).l > 0.5 ? { r: 24, g: 24, b: 24 } : { r: 255, g: 255, b: 255 };
+}
+function adaptColor(color, paper, line) {
+  if (color.r <= NEAR && color.g <= NEAR && color.b <= NEAR) return paper.ink;
+  if (color.r >= 255 - NEAR && color.g >= 255 - NEAR && color.b >= 255 - NEAR) return "erase";
+  const lab = oklab(color);
+  const inkL = oklab(paper.ink).l;
+  const backL = oklab(paper.background).l;
+  let l = lab.l;
+  if (backL < 0.5) {
+    const flipped = inkL + lab.l * (backL - inkL);
+    const chroma = Math.hypot(lab.a, lab.b);
+    const keep = clamp012(chroma / SATURATED) * clamp012(1 - Math.abs(lab.l - KEEP_CENTER) / KEEP_BAND);
+    l = flipped + (lab.l - flipped) * keep;
+  }
+  if (l === lab.l && !(line && Math.abs(l - backL) < MIN_CONTRAST)) return { ...color };
+  if (line && Math.abs(l - backL) < MIN_CONTRAST) {
+    const towards = inkL >= backL ? 1 : -1;
+    l = clamp012(backL + towards * MIN_CONTRAST);
+  }
+  return fromOklab(l, lab.a, lab.b);
+}
+var toLinear = (v) => {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
+var fromLinear = (v) => (v <= 31308e-7 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255;
+function oklab(c) {
+  const r = toLinear(c.r), g = toLinear(c.g), b = toLinear(c.b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return {
+    l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
+  };
+}
+function linearOf(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+  ];
+}
+function fromOklab(L, a, b) {
+  const inside = (k2) => linearOf(L, a * k2, b * k2).every((v) => v >= -1e-6 && v <= 1 + 1e-6);
+  let k = 1;
+  if (!inside(1)) {
+    let lo = 0;
+    let hi = 1;
+    for (let i2 = 0; i2 < 20; i2++) {
+      const mid = (lo + hi) / 2;
+      if (inside(mid)) lo = mid;
+      else hi = mid;
+    }
+    k = lo;
+  }
+  const [r, g, bl] = linearOf(L, a * k, b * k);
+  const byte = (v) => Math.min(255, Math.max(0, Math.round(fromLinear(Math.min(1, Math.max(0, v))))));
+  return { r: byte(r), g: byte(g), b: byte(bl) };
+}
+var clamp012 = (v) => Math.min(1, Math.max(0, v));
+// core/src/diagram/index.ts
+function texPicture(svg, document) {
+  return readSvg(svg, { baseline: document.baseline, emPerUnit: emPerUnit(document) });
+}
+// core/src/raster/fill.ts
+var Coverage = class {
+  width;
+  height;
+  /** Row stride of `acc`: two spare cells right of the image take the deltas of edges at x = width. */
+  stride;
+  acc;
+  constructor(width, height2) {
+    this.width = width;
+    this.height = height2;
+    this.stride = width + 2;
+    this.acc = new Float32Array(this.stride * height2);
+  }
+  /** Adds a closed contour. `sign` is +1 or -1: the winding that counts as ink for this contour's shape. */
+  fill(contour, sign) {
+    const n = contour.length;
+    let x0 = contour[n - 2];
+    let y0 = contour[n - 1];
+    for (let i2 = 0; i2 < n; i2 += 2) {
+      const x1 = contour[i2];
+      const y1 = contour[i2 + 1];
+      this.line(x0, y0, x1, y1, sign);
+      x0 = x1;
+      y0 = y1;
+    }
+  }
+  /** Adds one edge, clipped to the image: the parts left of x = 0 or right of x = width run along that side. */
+  line(x0, y0, x1, y1, sign) {
+    if (y0 === y1) return;
+    const w = this.width;
+    if (x0 >= 0 && x1 >= 0 && x0 <= w && x1 <= w) {
+      this.edge(x0, y0, x1, y1, sign);
+      return;
+    }
+    const ts = [0, 1];
+    for (const bound of [0, w]) {
+      if ((x0 - bound) * (x1 - bound) < 0) ts.push((bound - x0) / (x1 - x0));
+    }
+    ts.sort((a, b) => a - b);
+    for (let i2 = 1; i2 < ts.length; i2++) {
+      const ta = ts[i2 - 1];
+      const tb = ts[i2];
+      const ax = x0 + (x1 - x0) * ta;
+      const bx = x0 + (x1 - x0) * tb;
+      const ay = y0 + (y1 - y0) * ta;
+      const by = y0 + (y1 - y0) * tb;
+      this.edge(Math.min(w, Math.max(0, ax)), ay, Math.min(w, Math.max(0, bx)), by, sign);
+    }
+  }
+  /** Adds one edge with 0 ≤ x ≤ width; rows outside the image are skipped. */
+  edge(px0, py0, px1, py1, sign) {
+    if (py0 === py1) return;
+    let dir = sign;
+    let x0 = px0, y0 = py0, x1 = px1, y1 = py1;
+    if (y0 > y1) {
+      dir = -sign;
+      x0 = px1;
+      y0 = py1;
+      x1 = px0;
+      y1 = py0;
+    }
+    const h = this.height;
+    if (y1 <= 0 || y0 >= h) return;
+    const acc = this.acc;
+    const stride = this.stride;
+    const dxdy = (x1 - x0) / (y1 - y0);
+    let x2 = x0;
+    if (y0 < 0) x2 -= y0 * dxdy;
+    const rowFrom = Math.max(0, Math.floor(y0));
+    const rowTo = Math.min(h, Math.ceil(y1));
+    for (let row = rowFrom; row < rowTo; row++) {
+      const base = row * stride;
+      const dy = Math.min(row + 1, y1) - Math.max(row, y0);
+      const xnext = x2 + dxdy * dy;
+      const d = dy * dir;
+      const xa = x2 < xnext ? x2 : xnext;
+      const xb = x2 < xnext ? xnext : x2;
+      const xaFloor = Math.floor(xa);
+      const xai = xaFloor;
+      const xbCeil = Math.ceil(xb);
+      const xbi = xbCeil;
+      if (xbi <= xai + 1) {
+        const xmf = 0.5 * (x2 + xnext) - xaFloor;
+        acc[base + xai] += d - d * xmf;
+        acc[base + xai + 1] += d * xmf;
+      } else {
+        const s = 1 / (xb - xa);
+        const xaf = xa - xaFloor;
+        const a0 = 0.5 * s * (1 - xaf) * (1 - xaf);
+        const xbf = xb - xbCeil + 1;
+        const am = 0.5 * s * xbf * xbf;
+        acc[base + xai] += d * a0;
+        if (xbi === xai + 2) {
+          acc[base + xai + 1] += d * (1 - a0 - am);
+        } else {
+          const a1 = s * (1.5 - xaf);
+          acc[base + xai + 1] += d * (a1 - a0);
+          for (let xi = xai + 2; xi < xbi - 1; xi++) acc[base + xi] += d * s;
+          const a2 = a1 + (xbi - xai - 3) * s;
+          acc[base + xbi - 1] += d * (1 - a2 - am);
+        }
+        acc[base + xbi] += d * am;
+      }
+      x2 = xnext;
+    }
+  }
+  /**
+   * The coverage under the even-odd rule, as bytes: a winding of 2 is a hole,
+   * and the accumulated area w covers |w| folded into [0, 1] (the distance to
+   * the nearest even number), which is exact for areas no two edges of a
+   * pixel overlap in.
+   */
+  toAlphaEvenOdd() {
+    const { width: w, height: h, stride, acc } = this;
+    const out = new Uint8Array(w * h);
+    for (let row = 0; row < h; row++) {
+      let sum2 = 0;
+      const from = row * stride;
+      const to = row * w;
+      for (let x2 = 0; x2 < w; x2++) {
+        sum2 += acc[from + x2];
+        let c = (sum2 < 0 ? -sum2 : sum2) % 2;
+        if (c > 1) c = 2 - c;
+        out[to + x2] = c * 255 + 0.5 | 0;
+      }
+    }
+    return out;
+  }
+  /** The coverage as bytes (0 to 255), row-major, through `curve` (256 entries) when given. */
+  toAlpha(curve) {
+    const { width: w, height: h, stride, acc } = this;
+    const out = new Uint8Array(w * h);
+    for (let row = 0; row < h; row++) {
+      let sum2 = 0;
+      const from = row * stride;
+      const to = row * w;
+      for (let x2 = 0; x2 < w; x2++) {
+        sum2 += acc[from + x2];
+        const c = sum2 < 0 ? -sum2 : sum2;
+        const byte = c >= 1 ? 255 : c * 255 + 0.5 | 0;
+        out[to + x2] = curve ? curve[byte] : byte;
+      }
+    }
+    return out;
+  }
+};
+// node_modules/fflate/esm/browser.js
+var u8 = Uint8Array;
+var u16 = Uint16Array;
+var i32 = Int32Array;
+var fleb = new u8([
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  1,
+  2,
+  2,
+  2,
+  2,
+  3,
+  3,
+  3,
+  3,
+  4,
+  4,
+  4,
+  4,
+  5,
+  5,
+  5,
+  5,
+  0,
+  /* unused */
+  0,
+  0,
+  /* impossible */
+  0
+]);
+var fdeb = new u8([
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  2,
+  2,
+  3,
+  3,
+  4,
+  4,
+  5,
+  5,
+  6,
+  6,
+  7,
+  7,
+  8,
+  8,
+  9,
+  9,
+  10,
+  10,
+  11,
+  11,
+  12,
+  12,
+  13,
+  13,
+  /* unused */
+  0,
+  0
+]);
+var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+var freb = function(eb, start) {
+  var b = new u16(31);
+  for (var i2 = 0; i2 < 31; ++i2) {
+    b[i2] = start += 1 << eb[i2 - 1];
+  }
+  var r = new i32(b[30]);
+  for (var i2 = 1; i2 < 30; ++i2) {
+    for (var j = b[i2]; j < b[i2 + 1]; ++j) {
+      r[j] = j - b[i2] << 5 | i2;
+    }
+  }
+  return { b, r };
+};
+var _a = freb(fleb, 2);
+var fl = _a.b;
+var revfl = _a.r;
+fl[28] = 258, revfl[258] = 28;
+var _b = freb(fdeb, 0);
+var fd = _b.b;
+var revfd = _b.r;
+var rev = new u16(32768);
+for (i = 0; i < 32768; ++i) {
+  x = (i & 43690) >> 1 | (i & 21845) << 1;
+  x = (x & 52428) >> 2 | (x & 13107) << 2;
+  x = (x & 61680) >> 4 | (x & 3855) << 4;
+  rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
+}
+var x;
+var i;
+var hMap = (function(cd, mb, r) {
+  var s = cd.length;
+  var i2 = 0;
+  var l = new u16(mb);
+  for (; i2 < s; ++i2) {
+    if (cd[i2])
+      ++l[cd[i2] - 1];
+  }
+  var le = new u16(mb);
+  for (i2 = 1; i2 < mb; ++i2) {
+    le[i2] = le[i2 - 1] + l[i2 - 1] << 1;
+  }
+  var co;
+  if (r) {
+    co = new u16(1 << mb);
+    var rvb = 15 - mb;
+    for (i2 = 0; i2 < s; ++i2) {
+      if (cd[i2]) {
+        var sv = i2 << 4 | cd[i2];
+        var r_1 = mb - cd[i2];
+        var v = le[cd[i2] - 1]++ << r_1;
+        for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
+          co[rev[v] >> rvb] = sv;
+        }
+      }
+    }
+  } else {
+    co = new u16(s);
+    for (i2 = 0; i2 < s; ++i2) {
+      if (cd[i2]) {
+        co[i2] = rev[le[cd[i2] - 1]++] >> 15 - cd[i2];
+      }
+    }
+  }
+  return co;
+});
+var flt = new u8(288);
+for (i = 0; i < 144; ++i)
+  flt[i] = 8;
+var i;
+for (i = 144; i < 256; ++i)
+  flt[i] = 9;
+var i;
+for (i = 256; i < 280; ++i)
+  flt[i] = 7;
+var i;
+for (i = 280; i < 288; ++i)
+  flt[i] = 8;
+var i;
+var fdt = new u8(32);
+for (i = 0; i < 32; ++i)
+  fdt[i] = 5;
+var i;
+var flm = /* @__PURE__ */ hMap(flt, 9, 0);
+var fdm = /* @__PURE__ */ hMap(fdt, 5, 0);
+var shft = function(p) {
+  return (p + 7) / 8 | 0;
+};
+var slc = function(v, s, e) {
+  if (s == null || s < 0)
+    s = 0;
+  if (e == null || e > v.length)
+    e = v.length;
+  return new u8(v.subarray(s, e));
+};
+var wbits = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+};
+var wbits16 = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+  d[o + 2] |= v >> 16;
+};
+var hTree = function(d, mb) {
+  var t = [];
+  for (var i2 = 0; i2 < d.length; ++i2) {
+    if (d[i2])
+      t.push({ s: i2, f: d[i2] });
+  }
+  var s = t.length;
+  var t2 = t.slice();
+  if (!s)
+    return { t: et, l: 0 };
+  if (s == 1) {
+    var v = new u8(t[0].s + 1);
+    v[t[0].s] = 1;
+    return { t: v, l: 1 };
+  }
+  t.sort(function(a, b) {
+    return a.f - b.f;
+  });
+  t.push({ s: -1, f: 25001 });
+  var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
+  t[0] = { s: -1, f: l.f + r.f, l, r };
+  while (i1 != s - 1) {
+    l = t[t[i0].f < t[i22].f ? i0++ : i22++];
+    r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
+    t[i1++] = { s: -1, f: l.f + r.f, l, r };
+  }
+  var maxSym = t2[0].s;
+  for (var i2 = 1; i2 < s; ++i2) {
+    if (t2[i2].s > maxSym)
+      maxSym = t2[i2].s;
+  }
+  var tr = new u16(maxSym + 1);
+  var mbt = ln(t[i1 - 1], tr, 0);
+  if (mbt > mb) {
+    var i2 = 0, dt = 0;
+    var lft = mbt - mb, cst = 1 << lft;
+    t2.sort(function(a, b) {
+      return tr[b.s] - tr[a.s] || a.f - b.f;
+    });
+    for (; i2 < s; ++i2) {
+      var i2_1 = t2[i2].s;
+      if (tr[i2_1] > mb) {
+        dt += cst - (1 << mbt - tr[i2_1]);
+        tr[i2_1] = mb;
+      } else
+        break;
+    }
+    dt >>= lft;
+    while (dt > 0) {
+      var i2_2 = t2[i2].s;
+      if (tr[i2_2] < mb)
+        dt -= 1 << mb - tr[i2_2]++ - 1;
+      else
+        ++i2;
+    }
+    for (; i2 >= 0 && dt; --i2) {
+      var i2_3 = t2[i2].s;
+      if (tr[i2_3] == mb) {
+        --tr[i2_3];
+        ++dt;
+      }
+    }
+    mbt = mb;
+  }
+  return { t: new u8(tr), l: mbt };
+};
 var ln = function(n, l, d) {
   return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
 };
@@ -347,8 +1130,27 @@ function encodeQuantizedPng(rgba, width, height2) {
       }
       return chosen;
     };
+    const cover = (weights, most, apart) => {
+      const sorted = [...weights].sort((a, b) => b[1] - a[1]).slice(0, CANDIDATES);
+      const chosen = pick2(new Map(sorted), most - FARTHEST_SLOTS, apart);
+      const total = sorted.reduce((sum3, [, w]) => sum3 + w, 0);
+      let kept = 0;
+      let sum2 = 0;
+      while (kept < sorted.length && sum2 < total * (1 - COVER_TAIL)) sum2 += sorted[kept++][1];
+      const candidates = sorted.slice(0, kept).map(([rgb]) => [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255]);
+      const gap2 = candidates.map((c) => Math.min(Infinity, ...chosen.map((one) => distance(one, c))));
+      while (chosen.length < most) {
+        let far = -1;
+        for (let k = 0; k < candidates.length; k++) if (gap2[k] > apart && (far < 0 || gap2[k] > gap2[far])) far = k;
+        if (far < 0) break;
+        const c = candidates[far];
+        chosen.push(c);
+        for (let k = 0; k < candidates.length; k++) gap2[k] = Math.min(gap2[k], distance(c, candidates[k]));
+      }
+      return chosen;
+    };
     const inks = pick2(weight, MAX_INKS, INK_DISTANCE);
-    const solids = pick2(solidWeight, SOLID_COLOURS, SOLID_DISTANCE);
+    const solids = cover(solidWeight, SOLID_COLOURS, SOLID_DISTANCE);
     const levels = Math.min(MAX_LEVELS, Math.floor((255 - solids.length) / inks.length));
     plte = [0, 0, 0];
     trns = [0];
@@ -526,607 +1328,4 @@ function concat2(parts) {
   }
   return out;
 }
-// core/src/raster/paint.ts
-var Canvas2 = class {
-  constructor(width, height2) {
-    this.width = width;
-    this.height = height2;
-    this.pixels = new Uint8Array(width * height2 * 4);
-  }
-  width;
-  height;
-  /** Premultiplied RGBA, row-major. */
-  pixels;
-  /**
-   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
-   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
-   */
-  paint(coverage, x0, y0, w, h, color, opacity, mask) {
-    const px2 = this.pixels;
-    const W = this.width;
-    const erase = color === "erase";
-    const r = erase ? 0 : color.r;
-    const g = erase ? 0 : color.g;
-    const b = erase ? 0 : color.b;
-    const k = Math.min(1, Math.max(0, opacity)) / 255;
-    for (let y = 0; y < h; y++) {
-      const cy = y0 + y;
-      if (cy < 0 || cy >= this.height) continue;
-      for (let x2 = 0; x2 < w; x2++) {
-        const c = coverage[y * w + x2];
-        if (c === 0) continue;
-        const cx = x0 + x2;
-        if (cx < 0 || cx >= W) continue;
-        const at = cy * W + cx;
-        let a = c * k;
-        if (mask) {
-          const m = mask[at];
-          if (m === 0) continue;
-          a = a * m / 255;
-        }
-        const keep = 1 - a;
-        const i2 = at * 4;
-        if (erase) {
-          px2[i2] = px2[i2] * keep + 0.5;
-          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
-        } else {
-          px2[i2] = r * a + px2[i2] * keep + 0.5;
-          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
-        }
-      }
-    }
-  }
-  /**
-   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
-   * alpha corrected for its colour as the terminal corrects text blended over
-   * that background (inkAlpha: Ghostty's linear-corrected blending).
-   */
-  straight(over) {
-    const px2 = this.pixels;
-    const out = new Uint8Array(px2.length);
-    const tables = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < px2.length; i2 += 4) {
-      const a = px2[i2 + 3];
-      if (a === 0) continue;
-      const half = a >> 1;
-      const r0 = (px2[i2] * 255 + half) / a | 0;
-      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
-      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
-      const r = r0 > 255 ? 255 : r0;
-      const g = g0 > 255 ? 255 : g0;
-      const b = b0 > 255 ? 255 : b0;
-      out[i2] = r;
-      out[i2 + 1] = g;
-      out[i2 + 2] = b;
-      if (!over || a === 255) {
-        out[i2 + 3] = a;
-        continue;
-      }
-      const key = r << 16 | g << 8 | b;
-      let table2 = tables.get(key);
-      if (!table2) {
-        if (tables.size >= 4096) {
-          out[i2 + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over));
-          continue;
-        }
-        table2 = correctionTable({ r, g, b }, over);
-        tables.set(key, table2);
-      }
-      out[i2 + 3] = table2[a];
-    }
-    return out;
-  }
-};
-function correctionTable(color, over) {
-  const table2 = new Uint8Array(256);
-  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over));
-  return table2;
-}
-// core/src/raster/path.ts
-function flattenPath(d, m) {
-  const contours = [];
-  walkPath(d, m, FLATNESS, (points) => {
-    if (points.length >= 6) contours.push(points);
-  });
-  return contours;
-}
-function flattenSubpaths(d, m, flatness = FLATNESS) {
-  const out = [];
-  walkPath(d, m, flatness, (points, closed) => {
-    if (points.length >= 4) out.push({ points, closed });
-  });
-  return out;
-}
-function walkPath(d, m, flatness, emit2) {
-  let contour = [];
-  const [a, b, c, dd, e, f] = m;
-  const px2 = (x3, y2) => a * x3 + c * y2 + e;
-  const py = (x3, y2) => b * x3 + dd * y2 + f;
-  let x2 = 0;
-  let y = 0;
-  let startX = 0;
-  let startY = 0;
-  let ctrlX = 0;
-  let ctrlY = 0;
-  let prev = "";
-  const finish = (closed = false) => {
-    if (contour.length > 0) emit2(contour, closed);
-    contour = [];
-  };
-  const begin = () => {
-    if (contour.length === 0) contour.push(px2(x2, y), py(x2, y));
-  };
-  const lineTo = (nx, ny) => {
-    begin();
-    contour.push(px2(nx, ny), py(nx, ny));
-    x2 = nx;
-    y = ny;
-  };
-  const quadTo = (x1, y1, nx, ny) => {
-    begin();
-    const p0x = px2(x2, y), p0y = py(x2, y);
-    const p1x = px2(x1, y1), p1y = py(x1, y1);
-    const p2x = px2(nx, ny), p2y = py(nx, ny);
-    const ddx = p0x - 2 * p1x + p2x;
-    const ddy = p0y - 2 * p1y + p2y;
-    const n = Math.min(100, Math.ceil(Math.sqrt(Math.hypot(ddx, ddy) / (4 * flatness))));
-    for (let i2 = 1; i2 < n; i2++) {
-      const t = i2 / n;
-      const u = 1 - t;
-      contour.push(u * u * p0x + 2 * u * t * p1x + t * t * p2x, u * u * p0y + 2 * u * t * p1y + t * t * p2y);
-    }
-    contour.push(p2x, p2y);
-    x2 = nx;
-    y = ny;
-  };
-  const cubicTo = (x1, y1, x22, y2, nx, ny) => {
-    begin();
-    const p0x = px2(x2, y), p0y = py(x2, y);
-    const p1x = px2(x1, y1), p1y = py(x1, y1);
-    const p2x = px2(x22, y2), p2y = py(x22, y2);
-    const p3x = px2(nx, ny), p3y = py(nx, ny);
-    const dd1 = Math.hypot(p0x - 2 * p1x + p2x, p0y - 2 * p1y + p2y);
-    const dd2 = Math.hypot(p1x - 2 * p2x + p3x, p1y - 2 * p2y + p3y);
-    const n = Math.min(100, Math.ceil(Math.sqrt(0.75 * Math.max(dd1, dd2) / flatness)));
-    for (let i2 = 1; i2 < n; i2++) {
-      const t = i2 / n;
-      const u = 1 - t;
-      const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
-      contour.push(w0 * p0x + w1 * p1x + w2 * p2x + w3 * p3x, w0 * p0y + w1 * p1y + w2 * p2y + w3 * p3y);
-    }
-    contour.push(p3x, p3y);
-    x2 = nx;
-    y = ny;
-  };
-  const arcTo = (rx, ry, angle, large, sweep, nx, ny) => {
-    for (const seg of arcToCubics(x2, y, rx, ry, angle, large, sweep, nx, ny)) cubicTo(...seg);
-    x2 = nx;
-    y = ny;
-  };
-  const s = new Scanner(d);
-  let cmd = "";
-  for (; ; ) {
-    s.skip();
-    if (s.done()) break;
-    const next = s.command();
-    if (next) cmd = next;
-    else if (!cmd || cmd === "Z" || cmd === "z") break;
-    else if (cmd === "M") cmd = "L";
-    else if (cmd === "m") cmd = "l";
-    const rel = cmd === cmd.toLowerCase();
-    const ox = rel ? x2 : 0;
-    const oy = rel ? y : 0;
-    const upper = cmd.toUpperCase();
-    let cx = NaN;
-    let cy = NaN;
-    if (upper === "Z") {
-      finish(true);
-      x2 = startX;
-      y = startY;
-    } else if (upper === "M") {
-      const nx = s.number() + ox;
-      const ny = s.number() + oy;
-      if (Number.isNaN(nx + ny)) break;
-      finish();
-      x2 = startX = nx;
-      y = startY = ny;
-    } else if (upper === "L") {
-      const nx = s.number() + ox;
-      const ny = s.number() + oy;
-      if (Number.isNaN(nx + ny)) break;
-      lineTo(nx, ny);
-    } else if (upper === "H") {
-      const nx = s.number() + ox;
-      if (Number.isNaN(nx)) break;
-      lineTo(nx, y);
-    } else if (upper === "V") {
-      const ny = s.number() + oy;
-      if (Number.isNaN(ny)) break;
-      lineTo(x2, ny);
-    } else if (upper === "C" || upper === "S") {
-      let x1;
-      let y1;
-      if (upper === "C") {
-        x1 = s.number() + ox;
-        y1 = s.number() + oy;
-      } else if (prev === "C" || prev === "S") {
-        x1 = 2 * x2 - ctrlX;
-        y1 = 2 * y - ctrlY;
-      } else {
-        x1 = x2;
-        y1 = y;
-      }
-      const x22 = s.number() + ox;
-      const y2 = s.number() + oy;
-      const nx = s.number() + ox;
-      const ny = s.number() + oy;
-      if (Number.isNaN(x1 + y1 + x22 + y2 + nx + ny)) break;
-      cubicTo(x1, y1, x22, y2, nx, ny);
-      cx = x22;
-      cy = y2;
-    } else if (upper === "Q" || upper === "T") {
-      let x1;
-      let y1;
-      if (upper === "Q") {
-        x1 = s.number() + ox;
-        y1 = s.number() + oy;
-      } else if (prev === "Q" || prev === "T") {
-        x1 = 2 * x2 - ctrlX;
-        y1 = 2 * y - ctrlY;
-      } else {
-        x1 = x2;
-        y1 = y;
-      }
-      const nx = s.number() + ox;
-      const ny = s.number() + oy;
-      if (Number.isNaN(x1 + y1 + nx + ny)) break;
-      quadTo(x1, y1, nx, ny);
-      cx = x1;
-      cy = y1;
-    } else if (upper === "A") {
-      const rx = s.number();
-      const ry = s.number();
-      const angle = s.number();
-      const large = s.flag();
-      const sweep = s.flag();
-      const nx = s.number() + ox;
-      const ny = s.number() + oy;
-      if (Number.isNaN(rx + ry + angle + large + sweep + nx + ny)) break;
-      arcTo(rx, ry, angle, large === 1, sweep === 1, nx, ny);
-    } else {
-      break;
-    }
-    ctrlX = cx;
-    ctrlY = cy;
-    prev = upper;
-  }
-  finish();
-}
-var Scanner = class {
-  constructor(s) {
-    this.s = s;
-  }
-  s;
-  i = 0;
-  done() {
-    return this.i >= this.s.length;
-  }
-  /** Skips whitespace and commas. */
-  skip() {
-    while (this.i < this.s.length) {
-      const ch = this.s.charCodeAt(this.i);
-      if (ch === 32 || ch === 44 || ch === 9 || ch === 10 || ch === 13 || ch === 12) this.i++;
-      else break;
-    }
-  }
-  /** The command letter at the cursor, consumed, or '' when a number is next. */
-  command() {
-    const ch = this.s[this.i];
-    if ("MmLlHhVvCcSsQqTtAaZz".includes(ch)) {
-      this.i++;
-      return ch;
-    }
-    return "";
-  }
-  /** The next number, or NaN when there is none. */
-  number() {
-    this.skip();
-    const s = this.s;
-    const start = this.i;
-    let i2 = start;
-    if (s[i2] === "+" || s[i2] === "-") i2++;
-    const digitsFrom = i2;
-    while (i2 < s.length && s.charCodeAt(i2) >= 48 && s.charCodeAt(i2) <= 57) i2++;
-    if (s[i2] === ".") {
-      i2++;
-      while (i2 < s.length && s.charCodeAt(i2) >= 48 && s.charCodeAt(i2) <= 57) i2++;
-    }
-    if (i2 === digitsFrom || i2 === digitsFrom + 1 && s[digitsFrom] === ".") return NaN;
-    if (s[i2] === "e" || s[i2] === "E") {
-      let j = i2 + 1;
-      if (s[j] === "+" || s[j] === "-") j++;
-      const expFrom = j;
-      while (j < s.length && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) j++;
-      if (j > expFrom) i2 = j;
-    }
-    this.i = i2;
-    return Number(s.slice(start, i2));
-  }
-  /** An arc flag: a single 0 or 1, which may be packed against what follows. */
-  flag() {
-    this.skip();
-    const ch = this.s[this.i];
-    if (ch === "0" || ch === "1") {
-      this.i++;
-      return ch === "1" ? 1 : 0;
-    }
-    return NaN;
-  }
-};
-function arcToCubics(x1, y1, rx, ry, angle, large, sweep, x2, y2) {
-  if (x1 === x2 && y1 === y2) return [];
-  rx = Math.abs(rx);
-  ry = Math.abs(ry);
-  if (rx === 0 || ry === 0) return [[x1, y1, x2, y2, x2, y2]];
-  const phi = angle * Math.PI / 180;
-  const cos = Math.cos(phi);
-  const sin = Math.sin(phi);
-  const hx = (x1 - x2) / 2;
-  const hy = (y1 - y2) / 2;
-  const x1p = cos * hx + sin * hy;
-  const y1p = -sin * hx + cos * hy;
-  const lambda = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
-  if (lambda > 1) {
-    rx *= Math.sqrt(lambda);
-    ry *= Math.sqrt(lambda);
-  }
-  const num3 = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
-  const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-  let k = Math.sqrt(Math.max(0, num3 / den));
-  if (large === sweep) k = -k;
-  const cxp = k * rx * y1p / ry;
-  const cyp = -k * ry * x1p / rx;
-  const cx = cos * cxp - sin * cyp + (x1 + x2) / 2;
-  const cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
-  const vecAngle = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
-  const theta = vecAngle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
-  let delta = vecAngle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
-  if (!sweep && delta > 0) delta -= 2 * Math.PI;
-  if (sweep && delta < 0) delta += 2 * Math.PI;
-  const n = Math.max(1, Math.ceil(Math.abs(delta) / (Math.PI / 2) - 1e-9));
-  const step = delta / n;
-  const t = 4 / 3 * Math.tan(step / 4);
-  const point = (u) => {
-    const cu = Math.cos(u);
-    const su = Math.sin(u);
-    return [
-      cx + rx * cu * cos - ry * su * sin,
-      cy + rx * cu * sin + ry * su * cos,
-      -rx * su * cos - ry * cu * sin,
-      -rx * su * sin + ry * cu * cos
-    ];
-  };
-  const out = [];
-  let [ax, ay, adx, ady] = point(theta);
-  for (let i2 = 1; i2 <= n; i2++) {
-    const [bx, by, bdx, bdy] = point(theta + i2 * step);
-    const endX = i2 === n ? x2 : bx;
-    const endY = i2 === n ? y2 : by;
-    out.push([ax + t * adx, ay + t * ady, endX - t * bdx, endY - t * bdy, endX, endY]);
-    ax = endX;
-    ay = endY;
-    adx = bdx;
-    ady = bdy;
-  }
-  return out;
-}
-// core/src/raster/stroke.ts
-function strokeOutlines(subpaths, g) {
-  const hw = g.width / 2;
-  if (!(hw > 0)) return [];
-  const out = [];
-  for (const piece of dashed(subpaths, g)) strokePiece(piece, hw, g, out);
-  for (const c of out) if (area(c) < 0) reverse(c);
-  return out;
-}
-function dashed(subpaths, g) {
-  const dash = g.dash;
-  if (!dash || dash.length === 0) return [...subpaths];
-  const period = dash.reduce((sum2, n) => sum2 + n, 0);
-  if (!(period >= MIN_DASH_PERIOD)) return [...subpaths];
-  const pieces = [];
-  for (const sub of subpaths) {
-    const pts = sub.points.slice();
-    if (sub.closed) pts.push(pts[0], pts[1]);
-    let phase = ((g.dashOffset ?? 0) % period + period) % period;
-    let k = 0;
-    while (phase >= dash[k]) {
-      phase -= dash[k];
-      k = (k + 1) % dash.length;
-    }
-    let left = dash[k] - phase;
-    let on = k % 2 === 0;
-    let current = on ? [pts[0], pts[1]] : [];
-    for (let i2 = 0; i2 + 3 < pts.length; i2 += 2) {
-      const x0 = pts[i2], y0 = pts[i2 + 1], x1 = pts[i2 + 2], y1 = pts[i2 + 3];
-      const len = Math.hypot(x1 - x0, y1 - y0);
-      let at = 0;
-      while (len - at > left) {
-        at += left;
-        const t = at / len;
-        const x2 = x0 + (x1 - x0) * t;
-        const y = y0 + (y1 - y0) * t;
-        if (on) {
-          current.push(x2, y);
-          pieces.push({ points: current, closed: false });
-          if (pieces.length > MAX_DASHES) return [...subpaths];
-          current = [];
-        } else {
-          current = [x2, y];
-        }
-        on = !on;
-        k = (k + 1) % dash.length;
-        left = dash[k];
-      }
-      left -= len - at;
-      if (on) current.push(x1, y1);
-    }
-    if (on && current.length >= 4) pieces.push({ points: current, closed: false });
-  }
-  return pieces;
-}
-function strokePiece(sub, hw, g, out) {
-  const pts = [];
-  for (let i2 = 0; i2 + 1 < sub.points.length; i2 += 2) {
-    const x2 = sub.points[i2];
-    const y = sub.points[i2 + 1];
-    const n2 = pts.length;
-    if (n2 >= 2 && Math.abs(x2 - pts[n2 - 2]) < SAME_POINT && Math.abs(y - pts[n2 - 1]) < SAME_POINT) continue;
-    pts.push(x2, y);
-  }
-  let closed = sub.closed;
-  if (closed && pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) < SAME_POINT && Math.abs(pts[1] - pts[pts.length - 1]) < SAME_POINT) pts.length -= 2;
-  const n = pts.length / 2;
-  if (n < 2) {
-    if (n === 1 && g.cap !== "butt" && sub.points.length >= 4) {
-      const x2 = pts[0], y = pts[1];
-      out.push(g.cap === "round" ? circle(x2, y, hw) : [x2 - hw, y - hw, x2 + hw, y - hw, x2 + hw, y + hw, x2 - hw, y + hw]);
-    }
-    return;
-  }
-  if (n === 2) closed = false;
-  const segments = closed ? n : n - 1;
-  const dx = new Float64Array(segments);
-  const dy = new Float64Array(segments);
-  for (let i2 = 0; i2 < segments; i2++) {
-    const j = (i2 + 1) % n;
-    const ex = pts[2 * j] - pts[2 * i2];
-    const ey = pts[2 * j + 1] - pts[2 * i2 + 1];
-    const len = Math.hypot(ex, ey);
-    dx[i2] = ex / len;
-    dy[i2] = ey / len;
-  }
-  for (let i2 = 0; i2 < segments; i2++) {
-    const j = (i2 + 1) % n;
-    const nx = -dy[i2] * hw;
-    const ny = dx[i2] * hw;
-    const ax = pts[2 * i2], ay = pts[2 * i2 + 1], bx = pts[2 * j], by = pts[2 * j + 1];
-    out.push([ax + nx, ay + ny, bx + nx, by + ny, bx - nx, by - ny, ax - nx, ay - ny]);
-  }
-  const first = closed ? 0 : 1;
-  const last = closed ? n - 1 : n - 2;
-  for (let v = first; v <= last; v++) {
-    const into = (v - 1 + segments) % segments;
-    const from = v % segments;
-    join(pts[2 * v], pts[2 * v + 1], dx[into], dy[into], dx[from], dy[from], hw, g, out);
-  }
-  if (!closed) {
-    cap(pts[0], pts[1], -dx[0], -dy[0], hw, g.cap, out);
-    cap(pts[2 * n - 2], pts[2 * n - 1], dx[segments - 1], dy[segments - 1], hw, g.cap, out);
-  }
-}
-function join(x2, y, ix, iy, ox, oy, hw, g, out) {
-  const cross = ix * oy - iy * ox;
-  const dot = ix * ox + iy * oy;
-  const turn = Math.atan2(Math.abs(cross), dot);
-  if (hw * turn < NO_JOIN) return;
-  const s = cross > 0 ? -1 : 1;
-  const ax = x2 + s * -iy * hw;
-  const ay = y + s * ix * hw;
-  const bx = x2 + s * -oy * hw;
-  const by = y + s * ox * hw;
-  if (g.join === "round" && hw * turn > ROUND_AS_BEVEL) {
-    out.push(circle(x2, y, hw));
-    return;
-  }
-  if (g.join === "miter") {
-    const ratio = 1 / Math.sqrt(Math.max(1e-12, (1 + dot) / 2));
-    if (ratio <= g.miterLimit) {
-      let mx = -iy - oy;
-      let my = ix + ox;
-      const len = Math.hypot(mx, my);
-      if (len > 1e-9) {
-        mx = mx / len * s * hw * ratio;
-        my = my / len * s * hw * ratio;
-        out.push([x2, y, ax, ay, x2 + mx, y + my, bx, by]);
-        return;
-      }
-    }
-  }
-  out.push([x2, y, ax, ay, bx, by]);
-}
-function cap(x2, y, dx, dy, hw, kind, out) {
-  if (kind === "round") {
-    out.push(circle(x2, y, hw));
-  } else if (kind === "square") {
-    const nx = -dy * hw;
-    const ny = dx * hw;
-    const ex = x2 + dx * hw;
-    const ey = y + dy * hw;
-    out.push([x2 + nx, y + ny, ex + nx, ey + ny, ex - nx, ey - ny, x2 - nx, y - ny]);
-  }
-}
-function circle(x2, y, r) {
-  const k = r <= ARC_FLATNESS ? 6 : Math.min(128, Math.max(6, Math.ceil(Math.PI / Math.acos(1 - ARC_FLATNESS / r))));
-  const c = [];
-  for (let i2 = 0; i2 < k; i2++) {
-    const t = 2 * Math.PI * i2 / k;
-    c.push(x2 + r * Math.cos(t), y + r * Math.sin(t));
-  }
-  return c;
-}
-function area(c) {
-  let sum2 = 0;
-  const n = c.length;
-  let x0 = c[n - 2];
-  let y0 = c[n - 1];
-  for (let i2 = 0; i2 < n; i2 += 2) {
-    sum2 += x0 * c[i2 + 1] - c[i2] * y0;
-    x0 = c[i2];
-    y0 = c[i2 + 1];
-  }
-  return sum2 / 2;
-}
-function reverse(c) {
-  for (let i2 = 0, j = c.length - 2; i2 < j; i2 += 2, j -= 2) {
-    const x2 = c[i2];
-    const y = c[i2 + 1];
-    c[i2] = c[j];
-    c[i2 + 1] = c[j + 1];
-    c[j] = x2;
-    c[j + 1] = y;
-  }
-}
-function snapStroke(subpaths, width) {
-  const whole = Math.max(1, Math.round(width));
-  const at = (v) => whole % 2 === 1 ? Math.floor(v) + 0.5 : Math.round(v);
-  let snapped = false;
-  for (const sub of subpaths) {
-    const p = sub.points;
-    if (sub.closed && p.length >= 6 && Math.abs(p[0] - p[p.length - 2]) < SAME_POINT && Math.abs(p[1] - p[p.length - 1]) < SAME_POINT) p.length -= 2;
-    const n = p.length / 2;
-    const segments = sub.closed ? n : n - 1;
-    const snapX = new Uint8Array(n);
-    const snapY = new Uint8Array(n);
-    for (let i2 = 0; i2 < segments; i2++) {
-      const j = (i2 + 1) % n;
-      const ex = p[2 * j] - p[2 * i2];
-      const ey = p[2 * j + 1] - p[2 * i2 + 1];
-      const len = Math.hypot(ex, ey);
-      if (!(len > 0)) continue;
-      if (Math.abs(ey) < 1e-3 * len) snapY[i2] = snapY[j] = 1;
-      else if (Math.abs(ex) < 1e-3 * len) snapX[i2] = snapX[j] = 1;
-    }
-    for (let i2 = 0; i2 < n; i2++) {
-      if (snapX[i2]) p[2 * i2] = at(p[2 * i2]);
-      if (snapY[i2]) p[2 * i2 + 1] = at(p[2 * i2 + 1]);
-      if (snapX[i2] || snapY[i2]) snapped = true;
-    }
-  }
-  return snapped ? whole : width;
-}
-export{encodeAlphaPng,flattenPath,Canvas2,flattenSubpaths,snapStroke,strokeOutlines,encodeQuantizedPng,recolorPng,inkAlpha};
+export{inkAlpha,Coverage,encodeAlphaPng,encodeQuantizedPng,recolorPng,assumedBackground,adaptColor,FORMAT_SOURCE,LATEX_ARGV,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,isJobDir,jobDirTemplate,latexArgv,mathDocument,texEnvironment,texError,texPicture,ulimitProbe,unsafeTex};

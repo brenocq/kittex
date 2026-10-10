@@ -1,4 +1,4 @@
-import{signedArea2,__esm,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply,clipPolygon,__export,engine_exports,mathjax,liteAdaptor,RegisterHTMLHandler,MapHandler,MathtoolsUtil,NewcommandUtil,MathtoolsMethods,EmpheqUtil,ParseUtil,TeX,TexError,SVG,MathJaxNewcmFont,rememberLabels,MmlMath,STATE,GlyphError,init_liteAdaptor,init_MathItem,init_math,init_SerializedMmlVisitor,init_html,init_tex,init_MapHandler,init_mathjax,init_svg2,init_LinebreakVisitor,init_svg,init_BaseConfiguration,init_AmsConfiguration,init_NewcommandConfiguration,init_BoldsymbolConfiguration,init_BraketConfiguration,init_CancelConfiguration,init_ColorConfiguration,init_MathtoolsConfiguration,init_PhysicsConfiguration,init_TextMacrosConfiguration,init_UnicodeConfiguration,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_MathtoolsUtil,init_MathtoolsMethods,init_NewcommandUtil,init_EmpheqUtil,init_ParseUtil,init_fonts,init_macros,init_errors,LinebreakVisitor,NOBREAK,SerializedMmlVisitor,_tag,emStrongRDelimAstCore,escapeReplacements,__kittexLate}from'./p27.js';export*from'./p27.js';
+import{signedArea2,__esm,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,__export,engine_exports,mathjax,liteAdaptor,RegisterHTMLHandler,MapHandler,MathtoolsUtil,NewcommandUtil,MathtoolsMethods,EmpheqUtil,ParseUtil,TeX,TexError,SVG,MathJaxNewcmFont,rememberLabels,MmlMath,STATE,GlyphError,init_liteAdaptor,init_MathItem,init_math,init_SerializedMmlVisitor,init_html,init_tex,init_MapHandler,init_mathjax,init_svg2,init_LinebreakVisitor,init_svg,init_BaseConfiguration,init_AmsConfiguration,init_NewcommandConfiguration,init_BoldsymbolConfiguration,init_BraketConfiguration,init_CancelConfiguration,init_ColorConfiguration,init_MathtoolsConfiguration,init_PhysicsConfiguration,init_TextMacrosConfiguration,init_UnicodeConfiguration,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_MathtoolsUtil,init_MathtoolsMethods,init_NewcommandUtil,init_EmpheqUtil,init_ParseUtil,init_fonts,init_macros,init_errors,LinebreakVisitor,NOBREAK,SerializedMmlVisitor,_tag,emStrongRDelimAstCore,escapeReplacements,__kittexLate}from'./p27.js';export*from'./p27.js';
 __kittexLate.IDENTITY2=()=>IDENTITY2;__kittexLate.ARG_COUNT=()=>ARG_COUNT;
 function oriented(polygon, sign) {
   return Math.sign(signedArea2(polygon)) === -sign ? [...polygon].reverse() : polygon;
@@ -39,11 +39,11 @@ function polygonsToPath(polygons) {
   let d = "";
   for (const p of polygons) {
     if (p.length < 3) continue;
-    d += p.map(([x2, y], i2) => `${i2 ? "L" : "M"}${fmt(x2)} ${fmt(y)}`).join("") + "Z";
+    d += p.map(([x2, y], i2) => `${i2 ? "L" : "M"}${fmt2(x2)} ${fmt2(y)}`).join("") + "Z";
   }
   return d;
 }
-function fmt(n) {
+function fmt2(n) {
   return String(Math.round(n * 1e5) / 1e5);
 }
 var IDENTITY2;
@@ -228,7 +228,7 @@ function emitRect(box, state, ops) {
   );
 }
 function emitPolygons(polygons, state, ops) {
-  let mapped = polygons.map((p) => p.map(([x2, y]) => apply(state.m, x2, y)));
+  let mapped = polygons.map((p) => p.map(([x2, y]) => apply2(state.m, x2, y)));
   if (state.clip) {
     const clip = state.clip;
     mapped = mapped.map((p) => clipPolygon(p, clip));
@@ -868,7 +868,7 @@ function splitCells(tableRow, count) {
   }
   return cells2;
 }
-function rtrim(str, c, invert) {
+function rtrim(str, c, invert2) {
   const l = str.length;
   if (l === 0) {
     return "";
