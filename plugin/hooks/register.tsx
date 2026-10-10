@@ -11,7 +11,7 @@
 // engine and puts an Image where each preview was. Anything that fails falls
 // back to what the engine would have drawn.
 
-import type { EngineInterface, FsEntry, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
+import type { EngineInterface, EventResult, FsEntry, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
 
 import {
   cellProbeRan,
@@ -107,7 +107,9 @@ import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 
-type $ = EngineInterface
+type Engine = EngineInterface
+/** What a classic.MessageDisplay hook resolves to (rewriteFlush). */
+type FlushResult = EventResult<'classic.MessageDisplay'>
 
 /**
  * A matcher for a render's `onScreen` once the engine reports it: a range,
@@ -250,7 +252,8 @@ export const register: Register = (on, options) => {
   // ─── Setup ─────────────────────────────────────────────────────────────────
 
   on('session.start', async ($, e, next) => {
-    const started = await startDoctor($, e.surface, await next(e))
+    const started = await next(e)
+    await startDoctor($, e.surface)
     await migrateCacheOption($)
     if (off) return started
     if (e.surface !== 'terminal') {
@@ -460,7 +463,7 @@ export const register: Register = (on, options) => {
 }
 
 /** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
-async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { message_id: string; delta: string; final: boolean }, below: B, math: MathOptions): Promise<B> {
+async function rewriteFlush($: Engine, e: { message_id: string; delta: string; final: boolean }, below: FlushResult, math: MathOptions): Promise<FlushResult> {
   const delta = below.displayContent ?? e.delta
   let entry: Streaming | undefined
   let before = 0
@@ -515,8 +518,8 @@ async function rewriteFlush<B extends { displayContent?: string }>($: $, e: { me
  * falls back to the engine's drawing. `math`: the options (a kind set to
  * `unicode` gets no image, one set to `raw` is left as written).
  */
-async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Promise<RenderElement>, math: MathOptions): Promise<RenderElement> {
-  if (e.props.isSummary || e.surface !== 'terminal') return next(e)
+async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLanded) => Promise<RenderElement>, math: MathOptions): Promise<RenderElement> {
+  if (e.props.isSummary || e.surface !== 'terminal') return below(e)
   try {
     let env = await readEnv($)
     if (!env) {
@@ -525,7 +528,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       // this terminal, else wait for session.start, rather than draw nothing
       // of kittex's now and everything later (which moves rows twice).
       env = (envKnown ? undefined : await (rememberedEnv ??= readRemembered($))) ?? (envKnown ? null : (await within(envReady, ENV_WAIT_MS, clockOf($)), await readEnv($)))
-      if (!env) return next(e)
+      if (!env) return below(e)
     }
     const seen = e.surface === 'terminal' ? e.viewport?.columns : undefined
     if (seen !== undefined && seen !== env.columns) {
@@ -605,9 +608,9 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
       })
       if (key && !offScreen && final) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
     }
-    if (!plan.changed) return next(e)
+    if (!plan.changed) return below(e)
     if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
-      return next({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
+      return below({ ...e, props: { ...e.props, text: joinProse(plan.pieces) } })
     }
     // Drawn as the engine drew the preview, row for row (measured live): the
     // first prose piece is the engine's own drawing with the block's bullet;
@@ -672,7 +675,7 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     // to the width instead of naming one: the engine refuses its own drawing
     // under a Box with a size, a position or an overflow.
     const prose = async (piece: Extract<Piece, { kind: 'prose' }>, isFirstOfReply: boolean, at: number) => {
-      const text = await next({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
+      const text = await below({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       const inline = piece.inline?.filter(one => !left.has(one.image))
       if (!inline?.length) return text
       return (
@@ -750,12 +753,14 @@ async function drawLanded<E extends LandedEvent>($: $, e: E, next: (e: E) => Pro
     if (smallest) askGraphics({ requestId: e.requestId, key: smallest.key, source: { png: base64Of(smallest.image.png) }, columns: smallest.image.columns, rows: smallest.image.rows })
     return <Box flexDirection="column">{drawn}</Box>
   } catch {
-    return next(e)
+    return below(e)
   }
 }
 
 /** A render of a landed block, as any of the AssistantMessage registrations receives it. */
 type LandedEvent = Parameters<MatchedHook<'ui.render', { component: 'AssistantMessage' }>>[1]
+/** A landed reply in the terminal, as each of drawLanded's hooks matches it. */
+type TerminalLanded = Parameters<MatchedHook<'ui.render', { component: 'AssistantMessage'; surface: 'terminal' }>>[1]
 
 // ─── Helpers that take $ ─────────────────────────────────────────────────────
 
@@ -766,7 +771,7 @@ type LandedEvent = Parameters<MatchedHook<'ui.render', { component: 'AssistantMe
  * setup stored last stands in, and with `reseed` (not from a render, which
  * may not write) is stored again.
  */
-async function readEnv($: $, reseed = false): Promise<KittexEnv | null> {
+async function readEnv($: Engine, reseed = false): Promise<KittexEnv | null> {
   const held = (await $.state.get(ENV)).value
   if (held !== undefined) return held
   if (!envKnown || lastEnv === undefined) return null
@@ -775,13 +780,13 @@ async function readEnv($: $, reseed = false): Promise<KittexEnv | null> {
 }
 
 /** Stores kittex.env, and keeps it for a new session in this process (readEnv). */
-async function writeEnv($: $, env: KittexEnv | null): Promise<void> {
+async function writeEnv($: Engine, env: KittexEnv | null): Promise<void> {
   lastEnv = env
   await $.state.set(ENV, env)
 }
 
 /** InstructedSessions as $.store holds it, else as this process last wrote it. */
-async function readInstructed($: $): Promise<InstructedSessions> {
+async function readInstructed($: Engine): Promise<InstructedSessions> {
   const value = await $.store.get(INSTRUCTED).catch(() => undefined)
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as InstructedSessions) : instructedHere
 }
@@ -791,7 +796,7 @@ function instructs(env: KittexEnv | null): boolean {
   return env !== null && (env.images || INSTRUCT_WITHOUT_IMAGES)
 }
 
-async function setUp($: $, surface: string | null): Promise<void> {
+async function setUp($: Engine, surface: string | null): Promise<void> {
   // MathJax is not loaded here: the first formula loads it (core's typeset is lazy).
   processEnv = await readProcessEnv($)
   cacheFolder = cacheDir(processEnv)
@@ -855,7 +860,7 @@ async function setUp($: $, surface: string | null): Promise<void> {
  * binaries, the config files' locations, Claude's config dir); names must be
  * literals.
  */
-async function readProcessEnv($: $): Promise<Record<string, string | undefined>> {
+async function readProcessEnv($: Engine): Promise<Record<string, string | undefined>> {
   const values = await Promise.all([
     $.env.get('TERM'),
     $.env.get('TERM_PROGRAM'),
@@ -932,7 +937,7 @@ async function readProcessEnv($: $): Promise<Record<string, string | undefined>>
 }
 
 /** `uname -s` (the engine's bullet differs on macOS), or undefined when it can't run. */
-async function probeSystem($: $): Promise<string | undefined> {
+async function probeSystem($: Engine): Promise<string | undefined> {
   try {
     const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: PROBE_TIMEOUT_MS })
     return exitCode === 0 ? stdout : undefined
@@ -942,7 +947,7 @@ async function probeSystem($: $): Promise<string | undefined> {
 }
 
 /** The cell size from the first cell probe that runs (perl, then python3 where perl can't: cellProbeRan). */
-async function probeCell($: $): Promise<CellSize | undefined> {
+async function probeCell($: Engine): Promise<CellSize | undefined> {
   for (const probe of cellProbes) {
     try {
       const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
@@ -956,7 +961,7 @@ async function probeCell($: $): Promise<CellSize | undefined> {
 }
 
 /** The terminal's configured colours: its probes, else its config files. */
-async function readColors($: $, info: TerminalInfo, scheme: 'dark' | 'light'): Promise<TerminalColors | undefined> {
+async function readColors($: Engine, info: TerminalInfo, scheme: 'dark' | 'light'): Promise<TerminalColors | undefined> {
   for (const probe of colorProbes(info, { env: processEnv, scheme })) {
     try {
       const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
@@ -973,7 +978,7 @@ async function readColors($: $, info: TerminalInfo, scheme: 'dark' | 'light'): P
   }
 }
 
-async function readText($: $, path: string): Promise<string | undefined> {
+async function readText($: Engine, path: string): Promise<string | undefined> {
   try {
     return await $.fs.read(path)
   } catch {
@@ -981,7 +986,7 @@ async function readText($: $, path: string): Promise<string | undefined> {
   }
 }
 
-async function readThemeSetting($: $): Promise<string | undefined> {
+async function readThemeSetting($: Engine): Promise<string | undefined> {
   try {
     const row = (await $.config.list()).find(one => one.key === 'theme')
     return typeof row?.value === 'string' ? row.value : undefined
@@ -995,7 +1000,7 @@ async function readThemeSetting($: $): Promise<string | undefined> {
  * theme's file, and the terminal's colours for the theme's light/dark scheme
  * (read again only when the scheme changes).
  */
-async function resolveTheme($: $, setting?: string): Promise<void> {
+async function resolveTheme($: Engine, setting?: string): Promise<void> {
   theme = setting ?? (await readThemeSetting($))
   const configDir = processEnv.CLAUDE_CONFIG_DIR ?? (processEnv.HOME ? `${processEnv.HOME}/.claude` : undefined)
   const path = configDir ? claudeCustomThemePath(theme, configDir) : undefined
@@ -1031,7 +1036,7 @@ const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b 
 const sameCurve = (a: KittexEnv['inkCurve'], b: KittexEnv['inkCurve']) => a === b || (!!a && !!b && a.gamma === b.gamma && a.contrast === b.contrast)
 
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
-async function readProseWidth($: $): Promise<number | undefined> {
+async function readProseWidth($: Engine): Promise<number | undefined> {
   try {
     const value = (await $.settings.read()).maxProseWidth
     return typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.floor(value) : undefined
@@ -1041,7 +1046,7 @@ async function readProseWidth($: $): Promise<number | undefined> {
 }
 
 /** maxProseWidth changed: inline images are placed at the new width. */
-async function refreshProseWidth($: $): Promise<void> {
+async function refreshProseWidth($: Engine): Promise<void> {
   const env = await readEnv($)
   if (!env) return
   const maxProseWidth = await readProseWidth($)
@@ -1049,7 +1054,7 @@ async function refreshProseWidth($: $): Promise<void> {
 }
 
 /** The theme changed: the formulas' ink may follow it. */
-async function refreshInk($: $, setting: string): Promise<void> {
+async function refreshInk($: Engine, setting: string): Promise<void> {
   await resolveTheme($, setting)
   const env = await readEnv($)
   if (!env) return
@@ -1093,7 +1098,7 @@ interface Cells {
  * dispatch, and the timers outlive it. A timer's callback is a dispatch of its
  * own, where a state write is allowed.
  */
-function cellsFor($: $): Cells {
+function cellsFor($: Engine): Cells {
   let probing: Promise<CellSize | undefined> | undefined
   /** The stores, one after another (a settle never skipped for a periodic probe running). */
   let stores: Promise<void> = Promise.resolve()
@@ -1171,7 +1176,7 @@ function cellEnv(cell: CellSize | undefined, env: Pick<KittexEnv, 'kind' | 'cell
  * built-in JetBrains Mono when it names none or fontconfig has no such
  * family. Off the startup path: on session.start's clock after setup.
  */
-async function loadFont($: $): Promise<void> {
+async function loadFont($: Engine): Promise<void> {
   if (!terminal || (terminal.kind !== 'kitty' && terminal.kind !== 'ghostty') || terminal.ssh) return
   const named = terminalColors?.font
   let metrics: FontMetrics | undefined
@@ -1198,8 +1203,8 @@ async function loadFont($: $): Promise<void> {
   }
   // The font's weight (usWeightClass) when the config's names don't say one.
   const weight = env.weight === undefined && metrics.weight && metrics.weight !== 400 ? { weight: strokeWeight(metrics.weight) } : {}
-  const next = { ...env, font, ...weight }
-  const measured = { ...next, emPx: mathEmPxFor(next, next) }
+  const withFont = { ...env, font, ...weight }
+  const measured = { ...withFont, emPx: mathEmPxFor(withFont, withFont) }
   // As setUp started from (the last session's reading): nothing to redraw.
   if (JSON.stringify(env.font) === JSON.stringify(font) && env.weight === measured.weight && env.emPx === measured.emPx) return
   await writeEnv($, measured)
@@ -1213,39 +1218,44 @@ async function loadFont($: $): Promise<void> {
  * macOS CoreText's match (as Ghostty finds it there; fontconfig is seldom
  * installed), else fontconfig's; undefined when neither has that family.
  */
-async function findFontFile($: $, family: string, style: string | undefined): Promise<{ file: string; index: number; source: 'fontconfig' | 'coretext' } | undefined> {
+async function findFontFile($: Engine, family: string, style: string | undefined): Promise<{ file: string; index: number; source: 'fontconfig' | 'coretext' } | undefined> {
   if (platform === 'darwin') {
-    const found = await runProbe($, coreTextFontArgv(family, style), parseCoreTextFont)
+    const found = parsed(await runProbe($, coreTextFontArgv(family, style)), parseCoreTextFont)
     if (found && matchesFamily(found, family)) return { file: found.file, index: found.postscript ? await faceIndexOf(await fontBytes($, found.file), found.postscript) : 0, source: 'coretext' }
   }
-  const found = await runProbe($, fontFileArgv(family, style), parseFontFile)
+  const found = parsed(await runProbe($, fontFileArgv(family, style)), parseFontFile)
   return found && matchesFamily(found, family) ? { file: found.file, index: found.index, source: 'fontconfig' } : undefined
 }
 
 /** A font file's bytes: read whole when $.fs.read takes it (up to 4 MiB), else in pieces through `od`. */
-async function fontBytes($: $, path: string): Promise<ByteReader> {
+async function fontBytes($: Engine, path: string): Promise<ByteReader> {
   try {
     const { base64 } = await $.fs.read(path, { as: 'bytes' })
     // The sandbox's Uint8Array has the base64 helpers (Node's TypeScript lib doesn't declare them yet).
     const bytes = (Uint8Array as unknown as { fromBase64(text: string): Uint8Array }).fromBase64(base64)
     return async (offset, length) => (offset < bytes.length ? bytes.subarray(offset, offset + length) : undefined)
   } catch {
-    return async (offset, length) => (length > 1 << 20 ? undefined : runProbe($, odArgv(path, offset, length), parseOd))
+    return async (offset, length) => (length > 1 << 20 ? undefined : parsed(await runProbe($, odArgv(path, offset, length)), parseOd))
   }
 }
 
-/** Runs a fixed argv and parses its output, or undefined when it fails. */
-async function runProbe<T>($: $, argv: readonly string[], parse: (stdout: string) => T | undefined): Promise<T | undefined> {
+/** A probe's output parsed, or undefined when it failed (runProbe). */
+function parsed<T>(stdout: string | undefined, parse: (stdout: string) => T | undefined): T | undefined {
+  return stdout === undefined ? undefined : parse(stdout)
+}
+
+/** Runs a fixed argv: its output, or undefined when it fails. */
+async function runProbe($: Engine, argv: readonly string[]): Promise<string | undefined> {
   try {
     const { exitCode, stdout } = await $.process.run(argv, { timeoutMs: PROBE_TIMEOUT_MS })
-    return exitCode === 0 ? parse(stdout) : undefined
+    return exitCode === 0 ? stdout : undefined
   } catch {
     return undefined
   }
 }
 
 /** Stores a probe's cells and columns in kittex.env when they changed (a failed probe changes only the columns, to `seen`). */
-async function storeCells($: $, cell: CellSize | undefined, seen: number | undefined): Promise<void> {
+async function storeCells($: Engine, cell: CellSize | undefined, seen: number | undefined): Promise<void> {
   const env = await readEnv($)
   if (!env) return
   const columns = cell?.columns ?? seen ?? env.columns
@@ -1262,7 +1272,7 @@ async function storeCells($: $, cell: CellSize | undefined, seen: number | undef
  * stream gave up. A block new to the store is one of the recent ones; past
  * BLOCK_LIMIT the oldest is dropped (drawn as it streamed if it redraws).
  */
-async function storeBlock($: $, id: string, entry: Streaming, records: readonly PreviewRecord[], raw?: number): Promise<void> {
+async function storeBlock($: Engine, id: string, entry: Streaming, records: readonly PreviewRecord[], raw?: number): Promise<void> {
   await updateBlock($, id, block => {
     const kept: StreamedBlock = { records: [...(block?.records ?? []), ...records] }
     const at = raw ?? block?.raw
@@ -1276,7 +1286,7 @@ async function storeBlock($: $, id: string, entry: Streaming, records: readonly 
 }
 
 /** kittex.blocks[id] changed by `change`: read, changed, written while no other write came between (else again). */
-async function updateBlock($: $, id: string, change: (block: StreamedBlock | null | undefined) => StreamedBlock): Promise<void> {
+async function updateBlock($: Engine, id: string, change: (block: StreamedBlock | null | undefined) => StreamedBlock): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get({ ...BLOCKS, id })
     if ((await $.state.set({ ...BLOCKS, id }, change(value), { ifVersion: version })).isSet) return
@@ -1284,7 +1294,7 @@ async function updateBlock($: $, id: string, change: (block: StreamedBlock | nul
 }
 
 /** kittex.recent changed by `change`, as updateBlock does. */
-async function updateRecent($: $, change: (list: readonly string[] | undefined) => string[]): Promise<void> {
+async function updateRecent($: Engine, change: (list: readonly string[] | undefined) => string[]): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get(RECENT)
     if ((await $.state.set(RECENT, change(value), { ifVersion: version })).isSet) return
@@ -1305,14 +1315,14 @@ function streamOf(text: string): string | undefined {
   return best
 }
 
-async function linkRow($: $, uuid: string, id: string): Promise<void> {
+async function linkRow($: Engine, uuid: string, id: string): Promise<void> {
   await $.state.set({ ...REQUESTS, id: uuid }, id)
   const entry = streams.get(id)
   if (entry) entry.linked = true
 }
 
 /** Links a stream to a row appended before its first flush, once its text shows whose row that is. */
-async function linkPending($: $, id: string, entry: Streaming): Promise<void> {
+async function linkPending($: Engine, id: string, entry: Streaming): Promise<void> {
   const source = entry.source.trimEnd()
   if (source === '') return
   const k = pendingRows.findIndex(row => row.text.startsWith(source))
@@ -1327,7 +1337,7 @@ async function linkPending($: $, id: string, entry: Streaming): Promise<void> {
  * for a text holding preview marks, the newest block whose previews it holds
  * where they were written (no link after a hot reload). A render only reads.
  */
-async function landedBlock($: $, e: LandedEvent): Promise<{ streamed: boolean; block?: StreamedBlock }> {
+async function landedBlock($: Engine, e: LandedEvent): Promise<{ streamed: boolean; block?: StreamedBlock }> {
   const id = (await $.state.get({ ...REQUESTS, id: e.requestId })).value
   if (id !== undefined) {
     const block = (await $.state.get({ ...BLOCKS, id })).value
@@ -1421,9 +1431,9 @@ function drawSoon(records: readonly PreviewRecord[], env: KittexEnv): void {
   for (const record of records) if (record.error === undefined) pending.push({ record, env })
   if (!idle || pending.length === 0) return
   const step = () => {
-    const next = pending.shift()
-    if (!next) return
-    const { record, env } = next
+    const queued = pending.shift()
+    if (!queued) return
+    const { record, env } = queued
     try {
       const renderEnv = renderEnvFor(env)
       const image = record.diagram !== undefined
@@ -1451,7 +1461,7 @@ function after(fn: () => void): void {
   }
 }
 
-function laterFor($: $): (fn: () => void, ms?: number) => void {
+function laterFor($: Engine): (fn: () => void, ms?: number) => void {
   return (fn, ms = 0) => {
     $.clock.after(ms, fn)
   }
@@ -1501,7 +1511,7 @@ function base64Of(png: Uint8Array): string {
  */
 let graphics: EngineGraphics = { state: 'unknown' }
 /** An Image of kittex's on screen to ask by: the smallest of the last drawing that had one. */
-let graphicsTarget: Parameters<$['ui']['blit']>[0] | undefined
+let graphicsTarget: Parameters<Engine['ui']['blit']>[0] | undefined
 /** Asks after `ms` on session.start's clock (session.start sets it). */
 let graphicsSoon: ((ms: number) => void) | undefined
 let graphicsAsking = false
@@ -1529,7 +1539,7 @@ function askSoon(ms: number): void {
 }
 
 /** Asks by a blit (it sends the same picture again where it is drawn); redraws when the answer changes the drawing. */
-async function checkGraphics($: $): Promise<EngineGraphics> {
+async function checkGraphics($: Engine): Promise<EngineGraphics> {
   graphicsAsking = false
   const target = graphicsTarget
   if (!target || graphics.state === 'yes' || graphics.state === 'no') return graphics
@@ -1559,7 +1569,7 @@ async function checkGraphics($: $): Promise<EngineGraphics> {
 const turns = newestFirst()
 
 /** A clock for `within`: this dispatch's own, or session.start's. */
-function clockOf($: $): (fn: () => void, ms: number) => void {
+function clockOf($: Engine): (fn: () => void, ms: number) => void {
   return (fn, ms) => {
     try {
       $.clock.after(ms, fn)
@@ -1575,7 +1585,7 @@ function terminalId(variables: Readonly<Record<string, string | undefined>>): st
 }
 
 /** The env the last session stored, when it was this terminal's (a render's $: three variables and a store read). */
-async function readRemembered($: $): Promise<KittexEnv | undefined> {
+async function readRemembered($: Engine): Promise<KittexEnv | undefined> {
   try {
     const [stored, TERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, TMUX, XDG_CACHE_HOME, HOME, tex] = await Promise.all([
       $.store.get(REMEMBERED),
@@ -1655,7 +1665,7 @@ function remembered(key: string, plan: LandedPlan): LandedPlan {
 }
 
 /** A block's drawing from memory or disk; undefined on a miss, a bad file, or a read slower than CACHE_READ_MS. */
-async function readEntry($: $, key: string): Promise<LandedPlan | undefined> {
+async function readEntry($: Engine, key: string): Promise<LandedPlan | undefined> {
   const known = entries.get(key)
   if (known) return remembered(key, known)
   if (!cacheFolder) return undefined
@@ -1725,12 +1735,12 @@ const PRUNE_BATCH = 200
  * (cache.ts's pruneList) and the oldest of what TeX drew, by `rm` (the
  * sandbox's fs removes nothing). The TeX format is never among them.
  */
-async function pruneCache($: $): Promise<void> {
+async function pruneCache($: Engine): Promise<void> {
   await pruneFolder($, cacheFolder, CACHE_LIMIT_BYTES, ENTRY_NAME)
   await pruneFolder($, texCacheDir(processEnv), TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME)
 }
 
-async function pruneFolder($: $, folder: string | undefined, limit: number, name: RegExp): Promise<void> {
+async function pruneFolder($: Engine, folder: string | undefined, limit: number, name: RegExp): Promise<void> {
   if (!folder) return
   let files: FsEntry[]
   try {
@@ -1769,16 +1779,16 @@ async function withTex(stream: MessageStream, first: StreamRewrite, env: StreamE
     await Promise.all(pending.map(document => texBook.compile(document, TEX_STREAM_BUDGET_MS)))
     // A document whose compile left no outcome (none ran) is shown as written: no stream waits twice.
     for (const document of pending) if (!texBook.known(document)) texBook.remember(document, { ok: false, error: 'no TeX', lasting: false })
-    const next = stream.resume(env)
-    text += next.text
-    records.push(...next.records)
-    pending = next.pending
+    const resumed = stream.resume(env)
+    text += resumed.text
+    records.push(...resumed.records)
+    pending = resumed.pending
   }
   return { text, records }
 }
 
 /** Finds the local TeX with session.start's `$` and gives texBook its host (a compile may outlive the dispatch that asked for it). */
-async function setUpTex($: $): Promise<void> {
+async function setUpTex($: Engine): Promise<void> {
   const given: TexHost = {
     run: (argv, init) => $.process.run(argv, init),
     write: (path, text) => $.fs.write(path, text),
@@ -1885,7 +1895,7 @@ let doctorSurface: string | null | undefined
  * hands the default `on`: read as stored, it turns the cache off, and is
  * written again as `off` (as the person would in /config), once.
  */
-async function migrateCacheOption($: $): Promise<void> {
+async function migrateCacheOption($: Engine): Promise<void> {
   try {
     const configs = (await $.settings.read()).pluginConfigs
     if (typeof configs !== 'object' || configs === null) return
@@ -1900,15 +1910,14 @@ async function migrateCacheOption($: $): Promise<void> {
   }
 }
 
-/** Declares /kittex-doctor for the session (session.start, after the hooks beneath), passing `started` on. */
-async function startDoctor<T>($: $, surface: string | null, started: T): Promise<T> {
+/** Declares /kittex-doctor for the session (session.start, after the hooks beneath). */
+async function startDoctor($: Engine, surface: string | null): Promise<void> {
   doctorSurface = surface
   await $.command.register({ name: 'kittex-doctor', description: DOCTOR_DESCRIPTION }).catch(() => undefined)
-  return started
 }
 
 /** The answer to /kittex-doctor: the report, or why there is none. */
-async function runDoctor($: $, options: Parameters<Register>[1]): Promise<{ text: string }> {
+async function runDoctor($: Engine, options: Parameters<Register>[1]): Promise<{ text: string }> {
   try {
     return { text: formatDoctor(await doctorFacts($, options)) }
   } catch (error) {
@@ -1917,7 +1926,7 @@ async function runDoctor($: $, options: Parameters<Register>[1]): Promise<{ text
 }
 
 /** Everything the doctor reports: what setup found (or the same read again when kittex is off), and the probes. */
-async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<DoctorFacts> {
+async function doctorFacts($: Engine, options: Parameters<Register>[1]): Promise<DoctorFacts> {
   const math = mathOptions(options)
   const off = math.block === 'raw' && math.inline === 'raw'
   const variables = processEnv.TERM !== undefined || processEnv.HOME !== undefined ? processEnv : await readProcessEnv($)
@@ -1998,7 +2007,7 @@ async function doctorFacts($: $, options: Parameters<Register>[1]): Promise<Doct
 }
 
 /** The text font as kittex reads it (loadFont's sources, in its order), for the doctor. */
-async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['font'] | undefined> {
+async function doctorFont($: Engine, env: KittexEnv | null): Promise<TerminalFacts['font'] | undefined> {
   const named = terminalColors?.font
   const metrics = env?.font !== undefined
   if (!named && !metrics) return undefined
@@ -2020,7 +2029,7 @@ async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['f
 }
 
 /** A file's bytes, or undefined when it can't be read (the sandbox's Uint8Array has the base64 helpers). */
-async function readBytes($: $, path: string): Promise<Uint8Array | undefined> {
+async function readBytes($: Engine, path: string): Promise<Uint8Array | undefined> {
   try {
     const { base64 } = await $.fs.read(path, { as: 'bytes' })
     return (Uint8Array as unknown as { fromBase64(text: string): Uint8Array }).fromBase64(base64)
