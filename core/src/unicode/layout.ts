@@ -147,11 +147,11 @@ export function layoutMath(root: Element, display: boolean, compact: boolean | L
  * continuation line starts with it, as MathJax breaks display math) or after a
  * wide space. Undefined when some piece is wider than `width` on its own.
  */
-function breakRow(row: Row, width: number, indent = 0): Box | undefined {
+function breakRow(row: Row, width: number, indent = 0, sums = false): Box | undefined {
   const { parts, breaks } = row
   if (!parts || !breaks || breaks.length === 0) return undefined
   const lines: Box[] = []
-  const stops = [...breaks.filter(b => b > 0 && b < parts.length), parts.length]
+  const stops = [...breaks.filter(b => b > 0 && b < parts.length && (!sums || !multiplies(parts, b))), parts.length]
   let start = 0
   while (start < parts.length) {
     let end = -1
@@ -170,6 +170,14 @@ function breakRow(row: Row, width: number, indent = 0): Box | undefined {
   }
   if (lines.length < 2) return undefined
   return vstack(lines, 'left', lines[0]!.base)
+}
+
+/** Whether the break before parts[at] is at a product's operator (⋅, ×, ÷, ∘), the first solid part's text. */
+function multiplies(parts: readonly Box[], at: number): boolean {
+  let i = at
+  while (i < parts.length && isBlank(parts[i]!)) i++
+  const part = parts[i]
+  return part !== undefined && PRODUCT.test(part.rows[part.base]!.join('').trimStart())
 }
 
 /** Parts joined, without the blank columns at either end (the gaps around a break). */
@@ -1406,7 +1414,8 @@ function oneLineTable(el: Element, rowEls: readonly Element[], ctx: Ctx): Box {
 /**
  * Breaks a table's cells until the table is no wider than `room`, widest
  * column first: each cell of that column too wide is broken at its own
- * top-level relations and operators (breakRow), lines after the first set in
+ * top-level relations and operators (breakRow; sums and relations before
+ * products where that is enough), lines after the first set in
  * past a leading relation (`= a + b` goes on with `+ c` under `a`). A column
  * that can't get as narrow as needed is broken as far as it goes and the next
  * column takes the rest. The rows keep their alignment. Fails when the table
@@ -1442,8 +1451,13 @@ function breakCell(cell: { box: Box; row?: Row }, width: number): Box | undefine
   let lead = 0
   for (let i = 0; i < parts.length && isBlank(parts[i]!); i++) lead += parts[i]!.width
   const indent = first?.cls === 'REL' ? lead + first.box.width + 1 : 0
-  return (cell.row && breakRow(cell.row, width, indent)) || (height(cell.box) === 1 ? breakText(cell.box, width, indent) : undefined)
+  // A sum or relation before a product: `𝐉 ⋅ d𝐀 + …` breaks at the `+`, not inside `𝐄 ⋅ d𝐀`.
+  const row = cell.row
+  return (row && (breakRow(row, width, indent, true) ?? breakRow(row, width, indent))) || (height(cell.box) === 1 ? (breakText(cell.box, width, indent, true) ?? breakText(cell.box, width, indent)) : undefined)
 }
+
+/** A product's operator, a weaker place to break than a sum or relation. */
+const PRODUCT = /^[⋅×÷∘∗·]/u
 
 /** What a continuation line may start with: a binary operator or relation. */
 const CONTINUES = /^[-+−±∓=<>≤≥≠≈≡∼≃≅∝→←↔⇒⇐⇔↦⋅×÷∘∪∩∧∨⊂⊃⊆⊇∈∉≺≻⪯⪰≼≽∣]/u
@@ -1455,7 +1469,7 @@ const CONTINUES = /^[-+−±∓=<>≤≥≠≈≡∼≃≅∝→←↔⇒⇐⇔�
  * `+ Bz − c‖²)`. Lines after the first start `indent` cells in. Undefined when
  * a piece is wider than `width` or there is nowhere to break.
  */
-function breakText(box: Box, width: number, indent: number): Box | undefined {
+function breakText(box: Box, width: number, indent: number, sums = false): Box | undefined {
   const words: string[][] = [[]]
   for (const cell of box.rows[0]!) {
     if (cell === ' ' && words.at(-1)!.some(c => c !== ' ')) words.push([])
@@ -1470,7 +1484,7 @@ function breakText(box: Box, width: number, indent: number): Box | undefined {
     while (size(line) > room()) {
       // Back to the last word on the line a continuation may start with.
       let at = line.length - 1
-      while (at > 0 && !CONTINUES.test(line[at]!.join(''))) at--
+      while (at > 0 && !(CONTINUES.test(line[at]!.join('')) && !(sums && PRODUCT.test(line[at]!.join(''))))) at--
       if (at === 0) return undefined
       lines.push(line.slice(0, at))
       line = line.slice(at)

@@ -279,6 +279,14 @@ describe('breaking inside a table (breakTables)', () => {
     expect(out[2]!.slice(0, out[2]!.indexOf('+')).trim()).toBe('')
   })
 
+  test('a cell breaks at a sum before a product: `+ μ₀ε₀…`, not `⋅ dA` alone', () => {
+    const out = rows(maxwell, 40, false)!
+    for (const l of out) expect(textWidth(l)).toBeLessThanOrEqual(40)
+    const continued = out.filter(l => /^\s+[+⋅]/.test(l))
+    expect(continued.length).toBe(1)
+    expect(continued[0]!.trim()).toMatch(/^\+ μ₀ε₀/)
+  })
+
   test('cases break their long rows; the brace spans every line', () => {
     const kkt = String.raw`\begin{cases} \nabla f(x^*) + \sum_i \lambda_i \nabla g_i(x^*) + \sum_j \nu_j \nabla h_j(x^*) = 0 \\ g_i(x^*) \le 0, \quad h_j(x^*) = 0 \\ \lambda_i \ge 0 \end{cases}`
     const out = rows(kkt, 38)!
