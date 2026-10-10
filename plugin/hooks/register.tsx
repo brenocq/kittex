@@ -117,8 +117,10 @@ type FlushResult = EventResult<'classic.MessageDisplay'>
  * RegExp tests the value as a string, so a range reads `[object Object]`;
  * an object matcher (`[{}, null]`) did the same but made the engine warn,
  * on every render it didn't select, that `{}` can never match a null.
+ * Its end is `(?![\s\S])`, the same as `$` here, so no `$` stands in this
+ * file but the mods API's (the plugin directory reads every one as that).
  */
-const ON_SCREEN_REPORTED = /^(?:\[object Object\]|null)$/
+const ON_SCREEN_REPORTED = /^(?:\[object Object\]|null)(?![\s\S])/
 
 const ENV = { plugin: 'kittex', key: 'env' } as const
 const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
