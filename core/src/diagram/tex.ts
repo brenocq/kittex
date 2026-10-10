@@ -71,12 +71,26 @@ export function diagramFence(info: string): DiagramLang | undefined {
  */
 export function drawsPicture(source: string, lang: DiagramLang): boolean {
   if (lang !== 'latex') return true
-  if (isDocument(source)) return true
+  if (isDocument(source)) return hasBody(source)
   return /\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/.test(source)
 }
 
 function isDocument(source: string): boolean {
   return /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(source) || /\\begin\{document\}/.test(source)
+}
+
+/**
+ * Whether a document has something in its body: a preamble shown on its own
+ * (no \begin{document}, or one holding only comments) makes no page, and is
+ * code the reader is meant to read.
+ */
+function hasBody(source: string): boolean {
+  const start = /\\begin\{document\}/.exec(source)
+  if (!start) return false
+  const end = source.indexOf('\\end{document}', start.index)
+  const body = source.slice(start.index + start[0].length, end < 0 ? undefined : end)
+  // Comments out: a % not escaped as \% (an even run of backslashes before it) to the end of its line.
+  return body.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, '$1$2').trim() !== ''
 }
 
 /** A document ready for TeX, and how its SVG reads back. */
