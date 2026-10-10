@@ -68,7 +68,7 @@ sudo /Library/TeX/texbin/tlmgr install dvisvgm standalone amsmath amsfonts pgf p
 ```
 
 Or the full MacTeX, everything included (about 6 GB): `brew install --cask mactex-no-gui`.
-macOS has no bubblewrap, so TeX runs unconfined there (see [Local LaTeX](#config)).
+macOS has no bubblewrap, so TeX can read your files there; its CPU time and file sizes are still capped (see [Local LaTeX](#config)).
 
 **Other (TeX Live)**
 
@@ -144,7 +144,7 @@ Change these in `/config`: type `kittex` in its search box to list all four.
 
 TeX runs with its shell escape off and a time limit, and kittex refuses any diagram that reads a file by its path.
 On Linux, bubblewrap also hides your home folder and the network from it (a TeX installed in your home folder stays readable, nothing else there), and prlimit caps its CPU time and file sizes.
-macOS has neither, so there TeX can read the files you can: choose `off` if that matters to you.
+On macOS, sh's ulimit sets the same caps, but nothing hides your files: TeX can read the files you can, so choose `off` if that matters to you.
 `/kittex-doctor` shows which of these apply on your machine.
 
 </details>
