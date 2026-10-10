@@ -390,6 +390,17 @@ export function sourcePattern(math: Partial<MathOptions>, diagrams = false): Reg
  */
 export const STREAMED_PATTERN = new RegExp(PREVIEW_MARK)
 
+/**
+ * A matcher for a render's `onScreen` once the engine reports it: a range,
+ * or null for a block laid out off screen; not a render that has none. A
+ * RegExp tests the value as a string, so a range reads `[object Object]`;
+ * an object matcher (`[{}, null]`) did the same but made the engine warn,
+ * on every render it didn't select, that `{}` can never match a null.
+ * Built here like STREAMED_PATTERN: the plugin directory couldn't follow
+ * the hook whose matcher held it as a regular expression literal.
+ */
+export const ON_SCREEN_REPORTED = new RegExp('^(?:\\[object Object\\]|null)$')
+
 // ─── Shared state ────────────────────────────────────────────────────────────
 
 /** What drawing needs to know about the terminal (kittex.env in `$.state`). */

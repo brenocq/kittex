@@ -74,6 +74,7 @@ import {
   instructionsNeeded,
   inlineFlow,
   joinProse,
+  ON_SCREEN_REPORTED,
   STREAMED_PATTERN,
   linkEnv,
   locatePreviews,
@@ -110,17 +111,6 @@ import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 type Engine = EngineInterface
 /** What a classic.MessageDisplay hook resolves to (rewriteFlush). */
 type FlushResult = EventResult<'classic.MessageDisplay'>
-
-/**
- * A matcher for a render's `onScreen` once the engine reports it: a range,
- * or null for a block laid out off screen; not a render that has none. A
- * RegExp tests the value as a string, so a range reads `[object Object]`;
- * an object matcher (`[{}, null]`) did the same but made the engine warn,
- * on every render it didn't select, that `{}` can never match a null.
- * Its end is `(?![\s\S])`, the same as `$` here, so no `$` stands in this
- * file but the mods API's (the plugin directory reads every one as that).
- */
-const ON_SCREEN_REPORTED = /^(?:\[object Object\]|null)(?![\s\S])/
 
 const ENV = { plugin: 'kittex', key: 'env' } as const
 const BLOCKS = { plugin: 'kittex', key: 'blocks' } as const
@@ -412,7 +402,6 @@ export const register: Register = (on, options) => {
       if (e.final) flushGates.delete(e.message_id)
     }
   })
-
 
   // A landed block is told from the others by its transcript row: the row a
   // text block is appended as holds the model's text, which the block's
