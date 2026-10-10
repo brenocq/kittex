@@ -2914,11 +2914,18 @@ export function diagramPlaceholder(label: string, rows: number, maxColumns: numb
   const out = previewMarkdownLines(lines, maxColumns)
   let hash = 0x811c9dc5
   for (let i = 0; i < source.length; i++) hash = Math.imul(hash ^ source.charCodeAt(i), 0x01000193)
-  let tag = ''
-  // Never as wide as the column: a line that wraps takes another row.
-  for (let bit = 0; bit < Math.min(PLACEHOLDER_TAG, maxColumns - 3); bit++) tag += BLANK_CELL + ((hash >>> bit) & 1 ? INLINE_MARK : '')
+  // Never as wide as the column, the pads before the tag counted: a line that wraps takes another row, and the
+  // landing, finding the placeholder by its text, no longer finds it (fuzz FUZZ-17: 4 pads and 16 tag cells in a
+  // 19-cell column). The tag keeps its cells where the column has room for them; the pads give way first.
   const last = out.length - 1
-  out[last] = out[last]!.replace(new RegExp(`${BLANK_CELL}$`), '') + tag
+  const line = out[last]!.replace(new RegExp(`${BLANK_CELL}$`), '')
+  const body = line.replace(/^(?:&nbsp;)+/, '')
+  const used = cellsOf(body.replace(/\\(.)/g, '$1'))
+  const bits = Math.max(0, Math.min(PLACEHOLDER_TAG, maxColumns - 3 - used))
+  const lead = Math.max(1, Math.min((line.length - body.length) / PREVIEW_PAD.length, maxColumns - 1 - used - bits))
+  let tag = ''
+  for (let bit = 0; bit < bits; bit++) tag += BLANK_CELL + ((hash >>> bit) & 1 ? INLINE_MARK : '')
+  out[last] = PREVIEW_PAD.repeat(lead) + (body + tag || BLANK_CELL)
   return out
 }
 

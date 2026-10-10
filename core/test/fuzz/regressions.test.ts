@@ -308,6 +308,19 @@ describe('fuzz regressions', () => {
     expect(failures(md, { columns: 118, cellWidth: 10, cellHeight: 20 }, ['overlap', 'resumed'])).toEqual([])
   })
 
+  // FUZZ-17 (macOS run, seeds 802, 3955, 11032). A diagram's placeholder ends
+  // with a 16-cell tag of its source, written after the pads that centre its
+  // label: in a 21-column window (a 19-cell column) its last row was 20 cells,
+  // wrapped, and the landing, which finds the placeholder by its text, drew no
+  // picture and left the pads. Fixed: the tag and its lead fit the column.
+  test('FUZZ-17: a diagram placeholder in a narrow window gets its picture', () => {
+    for (const md of ['```latex\n\\begin{tikzpicture}\n```\n', '\\begin{tikzpicture}\n\\fill[black] \n\\end{tikzpicture}\n']) {
+      for (const columns of [20, 21, 22, 23, 24]) {
+        expect(failures(md, { columns, tex: true }, ['padVisible', 'displayImage', 'moved'])).toEqual([])
+      }
+    }
+  })
+
   // FUZZ-16. Live kept Unicode where resumed drew images: the stream judged
   // a formula's part with what came before it (the landing lays the text after
   // a display image out as a piece of its own), read a table's header row as

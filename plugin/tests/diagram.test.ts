@@ -139,6 +139,24 @@ describe('diagrams while streaming', () => {
     expect(diagramPlaceholder('plot', 5, 40, '\\draw (0,0);')).toEqual(placeholder)
   })
 
+  // Fuzz (macOS run, seeds 802, 3955, 11032): in a 21-column window the last row's tag came after the pads
+  // that centre the label, 4 + 16 cells in a 19-cell column, so it wrapped; the landing, finding the
+  // placeholder by its text, then drew no picture and left the pads.
+  test('every placeholder line is narrower than its column, its tag included', () => {
+    const cells = (line: string) => [...line.replaceAll(PREVIEW_PAD, ' ').replaceAll('͏', '')].length
+    for (const label of ['plot', 'diagram', 'circuit', 'molecule', 'commutative diagram', 'LaTeX document']) {
+      for (let columns = 6; columns <= 60; columns++) {
+        for (const rows of [1, 2, 3, 5]) {
+          const placeholder = diagramPlaceholder(label, rows, columns, '\\draw (0,0);')
+          for (const line of placeholder) {
+            expect(cells(line), `${label}, ${rows} rows, ${columns} columns: ${line}`).toBeLessThan(columns)
+            expect(line.startsWith(PREVIEW_PAD)).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
   test("TeX's error leaves the block as written, with a not-rendered line naming it", async () => {
     await init()
     const fake = fakeTex('error')
