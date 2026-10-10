@@ -250,4 +250,22 @@ describe('live QA regressions', () => {
     expect(pieces.length).toBeLessThanOrEqual(6)
     expect(ms).toBeLessThan(100)
   })
+
+  // Main screen (`"tui": "default"`), kitty 0.49.2 on macOS, Claude Code
+  // 2.1.296, 120x50 cells of 7x13 px: a reply taller than the window is
+  // printed twice into the scrollback when it lands. The landed render is
+  // hooked (the main screen reports no `onScreen`), so the engine draws the
+  // block as nothing for the hook's hop (engine-findings.md §4), and with
+  // rows above the viewport changed it clears the screen and prints the whole
+  // transcript again under the copy that streamed: the banner, the reply's
+  // streamed preview, then everything once more. The same reply without
+  // kittex prints once; with kittex in unicode mode it is printed twice too,
+  // so the hop, not the images, starts it. After `--resume` with a cold TeX
+  // cache, each late diagram redraws the block again: a stale partial copy of
+  // a tall circuit stays above the full one, and inline images the redraw
+  // deleted (a=d,d=I) leave blank gaps in the older copies. Nothing is drawn
+  // over text; the copies only pile up. Evidence: docs/stress-macos/
+  // scroll-overlay/ (ms1, ms2, ms3 with kittex, ms4 without; replies 12, 15,
+  // 16, 17 of replies.json).
+  test.todo('a landed reply taller than the window is printed once on the main screen')
 })
