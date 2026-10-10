@@ -546,7 +546,7 @@ export interface TerminalFacts {
   /** The cell in pixels, and whether it was measured (else the fallback). */
   cell?: { width: number; height: number; measured: boolean }
   /** The text font as the terminal's config names it, and its metrics as kittex read them. */
-  font?: { family?: string; style?: string; sizePt?: number; file?: string; source?: 'kitty' | 'fontconfig' | 'ghostty'; metrics: boolean }
+  font?: { family?: string; style?: string; sizePt?: number; file?: string; source?: 'kitty' | 'fontconfig' | 'coretext' | 'ghostty'; metrics: boolean }
   /** The formulas' ink and the background, as #rrggbb, and where they came from. */
   ink?: string
   background?: string
@@ -663,10 +663,10 @@ export function formatDoctor(facts: DoctorFacts): string {
       const f = t.font
       const base = f?.file?.split('/').pop()
       const named = [f?.family ? plain(f.family) : base ? plain(base) : undefined, f?.style ? plain(f.style) : undefined, f?.sizePt ? `${f.sizePt} pt` : undefined].filter(Boolean).join(' ')
-      const source = f?.source === 'kitty' ? 'kitty names it' : f?.source === 'fontconfig' ? 'fontconfig matched it' : undefined
+      const source = f?.source === 'kitty' ? 'kitty names it' : f?.source === 'fontconfig' ? 'fontconfig matched it' : f?.source === 'coretext' ? 'CoreText matched it' : undefined
       const size = f?.sizePt ? ` ${f.sizePt} pt` : ''
       if (f?.metrics && f.source === 'ghostty' && !f.file) {
-        if (f.family) line(INFO, `font ${plain(f.family)}${size}: fontconfig doesn't know it, so the math follows Ghostty's built-in JetBrains Mono`)
+        if (f.family) line(INFO, `font ${plain(f.family)}${size}: ${facts.os.platform === 'darwin' ? 'CoreText' : 'fontconfig'} doesn't know it, so the math follows Ghostty's built-in JetBrains Mono`)
         else line(OK, `font Ghostty's built-in JetBrains Mono${size}: metrics built in`)
       }
       else if (f?.metrics) line(OK, `font ${named || 'as configured'}: metrics read from ${f.file ? path(f.file) : 'its file'}${source ? ` (${source})` : ''}`)

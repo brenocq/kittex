@@ -23,6 +23,9 @@ export {
 export {
   type ByteReader,
   bytesReader,
+  type CoreTextFont,
+  coreTextFontArgv,
+  faceIndexOf,
   type FontFile,
   fontFileArgv,
   type FontMetrics,
@@ -30,6 +33,7 @@ export {
   GHOSTTY_BUILTIN_FONT,
   matchesFamily,
   odArgv,
+  parseCoreTextFont,
   parseFontFile,
   parseOd,
   readFontMetrics,

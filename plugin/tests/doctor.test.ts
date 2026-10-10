@@ -383,6 +383,14 @@ describe('the report', () => {
     expect(text).not.toContain('✗')
   })
 
+  test("Ghostty's font on macOS: found by CoreText, or not known to it", async () => {
+    const d = await allThere(MACOS)
+    const ghostty = (font: NonNullable<DoctorFacts['terminal']>['font']) =>
+      formatDoctor(facts(d, { os: MACOS, home: '/Users/u', terminal: { kind: 'ghostty', images: true, program: 'ghostty 1.3.1', cell: { width: 7, height: 14, measured: true }, font, colors: 'terminal' } }))
+    expect(ghostty({ family: 'Menlo', sizePt: 12, file: '/System/Library/Fonts/Menlo.ttc', source: 'coretext', metrics: true })).toContain('✓ font Menlo 12 pt: metrics read from `/System/Library/Fonts/Menlo.ttc` (CoreText matched it)')
+    expect(ghostty({ family: 'Nonexistent', sizePt: 12, source: 'ghostty', metrics: true })).toContain("– font Nonexistent 12 pt: CoreText doesn't know it, so the math follows Ghostty's built-in JetBrains Mono")
+  })
+
   test('no TeX: each missing command, then the command for this OS in a code block', async () => {
     const text = formatDoctor(facts(await noTex()))
     expect(text).toContain('✗ latex: not found on PATH')

@@ -23,12 +23,15 @@ import {
   colorProbes,
   detectTerminal,
   drawsEmojiSequences,
+  coreTextFontArgv,
+  faceIndexOf,
   fontFileArgv,
   GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
   imageInkCurve,
   matchesFamily,
   odArgv,
+  parseCoreTextFont,
   parseFontFile,
   parseOd,
   readFontMetrics,
@@ -1173,8 +1176,8 @@ async function loadFont($: $): Promise<void> {
   let file = named?.file
   let index = named?.index ?? 0
   if (!file && named?.family) {
-    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
-    if (found && matchesFamily(found, named.family)) [file, index] = [found.file, found.index]
+    const found = await findFontFile($, named.family, named.style)
+    if (found) [file, index] = [found.file, found.index]
   }
   if (file) metrics = await readFontMetrics(await fontBytes($, file), index)
   else if (terminal.kind === 'ghostty') metrics = GHOSTTY_BUILTIN_FONT
@@ -1201,6 +1204,20 @@ async function loadFont($: $): Promise<void> {
   // The next session's first renders draw with the font too (their cache keys hold it).
   await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: measured }).catch(() => undefined)
   $.ui.invalidate('ui.render')
+}
+
+/**
+ * The file of a font the terminal's config names by family and style: on
+ * macOS CoreText's match (as Ghostty finds it there; fontconfig is seldom
+ * installed), else fontconfig's; undefined when neither has that family.
+ */
+async function findFontFile($: $, family: string, style: string | undefined): Promise<{ file: string; index: number; source: 'fontconfig' | 'coretext' } | undefined> {
+  if (platform === 'darwin') {
+    const found = await runProbe($, coreTextFontArgv(family, style), parseCoreTextFont)
+    if (found && matchesFamily(found, family)) return { file: found.file, index: found.postscript ? await faceIndexOf(await fontBytes($, found.file), found.postscript) : 0, source: 'coretext' }
+  }
+  const found = await runProbe($, fontFileArgv(family, style), parseFontFile)
+  return found && matchesFamily(found, family) ? { file: found.file, index: found.index, source: 'fontconfig' } : undefined
 }
 
 /** A font file's bytes: read whole when $.fs.read takes it (up to 4 MiB), else in pieces through `od`. */
@@ -1986,8 +2003,8 @@ async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['f
   let file = named?.file
   let source: NonNullable<TerminalFacts['font']>['source'] = file ? 'kitty' : undefined
   if (!file && named?.family) {
-    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
-    if (found && matchesFamily(found, named.family)) [file, source] = [found.file, 'fontconfig']
+    const found = await findFontFile($, named.family, named.style)
+    if (found) [file, source] = [found.file, found.source]
   }
   if (!file && terminal?.kind === 'ghostty') source = 'ghostty'
   return {

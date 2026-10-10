@@ -50,6 +50,8 @@ interface World {
   uname?: string
   /** fc-match's answer. */
   match?: string
+  /** CoreText's answer (osascript, on macOS). */
+  coretext?: string
   files?: Record<string, Uint8Array>
 }
 
@@ -67,6 +69,7 @@ async function start($: Engine, on: On, world: World) {
       [e.argv[0] === 'uname', world.uname],
       [e.argv[1] === '+runpy' || e.argv[1] === '+show-config', world.probe],
       [e.argv[0] === 'fc-match', world.match],
+      [e.argv[0] === 'osascript', world.coretext],
     ]
     const stdout = answers.find(([hit]) => hit)?.[1]
     return { value: { exitCode: stdout === undefined ? 1 : 0, stdout: stdout ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -201,6 +204,29 @@ describe('the text font', () => {
     const env = envFor('ghostty', cell, { font: { ...metrics, sizePt: 14 } })
     env.emPx = mathEmPxFor(cell, env)
     expect(await drawn($)).toBe(await expected(env))
+  })
+
+  test('Ghostty on macOS with a family and no fontconfig: the file CoreText finds, its metrics drawn with', async ($, on) => {
+    const cell = { cellWidth: 11, cellHeight: 22 }
+    const { clock, ran, read } = await start($, on, {
+      terminal: GHOSTTY,
+      cell,
+      uname: 'Darwin\n',
+      probe: 'foreground = #ebdbb2\nbackground = #282828\nfont-family = Liberation Mono\nfont-size = 14\n',
+      coretext: '/Library/Fonts/LiberationMono-Regular.ttf\nLiberationMono\nLiberation Mono\n',
+      files: { '/Library/Fonts/LiberationMono-Regular.ttf': fontFile(LIBERATION) },
+    })
+    await clock.advance(1)
+    expect(ran).toContain('osascript')
+    expect(read).toContain('/Library/Fonts/LiberationMono-Regular.ttf')
+    const { advance: _, ...metrics } = LIBERATION
+    const env = envFor('ghostty', cell, { font: { ...metrics, sizePt: 14, platform: 'darwin' } })
+    env.emPx = mathEmPxFor(cell, env)
+    expect(await drawn($)).toBe(await expected(env))
+    const { weight: __, ...builtin } = GHOSTTY_BUILTIN_FONT
+    const jetbrains = envFor('ghostty', cell, { font: { ...builtin, sizePt: 14, platform: 'darwin' } })
+    jetbrains.emPx = mathEmPxFor(cell, jetbrains)
+    expect(await drawn($)).not.toBe(await expected(jetbrains))
   })
 
   test("kitty's text curve: on macOS `platform` is 1.7 30, and the ink's alpha follows it", async ($, on) => {
