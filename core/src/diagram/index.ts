@@ -28,6 +28,7 @@ export {
   PREAMBLE_VERSION,
   texEnvironment,
   texError,
+  ulimitProbe,
   unsafeTex,
   type Confinement,
   type DiagramLang,

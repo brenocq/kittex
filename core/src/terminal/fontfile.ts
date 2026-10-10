@@ -253,6 +253,104 @@ export function matchesFamily(match: FontFile, family: string): boolean {
   return match.families.some(f => f.toLowerCase() === want)
 }
 
+/**
+ * CoreText's match for a family and style, through osascript's JavaScript
+ * and its Objective-C bridge (macOS, where fontconfig is seldom installed and
+ * Ghostty finds its fonts with CoreText): the face of that family whose style
+ * is the one asked for, else its Regular, else its first; printed as its
+ * file, PostScript name and family, one per line, or nothing when CoreText
+ * has no such family. The names are the script's arguments, never part of it.
+ */
+const CORETEXT_FONT_JXA = `ObjC.import('AppKit')
+function run(argv) {
+  const attrs = $.NSMutableDictionary.alloc.init
+  attrs.setObjectForKey($(argv[0]), 'NSFontFamilyAttribute')
+  const all = $.NSFontDescriptor.fontDescriptorWithFontAttributes(attrs).matchingFontDescriptorsWithMandatoryKeys($.NSSet.setWithObject('NSFontFamilyAttribute'))
+  const faces = []
+  for (let i = 0; i < all.count; i++) {
+    const d = all.objectAtIndex(i)
+    const url = d.objectForKey('NSCTFontFileURLAttribute')
+    const name = key => { const v = d.objectForKey(key); return v.isNil() ? '' : v.js }
+    if (!url.isNil()) faces.push({ file: url.path.js, style: name('NSFontFaceAttribute'), postscript: name('NSFontNameAttribute'), family: name('NSFontFamilyAttribute') })
+  }
+  const want = (argv[1] || 'Regular').toLowerCase()
+  const face = faces.find(f => f.style.toLowerCase() === want) || faces.find(f => f.style.toLowerCase() === 'regular') || faces[0]
+  return face ? [face.file, face.postscript, face.family].join('\\n') : ''
+}`
+
+/** osascript asking CoreText for the font file of a family and style (CORETEXT_FONT_JXA). */
+export function coreTextFontArgv(family: string, style?: string): string[] {
+  return ['osascript', '-l', 'JavaScript', '-e', CORETEXT_FONT_JXA, family, style ?? '']
+}
+
+/** A font file CoreText found, with the face's PostScript name (faceIndexOf finds its index in a collection). */
+export interface CoreTextFont extends FontFile {
+  postscript: string
+}
+
+/** Reads coreTextFontArgv's output: undefined unless it names an absolute path. */
+export function parseCoreTextFont(stdout: string): CoreTextFont | undefined {
+  const [file, postscript, family] = stdout.split('\n').map(line => line.trim())
+  if (!file?.startsWith('/')) return undefined
+  return { file, index: 0, families: family ? [family] : [], postscript: postscript ?? '' }
+}
+
+/**
+ * The index of the face named `postscript` (its name table's ID 6) in a
+ * font collection; 0 for a single font, or when no face has that name.
+ */
+export async function faceIndexOf(read: ByteReader, postscript: string): Promise<number> {
+  const exact = async (offset: number, length: number) => {
+    const bytes = await read(offset, length)
+    return bytes && bytes.length >= length ? bytes : undefined
+  }
+  const header = await exact(0, 12)
+  if (!header || tag(header, 0) !== 'ttcf') return 0
+  const count = u32(header, 8)
+  if (count > 64) return 0
+  const offsets = await exact(12, 4 * count)
+  if (!offsets) return 0
+  for (let index = 0; index < count; index++) {
+    const start = u32(offsets, 4 * index)
+    const face = await exact(start, 12)
+    if (!face) continue
+    const numTables = u16(face, 4)
+    if (numTables === 0 || numTables > 1024) continue
+    const dir = await exact(start + 12, 16 * numTables)
+    if (!dir) continue
+    for (let i = 0; i < numTables; i++) {
+      if (tag(dir, 16 * i) !== 'name') continue
+      const name = await exact(u32(dir, 16 * i + 8), Math.min(u32(dir, 16 * i + 12), 1 << 16))
+      if (name && postscriptNames(name).includes(postscript)) return index
+    }
+  }
+  return 0
+}
+
+/** The PostScript names (ID 6) a name table holds: UTF-16BE (Unicode, Windows) and Mac Roman's ASCII. */
+function postscriptNames(name: Uint8Array): string[] {
+  if (name.length < 6) return []
+  const count = u16(name, 2)
+  const strings = u16(name, 4)
+  const out: string[] = []
+  for (let r = 0; r < count && 6 + 12 * r + 12 <= name.length; r++) {
+    const at = 6 + 12 * r
+    if (u16(name, at + 6) !== 6) continue
+    const platform = u16(name, at)
+    const length = u16(name, at + 8)
+    const from = strings + u16(name, at + 10)
+    if (from + length > name.length) continue
+    const bytes = name.subarray(from, from + length)
+    if (platform === 1) out.push(String.fromCharCode(...bytes))
+    else {
+      let text = ''
+      for (let k = 0; k + 1 < bytes.length; k += 2) text += String.fromCharCode(u16(bytes, k))
+      out.push(text)
+    }
+  }
+  return out
+}
+
 /** `od` printing `length` bytes of a file from `offset` as decimal numbers: for a file too large to read whole. */
 export function odArgv(path: string, offset: number, length: number): string[] {
   return ['od', '-An', '-v', '-tu1', '-j', String(offset), '-N', String(length), path]

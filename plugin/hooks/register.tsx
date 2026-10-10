@@ -14,6 +14,7 @@
 import type { EngineInterface, FsEntry, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
 
 import {
+  cellProbeRan,
   cellProbes,
   chooseInk,
   createLineScanner,
@@ -22,12 +23,15 @@ import {
   colorProbes,
   detectTerminal,
   drawsEmojiSequences,
+  coreTextFontArgv,
+  faceIndexOf,
   fontFileArgv,
   GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
   imageInkCurve,
   matchesFamily,
   odArgv,
+  parseCoreTextFont,
   parseFontFile,
   parseOd,
   readFontMetrics,
@@ -98,7 +102,7 @@ import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import { diagramJob, hiddenDirs, mathJob, onPath, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
@@ -291,7 +295,9 @@ export const register: Register = (on, options) => {
     // The first session keeps what renders before it read from TeX's cache (a resume's diagrams).
     if (sessions > 1) texBook.reset()
     texProbe = undefined
-    if (latex === 'auto' && math.block !== 'unicode') {
+    // Only where kittex draws images: elsewhere (Terminal.app, iTerm2) diagrams stay code, so TeX would never be shown.
+    const drawsImages = (await readEnv($).catch(() => null))?.images === true
+    if (latex === 'auto' && math.block !== 'unicode' && drawsImages) {
       redraw = () => $.ui.invalidate('ui.render')
       // Not awaited: a few short commands (each with its time limit) that settle meanwhile.
       texProbe = setUpTex($)
@@ -935,13 +941,13 @@ async function probeSystem($: $): Promise<string | undefined> {
   }
 }
 
-/** The cell size from the first cell probe that answers (perl, then python3). */
+/** The cell size from the first cell probe that runs (perl, then python3 where perl can't: cellProbeRan). */
 async function probeCell($: $): Promise<CellSize | undefined> {
   for (const probe of cellProbes) {
     try {
       const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
       const cell = exitCode === 0 ? probe.parse(stdout) : undefined
-      if (cell) return cell
+      if (cell || cellProbeRan(exitCode, stdout)) return cell
     } catch {
       // the next probe
     }
@@ -1172,8 +1178,8 @@ async function loadFont($: $): Promise<void> {
   let file = named?.file
   let index = named?.index ?? 0
   if (!file && named?.family) {
-    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
-    if (found && matchesFamily(found, named.family)) [file, index] = [found.file, found.index]
+    const found = await findFontFile($, named.family, named.style)
+    if (found) [file, index] = [found.file, found.index]
   }
   if (file) metrics = await readFontMetrics(await fontBytes($, file), index)
   else if (terminal.kind === 'ghostty') metrics = GHOSTTY_BUILTIN_FONT
@@ -1200,6 +1206,20 @@ async function loadFont($: $): Promise<void> {
   // The next session's first renders draw with the font too (their cache keys hold it).
   await $.store.set(REMEMBERED, { id: terminalId(processEnv), env: measured }).catch(() => undefined)
   $.ui.invalidate('ui.render')
+}
+
+/**
+ * The file of a font the terminal's config names by family and style: on
+ * macOS CoreText's match (as Ghostty finds it there; fontconfig is seldom
+ * installed), else fontconfig's; undefined when neither has that family.
+ */
+async function findFontFile($: $, family: string, style: string | undefined): Promise<{ file: string; index: number; source: 'fontconfig' | 'coretext' } | undefined> {
+  if (platform === 'darwin') {
+    const found = await runProbe($, coreTextFontArgv(family, style), parseCoreTextFont)
+    if (found && matchesFamily(found, family)) return { file: found.file, index: found.postscript ? await faceIndexOf(await fontBytes($, found.file), found.postscript) : 0, source: 'coretext' }
+  }
+  const found = await runProbe($, fontFileArgv(family, style), parseFontFile)
+  return found && matchesFamily(found, family) ? { file: found.file, index: found.index, source: 'fontconfig' } : undefined
 }
 
 /** A font file's bytes: read whole when $.fs.read takes it (up to 4 MiB), else in pieces through `od`. */
@@ -1759,7 +1779,7 @@ async function withTex(stream: MessageStream, first: StreamRewrite, env: StreamE
 
 /** Finds the local TeX with session.start's `$` and gives texBook its host (a compile may outlive the dispatch that asked for it). */
 async function setUpTex($: $): Promise<void> {
-  const host: TexHost = {
+  const given: TexHost = {
     run: (argv, init) => $.process.run(argv, init),
     write: (path, text) => $.fs.write(path, text),
     // A missing file is no error (a cache miss): asked first, so the engine logs no failed read.
@@ -1767,7 +1787,11 @@ async function setUpTex($: $): Promise<void> {
     readBytes: path => readBytes($, path),
   }
   try {
-    const [tmpdir, cacheHome, path] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME'), $.env.get('PATH')])
+    const [tmpdir, cacheHome, hostPath] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME'), $.env.get('PATH')])
+    // On macOS, MacTeX's folder too, where PATH lacks it (a terminal started from the Dock).
+    const texPATH = texPath(hostPath, platform)
+    const path = texPATH ?? hostPath
+    const host = onPath(given, texPATH)
     const home = processEnv.HOME
     const cacheDir = texCacheDir({ XDG_CACHE_HOME: cacheHome, HOME: home })
     const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}), ...(path !== undefined ? { path } : {}) })
@@ -1981,8 +2005,8 @@ async function doctorFont($: $, env: KittexEnv | null): Promise<TerminalFacts['f
   let file = named?.file
   let source: NonNullable<TerminalFacts['font']>['source'] = file ? 'kitty' : undefined
   if (!file && named?.family) {
-    const found = await runProbe($, fontFileArgv(named.family, named.style), parseFontFile)
-    if (found && matchesFamily(found, named.family)) [file, source] = [found.file, 'fontconfig']
+    const found = await findFontFile($, named.family, named.style)
+    if (found) [file, source] = [found.file, found.source]
   }
   if (!file && terminal?.kind === 'ghostty') source = 'ghostty'
   return {

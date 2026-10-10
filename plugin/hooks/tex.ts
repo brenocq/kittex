@@ -29,6 +29,7 @@ import {
   texError,
   texFormula,
   texPicture,
+  ulimitProbe,
   unsafeTex,
   XmlError,
 } from './core.js'
@@ -90,6 +91,29 @@ export interface Sandbox {
 /** Whether a job's sandbox runs TeX here, and if not, why (the first line its trial printed). */
 export type SandboxProbe = { ok: true; sandbox: Sandbox } | { ok: false; error: string }
 
+/** Where MacTeX and BasicTeX link TeX's programs (/etc/paths.d/TeX puts it on a login shell's PATH). */
+export const MACTEX_BIN = '/Library/TeX/texbin'
+
+/**
+ * The PATH TeX's commands run with on macOS: the host's with MacTeX's
+ * folder after its own, where it lacks it (a terminal started from the Dock
+ * or Spotlight, a shell config that sets PATH outright, TeX installed after
+ * the shell started), so a MacTeX that is there is found. Undefined where
+ * the host's PATH is used as it is (it has the folder, or not macOS).
+ */
+export function texPath(path: string | undefined, platform: string | undefined): string | undefined {
+  if (platform !== 'darwin') return undefined
+  const dirs = (path ?? '').split(':').filter(Boolean)
+  if (dirs.some(dir => dir.replace(/\/+$/, '') === MACTEX_BIN)) return undefined
+  return [...(dirs.length > 0 ? dirs : ['/usr/bin', '/bin', '/usr/sbin', '/sbin']), MACTEX_BIN].join(':')
+}
+
+/** The host with its commands run on `path` (texPath), unless a command sets its own PATH (bubblewrap's). */
+export function onPath<H extends TexHost>(host: H, path: string | undefined): H {
+  if (path === undefined) return host
+  return { ...host, run: (argv, init) => host.run(argv, { ...init, env: { PATH: path, ...init.env } }) }
+}
+
 /** How long a probe command may run. */
 const PROBE_MS = 3000
 /** How long a stream holds a diagram (or a formula MathJax refused) for TeX before it shows the source. */
@@ -121,11 +145,13 @@ export async function probeTex(host: TexHost, options: { tmpdir: string | undefi
     ok(['prlimit', '--version']),
   ])
   if (latex === undefined || dvisvgm === undefined) return undefined
+  // No prlimit (macOS has none): the same limits through sh's ulimit.
+  const ulimit = prlimit === undefined && (await ok(ulimitProbe())) !== undefined
   const sandbox = options.hide.length > 0 ? await probeSandbox(host, { hide: options.hide, tmpdir: options.tmpdir, path: options.path, prlimit: prlimit !== undefined }) : undefined
   const first = (text: string) => text.split('\n', 1)[0]!.trim()
   return {
     versions: `${first(latex)}\n${first(dvisvgm)}`,
-    confinement: { prlimit: prlimit !== undefined, ...(sandbox?.ok ? { bwrap: { hide: options.hide } } : {}) },
+    confinement: { prlimit: prlimit !== undefined, ...(ulimit ? { ulimit: true as const } : {}), ...(sandbox?.ok ? { bwrap: { hide: options.hide } } : {}) },
     tmpdir: options.tmpdir,
     ...(options.cacheDir !== undefined ? { cacheDir: options.cacheDir } : {}),
     ...(help !== undefined && !takesLibgs(help) ? { libgs: false as const } : {}),

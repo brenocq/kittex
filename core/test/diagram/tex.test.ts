@@ -9,8 +9,11 @@ import {
   jobDirTemplate,
   LATEX_ARGV,
   mathDocument,
+  MAX_CPU_SECONDS,
+  MAX_OUTPUT_BYTES,
   texEnvironment,
   texError,
+  ulimitProbe,
   unsafeTex,
 } from '../../src/diagram/index.ts'
 
@@ -145,6 +148,18 @@ describe('commands', () => {
     expect(argv.join(' ')).toContain('--tmpfs /home/u --tmpfs /tmp --bind /tmp/kittex-tex.abcdefghij /tmp/kittex-tex.abcdefghij --chdir /tmp/kittex-tex.abcdefghij')
     expect(argv).toContain('--unshare-all')
     expect(argv.slice(-2)).toEqual(['latex', 'x.tex'])
+  })
+
+  test("without prlimit (macOS), sh's ulimit sets the same limits, the command's arguments passed through untouched", () => {
+    const dir = '/tmp/kittex-tex.abcdefghij'
+    const argv = confined(['latex', 'x $(y).tex'], dir, { prlimit: false, ulimit: true })
+    expect(argv.slice(0, 2)).toEqual(['/bin/sh', '-c'])
+    // A fixed script: the command is its positional arguments, never part of the script.
+    expect(argv[2]).toBe(`ulimit -f ${MAX_OUTPUT_BYTES / 1024} && ulimit -t ${MAX_CPU_SECONDS} && exec "$@"`)
+    expect(argv.slice(3)).toEqual(['kittex-tex', 'latex', 'x $(y).tex'])
+    expect(ulimitProbe()).toEqual([...argv.slice(0, 4), 'true'])
+    // prlimit, where there is one, sets them.
+    expect(confined(['latex'], dir, { prlimit: true, ulimit: true }).slice(0, 4)).toEqual(['prlimit', '--fsize=67108864', '--cpu=20', 'latex'])
   })
 
   test('only a directory made from the template is removed', () => {

@@ -10,8 +10,8 @@
 // math). It holds no `$`, and every name from the host (a path, a TeX error)
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
-import { diagramDocument, formatName } from './core.js'
-import { compileTrial, probeSandbox, runsPostScript, takesLibgs, texCacheDir } from './tex.ts'
+import { diagramDocument, formatName, ulimitProbe } from './core.js'
+import { compileTrial, onPath, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
 import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
 
@@ -342,6 +342,8 @@ export interface DiagramFacts {
   /** Linux only: bubblewrap found, whether TeX runs in its namespace (else why not), and what it binds back. */
   bwrap?: ToolFacts & { usable: boolean; error?: string; sandbox?: Sandbox }
   prlimit?: ToolFacts
+  /** Without prlimit (macOS): whether sh's ulimit sets the CPU-time and file-size limits. */
+  ulimit?: boolean
   /** The dumped format for this TeX (prepareFormat), when latex and dvisvgm answered. */
   format?: { path: string; bytes?: number }
   /** Whether dvisvgm takes --libgs (false: kittex leaves it out). */
@@ -397,7 +399,10 @@ export async function which(host: Pick<DoctorHost, 'exists'>, name: string, path
  * dvisvgm answer, the trial picture. The commands run at once; only the
  * trial waits for them. TeX never sees anything but TRIAL_PICTURE.
  */
-export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promise<DiagramFacts> {
+export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promise<DiagramFacts> {
+  // On macOS, MacTeX's folder too (as the session's TeX finds it: texPath).
+  const texPATH = texPath(input.env.PATH, input.os.platform)
+  const host = onPath(given, texPATH)
   const run = (argv: readonly string[], timeoutMs = DOCTOR_PROBE_MS) =>
     host.run(argv, { timeoutMs }).then(
       result => result,
@@ -410,7 +415,7 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
     return { path, ...(line ? { version: line } : {}) }
   }
   const linux = input.os.platform !== 'darwin'
-  const PATH = input.env.PATH
+  const PATH = texPATH ?? input.env.PATH
   const [latexAt, dvisvgmAt, kpsewhichAt, tlmgrAt, bwrapAt, prlimitAt] = await Promise.all(
     ['latex', 'dvisvgm', 'kpsewhich', 'tlmgr', 'bwrap', 'prlimit'].map(name => (linux || (name !== 'bwrap' && name !== 'prlimit') ? which(host, name, PATH) : Promise.resolve(undefined))),
   )
@@ -427,6 +432,8 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
       ? probeSandbox(host, { hide: input.hide, tmpdir: input.env.TMPDIR, path: PATH, prlimit: prlimitAt !== undefined })
       : Promise.resolve(undefined as SandboxProbe | undefined),
   ])
+  // No prlimit (always on macOS): sh's ulimit sets the same limits, where it runs.
+  const ulimit = prlimitAt === undefined ? (await run(ulimitProbe()))?.exitCode === 0 : undefined
   const tlmgr: ToolFacts = tlmgrAt ? { path: tlmgrAt } : {}
   // kpsewhich prints the path of each file it finds (exit 1 when any is missing).
   const found = kpse?.stdout.split('\n').map(line => line.trim()).filter(Boolean) ?? []
@@ -451,6 +458,7 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
     ...(files ? { files } : {}),
     ...(bwrap ? { bwrap } : {}),
     ...(prlimit ? { prlimit } : {}),
+    ...(ulimit !== undefined ? { ulimit } : {}),
     ...(libgs !== undefined ? { libgs } : {}),
     ...(postscript ? { postscript } : {}),
     trial: { skipped: '' },
@@ -472,7 +480,7 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
   } else {
     const setup: TexSetup = {
       versions: `${latex.version}\n${dvisvgm.version}`,
-      confinement: { prlimit: !linux ? false : prlimit?.path !== undefined, ...(bwrap?.usable ? { bwrap: { hide: input.hide } } : {}) },
+      confinement: { prlimit: !linux ? false : prlimit?.path !== undefined, ...(ulimit ? { ulimit: true as const } : {}), ...(bwrap?.usable ? { bwrap: { hide: input.hide } } : {}) },
       tmpdir: input.env.TMPDIR,
       ...(format ? { format } : {}),
       ...(libgs === false ? { libgs: false as const } : {}),
@@ -538,7 +546,7 @@ export interface TerminalFacts {
   /** The cell in pixels, and whether it was measured (else the fallback). */
   cell?: { width: number; height: number; measured: boolean }
   /** The text font as the terminal's config names it, and its metrics as kittex read them. */
-  font?: { family?: string; style?: string; sizePt?: number; file?: string; source?: 'kitty' | 'fontconfig' | 'ghostty'; metrics: boolean }
+  font?: { family?: string; style?: string; sizePt?: number; file?: string; source?: 'kitty' | 'fontconfig' | 'coretext' | 'ghostty'; metrics: boolean }
   /** The formulas' ink and the background, as #rrggbb, and where they came from. */
   ink?: string
   background?: string
@@ -634,9 +642,11 @@ export function formatDoctor(facts: DoctorFacts): string {
   } else if (elsewhere) {
     line(INFO, `the ${facts.surface} surface: kittex leaves replies to its own drawing here (images need kitty or Ghostty, in a terminal).`)
   } else if (t) {
-    const name = TERMINAL_NAMES[t.kind]
-    const program = t.program && t.program.toLowerCase() !== name.toLowerCase() ? (t.program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? t.program.slice(name.length + 1) : t.program) : undefined
-    const where = [program ? plain(program) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
+    // Terminal.app names itself only in TERM_PROGRAM.
+    const name = t.kind === 'other' && /^Apple_Terminal(?:\s|$)/.test(t.program ?? '') ? 'Terminal.app' : TERMINAL_NAMES[t.kind]
+    const program = t.program?.replace(/^Apple_Terminal(?=\s|$)/, 'Terminal.app')
+    const shown = program && program.toLowerCase() !== name.toLowerCase() ? (program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? program.slice(name.length + 1) : program) : undefined
+    const where = [shown ? plain(shown) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
     if (t.images) {
       line(OK, `${name}${where ? ` (${where})` : ''}: kitty graphics with Unicode placeholders`)
       const c = t.claude
@@ -647,7 +657,7 @@ export function formatDoctor(facts: DoctorFacts): string {
       } else if (c?.state === 'pending') line(INFO, `Claude Code hasn't asked the terminal about pictures yet${said}: run this again in a moment`)
       else if (c) line(INFO, "Claude Code's own check on pictures: known once kittex has drawn an image (run this again after a reply with math)")
     } else {
-      const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
+      const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : name === 'Terminal.app' ? 'Terminal.app has no kitty graphics' : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
       line(NO, `${name}${where ? ` (${where})` : ''}: ${why}. kittex shows math as Unicode text instead; images work in kitty (0.28 or newer) and Ghostty${t.multiplexer ? `, outside ${t.multiplexer}` : ''}.`)
     }
     if (t.cell) line(t.cell.measured ? OK : NO, t.cell.measured ? `cell ${t.cell.width}×${t.cell.height} px, measured` : `cell not measured: drawing for ${t.cell.width}×${t.cell.height} px (perl or python3 reads the size from the terminal)`)
@@ -655,10 +665,10 @@ export function formatDoctor(facts: DoctorFacts): string {
       const f = t.font
       const base = f?.file?.split('/').pop()
       const named = [f?.family ? plain(f.family) : base ? plain(base) : undefined, f?.style ? plain(f.style) : undefined, f?.sizePt ? `${f.sizePt} pt` : undefined].filter(Boolean).join(' ')
-      const source = f?.source === 'kitty' ? 'kitty names it' : f?.source === 'fontconfig' ? 'fontconfig matched it' : undefined
+      const source = f?.source === 'kitty' ? 'kitty names it' : f?.source === 'fontconfig' ? 'fontconfig matched it' : f?.source === 'coretext' ? 'CoreText matched it' : undefined
       const size = f?.sizePt ? ` ${f.sizePt} pt` : ''
       if (f?.metrics && f.source === 'ghostty' && !f.file) {
-        if (f.family) line(INFO, `font ${plain(f.family)}${size}: fontconfig doesn't know it, so the math follows Ghostty's built-in JetBrains Mono`)
+        if (f.family) line(INFO, `font ${plain(f.family)}${size}: ${facts.os.platform === 'darwin' ? 'CoreText' : 'fontconfig'} doesn't know it, so the math follows Ghostty's built-in JetBrains Mono`)
         else line(OK, `font Ghostty's built-in JetBrains Mono${size}: metrics built in`)
       }
       else if (f?.metrics) line(OK, `font ${named || 'as configured'}: metrics read from ${f.file ? path(f.file) : 'its file'}${source ? ` (${source})` : ''}`)
@@ -736,14 +746,17 @@ export function formatDoctor(facts: DoctorFacts): string {
     else if (b?.path) line(INFO, 'bubblewrap: found (not tried: Local LaTeX is off or TeX is missing)')
     else line(NO, 'bubblewrap: not found: TeX can read any file you can (kittex still refuses diagrams that read a file by its path)')
     if (p?.path) line(OK, 'prlimit: TeX runs under a CPU-time and a file-size limit')
+    else if (d.ulimit) line(OK, "prlimit: not found: sh's ulimit sets the CPU-time and file-size limits instead")
     else line(NO, 'prlimit: not found: no CPU or file-size limit, only the time limit')
   } else {
-    line(INFO, "confinement: none on macOS (no bubblewrap, no prlimit). TeX runs as you, with its shell escape off, writes kept to its job folder and a time limit; kittex refuses diagrams that read a file by its path, but nothing hides your files from TeX.")
+    const limits = d.ulimit ? "a CPU-time and a file-size limit (sh's ulimit)" : 'no CPU-time or file-size limit'
+    line(INFO, `confinement: no bubblewrap on macOS. TeX runs as you, with its shell escape off, writes kept to its job folder, a time limit, and ${limits}; kittex refuses diagrams that read a file by its path, but nothing hides your files from TeX.`)
   }
   if (d.libgs === false) line(INFO, 'dvisvgm has no --libgs option here: kittex leaves it out')
   if (d.postscript) line(INFO, `this dvisvgm runs PostScript through its own Ghostscript, without -dSAFER, whatever it is told (3.5 to 3.6.1): kittex's pictures hold none; a document that rotates or scales ${d.bwrap?.usable ? 'runs inside bubblewrap' : 'is refused, as there is no sandbox'}`)
   if (d.format) {
     if (d.format.bytes !== undefined && d.format.bytes > 0) line(OK, `format: built, ${path(d.format.path)} (${bytes(d.format.bytes)})`)
+    else if (!d.drawn) line(INFO, 'format: not built (kittex dumps it only where it draws diagrams)')
     else line(INFO, `format: not built yet${d.files?.some(file => file.name === 'mylatexformat.ltx' && !file.path) ? ' (needs mylatexformat)' : ': kittex dumps it in the background once a session finds TeX'}`)
   }
   const trial = d.trial
@@ -773,7 +786,7 @@ export function formatDoctor(facts: DoctorFacts): string {
     ...(d.kpsewhich.path || !d.latex.path ? [] : ['kpsewhich']),
     ...(d.files ?? []).filter(file => !file.path).map(file => file.name),
     ...(linux && !d.bwrap?.path ? ['bwrap'] : []),
-    ...(linux && !d.prlimit?.path ? ['prlimit'] : []),
+    ...(linux && !d.prlimit?.path && !d.ulimit ? ['prlimit'] : []),
   ]
   const advice = d.option === 'off' ? undefined : installAdvice(os, missing, d.latex.path)
   if (advice && advice.commands.length + (advice.note ? 1 : 0) > 0) {

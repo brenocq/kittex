@@ -32,12 +32,14 @@ export {
   texEnvironment,
   texError,
   texPicture,
+  ulimitProbe,
   unsafeTex,
   XmlError,
 } from './diagram/index.js'
 export type { Adapted, Confinement, DiagramLang, PaperColors, TexDocument } from './diagram/index.js'
 export {
   cellProbe,
+  cellProbeRan,
   cellProbes,
   chooseInk,
   claudeCustomThemePath,
@@ -48,6 +50,8 @@ export {
   drawsEmojiSequences,
   emPxForCell,
   fontCell,
+  coreTextFontArgv,
+  faceIndexOf,
   fontFileArgv,
   GHOSTTY_BUILTIN_FONT,
   imageInkBackground,
@@ -55,6 +59,7 @@ export {
   matchesFamily,
   mathEmPx,
   odArgv,
+  parseCoreTextFont,
   parseFontFile,
   parseOd,
   readFontMetrics,

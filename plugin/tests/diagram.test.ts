@@ -26,7 +26,7 @@ import {
 } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { createLineScanner } from '../hooks/core.js'
-import { diagramJob, dvisvgmCommand, hiddenDirs, prepareFormat, probeTex, rememberedTex, takesLibgs, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
+import { diagramJob, dvisvgmCommand, hiddenDirs, onPath, prepareFormat, probeTex, rememberedTex, takesLibgs, texBook, texCacheDir, texPath, texResult } from '../hooks/tex.ts'
 import { fitPictures } from '../hooks/budget.ts'
 import { diagramDocument, formatName } from '../hooks/core.js'
 import type { TexHost, TexSetup } from '../hooks/tex.ts'
@@ -384,8 +384,32 @@ describe('the TeX book', () => {
     expect(await probeTex(answering(['dvisvgm']), { tmpdir: undefined, hide: [] })).toBeUndefined()
     const full = await probeTex(answering([]), { tmpdir: '/tmp', hide: ['/home/u', '/tmp'], path: '/usr/bin' })
     expect(full?.confinement).toEqual({ prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } })
+    // No prlimit (macOS): sh's ulimit sets the limits, where sh runs it.
     const bare = await probeTex(answering(['prlimit', 'bwrap']), { tmpdir: '/tmp', hide: ['/home/u'] })
-    expect(bare?.confinement).toEqual({ prlimit: false })
+    expect(bare?.confinement).toEqual({ prlimit: false, ulimit: true })
+    const none = await probeTex(answering(['prlimit', 'bwrap', '/bin/sh']), { tmpdir: '/tmp', hide: ['/home/u'] })
+    expect(none?.confinement).toEqual({ prlimit: false })
+  })
+
+  test("macOS: TeX's commands run with MacTeX's /Library/TeX/texbin on PATH, after the host's own folders", async () => {
+    expect(texPath('/usr/bin:/bin', 'darwin')).toBe('/usr/bin:/bin:/Library/TeX/texbin')
+    expect(texPath(undefined, 'darwin')).toBe('/usr/bin:/bin:/usr/sbin:/sbin:/Library/TeX/texbin')
+    expect(texPath('/Library/TeX/texbin:/usr/bin', 'darwin')).toBeUndefined()
+    expect(texPath('/usr/bin/', 'linux')).toBeUndefined()
+    expect(texPath('/usr/bin', undefined)).toBeUndefined()
+    const seen: (Record<string, string> | undefined)[] = []
+    const host: TexHost = {
+      run: async (_argv, init) => (seen.push(init.env), { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false }),
+      write: async () => undefined,
+      read: async () => undefined,
+    }
+    const mac = onPath(host, texPath('/usr/bin', 'darwin'))
+    await mac.run(['latex', '--version'], { timeoutMs: 1 })
+    await mac.run(['latex'], { env: { HOME: '/x' }, timeoutMs: 1 })
+    // A command's own PATH (bubblewrap's, on Linux) wins.
+    await mac.run(['latex'], { env: { PATH: '/jail' }, timeoutMs: 1 })
+    expect(seen).toEqual([{ PATH: '/usr/bin:/Library/TeX/texbin' }, { PATH: '/usr/bin:/Library/TeX/texbin', HOME: '/x' }, { PATH: '/jail' }])
+    expect(onPath(host, undefined)).toBe(host)
   })
 
   test("a dvisvgm without --libgs (Arch's, Debian's, Fedora's builds refuse it) runs without the option", async () => {
@@ -531,5 +555,16 @@ describe('instructions to the model', () => {
     expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(MATH_INSTRUCTIONS)
     expect(asked).not.toContain('latex')
     expect(asked).not.toContain('dvisvgm')
+  })
+
+  test('a terminal kittex draws no images in (Terminal.app, iTerm2): TeX is never run, nor its format dumped', async ($, on) => {
+    const asked: string[][] = []
+    const answer = (argv: readonly string[]) => {
+      asked.push([...argv])
+      return { exitCode: 0, stdout: `${argv[0]} 1.0\n` }
+    }
+    await startSession($, on, { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal' }, 'dark', CELL, answer)
+    await $.prompt.compose(COMPOSE)
+    expect(asked.filter(argv => argv.some(arg => /^(latex|dvisvgm|kpsewhich)$/.test(arg)))).toEqual([])
   })
 })

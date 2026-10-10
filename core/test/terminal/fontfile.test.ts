@@ -1,13 +1,17 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import {
   bytesReader,
+  coreTextFontArgv,
+  faceIndexOf,
   fontFileArgv,
   fontPattern,
   GHOSTTY_BUILTIN_FONT,
   matchesFamily,
   odArgv,
   parseFontFile,
+  parseCoreTextFont,
   parseOd,
   readFontMetrics,
 } from '../../src/terminal/index.js'
@@ -34,6 +38,9 @@ interface Synthetic {
   /** The `x` glyph's top, in its glyf header. */
   xTop?: number
   advance?: number
+  /** A name table with this PostScript name (name ID 6), as Windows (UTF-16BE) or Mac (Roman) writes it. */
+  postscript?: string
+  postscriptMac?: boolean
 }
 
 /** A TrueType font holding head, hhea, OS/2, cmap (format 4: space, x, ~), hmtx, loca and glyf. */
@@ -89,6 +96,14 @@ function synthetic(o: Synthetic): Uint8Array {
   const glyf = [...be16(1), ...be16(0), ...be16(0), ...be16(500), ...be16(o.xTop ?? 500), 0, 0]
   tables.push(['loca', [...be16(0), ...be16(0), ...be16(0), ...be16(6)]])
   tables.push(['glyf', glyf])
+  if (o.postscript !== undefined) {
+    const text = o.postscriptMac ? [...o.postscript].map(c => c.charCodeAt(0)) : [...o.postscript].flatMap(c => be16(c.charCodeAt(0)))
+    const family = [...'Family'].flatMap(c => be16(c.charCodeAt(0)))
+    const [platform, encoding, language] = o.postscriptMac ? [1, 0, 0] : [3, 1, 0x409]
+    // Two records: the family (ID 1, Windows), then the PostScript name (ID 6).
+    tables.push(['name', [...be16(0), ...be16(2), ...be16(6 + 24), ...be16(3), ...be16(1), ...be16(0x409), ...be16(1), ...be16(family.length), ...be16(0),
+      ...be16(platform), ...be16(encoding), ...be16(language), ...be16(6), ...be16(text.length), ...be16(family.length), ...family, ...text]])
+  }
   const header = [...be32(0x00010000), ...be16(tables.length), 0, 0, 0, 0, 0, 0]
   let offset = 12 + 16 * tables.length
   const dir: number[] = []
@@ -176,6 +191,70 @@ describe('readFontMetrics', () => {
   test("Ghostty's built-in JetBrains Mono is JetBrains Mono", () => {
     const { file: _, ...jetbrains } = fixture.fonts['JetBrains Mono']!
     expect(GHOSTTY_BUILTIN_FONT).toEqual(jetbrains)
+  })
+})
+
+/** A collection of `faces` (each a whole font), table offsets moved to where each face lands. */
+function collection(faces: Uint8Array[]): Uint8Array {
+  const head = 12 + 4 * faces.length
+  const starts: number[] = []
+  let at = head
+  for (const face of faces) {
+    starts.push(at)
+    at += face.length
+  }
+  const moved = faces.map((face, k) => {
+    const out = face.slice()
+    const numTables = (face[4]! << 8) | face[5]!
+    for (let i = 0; i < numTables; i++) {
+      const p = 12 + 16 * i + 8
+      const v = ((face[p]! << 24) >>> 0) + ((face[p + 1]! << 16) | (face[p + 2]! << 8) | face[p + 3]!) + starts[k]!
+      out.set(be32(v), p)
+    }
+    return [...out]
+  })
+  return Uint8Array.from([...[...'ttcf'].map(c => c.charCodeAt(0)), ...be32(0x00010000), ...be32(faces.length), ...starts.flatMap(be32), ...moved.flat()])
+}
+
+describe('finding the file on macOS (CoreText, without fontconfig)', () => {
+  test('osascript asks CoreText for the family and style: a fixed script, the names as its arguments', () => {
+    const argv = coreTextFontArgv('Menlo', 'Bold')
+    expect(argv.slice(0, 4)).toEqual(['osascript', '-l', 'JavaScript', '-e'])
+    expect(argv.slice(5)).toEqual(['Menlo', 'Bold'])
+    expect(argv[4]).not.toContain('Menlo')
+    expect(coreTextFontArgv('Menlo').slice(5)).toEqual(['Menlo', ''])
+  })
+
+  test('parses the match: the file, its PostScript name and family', () => {
+    expect(parseCoreTextFont('/System/Library/Fonts/Menlo.ttc\nMenlo-Bold\nMenlo\n')).toEqual({ file: '/System/Library/Fonts/Menlo.ttc', index: 0, families: ['Menlo'], postscript: 'Menlo-Bold' })
+    expect(parseCoreTextFont('\n')).toBeUndefined()
+    expect(parseCoreTextFont('')).toBeUndefined()
+    expect(parseCoreTextFont('Menlo.ttc\nMenlo-Bold\nMenlo\n')).toBeUndefined()
+  })
+
+  test("a collection's face by its PostScript name (Windows or Mac names); 0 when none or not a collection", async () => {
+    const ttc = collection([synthetic({ postscript: 'Mono-Regular' }), synthetic({ postscript: 'Mono-Bold', postscriptMac: true }), synthetic({ postscript: 'Mono-Italic' })])
+    expect(await faceIndexOf(bytesReader(ttc), 'Mono-Bold')).toBe(1)
+    expect(await faceIndexOf(bytesReader(ttc), 'Mono-Italic')).toBe(2)
+    expect(await faceIndexOf(bytesReader(ttc), 'Other')).toBe(0)
+    expect(await faceIndexOf(bytesReader(synthetic({ postscript: 'Mono-Bold' })), 'Mono-Bold')).toBe(0)
+    expect(await faceIndexOf(async () => undefined, 'Mono-Bold')).toBe(0)
+  })
+
+  const osascript = process.platform === 'darwin' && existsSync('/System/Library/Fonts/Menlo.ttc') && spawnSync('osascript', ['-e', 'return 1']).status === 0
+  test.skipIf(!osascript)('this Mac: Menlo Bold is the second face of Menlo.ttc; a family CoreText lacks prints nothing', async () => {
+    const run = (family: string, style?: string) => {
+      const [cmd, ...args] = coreTextFontArgv(family, style)
+      const out = spawnSync(cmd!, args, { encoding: 'utf8' })
+      expect(out.status).toBe(0)
+      return parseCoreTextFont(out.stdout)
+    }
+    const bold = run('Menlo', 'Bold')!
+    expect(bold).toMatchObject({ file: '/System/Library/Fonts/Menlo.ttc', families: ['Menlo'], postscript: 'Menlo-Bold' })
+    expect(await faceIndexOf(bytesReader(new Uint8Array(readFileSync(bold.file))), bold.postscript)).toBe(1)
+    // No style: the regular face.
+    expect(run('menlo')).toMatchObject({ postscript: 'Menlo-Regular' })
+    expect(run('No Such Family Anywhere')).toBeUndefined()
   })
 })
 
