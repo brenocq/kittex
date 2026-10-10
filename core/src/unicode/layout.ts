@@ -96,10 +96,15 @@ export interface LayoutOptions {
   breakWidth?: number
   /** No spaces between atoms, none for thin explicit spaces (see UnicodeOptions.tight). */
   tight?: boolean
+  /** With breakWidth: a table still too wide breaks inside its cells (see UnicodeOptions.breakTables). */
+  breakTables?: boolean
 }
 
 /** Whether the layout under way drops optional spaces (set by layoutMath, which runs synchronously). */
 let tight = false
+
+/** The width a top-level table of the layout under way must fit, breaking inside its cells (breakTables); none when undefined. */
+let tableWidth: number | undefined
 
 /** Lays out a <math> element; `compact` keeps tables' rows but writes everything else on one line. */
 export function layoutMath(root: Element, display: boolean, compact: boolean | LayoutOptions = false): Box {
@@ -117,9 +122,22 @@ export function layoutMath(root: Element, display: boolean, compact: boolean | L
       inner = solid[0]!.row!
       solid = inner.items.filter(item => item.box.width > 0)
     }
-    return breakRow(inner, width) ?? row.box
+    const broken = breakRow(inner, width)
+    if (broken || !options.breakTables) return broken ?? row.box
+    // A table too wide even one line per row breaks inside its cells: laid
+    // out again with the room the table may take, less what surrounds it (a
+    // brace, `g =`), found from the try before.
+    let room = width
+    for (let attempt = 0; attempt < 3 && room > 0; attempt++) {
+      tableWidth = room
+      const box = layoutRow(elements(root), ctx).box
+      if (box.width <= width) return box
+      room -= box.width - width
+    }
+    return row.box
   } finally {
     tight = false
+    tableWidth = undefined
   }
 }
 
@@ -129,32 +147,44 @@ export function layoutMath(root: Element, display: boolean, compact: boolean | L
  * continuation line starts with it, as MathJax breaks display math) or after a
  * wide space. Undefined when some piece is wider than `width` on its own.
  */
-function breakRow(row: Row, width: number): Box | undefined {
+function breakRow(row: Row, width: number, indent = 0, sums = false): Box | undefined {
   const { parts, breaks } = row
   if (!parts || !breaks || breaks.length === 0) return undefined
   const lines: Box[] = []
-  const stops = [...breaks.filter(b => b > 0 && b < parts.length), parts.length]
+  const stops = [...breaks.filter(b => b > 0 && b < parts.length && (!sums || !multiplies(parts, b))), parts.length]
   let start = 0
   while (start < parts.length) {
     let end = -1
+    // Lines after the first start `indent` cells in.
+    const room = lines.length === 0 ? width : width - indent
     for (const stop of stops) {
       if (stop <= start) continue
-      if (trimmed(parts.slice(start, stop)).width <= width) end = stop
+      if (trimmed(parts.slice(start, stop), lines.length === 0).width <= room) end = stop
       else break
     }
     if (end < 0) return undefined
-    lines.push(trimmed(parts.slice(start, end)))
+    // The first line keeps a leading gap (a table cell's space before its `=`).
+    const line = lines.length === 0 ? trimmed(parts.slice(start, end), true) : trimmed(parts.slice(start, end))
+    lines.push(lines.length === 0 || indent === 0 ? line : hcat([blank(indent, height(line), line.base), line]))
     start = end
   }
   if (lines.length < 2) return undefined
   return vstack(lines, 'left', lines[0]!.base)
 }
 
+/** Whether the break before parts[at] is at a product's operator (⋅, ×, ÷, ∘), the first solid part's text. */
+function multiplies(parts: readonly Box[], at: number): boolean {
+  let i = at
+  while (i < parts.length && isBlank(parts[i]!)) i++
+  const part = parts[i]
+  return part !== undefined && PRODUCT.test(part.rows[part.base]!.join('').trimStart())
+}
+
 /** Parts joined, without the blank columns at either end (the gaps around a break). */
-function trimmed(parts: readonly Box[]): Box {
+function trimmed(parts: readonly Box[], keepStart = false): Box {
   let from = 0
   let to = parts.length
-  while (from < to && isBlank(parts[from]!)) from++
+  while (!keepStart && from < to && isBlank(parts[from]!)) from++
   while (to > from && isBlank(parts[to - 1]!)) to--
   return from < to ? hcat(parts.slice(from, to)) : blank(0)
 }
@@ -1381,6 +1411,92 @@ function oneLineTable(el: Element, rowEls: readonly Element[], ctx: Ctx): Box {
   return textBox(rows.map((row, r) => (r < rows.length - 1 ? row.replace(/[,;]$/, '') : row)).join('; '))
 }
 
+/**
+ * Breaks a table's cells until the table is no wider than `room`, widest
+ * column first: each cell of that column too wide is broken at its own
+ * top-level relations and operators (breakRow; sums and relations before
+ * products where that is enough), lines after the first set in
+ * past a leading relation (`= a + b` goes on with `+ c` under `a`). A column
+ * that can't get as narrow as needed is broken as far as it goes and the next
+ * column takes the rest. The rows keep their alignment. Fails when the table
+ * still doesn't fit.
+ */
+function breakCells(rows: { box: Box; row?: Row }[][], widths: number[], gaps: readonly { space: number }[], room: number): void {
+  const total = () => widths.reduce((n, w) => n + w, 0) + gaps.reduce((n, g) => n + g.space, 0)
+  const order = widths.map((_, c) => c).sort((a, b) => widths[b]! - widths[a]!)
+  for (const c of order) {
+    const over = total() - room
+    if (over <= 0) return
+    // The narrowest width from the target up at which every cell of the column breaks.
+    for (let target = Math.max(1, widths[c]! - over); target < widths[c]!; target++) {
+      const broken = rows.map(r => {
+        const cell = r[c]
+        return !cell || cell.box.width <= target ? cell?.box : breakCell(cell, target)
+      })
+      if (broken.some((box, r) => rows[r]![c] && !box)) continue
+      broken.forEach((box, r) => {
+        if (box) rows[r]![c]!.box = box
+      })
+      widths[c] = Math.max(0, ...rows.map(r => r[c]?.box.width ?? 0))
+      break
+    }
+  }
+  if (total() > room) fail('table too wide to break')
+}
+
+/** A table cell broken to `width` at its own breaks, or its text at operators; undefined when it can't be. */
+function breakCell(cell: { box: Box; row?: Row }, width: number): Box | undefined {
+  const first = cell.row?.items.find(item => item.box.width > 0)
+  const parts = cell.row?.parts ?? []
+  let lead = 0
+  for (let i = 0; i < parts.length && isBlank(parts[i]!); i++) lead += parts[i]!.width
+  const indent = first?.cls === 'REL' ? lead + first.box.width + 1 : 0
+  // A sum or relation before a product: `𝐉 ⋅ d𝐀 + …` breaks at the `+`, not inside `𝐄 ⋅ d𝐀`.
+  const row = cell.row
+  return (row && (breakRow(row, width, indent, true) ?? breakRow(row, width, indent))) || (height(cell.box) === 1 ? (breakText(cell.box, width, indent, true) ?? breakText(cell.box, width, indent)) : undefined)
+}
+
+/** A product's operator, a weaker place to break than a sum or relation. */
+const PRODUCT = /^[⋅×÷∘∗·]/u
+
+/** What a continuation line may start with: a binary operator or relation. */
+const CONTINUES = /^[-+−±∓=<>≤≥≠≈≡∼≃≅∝→←↔⇒⇐⇔↦⋅×÷∘∪∩∧∨⊂⊃⊆⊇∈∉≺≻⪯⪰≼≽∣]/u
+
+/**
+ * A one-row box broken at its spaces where the next word starts with an
+ * operator or relation (one-line text has its spaces around those), for a
+ * cell whose own breaks are all inside a group: `(f(x) + ρ/2‖Ax` then
+ * `+ Bz − c‖²)`. Lines after the first start `indent` cells in. Undefined when
+ * a piece is wider than `width` or there is nowhere to break.
+ */
+function breakText(box: Box, width: number, indent: number, sums = false): Box | undefined {
+  const words: string[][] = [[]]
+  for (const cell of box.rows[0]!) {
+    if (cell === ' ' && words.at(-1)!.some(c => c !== ' ')) words.push([])
+    else words.at(-1)!.push(cell)
+  }
+  const lines: string[][][] = []
+  let line: string[][] = []
+  const size = (ws: readonly string[][]) => ws.reduce((n, w) => n + w.length, 0) + Math.max(0, ws.length - 1)
+  const room = () => (lines.length === 0 ? width : width - indent)
+  for (const word of words.filter(w => w.length > 0)) {
+    line.push(word)
+    while (size(line) > room()) {
+      // Back to the last word on the line a continuation may start with.
+      let at = line.length - 1
+      while (at > 0 && !(CONTINUES.test(line[at]!.join('')) && !(sums && PRODUCT.test(line[at]!.join(''))))) at--
+      if (at === 0) return undefined
+      lines.push(line.slice(0, at))
+      line = line.slice(at)
+    }
+  }
+  lines.push(line)
+  if (lines.length < 2) return undefined
+  const rows = lines.map((ws, i) => [...Array<string>(i === 0 ? 0 : indent).fill(' '), ...ws.flatMap((w, k) => (k === 0 ? w : [' ', ...w]))])
+  const w = Math.max(...rows.map(r => r.length))
+  return { rows: rows.map(r => [...r, ...Array<string>(w - r.length).fill(' ')]), width: w, base: 0 }
+}
+
 function table(el: Element, ctx: Ctx): Box {
   const cellCtx: Ctx = ctx.compact
     ? { twoD: false, display: false, level: ctx.level, compact: true }
@@ -1396,6 +1512,7 @@ function table(el: Element, ctx: Ctx): Box {
   interface Cell {
     box: Box
     align: Align
+    row?: Row
   }
   const rows: Cell[][] = []
   const labels: (Box | undefined)[] = []
@@ -1414,7 +1531,8 @@ function table(el: Element, ctx: Ctx): Box {
         if (cellEl.name !== 'mtd') fail(`<${cellEl.name}> in mtr`)
         if ((cellEl.attrs.rowspan ?? '1') !== '1' || (cellEl.attrs.columnspan ?? '1') !== '1') fail('spanning cell')
         const align = alignOf(cellEl.attrs.columnalign ?? pick(rowAligns ?? tableAligns, c))
-        return { box: layoutRow(elements(cellEl), cellCtx).box, align }
+        const row = layoutRow(elements(cellEl), cellCtx)
+        return { box: row.box, align, row }
       }),
     )
     labels.push(label)
@@ -1428,7 +1546,9 @@ function table(el: Element, ctx: Ctx): Box {
     const space = pick(spacing, c)
     return line === 'none' ? { space, line: '' } : { space: Math.max(3, space | 1), line: line === 'dashed' ? '┆' : '│' }
   })
+  // Rows are set apart by a blank line where a cell is tall, not where breakCells made it so.
   const tall = rows.some(r => r.some(cell => height(cell.box) > 1))
+  if (tableWidth !== undefined && ctx.level === 0) breakCells(rows, widths, gaps, tableWidth)
 
   const rowBoxes = rows.map(r => {
     const up = Math.max(0, ...r.map(cell => above(cell.box)))

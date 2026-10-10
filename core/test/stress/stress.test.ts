@@ -1,6 +1,6 @@
 // The stress runner: every formula of the stress corpus through the real
 // pipeline (measureDisplay, previewDisplay as the plugin calls it, renderDisplay)
-// at 13×26 px cells and several reply widths, recording what goes wrong, plus
+// at 13×26 px cells (or KITTEX_STRESS_CELL) and several reply widths, recording what goes wrong, plus
 // contact sheets of every image for checking by eye. Slow (minutes), so it is
 // skipped unless KITTEX_STRESS=1; `npm run stress` runs it. Results go to
 // KITTEX_STRESS_OUT (default: a kittex-stress folder under the OS temp dir).
@@ -26,6 +26,8 @@ import {
   typeset,
 } from '../../src/index.js'
 import type { RenderEnv } from '../../src/index.js'
+import { init as initBundle } from '../../../plugin/hooks/core.js'
+import { BLANK_CELL, displayPreviewLines } from '../../../plugin/hooks/math.js'
 import { STRESS_CORPUS } from './corpus.js'
 import { contactSheets, touchesEdge } from './sheet.js'
 import type { Coverage, SheetEntry } from './sheet.js'
@@ -37,14 +39,17 @@ const WIDTHS = (process.env.KITTEX_STRESS_WIDTHS ?? '98,40,160').split(',').map(
 /** Widths that get contact sheets. */
 const SHEET_WIDTHS = new Set((process.env.KITTEX_STRESS_SHEETS ?? '98,40').split(',').map(Number))
 
-const CELL = { cellWidth: 13, cellHeight: 26 }
+/** Cell size in px, `WxH` (KITTEX_STRESS_CELL; default the Linux rig's 13×26, e.g. 7x13 for Menlo 11 pt on a 1x Mac). */
+const [CELL_W, CELL_H] = (process.env.KITTEX_STRESS_CELL ?? '13x26').split('x').map(Number) as [number, number]
+const CELL = { cellWidth: CELL_W, cellHeight: CELL_H }
 const INK = { r: 0xeb, g: 0xdb, b: 0xb2 }
 const BACKGROUND = { r: 0x28, g: 0x28, b: 0x28 }
 
 /** Thresholds behind the flags. */
 const LIMITS = { scale: 0.6, renderMs: 50, pngBytes: 64 * 1024, cells: 255 }
 
-type Form = 'stacked' | 'compact' | 'inline'
+/** `rows`: a table broken inside its cells (stacked or compact; breakTables). */
+type Form = 'stacked' | 'compact' | 'inline' | 'rows'
 
 interface Outcome {
   index: number
@@ -61,8 +66,14 @@ interface Outcome {
   /** First measure + render of this formula at this width, ms (typeset, raster, PNG). */
   ms?: number
   pngBytes?: number
-  /** Which Unicode form the plugin's preview shows; 'source' when none fits (the plugin then shows the TeX on one row). */
-  preview?: Form | 'source'
+  /**
+   * Which Unicode form the plugin's preview shows: a 2-D form that fits,
+   * `wrapped` when none does and the one-line form is wrapped at the width
+   * (cut with … past the rows), `source` when Unicode has no form at all and
+   * the plugin streams the TeX itself.
+   */
+  preview?: Form | 'wrapped' | 'source'
+  /** The preview as the plugin writes it (displayPreviewLines), its markdown padding and escapes undone. */
   previewLines?: string[]
   /** One-line Unicode for the same TeX as inline math (null: none). */
   inline?: string | null
@@ -118,7 +129,22 @@ function chosenForm(tex: string, maxWidth: number, rows: number): Form | 'source
       // not this form
     }
   }
+  for (const compact of [false, true]) {
+    const result = toUnicode(texToMathML(tex, { display: true }), { display: true, maxWidth, compact, breakLines: true, breakTables: true })
+    if (result && result.lines.length <= rows) return 'rows'
+  }
   return 'source'
+}
+
+/** The plugin's preview lines for a display formula `rows` tall at reply column `width`, as plain text. */
+function pluginPreview(tex: string, width: number, rows?: number): string[] | undefined {
+  const lines = displayPreviewLines(tex, width, rows)
+  return lines?.map(line => line.replaceAll('&nbsp;', ' ').replaceAll(BLANK_CELL, ' ').replace(/\\([\\`*_[\]<>|~&!#])/g, '$1'))
+}
+
+/** What the plugin streams where no 2-D form fits: the wrapped one-line form, or the TeX source when there is none. */
+function fallbackKind(tex: string): 'wrapped' | 'source' {
+  return previewInline(tex, undefined, { tight: false }) === null ? 'source' : 'wrapped'
 }
 
 function run(index: number, width: number): { outcome: Outcome; coverage?: Coverage } {
@@ -140,14 +166,14 @@ function run(index: number, width: number): { outcome: Outcome; coverage?: Cover
     outcome.pngBytes = image.png.length
     outcome.naturalRows = renderDisplay(tex, env).rows
     const lines = previewDisplay(tex, { maxColumns: previewWidth }, box.rows)
-    outcome.preview = lines ? chosenForm(tex, previewWidth, box.rows) : 'source'
-    outcome.previewLines = lines ?? [tex.replace(/\s+/g, ' ')]
+    outcome.preview = lines ? chosenForm(tex, previewWidth, box.rows) : fallbackKind(tex)
+    outcome.previewLines = pluginPreview(tex, width, box.rows)
     coverage = decodeCoverage(image.png)
     const edge = touchesEdge(coverage)
     outcome.edges = Object.entries(edge).filter(([, v]) => v).map(([k]) => k)
     if (image.rows !== box.rows) outcome.flags.push('image-rows-differ')
     if (lines && lines.length !== box.rows) outcome.flags.push('preview-rows-differ')
-    if (!lines) outcome.flags.push('no-preview')
+    if (!lines) outcome.flags.push(outcome.preview === 'source' ? 'source-preview' : 'wrapped-preview')
     if (box.rows > outcome.naturalRows) outcome.flags.push('padded')
     if (image.scale < LIMITS.scale) outcome.flags.push('scale<0.6')
     else if (image.scale < 1) outcome.flags.push('scaled')
@@ -163,12 +189,12 @@ function run(index: number, width: number): { outcome: Outcome; coverage?: Cover
       outcome.flags.push('glyph-fallback')
       const rows = measureDisplay(tex, env).rows
       outcome.rows = rows
-      outcome.previewLines = previewDisplay(tex, { maxColumns: previewWidth }, rows) ?? undefined
-      outcome.preview = outcome.previewLines ? chosenForm(tex, previewWidth, rows) : 'source'
+      outcome.previewLines = pluginPreview(tex, width, rows)
+      outcome.preview = previewDisplay(tex, { maxColumns: previewWidth }, rows) ? chosenForm(tex, previewWidth, rows) : fallbackKind(tex)
       return { outcome }
     }
     outcome.flags.push('tex-error')
-    outcome.preview = previewDisplay(tex, { maxColumns: previewWidth }) ? chosenForm(tex, previewWidth, Infinity) : 'source'
+    outcome.preview = previewDisplay(tex, { maxColumns: previewWidth }) ? chosenForm(tex, previewWidth, Infinity) : fallbackKind(tex)
   }
   return { outcome, coverage }
 }
@@ -177,6 +203,7 @@ test.skipIf(!RUN)(
   'stress corpus through the pipeline',
   async () => {
     await init()
+    await initBundle()
     mkdirSync(OUT, { recursive: true })
     // Warm MathJax up so the first formula's time is its own.
     renderDisplay('x', { ...CELL, maxColumns: 98, emPx: emPxForCell(CELL), ink: INK })
@@ -223,9 +250,9 @@ function summarize(all: readonly Outcome[]): string {
     const rows = all.filter(o => o.width === width)
     const count = (flag: string) => rows.filter(o => o.flags.includes(flag)).length
     const times = rows.flatMap(o => (o.ms === undefined ? [] : [o.ms])).sort((a, b) => a - b)
-    const forms = ['stacked', 'compact', 'inline', 'source'].map(f => `${f} ${rows.filter(o => o.preview === f).length}`).join(', ')
+    const forms = ['stacked', 'compact', 'inline', 'rows', 'wrapped', 'source'].map(f => `${f} ${rows.filter(o => o.preview === f).length}`).join(', ')
     out.push(
-      `width ${width}: ${rows.length} formulas; tex-error ${count('tex-error')}, glyph-fallback ${count('glyph-fallback')}, no-preview ${count('no-preview')}, padded ${count('padded')}, ` +
+      `width ${width}: ${rows.length} formulas; tex-error ${count('tex-error')}, glyph-fallback ${count('glyph-fallback')}, wrapped-preview ${count('wrapped-preview')}, source-preview ${count('source-preview')}, padded ${count('padded')}, ` +
         `scale<0.6 ${count('scale<0.6')}, scaled ${count('scaled')}, slow ${count('slow')}, png>64K ${count('png>64K')}, rows>=255 ${count('rows>=255')}, edge ${count('edge')}`,
       `  previews: ${forms}`,
       `  render ms: median ${times[Math.floor(times.length / 2)]?.toFixed(1)}, p90 ${times[Math.floor(times.length * 0.9)]?.toFixed(1)}, max ${times[times.length - 1]?.toFixed(1)}`,

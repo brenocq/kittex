@@ -210,14 +210,17 @@ export function measureDisplay(tex: string, env: RenderEnv): CellBox {
   try {
     result = typesetDisplay(tex, env)
   } catch (error) {
-    const form = error instanceof GlyphError ? previewForms(tex, previewWidth(env.maxColumns))[0] : undefined
+    const width = previewWidth(env.maxColumns)
+    const form = error instanceof GlyphError ? (previewForms(tex, width)[0] ?? tableForms(tex, width)[0]) : undefined
     if (form) return { columns: Math.max(1, Math.min(255, env.maxColumns)), rows: Math.min(255, form.lines.length), scale: 1 }
     throw error
   }
   const box = measure(result, rasterOptions(env))
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
   const forms = previewForms(tex, previewWidth(env.maxColumns))
-  const reserved = forms.length === 0 || forms.some(form => form.lines.length <= box.rows) ? box : measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
+  const fits = (form: UnicodeResult) => form.lines.length <= box.rows
+  const reserved =
+    forms.length === 0 || forms.some(fits) || tableForms(tex, previewWidth(env.maxColumns)).some(fits) ? box : measure(result, rasterOptions(env, Math.min(255, ...forms.map(form => form.lines.length))))
   if (reserved.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
   return reserved
 }
@@ -254,7 +257,8 @@ export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): Re
  * fits. Null when Unicode can't express it in that room or within maxColumns.
  */
 export function previewDisplay(tex: string, env: Pick<RenderEnv, 'maxColumns'>, rows?: number): string[] | null {
-  const result = previewForms(tex, env.maxColumns).find(form => rows === undefined || form.lines.length <= rows)
+  const fits = (form: UnicodeResult) => rows === undefined || form.lines.length <= rows
+  const result = previewForms(tex, env.maxColumns).find(fits) ?? tableForms(tex, env.maxColumns).find(fits)
   if (!result) return null
   if (rows === undefined || result.lines.length === rows) return result.lines
   const blank = ' '.repeat(result.width)
@@ -406,19 +410,30 @@ function previewForms(tex: string, maxWidth: number): UnicodeResult[] {
   return (['stacked', 'compact', 'lines'] as const).flatMap(form => unicodeFor(tex, form, maxWidth) ?? [])
 }
 
+/**
+ * The stacked and compact forms of a table (aligned, cases) too wide for a
+ * line per row, its rows broken inside their cells (UnicodeOptions.breakTables):
+ * tried after previewForms, and never a reason to pad an image (measureDisplay).
+ */
+function tableForms(tex: string, maxWidth: number): UnicodeResult[] {
+  return (['stackedRows', 'compactRows'] as const).flatMap(form => unicodeFor(tex, form, maxWidth) ?? [])
+}
+
 const unicodeCache = new Map<string, UnicodeResult | null>()
 
-type UnicodeForm = 'stacked' | 'compact' | 'lines' | 'inline' | 'tight'
+type UnicodeForm = 'stacked' | 'compact' | 'lines' | 'stackedRows' | 'compactRows' | 'inline' | 'tight'
 
 function unicodeFor(tex: string, form: UnicodeForm, maxWidth?: number): UnicodeResult | null {
   if (tex.length > MAX_TEX_LENGTH) return null
   const key = `${form}${maxWidth ?? ''}\n${tex}`
   if (unicodeCache.has(key)) return remember(unicodeCache, key) ?? null
-  const display = form === 'stacked' || form === 'compact'
+  const breakTables = form === 'stackedRows' || form === 'compactRows'
+  const display = form === 'stacked' || form === 'compact' || breakTables
   const breakLines = form !== 'inline' && form !== 'tight'
   let result: UnicodeResult | null
   try {
-    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact: form === 'compact', breakLines, tight: form === 'tight' })
+    const compact = form === 'compact' || form === 'compactRows'
+    result = toUnicode(texToMathML(tex, { display }), { display, maxWidth, compact, breakLines, breakTables, tight: form === 'tight' })
   } catch {
     result = null
   }

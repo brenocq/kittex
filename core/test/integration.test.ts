@@ -3,6 +3,7 @@
 // can draw, and must fit in the rows that image reserves.
 import { expect, test } from 'vitest'
 import { emPxForCell, GlyphError, init, measureDisplay, previewDisplay, previewInline, renderDisplay, TexError, typeset } from '../src/index.js'
+import { textWidth } from '../src/unicode/box.js'
 import { STRESS_CORPUS } from './stress/corpus.js'
 import { CORPUS } from './unicode/corpus.js'
 
@@ -84,6 +85,28 @@ test('a narrow window still gets previews: forms break into lines the way the im
   const preview = previewDisplay(schwarzschild, { maxColumns: 38 }, rows)!
   expect(preview).toHaveLength(rows)
   for (const line of preview) expect(line.length).toBeLessThanOrEqual(38)
+})
+
+test('a narrow window: a table too wide for a line per row gets a preview broken in its cells, and no image is padded for it', async () => {
+  await init()
+  const cellMac = { cellWidth: 7, cellHeight: 13 }
+  const at = { ...cellMac, maxColumns: 40, emPx: emPxForCell(cellMac), ink: env.ink }
+  // Maxwell in integral form, KKT conditions and an ADMM step (stress corpus #46, #104, #110): at 40 columns no
+  // 2-D form fitted and the preview was the one-line form wrapped at any space, mid-term.
+  const tables = STRESS_CORPUS.filter((_, i) => [46, 104, 110].includes(i)).map(f => f.tex)
+  expect(tables).toHaveLength(3)
+  for (const tex of tables) {
+    const { rows } = measureDisplay(tex, at)
+    expect(rows, tex).toBe(renderDisplay(tex, at).rows)
+    const preview = previewDisplay(tex, { maxColumns: 38 }, rows)
+    expect(preview, tex).toHaveLength(rows)
+    for (const line of preview!) expect(textWidth(line), line).toBeLessThanOrEqual(38)
+    // One line per table row at least: no row is joined to the next with `;`.
+    expect(preview!.join('\n'), tex).not.toMatch(/; /)
+    // Unicode-only terminals take the first form whole.
+    const whole = previewDisplay(tex, { maxColumns: 38 })!
+    for (const line of whole) expect(textWidth(line), line).toBeLessThanOrEqual(38)
+  }
 })
 
 test('characters the font lacks: the preview takes the rows, and there is no image', async () => {

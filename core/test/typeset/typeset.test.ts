@@ -200,6 +200,12 @@ describe('packages', () => {
     expect(typeset(tex, display).ops.length).toBeGreaterThan(0)
   })
 
+  test('LaTeX text commands MathJax lacks: \\emph is italic text, \\ensuremath its argument', () => {
+    expect(texToMathML(String.raw`\textrm{rate} = \emph{fast}`, inline)).toMatch(/mathvariant="italic"[^>]*>fast</)
+    expect(texToMathML(String.raw`\text{an \emph{important} case}`, inline)).toContain('important')
+    expect(texToMathML(String.raw`\ensuremath{x} + \ensuremath{\alpha}`, inline)).toContain('&#x3B1;')
+  })
+
   test('inline chemistry', () => {
     expect(typeset(String.raw`\ce{H2O}`, inline).ops.length).toBeGreaterThan(0)
   })

@@ -243,6 +243,13 @@ export interface UnicodeOptions {
    */
   breakLines?: boolean
   /**
+   * With `breakLines`, display math: a table (aligned, cases, gathered) that
+   * is still wider than `maxWidth` with a line per row breaks inside its cells
+   * the same way, each row keeping its place and alignment, instead of the
+   * result being refused.
+   */
+  breakTables?: boolean
+  /**
    * Drop the spaces TeX puts between atoms and thin explicit ones (`\,`),
    * keeping a cell for wider ones (`\quad`, `\bmod`): `O(nlogn)`, `E=mc²`.
    * For a preview standing in for an image, as narrow as the image.
