@@ -292,22 +292,32 @@ export function mathEmPx(layout: TextLayout, cell: CellPixels): number {
 // pixels or points added), moves the baseline up by its `baseline` (kept inside
 // the cell), and, when the cell grew by more than a pixel, moves the baseline
 // down by half the rows added.
+//
+// On macOS kitty measures the font with CoreText (core_text.m): the cell is
+// the ascent, descent and leading each rounded to whole pixels, then added (a
+// line CoreText lays out), and the baseline is the ascent rounded, so Menlo
+// 11 pt is 7×13 px with its baseline 10 px down where FreeType's ceil gives 11.
 function kittyLayout(font: FontMetrics, height: number, cell: CellPixels, options: TextLayoutOptions): TextLayout | undefined {
   const upm = font.unitsPerEm
   const adjust = options.kittyAdjust
   // FreeType's FT_MulFix to 26.6 fixed point, then kitty's ceil to whole pixels.
   const ceilPx = (units: number, em: number) => Math.ceil(Math.round((units / upm) * em * 64) / 64)
   const lineUnits = font.ascender - font.descender + font.lineGap
+  const coreText = options.platform === 'darwin'
+  const roundPx = (units: number, em: number) => Math.round((units / upm) * em)
+  /** The font's own cell height at `em` (before modify_font): FreeType's ceil of the line, or CoreText's rounded parts. */
+  const lineAt = (em: number) => (coreText ? roundPx(font.ascender, em) + roundPx(-font.descender, em) + roundPx(Math.max(0, font.lineGap), em) : ceilPx(lineUnits, em))
   const wide = (em: number) => !font.advance || adjust?.cellWidth !== undefined || Math.abs(ceilPx(font.advance, em) - cell.cellWidth) <= 1
   let em: number | undefined
   let own: number | undefined
   let dpi = 96
   if (options.sizePt && options.sizePt > 0) {
     // The DPI that gives this cell: the line height exactly, else one or two rows more (an underscore drawn lower).
-    search: for (const extra of [0, 1, 2]) {
+    // (CoreText's cell is its line alone: no underscore below it.)
+    search: for (const extra of coreText ? [0] : [0, 1, 2]) {
       for (const d of dpis(options.platform)) {
         const e = (options.sizePt * d) / 72
-        const h = ceilPx(lineUnits, e) + extra
+        const h = lineAt(e) + extra
         if (wide(e) && kittyMetric(h, adjust?.cellHeight, d) === cell.cellHeight) {
           ;[em, own, dpi] = [e, h, d]
           break search
@@ -328,7 +338,7 @@ function kittyLayout(font: FontMetrics, height: number, cell: CellPixels, option
     em = (low + high) / 2
   }
   const cellHeight = cell.cellHeight
-  let baseline = ceilPx(font.ascender, em)
+  let baseline = coreText ? roundPx(font.ascender, em) : ceilPx(font.ascender, em)
   if (adjust?.baseline) {
     const moved = kittyMetric(baseline, adjust.baseline, dpi) - baseline
     const shift = moved >= 0 ? Math.min(moved, baseline - 1) : Math.max(moved, baseline - cellHeight + 1)
@@ -355,7 +365,8 @@ function unkittyMetric(value: number, metric: KittyMetric, dpi: number): number 
 }
 
 // Ghostty (font/Metrics.zig, font/face/freetype.zig, 1.3): FreeType's whole
-// pixels per em (the size rounded), the cell round(line height) tall and
+// pixels per em (the size rounded; on macOS CoreText's, the size as it is:
+// face/coretext.zig), the cell round(line height) tall and
 // round(widest ASCII advance) wide, the baseline round(half the line gap -
 // descender - half the rounding of the height) up from the bottom; then
 // adjust-cell-height and adjust-font-baseline as textBaseline applies them.
@@ -369,10 +380,11 @@ function ghosttyLayout(font: FontMetrics, height: number, cell: CellPixels, opti
   let em: number | undefined
   if (options.sizePt && options.sizePt > 0) {
     for (const d of dpis(options.platform)) {
-      const p = Math.round((Math.round(options.sizePt * 64) * d) / 72 / 64)
+      const exact = (options.sizePt * d) / 72
+      const p = options.platform === 'darwin' ? exact : Math.round((Math.round(options.sizePt * 64) * d) / 72 / 64)
       if (p > 0 && fits(p)) {
         ppem = p
-        em = (options.sizePt * d) / 72
+        em = exact
         break
       }
     }

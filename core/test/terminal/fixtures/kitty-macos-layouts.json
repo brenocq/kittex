@@ -1,0 +1,907 @@
+{
+ "note": "kitty 0.49.2 on macOS 26.5 (CoreText): kitty.fonts.render.setup_for_testing(family, pt, dpi) -> cell and baseline; font metrics read by readFontMetrics from each file",
+ "fonts": {
+  "Menlo": {
+   "unitsPerEm": 2048,
+   "ascender": 1901,
+   "descender": -483,
+   "lineGap": 0,
+   "weight": 400,
+   "advance": 1233,
+   "xHeight": 1120,
+   "file": "/System/Library/Fonts/Menlo.ttc"
+  },
+  "Monaco": {
+   "unitsPerEm": 2048,
+   "ascender": 2048,
+   "descender": -512,
+   "lineGap": 171,
+   "weight": 400,
+   "advance": 1229,
+   "xHeight": 1117,
+   "file": "/System/Library/Fonts/Monaco.ttf"
+  },
+  "Courier New": {
+   "unitsPerEm": 2048,
+   "ascender": 1705,
+   "descender": -615,
+   "lineGap": 0,
+   "weight": 400,
+   "advance": 1229,
+   "xHeight": 866,
+   "file": "/System/Library/Fonts/Supplemental/Courier New.ttf"
+  },
+  "Andale Mono": {
+   "unitsPerEm": 2048,
+   "ascender": 1858,
+   "descender": -446,
+   "lineGap": 0,
+   "weight": 400,
+   "advance": 1229,
+   "xHeight": 1042,
+   "file": "/System/Library/Fonts/Supplemental/Andale Mono.ttf"
+  },
+  "PT Mono": {
+   "unitsPerEm": 1000,
+   "ascender": 885,
+   "descender": -235,
+   "lineGap": 0,
+   "weight": 700,
+   "advance": 600,
+   "xHeight": 500,
+   "file": "/System/Library/Fonts/Supplemental/PTMono.ttc"
+  },
+  "RobotoMono Nerd Font Mono": {
+   "unitsPerEm": 2048,
+   "ascender": 2146,
+   "descender": -555,
+   "lineGap": 0,
+   "weight": 400,
+   "advance": 1229,
+   "xHeight": 1082,
+   "file": "~/Library/Fonts/RobotoMonoNerdFontMono-Regular.ttf"
+  }
+ },
+ "kitty": [
+  {
+   "font": "Menlo",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    11
+   ],
+   "baseline": 9
+  },
+  {
+   "font": "Menlo",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    13,
+    24
+   ],
+   "baseline": 19
+  },
+  {
+   "font": "Menlo",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    13
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "Menlo",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    25
+   ],
+   "baseline": 20
+  },
+  {
+   "font": "Menlo",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    14
+   ],
+   "baseline": 11
+  },
+  {
+   "font": "Menlo",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    28
+   ],
+   "baseline": 22
+  },
+  {
+   "font": "Menlo",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    15
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "Menlo",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    30
+   ],
+   "baseline": 24
+  },
+  {
+   "font": "Menlo",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    16
+   ],
+   "baseline": 13
+  },
+  {
+   "font": "Menlo",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    33
+   ],
+   "baseline": 26
+  },
+  {
+   "font": "Menlo",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    10,
+    18
+   ],
+   "baseline": 14
+  },
+  {
+   "font": "Menlo",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    19,
+    35
+   ],
+   "baseline": 28
+  },
+  {
+   "font": "Menlo",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    21
+   ],
+   "baseline": 17
+  },
+  {
+   "font": "Menlo",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    41
+   ],
+   "baseline": 33
+  },
+  {
+   "font": "Monaco",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    14
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "Monaco",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    13,
+    27
+   ],
+   "baseline": 20
+  },
+  {
+   "font": "Monaco",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    15
+   ],
+   "baseline": 11
+  },
+  {
+   "font": "Monaco",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    30
+   ],
+   "baseline": 22
+  },
+  {
+   "font": "Monaco",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    16
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "Monaco",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    32
+   ],
+   "baseline": 24
+  },
+  {
+   "font": "Monaco",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    17
+   ],
+   "baseline": 13
+  },
+  {
+   "font": "Monaco",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    35
+   ],
+   "baseline": 26
+  },
+  {
+   "font": "Monaco",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    19
+   ],
+   "baseline": 14
+  },
+  {
+   "font": "Monaco",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    37
+   ],
+   "baseline": 28
+  },
+  {
+   "font": "Monaco",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    10,
+    20
+   ],
+   "baseline": 15
+  },
+  {
+   "font": "Monaco",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    19,
+    41
+   ],
+   "baseline": 30
+  },
+  {
+   "font": "Monaco",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    25
+   ],
+   "baseline": 18
+  },
+  {
+   "font": "Monaco",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    48
+   ],
+   "baseline": 36
+  },
+  {
+   "font": "Courier New",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    11
+   ],
+   "baseline": 8
+  },
+  {
+   "font": "Courier New",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    13,
+    23
+   ],
+   "baseline": 17
+  },
+  {
+   "font": "Courier New",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    12
+   ],
+   "baseline": 9
+  },
+  {
+   "font": "Courier New",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    25
+   ],
+   "baseline": 18
+  },
+  {
+   "font": "Courier New",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    14
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "Courier New",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    27
+   ],
+   "baseline": 20
+  },
+  {
+   "font": "Courier New",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    15
+   ],
+   "baseline": 11
+  },
+  {
+   "font": "Courier New",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    30
+   ],
+   "baseline": 22
+  },
+  {
+   "font": "Courier New",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    16
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "Courier New",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    31
+   ],
+   "baseline": 23
+  },
+  {
+   "font": "Courier New",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    10,
+    17
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "Courier New",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    19,
+    34
+   ],
+   "baseline": 25
+  },
+  {
+   "font": "Courier New",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    20
+   ],
+   "baseline": 15
+  },
+  {
+   "font": "Courier New",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    41
+   ],
+   "baseline": 30
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    11
+   ],
+   "baseline": 9
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    13,
+    22
+   ],
+   "baseline": 18
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    12
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    25
+   ],
+   "baseline": 20
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    14
+   ],
+   "baseline": 11
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    27
+   ],
+   "baseline": 22
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    15
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    30
+   ],
+   "baseline": 24
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    16
+   ],
+   "baseline": 13
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    31
+   ],
+   "baseline": 25
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    10,
+    17
+   ],
+   "baseline": 14
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    19,
+    34
+   ],
+   "baseline": 27
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    20
+   ],
+   "baseline": 16
+  },
+  {
+   "font": "Andale Mono",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    41
+   ],
+   "baseline": 33
+  },
+  {
+   "font": "PT Mono",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    6,
+    11
+   ],
+   "baseline": 9
+  },
+  {
+   "font": "PT Mono",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    12,
+    23
+   ],
+   "baseline": 18
+  },
+  {
+   "font": "PT Mono",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    13
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "PT Mono",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    24
+   ],
+   "baseline": 19
+  },
+  {
+   "font": "PT Mono",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    14
+   ],
+   "baseline": 11
+  },
+  {
+   "font": "PT Mono",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    27
+   ],
+   "baseline": 21
+  },
+  {
+   "font": "PT Mono",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    15
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "PT Mono",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    29
+   ],
+   "baseline": 23
+  },
+  {
+   "font": "PT Mono",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    15
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "PT Mono",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    32
+   ],
+   "baseline": 25
+  },
+  {
+   "font": "PT Mono",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    17
+   ],
+   "baseline": 13
+  },
+  {
+   "font": "PT Mono",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    18,
+    34
+   ],
+   "baseline": 27
+  },
+  {
+   "font": "PT Mono",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    20
+   ],
+   "baseline": 16
+  },
+  {
+   "font": "PT Mono",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    40
+   ],
+   "baseline": 32
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 10.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    13
+   ],
+   "baseline": 10
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 10.0,
+   "dpi": 144.0,
+   "cell": [
+    13,
+    26
+   ],
+   "baseline": 21
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 11.0,
+   "dpi": 72.0,
+   "cell": [
+    7,
+    15
+   ],
+   "baseline": 12
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 11.0,
+   "dpi": 144.0,
+   "cell": [
+    14,
+    29
+   ],
+   "baseline": 23
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 12.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    16
+   ],
+   "baseline": 13
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 12.0,
+   "dpi": 144.0,
+   "cell": [
+    15,
+    32
+   ],
+   "baseline": 25
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 13.0,
+   "dpi": 72.0,
+   "cell": [
+    8,
+    18
+   ],
+   "baseline": 14
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 13.0,
+   "dpi": 144.0,
+   "cell": [
+    16,
+    34
+   ],
+   "baseline": 27
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 14.0,
+   "dpi": 72.0,
+   "cell": [
+    9,
+    19
+   ],
+   "baseline": 15
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 14.0,
+   "dpi": 144.0,
+   "cell": [
+    17,
+    37
+   ],
+   "baseline": 29
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 15.0,
+   "dpi": 72.0,
+   "cell": [
+    10,
+    20
+   ],
+   "baseline": 16
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 15.0,
+   "dpi": 144.0,
+   "cell": [
+    19,
+    39
+   ],
+   "baseline": 31
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 18.0,
+   "dpi": 72.0,
+   "cell": [
+    11,
+    24
+   ],
+   "baseline": 19
+  },
+  {
+   "font": "RobotoMono Nerd Font Mono",
+   "pt": 18.0,
+   "dpi": 144.0,
+   "cell": [
+    22,
+    48
+   ],
+   "baseline": 38
+  }
+ ]
+}

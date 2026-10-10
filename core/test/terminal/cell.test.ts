@@ -126,6 +126,11 @@ function kittyAdjustOf(spec: string): KittyAdjust | undefined {
   return Object.keys(adjust).length ? adjust : undefined
 }
 
+const macLayouts = JSON.parse(readFileSync(new URL('fixtures/kitty-macos-layouts.json', import.meta.url), 'utf8')) as {
+  fonts: Record<string, FontMetrics & { file: string }>
+  kitty: { font: string; pt: number; dpi: number; cell: [number, number]; baseline: number }[]
+}
+
 describe('textLayout: where the terminal sets its font in a cell', () => {
   test("kitty: the baseline kitty itself computes, for seven fonts, two DPIs and modify_font", () => {
     expect(layouts.kitty.length).toBeGreaterThan(100)
@@ -160,6 +165,34 @@ describe('textLayout: where the terminal sets its font in a cell', () => {
     const font = layouts.fonts['Liberation Mono']!
     expect(textLayout('kitty', font, { cellWidth: 14, cellHeight: 28 }, { sizePt: 18, platform: 'linux' })!.baselinePx).toBe(20)
     expect(textBaseline(28, 20 / 26)).toBe(22)
+  })
+
+  test("kitty on macOS: the cell and baseline kitty itself computes with CoreText, for six fonts at 72 and 144 DPI", () => {
+    // CoreText rounds the ascent, descent and leading each to whole pixels and
+    // kitty rounds the baseline (FreeType's ceil does neither): Menlo 11 pt is
+    // 7×13 px with its baseline 10 px down, not 11.
+    expect(macLayouts.kitty.length).toBeGreaterThan(80)
+    for (const row of macLayouts.kitty) {
+      const layout = textLayout('kitty', macLayouts.fonts[row.font]!, { cellWidth: row.cell[0], cellHeight: row.cell[1] }, { sizePt: row.pt, platform: 'darwin' })
+      expect([row, layout?.baselinePx]).toEqual([row, row.baseline])
+      expect([row, layout?.emPx]).toEqual([row, (row.pt * row.dpi) / 72])
+    }
+  })
+
+  test('kitty on macOS without the size: the baseline from the cell, within a pixel', () => {
+    for (const row of macLayouts.kitty) {
+      const layout = textLayout('kitty', macLayouts.fonts[row.font]!, { cellWidth: row.cell[0], cellHeight: row.cell[1] }, { platform: 'darwin' })!
+      expect([row, Math.abs(layout.baselinePx - row.baseline) <= 1]).toEqual([row, true])
+    }
+  })
+
+  test('Ghostty on macOS: CoreText sizes the font in fractional pixels (no whole pixels per em as FreeType)', () => {
+    // JetBrains Mono 11.5 pt at 1x (Metrics.zig over face/coretext.zig): 11.5 px per em, the line
+    // 15.18 px in a 15 px cell, the baseline round(3.45 + 0.09) = 4 px up from its bottom: 11 down.
+    // FreeType's 12 px per em would make a 16 px cell, so this cell was read as another font size.
+    const layout = textLayout('ghostty', layouts.fonts['JetBrains Mono']!, { cellWidth: 7, cellHeight: 15 }, { sizePt: 11.5, platform: 'darwin' })!
+    expect(layout.emPx).toBeCloseTo(11.5)
+    expect(layout.baselinePx).toBe(11)
   })
 
   test('macOS converts points at 72 DPI times the scale', () => {
