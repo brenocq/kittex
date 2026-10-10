@@ -3,7 +3,7 @@
 //
 // - \slashed (Feynman slash, through the letter), \bm, \mathbbm and \mathds
 //   (New Computer Modern has no bbm/dsfont glyphs: drawn as \mathbb),
-//   \textsc, \varointclockwise;
+//   \textsc, \varointclockwise, and LaTeX's \emph and \ensuremath;
 // - a minimal siunitx: \SI{number}{units}, \si{units} and \num{number};
 // - mhchem's reaction arrows from the font's own arrows (mhchem's come from a
 //   font extension kittex doesn't carry);
@@ -200,6 +200,9 @@ const MACROS: Record<string, unknown> = {
   mathbbm: [BaseMethods.Macro, '\\mathbb{#1}', 1],
   mathbbmss: [BaseMethods.Macro, '\\mathbb{#1}', 1],
   mathds: [BaseMethods.Macro, '\\mathbb{#1}', 1],
+  // LaTeX's own, which work in math there: \emph as italic text, \ensuremath as its argument.
+  emph: [BaseMethods.Macro, '\\textit{#1}', 1],
+  ensuremath: [BaseMethods.Macro, '{#1}', 1],
   ...ARROW_MACROS,
 }
 new CommandMap('kittex-macros', MACROS as ConstructorParameters<typeof CommandMap>[1])
