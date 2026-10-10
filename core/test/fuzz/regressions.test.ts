@@ -321,6 +321,21 @@ describe('fuzz regressions', () => {
     }
   })
 
+  // FUZZ-18 (macOS run, seeds 14159 and 15695, wild replies only). A reply
+  // with CRLF line ends: marked reads `\r\n` as `\n`, but blockParts compares
+  // its tokens' raw text with the source, so any `\r` leaves the text
+  // unfollowed (placeOverlays' partsOf finds no parts, its blank-line split
+  // being `\n[ \t]*\n`). A display ending the reply gets its image only where
+  // its trailing `\r\n` is trimmed away: live with the engine's trim, never
+  // resumed, and never live untrimmed (`…⠀\n\r\n`, filed as FUZZ-9). Fix:
+  // normalise CR in the stream and the landing (every record's `at` moves).
+  test.skip('FUZZ-18: a display in a CRLF reply lands as it does with LF', () => {
+    for (const trimLanded of [true, false]) {
+      expect(failures('$$x^2$$\r\n', { trimLanded }, ['resumed', 'displayImage'])).toEqual([])
+      expect(failures('$$\r\nx^2\r\n$$\r\n', { trimLanded }, ['resumed', 'displayImage'])).toEqual([])
+    }
+  })
+
   // The checks themselves (macOS run): failures that were the driver's, each
   // filed under a known finding that doesn't describe it. A display formula
   // holding characters the bundled font lacks keeps its Unicode preview by
