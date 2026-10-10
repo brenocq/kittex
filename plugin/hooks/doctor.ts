@@ -10,7 +10,7 @@
 // math). It holds no `$`, and every name from the host (a path, a TeX error)
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
-import { diagramDocument, formatName } from './core.js'
+import { diagramDocument, formatName, ulimitProbe } from './core.js'
 import { compileTrial, onPath, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
 import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
@@ -342,6 +342,8 @@ export interface DiagramFacts {
   /** Linux only: bubblewrap found, whether TeX runs in its namespace (else why not), and what it binds back. */
   bwrap?: ToolFacts & { usable: boolean; error?: string; sandbox?: Sandbox }
   prlimit?: ToolFacts
+  /** Without prlimit (macOS): whether sh's ulimit sets the CPU-time and file-size limits. */
+  ulimit?: boolean
   /** The dumped format for this TeX (prepareFormat), when latex and dvisvgm answered. */
   format?: { path: string; bytes?: number }
   /** Whether dvisvgm takes --libgs (false: kittex leaves it out). */
@@ -430,6 +432,8 @@ export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promi
       ? probeSandbox(host, { hide: input.hide, tmpdir: input.env.TMPDIR, path: PATH, prlimit: prlimitAt !== undefined })
       : Promise.resolve(undefined as SandboxProbe | undefined),
   ])
+  // No prlimit (always on macOS): sh's ulimit sets the same limits, where it runs.
+  const ulimit = prlimitAt === undefined ? (await run(ulimitProbe()))?.exitCode === 0 : undefined
   const tlmgr: ToolFacts = tlmgrAt ? { path: tlmgrAt } : {}
   // kpsewhich prints the path of each file it finds (exit 1 when any is missing).
   const found = kpse?.stdout.split('\n').map(line => line.trim()).filter(Boolean) ?? []
@@ -454,6 +458,7 @@ export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promi
     ...(files ? { files } : {}),
     ...(bwrap ? { bwrap } : {}),
     ...(prlimit ? { prlimit } : {}),
+    ...(ulimit !== undefined ? { ulimit } : {}),
     ...(libgs !== undefined ? { libgs } : {}),
     ...(postscript ? { postscript } : {}),
     trial: { skipped: '' },
@@ -475,7 +480,7 @@ export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promi
   } else {
     const setup: TexSetup = {
       versions: `${latex.version}\n${dvisvgm.version}`,
-      confinement: { prlimit: !linux ? false : prlimit?.path !== undefined, ...(bwrap?.usable ? { bwrap: { hide: input.hide } } : {}) },
+      confinement: { prlimit: !linux ? false : prlimit?.path !== undefined, ...(ulimit ? { ulimit: true as const } : {}), ...(bwrap?.usable ? { bwrap: { hide: input.hide } } : {}) },
       tmpdir: input.env.TMPDIR,
       ...(format ? { format } : {}),
       ...(libgs === false ? { libgs: false as const } : {}),
@@ -739,9 +744,11 @@ export function formatDoctor(facts: DoctorFacts): string {
     else if (b?.path) line(INFO, 'bubblewrap: found (not tried: Local LaTeX is off or TeX is missing)')
     else line(NO, 'bubblewrap: not found: TeX can read any file you can (kittex still refuses diagrams that read a file by its path)')
     if (p?.path) line(OK, 'prlimit: TeX runs under a CPU-time and a file-size limit')
+    else if (d.ulimit) line(OK, "prlimit: not found: sh's ulimit sets the CPU-time and file-size limits instead")
     else line(NO, 'prlimit: not found: no CPU or file-size limit, only the time limit')
   } else {
-    line(INFO, "confinement: none on macOS (no bubblewrap, no prlimit). TeX runs as you, with its shell escape off, writes kept to its job folder and a time limit; kittex refuses diagrams that read a file by its path, but nothing hides your files from TeX.")
+    const limits = d.ulimit ? "a CPU-time and a file-size limit (sh's ulimit)" : 'no CPU-time or file-size limit'
+    line(INFO, `confinement: no bubblewrap on macOS. TeX runs as you, with its shell escape off, writes kept to its job folder, a time limit, and ${limits}; kittex refuses diagrams that read a file by its path, but nothing hides your files from TeX.`)
   }
   if (d.libgs === false) line(INFO, 'dvisvgm has no --libgs option here: kittex leaves it out')
   if (d.postscript) line(INFO, `this dvisvgm runs PostScript through its own Ghostscript, without -dSAFER, whatever it is told (3.5 to 3.6.1): kittex's pictures hold none; a document that rotates or scales ${d.bwrap?.usable ? 'runs inside bubblewrap' : 'is refused, as there is no sandbox'}`)
@@ -776,7 +783,7 @@ export function formatDoctor(facts: DoctorFacts): string {
     ...(d.kpsewhich.path || !d.latex.path ? [] : ['kpsewhich']),
     ...(d.files ?? []).filter(file => !file.path).map(file => file.name),
     ...(linux && !d.bwrap?.path ? ['bwrap'] : []),
-    ...(linux && !d.prlimit?.path ? ['prlimit'] : []),
+    ...(linux && !d.prlimit?.path && !d.ulimit ? ['prlimit'] : []),
   ]
   const advice = d.option === 'off' ? undefined : installAdvice(os, missing, d.latex.path)
   if (advice && advice.commands.length + (advice.note ? 1 : 0) > 0) {

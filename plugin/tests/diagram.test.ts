@@ -384,8 +384,11 @@ describe('the TeX book', () => {
     expect(await probeTex(answering(['dvisvgm']), { tmpdir: undefined, hide: [] })).toBeUndefined()
     const full = await probeTex(answering([]), { tmpdir: '/tmp', hide: ['/home/u', '/tmp'], path: '/usr/bin' })
     expect(full?.confinement).toEqual({ prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } })
+    // No prlimit (macOS): sh's ulimit sets the limits, where sh runs it.
     const bare = await probeTex(answering(['prlimit', 'bwrap']), { tmpdir: '/tmp', hide: ['/home/u'] })
-    expect(bare?.confinement).toEqual({ prlimit: false })
+    expect(bare?.confinement).toEqual({ prlimit: false, ulimit: true })
+    const none = await probeTex(answering(['prlimit', 'bwrap', '/bin/sh']), { tmpdir: '/tmp', hide: ['/home/u'] })
+    expect(none?.confinement).toEqual({ prlimit: false })
   })
 
   test("macOS: TeX's commands run with MacTeX's /Library/TeX/texbin on PATH, after the host's own folders", async () => {

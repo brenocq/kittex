@@ -32,9 +32,10 @@
  *   could build such a command or path out of sight of this check (\csname,
  *   \catcode, ^^ notation, \scantokens, expl3 syntax, @-names, LaTeX's
  *   \UseName and etoolbox's \cs… family).
- * - Time and size: a hard time limit per command (the child is killed), a
- *   CPU-time limit (prlimit), the SVG capped at what $.process.run returns
- *   and the picture at MAX_PICTURE_OPS shapes.
+ * - Time and size: a hard time limit per command (the child and its process
+ *   group are killed), a CPU-time and a file-size limit (prlimit, else sh's
+ *   ulimit: macOS), the SVG capped at what $.process.run returns and the
+ *   picture at MAX_PICTURE_OPS shapes.
  *
  * What a refused or failing source gets: it stays the code block it was,
  * with a `not rendered:` note.
@@ -377,14 +378,16 @@ function unsafePath(name: string): boolean {
 
 // ─── The commands ────────────────────────────────────────────────────────────
 
-/** The file-size limit (bytes) TeX and dvisvgm run under, where prlimit exists. */
+/** The file-size limit (bytes) TeX and dvisvgm run under (prlimit, or sh's ulimit). */
 export const MAX_OUTPUT_BYTES = 64 * 1024 * 1024
-/** The CPU seconds each command may use, where prlimit exists (the wall-clock limit is $.process.run's). */
+/** The CPU seconds each command may use (prlimit, or sh's ulimit; the wall-clock limit is $.process.run's). */
 export const MAX_CPU_SECONDS = 20
 
 /** What the job's commands run inside: prlimit's limits, bubblewrap's namespace (both when the host has them). */
 export interface Confinement {
   prlimit: boolean
+  /** Without prlimit (macOS has none): the same limits set by sh's ulimit (ulimitProbe answered). */
+  ulimit?: true
   /** Bubblewrap, with the directories hidden from TeX (the home directory and the temporary ones). */
   bwrap?: { hide: readonly string[] }
 }
@@ -404,11 +407,29 @@ function bwrapMounts(hide: readonly string[], dir: string | undefined, readable:
   return args
 }
 
+/**
+ * The limits as sh sets them where there is no prlimit: a fixed script that
+ * runs its positional arguments (the command, never part of the script).
+ * ulimit -f counts 1024-byte blocks in bash and zsh (macOS's sh is bash) and
+ * 512-byte ones in POSIX shells such as dash: MAX_OUTPUT_BYTES, or half of it.
+ */
+const ULIMIT_SCRIPT = `ulimit -f ${MAX_OUTPUT_BYTES / 1024} && ulimit -t ${MAX_CPU_SECONDS} && exec "$@"`
+
+function ulimited(argv: readonly string[]): string[] {
+  return ['/bin/sh', '-c', ULIMIT_SCRIPT, 'kittex-tex', ...argv]
+}
+
+/** The ulimit probe: `true` under the limits; exit 0 means sh can set them (Confinement.ulimit). */
+export function ulimitProbe(): string[] {
+  return ulimited(['true'])
+}
+
 /** A command of the job, wrapped in its confinement: `dir` is the job's directory (also its working directory); `readable`, directories it may read in a namespace that hides them (the format's). */
 export function confined(argv: readonly string[], dir: string, confinement: Confinement, readable: readonly string[] = []): string[] {
   let out = [...argv]
   if (confinement.bwrap) out = ['bwrap', ...bwrapMounts(confinement.bwrap.hide, dir, readable), ...out]
   if (confinement.prlimit) out = ['prlimit', `--fsize=${MAX_OUTPUT_BYTES}`, `--cpu=${MAX_CPU_SECONDS}`, ...out]
+  else if (confinement.ulimit) out = ulimited(out)
   return out
 }
 

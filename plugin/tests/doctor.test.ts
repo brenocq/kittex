@@ -134,7 +134,7 @@ function fakeHost(options: FakeOptions = {}) {
       runs.push([...argv])
       // Confined commands: past bwrap's and prlimit's own arguments.
       const at = argv.findIndex(arg => arg === 'latex' || arg === 'dvisvgm' || arg === 'mktemp' || arg === 'rm')
-      const name = at >= 0 && (argv[0] === 'bwrap' || argv[0] === 'prlimit') ? argv[at]! : argv[0]!
+      const name = at >= 0 && (argv[0] === 'bwrap' || argv[0] === 'prlimit' || argv[0] === '/bin/sh') ? argv[at]! : argv[0]!
       if (missing.has(name) || (argv.includes('bwrap') && missing.has('bwrap'))) throw new Error('not found')
       const args = argv.slice(at >= 0 && name === argv[at] ? at + 1 : 1)
       // The sandbox's trial (latex \stop inside bubblewrap).
@@ -165,6 +165,8 @@ function fakeHost(options: FakeOptions = {}) {
           return result(options.noFiles?.length ? 1 : 0, args.filter(file => !options.noFiles?.includes(file)).map(file => `/usr/share/texmf-dist/tex/${file}`).join('\n') + '\n')
         case 'prlimit':
           return result(0, 'prlimit from util-linux 2.41\n')
+        case '/bin/sh':
+          return result(0)
         case 'mktemp':
           return result(0, '/tmp/kittex-tex.ABCDEFGHIJ\n')
         case 'rm':
@@ -239,21 +241,41 @@ describe('the probes', () => {
     expect(dvisvgm.some(arg => arg.startsWith('--libgs'))).toBe(false)
   })
 
-  test('bubblewrap that cannot run, and no prlimit: the trial runs unconfined', async () => {
+  test("bubblewrap that cannot run, and no prlimit: the trial runs outside any namespace, under sh's ulimit", async () => {
     const { host, runs } = fakeHost({ missing: ['prlimit'], bwrapError: 'setting up uid map: Permission denied', libgs: true })
     const facts = await probe(host)
     expect(facts.bwrap).toEqual({ path: '/usr/bin/bwrap', usable: false, error: 'latex in the sandbox: bwrap: setting up uid map: Permission denied' })
     expect(facts.prlimit).toEqual({})
     const latex = runs.find(argv => argv.includes('-jobname=kittex'))!
-    expect(latex[0]).toBe('latex')
+    expect(latex.includes('bwrap')).toBe(false)
+    expect(latex.slice(0, 2)).toEqual(['/bin/sh', '-c'])
+    // Without sh either: unconfined.
+    const bare = fakeHost({ missing: ['prlimit', '/bin/sh'], bwrapError: 'setting up uid map: Permission denied', libgs: true })
+    await probe(bare.host)
+    expect(bare.runs.find(argv => argv.includes('-jobname=kittex'))![0]).toBe('latex')
   })
 
-  test('macOS: no bubblewrap or prlimit is looked for', async () => {
+  test("macOS: no bubblewrap or prlimit is looked for; sh's ulimit sets the limits, the trial runs under them", async () => {
     const { host, runs } = fakeHost({ libgs: true })
     const facts = await probe(host, MACOS)
     expect(facts.bwrap).toBeUndefined()
     expect(facts.prlimit).toBeUndefined()
+    expect(facts.ulimit).toBe(true)
     expect(runs.some(argv => argv[0] === 'bwrap' || argv[0] === 'prlimit')).toBe(false)
+    const latex = runs.find(argv => argv.includes('-jobname=kittex'))!
+    expect(latex.slice(0, 2)).toEqual(['/bin/sh', '-c'])
+    expect(latex.slice(4, 5)).toEqual(['latex'])
+    // Where sh can't set them: said.
+    const without = await probe(fakeHost({ libgs: true, missing: ['/bin/sh'] }).host, MACOS)
+    expect(without.ulimit).toBe(false)
+  })
+
+  test("Linux without prlimit: sh's ulimit sets the limits instead, and util-linux isn't asked for", async () => {
+    const diagrams = await probe(fakeHost({ libgs: true, missing: ['prlimit'] }).host)
+    expect(diagrams.ulimit).toBe(true)
+    const text = formatDoctor(facts(diagrams))
+    expect(text).toContain("✓ prlimit: not found: sh's ulimit sets the CPU-time and file-size limits instead")
+    expect(text).not.toContain('To confine TeX')
   })
 
   test("macOS: MacTeX's /Library/TeX/texbin is looked in when PATH lacks it (a terminal from the Dock, a shell that resets PATH)", async () => {
@@ -275,7 +297,7 @@ describe('the probes', () => {
     expect(facts.kpsewhich.path).toBe(`${TEXBIN}/kpsewhich`)
     expect(facts.files?.every(file => file.path)).toBe(true)
     expect(facts.trial).toMatchObject({ ok: true })
-    expect(runs.some(argv => argv[0] === 'latex' && argv.includes('-jobname=kittex'))).toBe(true)
+    expect(runs.some(argv => argv.includes('latex') && argv.includes('-jobname=kittex'))).toBe(true)
     // Linux has no such folder: PATH as it is.
     const linux = await probe(host, ARCH)
     expect(linux.latex).toEqual({})
@@ -391,7 +413,8 @@ describe('the report', () => {
     const refused = formatDoctor(facts(await probe(fakeHost({ bwrapError: 'setting up uid map: Permission denied', libgs: true }).host)))
     expect(refused).toContain("✗ bubblewrap can't run TeX here (latex in the sandbox: bwrap: setting up uid map: Permission denied): kittex runs TeX without it")
     const mac = formatDoctor(facts(await allThere(MACOS), { os: MACOS }))
-    expect(mac).toContain('– confinement: none on macOS (no bubblewrap, no prlimit)')
+    expect(mac).toContain("– confinement: no bubblewrap on macOS. TeX runs as you, with its shell escape off, writes kept to its job folder, a time limit, and a CPU-time and a file-size limit (sh's ulimit)")
+    expect(formatDoctor(facts({ ...(await allThere(MACOS)), ulimit: false }, { os: MACOS }))).toContain('a time limit, and no CPU-time or file-size limit')
     expect(mac).toContain('nothing hides your files from TeX')
     expect(mac).not.toContain('To confine TeX')
   })

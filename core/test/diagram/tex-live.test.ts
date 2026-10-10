@@ -3,11 +3,11 @@
 // installed; skipped elsewhere. KITTEX_TEX=1 also times the typical diagrams.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { bwrapProbe, confined, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
+import { bwrapProbe, confined, MAX_OUTPUT_BYTES, ulimitProbe, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
 import type { Confinement, DiagramLang, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture } from '../../src/index.ts'
 
@@ -65,6 +65,40 @@ const DIAGRAMS: [string, string, DiagramLang][] = [
 ]
 
 const ENV = { cellWidth: 13, cellHeight: 26, maxColumns: 100, emPx: (13 / 0.6) * 1.15, ink: { r: 220, g: 220, b: 220 }, background: { r: 30, g: 30, b: 30 } }
+
+
+describe('limits without prlimit (macOS): sh and ulimit', () => {
+  test('the probe runs, and a command writing past the file-size limit is stopped there', () => {
+    expect(spawnSync(ulimitProbe()[0]!, ulimitProbe().slice(1), { stdio: 'ignore' }).status).toBe(0)
+    const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
+    try {
+      // 96 MiB of zeros against the 64 MiB limit: dd ends (SIGXFSZ) with the file at the limit.
+      const [cmd, ...args] = confined(['dd', 'if=/dev/zero', 'of=big', 'bs=1048576', 'count=96'], dir, { prlimit: false, ulimit: true })
+      const run = spawnSync(cmd!, args, { cwd: dir, stdio: 'ignore', timeout: 20_000 })
+      expect(run.status === 0).toBe(false)
+      expect(statSync(join(dir, 'big')).size).toBeLessThanOrEqual(MAX_OUTPUT_BYTES)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test.skipIf(!TEX)('a TeX job flooding its log is stopped at the limit, long before its time limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
+    try {
+      const flood = diagramDocument('\\begin{tikzpicture}\n\\loop\\message{kittex-flood-kittex-flood-kittex-flood-kittex-flood}\\iftrue\\repeat\n\\end{tikzpicture}', 'latex')
+      writeFileSync(join(dir, `${JOB_NAME}.tex`), flood.text)
+      const [cmd, ...args] = confined(LATEX_ARGV, dir, { prlimit: false, ulimit: true })
+      const started = performance.now()
+      const latex = spawnSync(cmd!, args, { cwd: dir, env: { ...process.env, ...texEnvironment(dir) }, stdio: 'ignore', timeout: 60_000 })
+      expect(latex.error).toBeUndefined()
+      expect(latex.status === 0).toBe(false)
+      expect(statSync(join(dir, `${JOB_NAME}.log`)).size).toBeLessThanOrEqual(MAX_OUTPUT_BYTES)
+      expect(performance.now() - started).toBeLessThan(30_000)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe.skipIf(!TEX)('the local TeX', () => {
   test('a TikZ diagram compiles, reads and draws', { timeout: 30_000 }, () => {

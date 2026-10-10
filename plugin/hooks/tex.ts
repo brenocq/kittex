@@ -29,6 +29,7 @@ import {
   texError,
   texFormula,
   texPicture,
+  ulimitProbe,
   unsafeTex,
   XmlError,
 } from './core.js'
@@ -144,11 +145,13 @@ export async function probeTex(host: TexHost, options: { tmpdir: string | undefi
     ok(['prlimit', '--version']),
   ])
   if (latex === undefined || dvisvgm === undefined) return undefined
+  // No prlimit (macOS has none): the same limits through sh's ulimit.
+  const ulimit = prlimit === undefined && (await ok(ulimitProbe())) !== undefined
   const sandbox = options.hide.length > 0 ? await probeSandbox(host, { hide: options.hide, tmpdir: options.tmpdir, path: options.path, prlimit: prlimit !== undefined }) : undefined
   const first = (text: string) => text.split('\n', 1)[0]!.trim()
   return {
     versions: `${first(latex)}\n${first(dvisvgm)}`,
-    confinement: { prlimit: prlimit !== undefined, ...(sandbox?.ok ? { bwrap: { hide: options.hide } } : {}) },
+    confinement: { prlimit: prlimit !== undefined, ...(ulimit ? { ulimit: true as const } : {}), ...(sandbox?.ok ? { bwrap: { hide: options.hide } } : {}) },
     tmpdir: options.tmpdir,
     ...(options.cacheDir !== undefined ? { cacheDir: options.cacheDir } : {}),
     ...(help !== undefined && !takesLibgs(help) ? { libgs: false as const } : {}),

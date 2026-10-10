@@ -32,6 +32,7 @@ export {
   texEnvironment,
   texError,
   texPicture,
+  ulimitProbe,
   unsafeTex,
   XmlError,
 } from './diagram/index.js'
