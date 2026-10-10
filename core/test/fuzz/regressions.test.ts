@@ -321,6 +321,23 @@ describe('fuzz regressions', () => {
     }
   })
 
+  // The checks themselves (macOS run): failures that were the driver's, each
+  // filed under a known finding that doesn't describe it. A display formula
+  // holding characters the bundled font lacks keeps its Unicode preview by
+  // design (measureDisplay), counted as a missing image under FUZZ-9 (seed
+  // 185); a formula written both inline and displayed had its display image
+  // held to the inline slot's width, under FUZZ-4 (14 cases); an inline image
+  // in a table whose part the replay can't follow was held to the prose width
+  // (seed 18002, the one UNKNOWN), where only the window can be checked.
+  test('the checks hold what the landing promises, no more', () => {
+    expect(failures('$$\\text{Привет, мир}$$\n', {}, ['displayImage'])).toEqual([])
+    expect(failures('$$x = \\text{日本}$$\n', { tex: true }, ['displayImage'])).toEqual([])
+    expect(failures('$x$ \n\n$$\nx\n$$\n', {}, ['imageShape'])).toEqual([])
+    expect(failures('$$\ne^{i\\pi} + 1 = 0\n$$\n\n$e^{i\\pi} + 1 = 0$.\n', {}, ['imageShape'])).toEqual([])
+    const table = 'has converges | | | |\n--- | - | :--- | :--- \nlimit | $\\mathcal{L}(\\theta) \\mathbb{E}_{x p_{\\text{data}}}[\\log p_\\theta(x)]$ \n\n> > \n> > \n$\\frac{1}{2}$!\n'
+    expect(failures(table, { maxProseWidth: 42, tex: true }, ['overlap'])).toEqual([])
+  })
+
   // FUZZ-16. Live kept Unicode where resumed drew images: the stream judged
   // a formula's part with what came before it (the landing lays the text after
   // a display image out as a piece of its own), read a table's header row as

@@ -22,6 +22,7 @@ import {
   scan,
   TexError,
   texPicture,
+  typeset,
 } from '../../../plugin/hooks/core.js'
 import type { InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TexDocument } from '../../../plugin/hooks/core.js'
 import { diagramJob, mathJob, texBook, texResult } from '../../../plugin/hooks/tex.ts'
@@ -406,7 +407,8 @@ export function runCase(markdown: string, shape: Shape, options: { partial?: boo
   result.resumedDrawing = resumedDrawing
 
   const inlineWritten = streamed.written.filter(record => record.inline)
-  const displayWritten = streamed.written.filter(record => !record.inline && record.error === undefined && record.rows > 0)
+  // (A display formula holding characters the bundled font lacks keeps its preview by design: measureDisplay.)
+  const displayWritten = streamed.written.filter(record => !record.inline && record.error === undefined && record.rows > 0 && !lacksGlyphs(record.tex))
   const liveInline = liveDrawing.images.filter(image => image.kind === 'inline')
   const liveDisplay = liveDrawing.images.filter(image => image.kind !== 'inline')
   result.stats.inline = inlineWritten.length
@@ -420,7 +422,9 @@ export function runCase(markdown: string, shape: Shape, options: { partial?: boo
   const extra = multisetMinus(liveInline.map(image => image.tex), inlineWritten.map(record => record.tex))
   if (extra.length > 0 && live.hooked) fail('inlineImage', 'inline-extra', `inline images with no preview written for them: ${extra.slice(0, 4).map(s => JSON.stringify(s)).join(', ')}`)
   const dmissing = multisetMinus(displayWritten.map(record => record.tex), liveDisplay.map(image => image.tex))
-  if (dmissing.length > 0) fail('displayImage', 'display-missing', `${dmissing.length} of ${displayWritten.length} display previews got no image: ${dmissing.slice(0, 3).map(s => JSON.stringify(s.slice(0, 60))).join(', ')}`, { tex: dmissing[0] })
+  // FUZZ-9's: a display in a list item or a quote, or below a part the replay doesn't follow; anything else is named apart.
+  const unfollowed = liveDrawing.rows.some(row => row.opaque !== undefined || row.part === 'list' || row.part === 'blockquote')
+  if (dmissing.length > 0) fail('displayImage', unfollowed ? 'display-missing' : 'display-missing:laid-out', `${dmissing.length} of ${displayWritten.length} display previews got no image: ${dmissing.slice(0, 3).map(s => JSON.stringify(s.slice(0, 60))).join(', ')}`, { tex: dmissing[0] })
 
   // Pads left visible.
   const covered = coverage(liveDrawing)
@@ -459,6 +463,8 @@ export function runCase(markdown: string, shape: Shape, options: { partial?: boo
   for (const piece of live.pieces) {
     if (piece.kind !== 'prose') continue
     for (const inline of piece.inline ?? []) {
+      // A display formula's image laid over its preview lines is not an inline one, whatever inline formula shares its TeX.
+      if (inline.display === true) continue
       // (A quoted display formula is drawn the same way, as wide as the quote: only an inline record's slot counts.)
       const slots = streamed.store.filter(record => record.inline && record.tex === inline.tex).map(record => record.columns)
       const quoted = streamed.store.some(record => !record.inline && record.quote !== undefined && record.tex === inline.tex)
@@ -505,6 +511,16 @@ export function runCase(markdown: string, shape: Shape, options: { partial?: boo
     else if ((failure.check === 'moved' || failure.check === 'unverified' || failure.check === 'overPreview') && failure.row !== undefined) failure.cause += `:${rowCause(failure.row, context)}`
   }
   return result
+}
+
+/** Whether MathJax refuses a display formula only for characters the bundled font can't draw (GlyphError). */
+function lacksGlyphs(tex: string): boolean {
+  try {
+    typeset(tex, { display: true })
+    return false
+  } catch (error) {
+    return error instanceof GlyphError
+  }
 }
 
 function multisetMinus(a: readonly string[], b: readonly string[]): string[] {
