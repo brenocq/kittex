@@ -308,6 +308,51 @@ describe('fuzz regressions', () => {
     expect(failures(md, { columns: 118, cellWidth: 10, cellHeight: 20 }, ['overlap', 'resumed'])).toEqual([])
   })
 
+  // FUZZ-17 (macOS run, seeds 802, 3955, 11032). A diagram's placeholder ends
+  // with a 16-cell tag of its source, written after the pads that centre its
+  // label: in a 21-column window (a 19-cell column) its last row was 20 cells,
+  // wrapped, and the landing, which finds the placeholder by its text, drew no
+  // picture and left the pads. Fixed: the tag and its lead fit the column.
+  test('FUZZ-17: a diagram placeholder in a narrow window gets its picture', () => {
+    for (const md of ['```latex\n\\begin{tikzpicture}\n```\n', '\\begin{tikzpicture}\n\\fill[black] \n\\end{tikzpicture}\n']) {
+      for (const columns of [20, 21, 22, 23, 24]) {
+        expect(failures(md, { columns, tex: true }, ['padVisible', 'displayImage', 'moved'])).toEqual([])
+      }
+    }
+  })
+
+  // FUZZ-18 (macOS run, seeds 14159 and 15695, wild replies only). A reply
+  // with CRLF line ends: marked reads `\r\n` as `\n`, but blockParts compares
+  // its tokens' raw text with the source, so any `\r` leaves the text
+  // unfollowed (placeOverlays' partsOf finds no parts, its blank-line split
+  // being `\n[ \t]*\n`). A display ending the reply gets its image only where
+  // its trailing `\r\n` is trimmed away: live with the engine's trim, never
+  // resumed, and never live untrimmed (`…⠀\n\r\n`, filed as FUZZ-9). Fix:
+  // normalise CR in the stream and the landing (every record's `at` moves).
+  test.skip('FUZZ-18: a display in a CRLF reply lands as it does with LF', () => {
+    for (const trimLanded of [true, false]) {
+      expect(failures('$$x^2$$\r\n', { trimLanded }, ['resumed', 'displayImage'])).toEqual([])
+      expect(failures('$$\r\nx^2\r\n$$\r\n', { trimLanded }, ['resumed', 'displayImage'])).toEqual([])
+    }
+  })
+
+  // The checks themselves (macOS run): failures that were the driver's, each
+  // filed under a known finding that doesn't describe it. A display formula
+  // holding characters the bundled font lacks keeps its Unicode preview by
+  // design (measureDisplay), counted as a missing image under FUZZ-9 (seed
+  // 185); a formula written both inline and displayed had its display image
+  // held to the inline slot's width, under FUZZ-4 (14 cases); an inline image
+  // in a table whose part the replay can't follow was held to the prose width
+  // (seed 18002, the one UNKNOWN), where only the window can be checked.
+  test('the checks hold what the landing promises, no more', () => {
+    expect(failures('$$\\text{Привет, мир}$$\n', {}, ['displayImage'])).toEqual([])
+    expect(failures('$$x = \\text{日本}$$\n', { tex: true }, ['displayImage'])).toEqual([])
+    expect(failures('$x$ \n\n$$\nx\n$$\n', {}, ['imageShape'])).toEqual([])
+    expect(failures('$$\ne^{i\\pi} + 1 = 0\n$$\n\n$e^{i\\pi} + 1 = 0$.\n', {}, ['imageShape'])).toEqual([])
+    const table = 'has converges | | | |\n--- | - | :--- | :--- \nlimit | $\\mathcal{L}(\\theta) \\mathbb{E}_{x p_{\\text{data}}}[\\log p_\\theta(x)]$ \n\n> > \n> > \n$\\frac{1}{2}$!\n'
+    expect(failures(table, { maxProseWidth: 42, tex: true }, ['overlap'])).toEqual([])
+  })
+
   // FUZZ-16. Live kept Unicode where resumed drew images: the stream judged
   // a formula's part with what came before it (the landing lays the text after
   // a display image out as a piece of its own), read a table's header row as

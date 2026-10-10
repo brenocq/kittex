@@ -208,12 +208,13 @@ export function landedDrawing(pieces: readonly Piece[], ctx: DrawContext, stream
       rows.push(...drawn)
       const table = drawn.some(row => row.part === 'table')
       for (const inline of piece.inline ?? []) {
+        // Its bound too: a table's is the window, prose's the prose width; where its rows aren't known, only the window is.
         const unknown = above || drawn.slice(0, inline.row + 1).some(row => row.opaque !== undefined)
         // A display formula is drawn over its preview as the inline ones are: in the reply column (a paragraph
         // of preview lines, column 0), or in a quote or a list item.
         const overlay = inline.display === true || isOverlay(inline.tex, inline.image.rows, inline.image.columns, streamed)
         const kind = !overlay ? 'inline' : inline.display === true && inline.col === 0 ? 'display' : 'quoted'
-        images.push({ kind, tex: inline.tex, row: top + inline.row, col: inline.col, rows: inline.image.rows, columns: inline.image.columns, bound: table ? ctx.columns - 2 : ctx.width, ...(unknown ? { unknown } : {}) })
+        images.push({ kind, tex: inline.tex, row: top + inline.row, col: inline.col, rows: inline.image.rows, columns: inline.image.columns, bound: table || unknown ? ctx.columns - 2 : ctx.width, ...(unknown ? { unknown } : {}) })
       }
     } else if (piece.kind === 'image') {
       for (let r = 0; r < piece.image.rows; r++) rows.push({ cells: [], part: 'image' })
