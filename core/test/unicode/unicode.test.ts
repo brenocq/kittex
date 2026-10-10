@@ -261,6 +261,38 @@ describe('line breaking (breakLines)', () => {
   })
 })
 
+describe('breaking inside a table (breakTables)', () => {
+  const rows = (tex: string, maxWidth: number, compact = true) =>
+    toUnicode(mathml(tex, true), { display: true, compact, maxWidth, breakLines: true, breakTables: true })?.lines.map(l => l.trimEnd())
+  const maxwell = String.raw`\begin{aligned} \oint_{C} \mathbf{E}\cdot d\boldsymbol{\ell} &= -\frac{d}{dt}\iint_{S} \mathbf{B}\cdot d\mathbf{A} \\ \oint_{C} \mathbf{B}\cdot d\boldsymbol{\ell} &= \mu_0 \iint_S \mathbf{J}\cdot d\mathbf{A} + \mu_0\varepsilon_0\frac{d}{dt}\iint_S \mathbf{E}\cdot d\mathbf{A} \end{aligned}`
+
+  test('an aligned row wider than maxWidth breaks in its cell, the rest of the row under the cell, the alignment kept', () => {
+    expect(toUnicode(mathml(maxwell, true), { display: true, compact: true, maxWidth: 38, breakLines: true })).toBeNull()
+    const out = rows(maxwell, 38)!
+    expect(out).toHaveLength(3)
+    for (const l of out) expect(textWidth(l)).toBeLessThanOrEqual(38)
+    // Each row's relation sits in the same column, and the continuation starts under the right-hand side, with the operator.
+    const column = (l: string, ch: string) => textWidth(l.slice(0, l.indexOf(ch)))
+    const eq = column(out[0]!, '=')
+    expect(column(out[1]!, '=')).toBe(eq)
+    expect(column(out[2]!, '+')).toBe(eq + 2)
+    expect(out[2]!.slice(0, out[2]!.indexOf('+')).trim()).toBe('')
+  })
+
+  test('cases break their long rows; the brace spans every line', () => {
+    const kkt = String.raw`\begin{cases} \nabla f(x^*) + \sum_i \lambda_i \nabla g_i(x^*) + \sum_j \nu_j \nabla h_j(x^*) = 0 \\ g_i(x^*) \le 0, \quad h_j(x^*) = 0 \\ \lambda_i \ge 0 \end{cases}`
+    const out = rows(kkt, 38)!
+    expect(out.length).toBeGreaterThan(3)
+    for (const l of out) expect(textWidth(l)).toBeLessThanOrEqual(38)
+    expect(out.every(l => /^[⎧⎨⎩⎪{]/.test(l))).toBe(true)
+  })
+
+  test('without breakTables, or when the table fits, nothing changes; a cell that cannot break is refused', () => {
+    expect(rows(String.raw`\begin{aligned} a &= b \\ c &= d \end{aligned}`, 38)).toEqual(['a = b', 'c = d'])
+    expect(rows(String.raw`\begin{aligned} a &= \left(bcdefghijklmnop\right) \end{aligned}`, 10)).toBeUndefined()
+  })
+})
+
 describe('tight', () => {
   const tight = (tex: string) => toUnicode(mathml(tex, false), { display: false, tight: true })?.lines[0]
 
