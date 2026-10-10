@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { adaptColor, assumedBackground, countNumbers, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, readSvg, SvgError, texPicture, XmlError } from '../../src/diagram/index.ts'
 import { parseXml } from '../../src/diagram/xml.ts'
+import { rasterizePicture } from '../../src/raster/index.ts'
 import type { Picture, PictureOp } from '../../src/types.ts'
 
 const fixture = (name: string) => readFileSync(new URL(`fixtures/${name}.svg`, import.meta.url), 'utf8')
@@ -100,10 +101,111 @@ describe('reading dvisvgm SVG', () => {
     expect(() => read(`<use id='a' xlink:href='#b'/><use id='b' xlink:href='#a'/>`)).toThrow(SvgError)
   })
 
-  test('gradients paint their mean colour, patterns a light tint', () => {
-    const picture = read(`<defs><linearGradient id='g'><stop offset='0' stop-color='#000'/><stop offset='1' stop-color='#fff'/></linearGradient><pattern id='p'><path d='M0 0L1 1' stroke='#f00'/></pattern></defs><path d='M0 0H1V1Z' fill='url(#g)'/><path d='M0 0H1V1Z' fill='url(#p)'/>`)
+  test('a gradient stroke paints its mean colour; a pattern with no tile, a light tint', () => {
+    const picture = read(`<defs><linearGradient id='g'><stop offset='0' stop-color='#000'/><stop offset='1' stop-color='#fff'/></linearGradient><pattern id='p'><path d='M0 0L1 1' stroke='#f00'/></pattern></defs><path d='M0 0H1V1Z' fill='none' stroke='url(#g)'/><path d='M0 0H1V1Z' fill='url(#p)'/>`)
     expect(picture.ops[0]!.paint.color).toEqual({ r: 128, g: 128, b: 128 })
     expect(picture.ops[1]!.paint).toEqual({ color: { r: 255, g: 0, b: 0 }, opacity: 0.35 })
+  })
+})
+
+// TikZ's shadings and patterns as pgfsys-dvisvgm writes them: a shading is a 100.375 bp square (or circle) filled with
+// an objectBoundingBox gradient, inside the shaded path's clip; a pattern is a userSpaceOnUse tile of symbol paths.
+describe('shadings and patterns', () => {
+  const pixel = (picture: Picture, x: number, y: number, cells = { cellWidth: 10, cellHeight: 20 }) => {
+    const env = { ...cells, maxColumns: 40, emPx: 40, ink: { r: 0, g: 0, b: 0 }, background: { r: 255, g: 255, b: 255 } }
+    const raster = rasterizePicture(picture, { emPx: env.emPx, cellWidth: env.cellWidth, cellHeight: env.cellHeight, maxColumns: env.maxColumns, maxRows: 40, color: c => c })
+    const i = (Math.round(y * raster.heightPx) * raster.widthPx + Math.round(x * raster.widthPx)) * 4
+    return { r: raster.rgba[i]!, g: raster.rgba[i + 1]!, b: raster.rgba[i + 2]!, a: raster.rgba[i + 3]! }
+  }
+
+  test('a linear shading goes from its first colour to its last, inside its shape only', () => {
+    // left color=black, right color=white, as TikZ writes it: the middle half of the gradient spans the square.
+    const picture = read(
+      `<defs><linearGradient id='s'><stop offset='0' stop-color='#000'/><stop offset='0.25' stop-color='#000'/><stop offset='0.75' stop-color='#fff'/><stop offset='1' stop-color='#fff'/></linearGradient></defs>` +
+        `<rect x='-25' y='0' width='100' height='50' style='fill:url(#s); stroke:none'/>`,
+      '0 0 50 50',
+    )
+    expect(new Set(picture.ops.map(op => op.paint.color.r)).size).toBeGreaterThan(8)
+    expect(new Set(picture.ops.map(op => op.clip))).toEqual(new Set([0]))
+    const left = pixel(picture, 0.05, 0.5)
+    const middle = pixel(picture, 0.5, 0.5)
+    const right = pixel(picture, 0.95, 0.5)
+    expect(left.r).toBeLessThan(40)
+    expect(Math.abs(middle.r - 128)).toBeLessThan(30)
+    expect(right.r).toBeGreaterThan(215)
+  })
+
+  test('a vertical shading (gradientTransform rotate(90)) changes down the shape, not across', () => {
+    const picture = read(
+      `<defs><linearGradient id='s' gradientTransform='rotate(90)'><stop offset='0' stop-color='#f00'/><stop offset='1' stop-color='#00f'/></linearGradient></defs><rect width='50' height='50' fill='url(#s)'/>`,
+      '0 0 50 50',
+    )
+    const top = pixel(picture, 0.5, 0.05)
+    const bottom = pixel(picture, 0.5, 0.95)
+    expect(top.r).toBeGreaterThan(200)
+    expect(bottom.b).toBeGreaterThan(200)
+    expect(pixel(picture, 0.05, 0.5)).toEqual(pixel(picture, 0.95, 0.5))
+  })
+
+  test('a radial (ball) shading is its first colour at the focus and its last at the rim', () => {
+    const picture = read(
+      `<defs><radialGradient id='b' fx='0.4' fy='0.4'><stop offset='0' stop-color='#fff'/><stop offset='1' stop-color='#000'/></radialGradient></defs><circle cx='25' cy='25' r='25' fill='url(#b)'/>`,
+      '0 0 50 50',
+    )
+    expect(pixel(picture, 0.4, 0.4).r).toBeGreaterThan(220)
+    expect(pixel(picture, 0.5, 0.97).r).toBeLessThan(60)
+    // Outside the circle: nothing painted.
+    expect(pixel(picture, 0.03, 0.03).a).toBe(0)
+  })
+
+  test('a pattern tiles its shape: lines and gaps, nothing outside it', () => {
+    // pattern=horizontal lines, its tile 4 bp tall, a line at the tile's middle.
+    const picture = read(
+      `<defs><pattern id='t' width='100' height='4' patternUnits='userSpaceOnUse'/><symbol id='l'><path d='M0 2H100' fill='none' stroke-width='1'/></symbol></defs>` +
+        `<pattern id='u' xlink:href='#t'><g fill='#000' stroke='#000'><use xlink:href='#l'/></g></pattern><g fill='url(#u)'><path d='M0 0H40V40H0Z' stroke='none'/></g>`,
+      '0 0 50 50',
+    )
+    expect(picture.ops.length).toBeGreaterThan(8)
+    expect(picture.ops.every(op => op.type === 'stroke' && op.clip === 0)).toBe(true)
+    // Down the middle of the square: inked rows and blank rows in turn.
+    const column = Array.from({ length: 64 }, (_, k) => pixel(picture, 0.4, (k + 0.5) / 80).a)
+    expect(column.filter(a => a > 200).length).toBeGreaterThan(4)
+    expect(column.filter(a => a === 0).length).toBeGreaterThan(4)
+    expect(pixel(picture, 0.9, 0.5).a).toBe(0)
+  })
+
+  test('a rotated pattern (patterns.meta Lines[angle=45]) is tiled along its own axes', () => {
+    const picture = read(
+      `<defs><pattern id='t' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='matrix(0.7071 0.7071 -0.7071 0.7071 0 0)'/><symbol id='l'><path d='M-2 0H2' fill='none' stroke-width='0.5'/></symbol></defs>` +
+        `<pattern id='u' xlink:href='#t'><g stroke='#00f'><use xlink:href='#l'/></g></pattern><path d='M0 0H50V50H0Z' fill='url(#u)'/>`,
+      '0 0 50 50',
+    )
+    // Every tile in reach of the square, and no more than that by much.
+    expect(picture.ops.length).toBeGreaterThan(150)
+    expect(picture.ops.length).toBeLessThan(600)
+    expect(picture.ops.every(op => op.paint.color.b === 255)).toBe(true)
+  })
+
+  test('a pattern too fine for its shape is a tint, so the picture stays drawable', () => {
+    const picture = read(
+      `<defs><pattern id='t' width='0.01' height='0.01' patternUnits='userSpaceOnUse'/><symbol id='l'><path d='M0 0H0.01' stroke-width='0.001'/></symbol></defs>` +
+        `<pattern id='u' xlink:href='#t'><g stroke='#0f0'><use xlink:href='#l'/></g></pattern><path d='M0 0H50V50H0Z' fill='url(#u)'/>`,
+      '0 0 50 50',
+    )
+    expect(picture.ops).toHaveLength(1)
+    expect(picture.ops[0]!.paint).toEqual({ color: { r: 0, g: 255, b: 0 }, opacity: 0.35 })
+  })
+
+  test('the shape keeps its stroke on top of its pattern', () => {
+    const picture = read(
+      `<defs><pattern id='t' width='5' height='5' patternUnits='userSpaceOnUse'/><symbol id='l'><path d='M0 0L5 5' stroke-width='0.4'/></symbol></defs>` +
+        `<pattern id='u' xlink:href='#t'><g stroke='#f00'><use xlink:href='#l'/></g></pattern><path d='M5 5H45V45H5Z' fill='url(#u)' stroke='#00f'/>`,
+      '0 0 50 50',
+    )
+    const last = picture.ops.at(-1)!
+    expect(last.type).toBe('stroke')
+    expect(last.paint.color).toEqual({ r: 0, g: 0, b: 255 })
+    expect(last.clip).toBeUndefined()
   })
 
   test('what can not be drawn refuses the picture', () => {

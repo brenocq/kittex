@@ -1,4 +1,5 @@
 import type { Matrix, Paint, Picture, PictureClip, PictureOp, RGB, StrokeStyle } from '../types.js'
+import { flattenSubpaths } from '../raster/path.js'
 import { parseXml, type XmlElement } from './xml.js'
 
 /*
@@ -9,9 +10,12 @@ import { parseXml, type XmlElement } from './xml.js'
  * Read: svg, g (and a), path, use (of a glyph or any element), rect, circle,
  * ellipse, line, polyline, polygon, clipPath; the presentation attributes and
  * a `style` attribute's declarations of the same names; transforms. A group's
- * opacity multiplies into its shapes'. A gradient paints as its stops' mean
- * colour and a pattern as its first colour at PATTERN_OPACITY: TikZ shadings
- * and patterns stay legible as flat tints. Text, images, masks and nested
+ * opacity multiplies into its shapes'. A shape filled with a gradient is
+ * painted in bands of its colours (linear and radial, focus included), and one
+ * filled with a pattern in copies of its tile, both clipped to the shape: TikZ
+ * shadings and patterns as they print. A gradient stroke paints its stops'
+ * mean colour, and a pattern that can't be tiled within MAX_PATTERN_OPS its
+ * first colour at PATTERN_OPACITY (a flat tint). Text, images, masks and nested
  * documents refuse the picture (SvgError), so nothing is drawn half: dvisvgm
  * writes none of them for TikZ, pgfplots, chemfig or circuitikz with
  * --no-fonts, and a picture that needs them stays its source.
@@ -47,8 +51,14 @@ export const MAX_PICTURE_NUMBERS = 2_000_000
 const MAX_VISITS = 400_000
 /** How deep `use` may reference (a cycle is refused). */
 const MAX_USE_DEPTH = 8
-/** The opacity a pattern's colour paints with, standing for its lines' coverage. */
+/** The opacity a pattern's colour paints with, standing for its lines' coverage, where the pattern is drawn as a tint. */
 const PATTERN_OPACITY = 0.35
+/** Bands a gradient's vector (0 to 1) is cut into; neighbours of one colour are merged. */
+const GRADIENT_BANDS = 64
+/** Shapes the tiles of one pattern fill may paint; a finer pattern (or a larger shape) is a tint. */
+const MAX_PATTERN_OPS = 6000
+/** Clips the gradient and pattern fills of one picture may add (each is a mask the picture's size when drawn); past them, flat. */
+const MAX_SERVER_CLIPS = 64
 
 interface Style {
   fill: PaintSource | null
@@ -151,7 +161,11 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
   const draw = (d: string, ctm: Matrix, style: Style, glyph: boolean, canFill = true) => {
     if (d.trim() === '') return
     const transform = multiply(toEm, ctm)
-    const fill = canFill ? paintOf(style.fill, style.fillOpacity * style.opacity, style) : null
+    // A gradient or pattern fill draws itself (clipped to the shape) when it can, before the shape's stroke.
+    const server = canFill && style.fill !== null && 'ref' in style.fill ? style.fill.ref : undefined
+    const opacity = style.fillOpacity * style.opacity
+    const served = server !== undefined && opacity > 0 && !glyph && serverFill(server, d, ctm, style, opacity)
+    const fill = canFill && !served ? paintOf(style.fill, opacity, style) : null
     if (fill) push({ type: 'fill', d, transform, rule: style.fillRule, paint: fill, ...(glyph ? { glyph: true } : {}), ...(style.clip !== undefined ? { clip: style.clip } : {}) })
     const stroke = paintOf(style.stroke, style.strokeOpacity * style.opacity, style)
     if (stroke && style.strokeWidth > 0) {
@@ -196,6 +210,176 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
     return index
   }
 
+  // ─── Gradient and pattern fills ───
+  let serverClips = 0
+  let patternDepth = 0
+
+  /** A clip of one shape (a gradient's or pattern's fill), inside the clip the shape is drawn in. */
+  const shapeClip = (d: string, ctm: Matrix, rule: 'nonzero' | 'evenodd', within: number | undefined): number => {
+    account(d)
+    clips.push({ paths: [{ d, transform: multiply(toEm, ctm), rule }], ...(within !== undefined ? { within } : {}) })
+    serverClips++
+    return clips.length - 1
+  }
+
+  /** Fills a shape with a gradient's or a pattern's own drawing; false when it can't be (it is then filled flat). */
+  const serverFill = (ref: string, d: string, ctm: Matrix, style: Style, opacity: number): boolean => {
+    const el = ids.get(ref)
+    if (!el || serverClips >= MAX_SERVER_CLIPS) return false
+    if (el.name === 'linearGradient' || el.name === 'radialGradient') return gradientFill(el, d, ctm, style, opacity)
+    if (el.name === 'pattern') return patternFill(el, d, ctm, style, opacity)
+    return false
+  }
+
+  /**
+   * A gradient as bands of its colours over the shape (its box mapped to the
+   * gradient's own space): strips across a linear gradient's vector, discs
+   * about a radial one's focus. Opaque bands are painted each over the rest of
+   * the way (no seams between neighbours); translucent ones side by side.
+   */
+  const gradientFill = (el: XmlElement, d: string, ctm: Matrix, style: Style, opacity: number): boolean => {
+    const stops = gradientStops(el, ids, 0)
+    const box = pathBox(d)
+    if (stops.length < 2 || !box) return false
+    const attr = (name: string) => inheritedAttr(el, name, ids)
+    const bounding = (attr('gradientUnits') ?? 'objectBoundingBox') !== 'userSpaceOnUse'
+    if (bounding && !(box.width > 0 && box.height > 0)) return false
+    const units: Matrix = bounding ? [box.width, 0, 0, box.height, box.x, box.y] : IDENTITY
+    const space = multiply(units, transformOf(attr('gradientTransform')))
+    const back = invert(space)
+    if (!back) return false
+    // The shape's box in the gradient's space, where the bands are laid out.
+    const corners = [
+      apply(back, box.x, box.y),
+      apply(back, box.x + box.width, box.y),
+      apply(back, box.x, box.y + box.height),
+      apply(back, box.x + box.width, box.y + box.height),
+    ]
+    const coord = (name: string, fallback: number) => {
+      const value = attr(name)
+      const n = value === undefined ? NaN : value.endsWith('%') ? parseFloat(value) / 100 : parseFloat(value)
+      return Number.isFinite(n) ? n : fallback
+    }
+    const bands = gradientBands(stops)
+    const opaque = stops.every(stop => stop.paint.opacity >= 1)
+    const shapes: { d: string; paint: Paint; rule: 'nonzero' | 'evenodd' }[] = []
+    if (el.name === 'linearGradient') {
+      const x1 = coord('x1', bounding ? 0 : box.x)
+      const y1 = coord('y1', bounding ? 0 : box.y)
+      const x2 = coord('x2', bounding ? 1 : box.x + box.width)
+      const y2 = coord('y2', bounding ? 0 : box.y)
+      const vx = x2 - x1
+      const vy = y2 - y1
+      const length2 = vx * vx + vy * vy
+      if (!(length2 > 0)) return false
+      // Each corner's place along the vector (t) and across it (s), in the vector's lengths.
+      const ts = corners.map(([x, y]) => ((x - x1) * vx + (y - y1) * vy) / length2)
+      const ss = corners.map(([x, y]) => ((y - y1) * vx - (x - x1) * vy) / length2)
+      const tMin = Math.min(0, ...ts) - 0.01
+      const tMax = Math.max(1, ...ts) + 0.01
+      const sMin = Math.min(...ss) - 0.01
+      const sMax = Math.max(...ss) + 0.01
+      const at = (t: number, s: number) => `${fmt(x1 + t * vx - s * vy)} ${fmt(y1 + t * vy + s * vx)}`
+      bands.forEach((band, k) => {
+        const from = k === 0 ? tMin : band.from
+        const to = opaque || k === bands.length - 1 ? tMax : band.to
+        shapes.push({ d: `M${at(from, sMin)}L${at(to, sMin)}L${at(to, sMax)}L${at(from, sMax)}Z`, paint: band.paint, rule: 'nonzero' })
+      })
+    } else {
+      const cx = coord('cx', bounding ? 0.5 : box.x + box.width / 2)
+      const cy = coord('cy', bounding ? 0.5 : box.y + box.height / 2)
+      const r = coord('r', bounding ? 0.5 : Math.hypot(box.width, box.height) / 2)
+      const fx = coord('fx', cx)
+      const fy = coord('fy', cy)
+      if (!(r > 0)) return false
+      // The circle at t: centred from the focus (0) to the centre (1), its radius t r.
+      const circle = (t: number) => {
+        const x = fx + t * (cx - fx)
+        const y = fy + t * (cy - fy)
+        const rt = Math.max(t * r, 1e-6)
+        return `M${fmt(x + rt)} ${fmt(y)}A${fmt(rt)} ${fmt(rt)} 0 1 1 ${fmt(x - rt)} ${fmt(y)}A${fmt(rt)} ${fmt(rt)} 0 1 1 ${fmt(x + rt)} ${fmt(y)}Z`
+      }
+      const xs = [...corners.map(([x]) => x), cx - r, cx + r]
+      const ys = [...corners.map(([, y]) => y), cy - r, cy + r]
+      const x0 = Math.min(...xs) - 0.01
+      const x1 = Math.max(...xs) + 0.01
+      const y0 = Math.min(...ys) - 0.01
+      const y1 = Math.max(...ys) + 0.01
+      const outside = `M${fmt(x0)} ${fmt(y0)}H${fmt(x1)}V${fmt(y1)}H${fmt(x0)}Z`
+      const last = bands[bands.length - 1]!.paint
+      if (opaque) {
+        // The pad past the rim, then each disc from the outermost in.
+        shapes.push({ d: outside, paint: last, rule: 'nonzero' })
+        for (let k = bands.length - 1; k >= 0; k--) shapes.push({ d: circle(bands[k]!.to), paint: bands[k]!.paint, rule: 'nonzero' })
+      } else {
+        shapes.push({ d: outside + circle(1), paint: last, rule: 'evenodd' })
+        for (const band of bands) shapes.push({ d: band.from > 0 ? circle(band.to) + circle(band.from) : circle(band.to), paint: band.paint, rule: 'evenodd' })
+      }
+    }
+    const clip = shapeClip(d, ctm, style.fillRule, style.clip)
+    const transform = multiply(toEm, multiply(ctm, space))
+    for (const shape of shapes) push({ type: 'fill', d: shape.d, transform, rule: shape.rule, paint: { color: shape.paint.color, opacity: shape.paint.opacity * opacity }, clip })
+    return true
+  }
+
+  /**
+   * A pattern as copies of its tile over the shape (every tile the shape's box
+   * reaches, in the pattern's own space), clipped to the shape; false for a
+   * tile too fine to draw within MAX_PATTERN_OPS (it is then a tint).
+   */
+  const patternFill = (el: XmlElement, d: string, ctm: Matrix, style: Style, opacity: number): boolean => {
+    const content = patternContent(el, ids)
+    const box = pathBox(d)
+    if (content.length === 0 || !box || patternDepth > 0) return false
+    const attr = (name: string) => inheritedAttr(el, name, ids)
+    if (attr('viewBox') !== undefined) return false
+    const number = (name: string) => {
+      const value = attr(name)
+      const n = value === undefined ? 0 : value.endsWith('%') ? parseFloat(value) / 100 : parseFloat(value)
+      return Number.isFinite(n) ? n : 0
+    }
+    let x = number('x')
+    let y = number('y')
+    let w = number('width')
+    let h = number('height')
+    if ((attr('patternUnits') ?? 'objectBoundingBox') !== 'userSpaceOnUse') {
+      x = box.x + x * box.width
+      y = box.y + y * box.height
+      w *= box.width
+      h *= box.height
+    }
+    if (!(w > 0 && h > 0)) return false
+    const tileSpace = transformOf(attr('patternTransform'))
+    const back = invert(tileSpace)
+    if (!back) return false
+    const corners = [apply(back, box.x, box.y), apply(back, box.x + box.width, box.y), apply(back, box.x, box.y + box.height), apply(back, box.x + box.width, box.y + box.height)]
+    // A tile's drawing may reach past its tile (pgf centres some on the tile's corner): one more tile all round.
+    const i0 = Math.floor((Math.min(...corners.map(([cx]) => cx)) - x) / w) - 1
+    const i1 = Math.ceil((Math.max(...corners.map(([cx]) => cx)) - x) / w) + 1
+    const j0 = Math.floor((Math.min(...corners.map(([, cy]) => cy)) - y) / h) - 1
+    const j1 = Math.ceil((Math.max(...corners.map(([, cy]) => cy)) - y) / h) + 1
+    const perTile = shapesIn(content, ids)
+    const total = (i1 - i0 + 1) * (j1 - j0 + 1) * perTile
+    if (!(perTile > 0) || !(total <= MAX_PATTERN_OPS) || ops.length + total > MAX_PICTURE_OPS / 2) return false
+    const contentUnits: Matrix = attr('patternContentUnits') === 'objectBoundingBox' ? [box.width, 0, 0, box.height, 0, 0] : IDENTITY
+    // The tile's drawing inherits from the pattern, not from the shape it fills.
+    const inherited: Style = { ...styleOf(el, INITIAL), clip: shapeClip(d, ctm, style.fillRule, style.clip), opacity }
+    const frames: Frame[] = []
+    for (let j = j1; j >= j0; j--) {
+      for (let i = i1; i >= i0; i--) {
+        const m = multiply(ctm, multiply(tileSpace, multiply([1, 0, 0, 1, x + i * w, y + j * h], contentUnits)))
+        for (let k = content.length - 1; k >= 0; k--) frames.push({ el: content[k]!, ctm: m, inherited, root: false, glyph: false, uses: 0 })
+      }
+    }
+    patternDepth++
+    try {
+      walk(frames)
+    } finally {
+      patternDepth--
+    }
+    return true
+  }
+
   // Depth first, in document order, with a stack of its own: dvisvgm nests a group per pgfplots patch (thousands deep).
   interface Frame {
     el: XmlElement
@@ -206,46 +390,48 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
     /** How many `use` elements led here. */
     uses: number
   }
-  const stack: Frame[] = [{ el: root, ctm: IDENTITY, inherited: { ...INITIAL }, root: true, glyph: false, uses: 0 }]
   let visits = 0
-  while (stack.length > 0) {
-    const { el, ctm, inherited, root: isRoot, glyph, uses } = stack.pop()!
-    if (++visits > MAX_VISITS) throw new SvgError('picture too complex')
-    if (SKIPPED.has(el.name)) continue
-    if (REFUSED.has(el.name) && !isRoot) throw new SvgError(`<${el.name}> is not drawn`)
-    if (declared(el, 'display') === 'none') continue
-    const m = el.name === 'svg' ? ctm : multiply(ctm, transformOf(el.attrs.transform))
-    const style = styleOf(el, inherited)
-    const clipRef = urlOf(declared(el, 'clip-path'))
-    if (clipRef !== undefined) style.clip = clipFor(clipRef, m, inherited.clip)
-    if (declared(el, 'mask') !== undefined && declared(el, 'mask') !== 'none') throw new SvgError('masks are not drawn')
-    const hidden = declared(el, 'visibility') === 'hidden'
-    switch (el.name) {
-      case 'svg':
-      case 'g':
-      case 'a':
-      case 'switch':
-        // Pushed last child first: the first is drawn first.
-        for (let k = el.children.length - 1; k >= 0; k--) stack.push({ el: el.children[k]!, ctm: m, inherited: style, root: false, glyph, uses })
-        continue
-      case 'use': {
-        const id = hrefOf(el)
-        const target = id === undefined ? undefined : ids.get(id)
-        if (!target || target === el) continue
-        if (uses >= MAX_USE_DEPTH || useDepth(el, ids) > MAX_USE_DEPTH) throw new SvgError('use nested too deep')
-        // A glyph: dvisvgm puts each character's outline in <defs> and draws it with <use>.
-        const isGlyph = target.name === 'path' && /^g\d*-/.test(id ?? '')
-        stack.push({ el: target.name === 'symbol' ? { ...target, name: 'g' } : target, ctm: multiply(m, translation(el)), inherited: style, root: false, glyph: glyph || isGlyph, uses: uses + 1 })
-        continue
-      }
-      default: {
-        const d = shapePath(el)
-        if (d === undefined || hidden) continue
-        // A line has no inside to fill.
-        draw(d, m, style, glyph, el.name !== 'line')
+  const walk = (stack: Frame[]) => {
+    while (stack.length > 0) {
+      const { el, ctm, inherited, root: isRoot, glyph, uses } = stack.pop()!
+      if (++visits > MAX_VISITS) throw new SvgError('picture too complex')
+      if (SKIPPED.has(el.name)) continue
+      if (REFUSED.has(el.name) && !isRoot) throw new SvgError(`<${el.name}> is not drawn`)
+      if (declared(el, 'display') === 'none') continue
+      const m = el.name === 'svg' ? ctm : multiply(ctm, transformOf(el.attrs.transform))
+      const style = styleOf(el, inherited)
+      const clipRef = urlOf(declared(el, 'clip-path'))
+      if (clipRef !== undefined) style.clip = clipFor(clipRef, m, inherited.clip)
+      if (declared(el, 'mask') !== undefined && declared(el, 'mask') !== 'none') throw new SvgError('masks are not drawn')
+      const hidden = declared(el, 'visibility') === 'hidden'
+      switch (el.name) {
+        case 'svg':
+        case 'g':
+        case 'a':
+        case 'switch':
+          // Pushed last child first: the first is drawn first.
+          for (let k = el.children.length - 1; k >= 0; k--) stack.push({ el: el.children[k]!, ctm: m, inherited: style, root: false, glyph, uses })
+          continue
+        case 'use': {
+          const id = hrefOf(el)
+          const target = id === undefined ? undefined : ids.get(id)
+          if (!target || target === el) continue
+          if (uses >= MAX_USE_DEPTH || useDepth(el, ids) > MAX_USE_DEPTH) throw new SvgError('use nested too deep')
+          // A glyph: dvisvgm puts each character's outline in <defs> and draws it with <use>.
+          const isGlyph = target.name === 'path' && /^g\d*-/.test(id ?? '')
+          stack.push({ el: target.name === 'symbol' ? { ...target, name: 'g' } : target, ctm: multiply(m, translation(el)), inherited: style, root: false, glyph: glyph || isGlyph, uses: uses + 1 })
+          continue
+        }
+        default: {
+          const d = shapePath(el)
+          if (d === undefined || hidden) continue
+          // A line has no inside to fill.
+          draw(d, m, style, glyph, el.name !== 'line')
+        }
       }
     }
   }
+  walk([{ el: root, ctm: IDENTITY, inherited: { ...INITIAL }, root: true, glyph: false, uses: 0 }])
 
   const height = (baselineY - box.y) * s
   const depth = (box.y + box.height - baselineY) * s
@@ -451,6 +637,100 @@ function firstColor(el: XmlElement, current: RGB): RGB | undefined {
   return undefined
 }
 
+/** A gradient's or pattern's attribute, or the one it inherits through its href chain. */
+function inheritedAttr(el: XmlElement, name: string, ids: ReadonlyMap<string, XmlElement>): string | undefined {
+  let at: XmlElement | undefined = el
+  for (let depth = 0; at && depth <= MAX_USE_DEPTH; depth++) {
+    const value = at.attrs[name]
+    if (value !== undefined) return value.trim()
+    at = ids.get(hrefOf(at) ?? '')
+  }
+  return undefined
+}
+
+/** A pattern's tile drawing: the children of the first pattern in its href chain that has any. */
+function patternContent(el: XmlElement, ids: ReadonlyMap<string, XmlElement>): XmlElement[] {
+  let at: XmlElement | undefined = el
+  for (let depth = 0; at && depth <= MAX_USE_DEPTH; depth++) {
+    if (at.children.length > 0) return at.children
+    at = ids.get(hrefOf(at) ?? '')
+  }
+  return []
+}
+
+/** How many shapes drawing these elements paints (through `use`), up to 1000. */
+function shapesIn(nodes: readonly XmlElement[], ids: ReadonlyMap<string, XmlElement>, depth = 0): number {
+  if (depth > MAX_USE_DEPTH) return 1000
+  let n = 0
+  for (const node of nodes) {
+    if (SKIPPED.has(node.name)) continue
+    if (node.name === 'use') {
+      const target = ids.get(hrefOf(node) ?? '')
+      if (target) n += target.name === 'g' || target.name === 'symbol' ? shapesIn(target.children, ids, depth + 1) : shapesIn([target], ids, depth + 1)
+    } else if (shapePath(node) !== undefined) n += 2
+    else n += shapesIn(node.children, ids, depth + 1)
+    if (n >= 1000) return 1000
+  }
+  return n
+}
+
+/** The bands a gradient is drawn in: cut at every stop and at GRADIENT_BANDS even steps, each its middle's colour; neighbours of one colour merged. */
+function gradientBands(stops: readonly { offset: number; paint: Paint }[]): { from: number; to: number; paint: Paint }[] {
+  const cuts = [...new Set([0, 1, ...stops.map(stop => stop.offset), ...Array.from({ length: GRADIENT_BANDS }, (_, k) => k / GRADIENT_BANDS)])].sort((a, b) => a - b)
+  const bands: { from: number; to: number; paint: Paint }[] = []
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const from = cuts[k]!
+    const to = cuts[k + 1]!
+    if (!(to > from)) continue
+    const paint = colorAt(stops, (from + to) / 2)
+    const before = bands[bands.length - 1]
+    if (before && sameRgb(before.paint.color, paint.color) && Math.abs(before.paint.opacity - paint.opacity) < 0.002) before.to = to
+    else bands.push({ from, to, paint })
+  }
+  return bands
+}
+
+/** A gradient's colour at t (0 to 1): its stops' interpolated, padded past the first and the last. */
+function colorAt(stops: readonly { offset: number; paint: Paint }[], t: number): Paint {
+  // Stops never step back (SVG: an offset below the one before is that one).
+  let previous = stops[0]!
+  if (t <= previous.offset) return previous.paint
+  for (const stop of stops.slice(1)) {
+    const offset = Math.max(stop.offset, previous.offset)
+    if (t <= offset) {
+      const f = offset > previous.offset ? (t - previous.offset) / (offset - previous.offset) : 1
+      const mix = (a: number, b: number) => Math.round(a + (b - a) * f)
+      const a = previous.paint
+      const b = stop.paint
+      return { color: { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b) }, opacity: a.opacity + (b.opacity - a.opacity) * f }
+    }
+    previous = { offset, paint: stop.paint }
+  }
+  return previous.paint
+}
+
+const sameRgb = (a: RGB, b: RGB) => a.r === b.r && a.g === b.g && a.b === b.b
+
+/** A path's bounding box in its own units (its curves flattened finely), or undefined when it has no extent. */
+function pathBox(d: string): { x: number; y: number; width: number; height: number } | undefined {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const subpath of flattenSubpaths(d, IDENTITY, 0.01)) {
+    const p = subpath.points
+    for (let i = 0; i + 1 < p.length; i += 2) {
+      if (p[i]! < x0) x0 = p[i]!
+      if (p[i]! > x1) x1 = p[i]!
+      if (p[i + 1]! < y0) y0 = p[i + 1]!
+      if (p[i + 1]! > y1) y1 = p[i + 1]!
+    }
+  }
+  return x1 >= x0 && y1 >= y0 && Number.isFinite(x1 - x0 + y1 - y0) ? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } : undefined
+}
+
+/** A number for path data: five decimals, no exponent. */
+function fmt(v: number): string {
+  return (Math.round(v * 100_000) / 100_000).toFixed(5).replace(/\.?0+$/, '')
+}
+
 /** A shape element's outline as path data, or undefined for an element that has none. */
 function shapePath(el: XmlElement): string | undefined {
   const a = el.attrs
@@ -552,6 +832,18 @@ function single(kind: string, args: number[]): Matrix {
     default:
       return IDENTITY
   }
+}
+
+/** The matrix undoing m, or undefined when m flattens the plane. */
+function invert(m: Matrix): Matrix | undefined {
+  const [a, b, c, d, e, f] = m
+  const det = a * d - b * c
+  if (!(Math.abs(det) > 1e-12)) return undefined
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det]
+}
+
+function apply(m: Matrix, x: number, y: number): [number, number] {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
 }
 
 // ─── Colours ─────────────────────────────────────────────────────────────────
