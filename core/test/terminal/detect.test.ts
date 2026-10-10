@@ -45,4 +45,15 @@ describe('detectTerminal', () => {
     // WezTerm started from kitty.
     expect(detectTerminal({ KITTY_WINDOW_ID: '1', ...WEZTERM }).kind).toBe('wezterm')
   })
+
+  test("Terminal.app and VS Code name themselves in TERM_PROGRAM: a kitty's or Ghostty's inherited markers don't make them one", () => {
+    // Terminal.app opened with `open -a Terminal` from a kitty shell (measured on macOS 26: it inherits that shell's variables).
+    const terminalApp = { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '470.2', TERM_SESSION_ID: 'w0t0p0:X' }
+    expect(detectTerminal({ KITTY_WINDOW_ID: '1', KITTY_PID: '90110', ...terminalApp })).toEqual({ kind: 'other', images: false, multiplexed: false })
+    // VS Code started from a Ghostty or kitty shell (`code .`).
+    expect(detectTerminal({ GHOSTTY_RESOURCES_DIR: '/r', GHOSTTY_BIN_DIR: '/b', TERM: 'xterm-256color', TERM_PROGRAM: 'vscode' }).kind).toBe('other')
+    expect(detectTerminal({ KITTY_WINDOW_ID: '1', TERM: 'xterm-256color', TERM_PROGRAM: 'vscode' }).images).toBe(false)
+    // Their own TERM still wins: kitty or Ghostty started from them.
+    expect(detectTerminal({ ...terminalApp, ...KITTY }).kind).toBe('kitty')
+  })
 })

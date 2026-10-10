@@ -44,6 +44,9 @@ function detectKind(env: Env): TerminalKind {
     case 'iTerm.app':
       return 'iterm2'
   }
+  // Terminals without kitty graphics that name themselves: the markers below would be inherited (Terminal.app
+  // opened with `open -a Terminal` from a kitty shell gets that shell's variables; so does VS Code started from one).
+  if (env.TERM_PROGRAM !== undefined && OTHER_PROGRAMS.has(env.TERM_PROGRAM)) return 'other'
   if (term === 'wezterm') return 'wezterm'
   if (env.LC_TERMINAL === 'iTerm2') return 'iterm2'
   if (isSet(env.KITTY_WINDOW_ID) || isSet(env.KITTY_PID)) return 'kitty'
@@ -52,6 +55,9 @@ function detectKind(env: Env): TerminalKind {
   if (isSet(env.ITERM_SESSION_ID)) return 'iterm2'
   return 'other'
 }
+
+/** TERM_PROGRAM values of terminals that are none of kittex's kinds (they set it themselves, so it beats inherited markers). */
+const OTHER_PROGRAMS = new Set(['Apple_Terminal', 'vscode', 'WarpTerminal', 'Hyper', 'Tabby'])
 
 function detectMultiplexer(env: Env): TerminalInfo['multiplexer'] {
   const term = env.TERM ?? ''
