@@ -256,6 +256,31 @@ describe('the probes', () => {
     expect(runs.some(argv => argv[0] === 'bwrap' || argv[0] === 'prlimit')).toBe(false)
   })
 
+  test("macOS: MacTeX's /Library/TeX/texbin is looked in when PATH lacks it (a terminal from the Dock, a shell that resets PATH)", async () => {
+    const { host: base, runs } = fakeHost({ libgs: true })
+    const TEXBIN = '/Library/TeX/texbin'
+    const tex = ['latex', 'dvisvgm', 'kpsewhich', 'tlmgr']
+    // TeX is only in texbin: a command finds it only on a PATH that holds it (as $.process.run looks a command up).
+    const host: DoctorHost = {
+      ...base,
+      run: async (argv, init) => {
+        if (tex.includes(argv[0]!) && !(init.env?.PATH ?? ENV.PATH).split(':').includes(TEXBIN)) throw new Error('ENOENT: Executable not found in $PATH')
+        return base.run(argv, init)
+      },
+      exists: async path => (path.startsWith(`${TEXBIN}/`) ? tex.includes(path.split('/').pop()!) : path.startsWith('/usr/bin/') ? false : base.exists(path)),
+    }
+    const facts = await probe(host, MACOS)
+    expect(facts.latex).toEqual({ path: `${TEXBIN}/latex`, version: LATEX_VERSION })
+    expect(facts.dvisvgm).toEqual({ path: `${TEXBIN}/dvisvgm`, version: DVISVGM_VERSION })
+    expect(facts.kpsewhich.path).toBe(`${TEXBIN}/kpsewhich`)
+    expect(facts.files?.every(file => file.path)).toBe(true)
+    expect(facts.trial).toMatchObject({ ok: true })
+    expect(runs.some(argv => argv[0] === 'latex' && argv.includes('-jobname=kittex'))).toBe(true)
+    // Linux has no such folder: PATH as it is.
+    const linux = await probe(host, ARCH)
+    expect(linux.latex).toEqual({})
+  })
+
   test('Local LaTeX off: TeX is looked for, never run', async () => {
     const { host, runs } = fakeHost({ libgs: true })
     const facts = await probe(host, ARCH, 'off')

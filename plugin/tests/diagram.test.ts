@@ -26,7 +26,7 @@ import {
 } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { createLineScanner } from '../hooks/core.js'
-import { diagramJob, dvisvgmCommand, hiddenDirs, prepareFormat, probeTex, rememberedTex, takesLibgs, texBook, texCacheDir, texResult } from '../hooks/tex.ts'
+import { diagramJob, dvisvgmCommand, hiddenDirs, onPath, prepareFormat, probeTex, rememberedTex, takesLibgs, texBook, texCacheDir, texPath, texResult } from '../hooks/tex.ts'
 import { fitPictures } from '../hooks/budget.ts'
 import { diagramDocument, formatName } from '../hooks/core.js'
 import type { TexHost, TexSetup } from '../hooks/tex.ts'
@@ -386,6 +386,27 @@ describe('the TeX book', () => {
     expect(full?.confinement).toEqual({ prlimit: true, bwrap: { hide: ['/home/u', '/tmp'] } })
     const bare = await probeTex(answering(['prlimit', 'bwrap']), { tmpdir: '/tmp', hide: ['/home/u'] })
     expect(bare?.confinement).toEqual({ prlimit: false })
+  })
+
+  test("macOS: TeX's commands run with MacTeX's /Library/TeX/texbin on PATH, after the host's own folders", async () => {
+    expect(texPath('/usr/bin:/bin', 'darwin')).toBe('/usr/bin:/bin:/Library/TeX/texbin')
+    expect(texPath(undefined, 'darwin')).toBe('/usr/bin:/bin:/usr/sbin:/sbin:/Library/TeX/texbin')
+    expect(texPath('/Library/TeX/texbin:/usr/bin', 'darwin')).toBeUndefined()
+    expect(texPath('/usr/bin/', 'linux')).toBeUndefined()
+    expect(texPath('/usr/bin', undefined)).toBeUndefined()
+    const seen: (Record<string, string> | undefined)[] = []
+    const host: TexHost = {
+      run: async (_argv, init) => (seen.push(init.env), { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false }),
+      write: async () => undefined,
+      read: async () => undefined,
+    }
+    const mac = onPath(host, texPath('/usr/bin', 'darwin'))
+    await mac.run(['latex', '--version'], { timeoutMs: 1 })
+    await mac.run(['latex'], { env: { HOME: '/x' }, timeoutMs: 1 })
+    // A command's own PATH (bubblewrap's, on Linux) wins.
+    await mac.run(['latex'], { env: { PATH: '/jail' }, timeoutMs: 1 })
+    expect(seen).toEqual([{ PATH: '/usr/bin:/Library/TeX/texbin' }, { PATH: '/usr/bin:/Library/TeX/texbin', HOME: '/x' }, { PATH: '/jail' }])
+    expect(onPath(host, undefined)).toBe(host)
   })
 
   test("a dvisvgm without --libgs (Arch's, Debian's, Fedora's builds refuse it) runs without the option", async () => {

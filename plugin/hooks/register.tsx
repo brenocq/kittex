@@ -98,7 +98,7 @@ import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texResult } from './tex.ts'
+import { diagramJob, hiddenDirs, mathJob, onPath, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
@@ -1759,7 +1759,7 @@ async function withTex(stream: MessageStream, first: StreamRewrite, env: StreamE
 
 /** Finds the local TeX with session.start's `$` and gives texBook its host (a compile may outlive the dispatch that asked for it). */
 async function setUpTex($: $): Promise<void> {
-  const host: TexHost = {
+  const given: TexHost = {
     run: (argv, init) => $.process.run(argv, init),
     write: (path, text) => $.fs.write(path, text),
     // A missing file is no error (a cache miss): asked first, so the engine logs no failed read.
@@ -1767,7 +1767,11 @@ async function setUpTex($: $): Promise<void> {
     readBytes: path => readBytes($, path),
   }
   try {
-    const [tmpdir, cacheHome, path] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME'), $.env.get('PATH')])
+    const [tmpdir, cacheHome, hostPath] = await Promise.all([$.env.get('TMPDIR'), $.env.get('XDG_CACHE_HOME'), $.env.get('PATH')])
+    // On macOS, MacTeX's folder too, where PATH lacks it (a terminal started from the Dock).
+    const texPATH = texPath(hostPath, platform)
+    const path = texPATH ?? hostPath
+    const host = onPath(given, texPATH)
     const home = processEnv.HOME
     const cacheDir = texCacheDir({ XDG_CACHE_HOME: cacheHome, HOME: home })
     const setup = await probeTex(host, { tmpdir, hide: hiddenDirs(home, tmpdir), ...(cacheDir !== undefined ? { cacheDir } : {}), ...(path !== undefined ? { path } : {}) })

@@ -11,7 +11,7 @@
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
 import { diagramDocument, formatName } from './core.js'
-import { compileTrial, probeSandbox, runsPostScript, takesLibgs, texCacheDir } from './tex.ts'
+import { compileTrial, onPath, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
 import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
 
@@ -397,7 +397,10 @@ export async function which(host: Pick<DoctorHost, 'exists'>, name: string, path
  * dvisvgm answer, the trial picture. The commands run at once; only the
  * trial waits for them. TeX never sees anything but TRIAL_PICTURE.
  */
-export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promise<DiagramFacts> {
+export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promise<DiagramFacts> {
+  // On macOS, MacTeX's folder too (as the session's TeX finds it: texPath).
+  const texPATH = texPath(input.env.PATH, input.os.platform)
+  const host = onPath(given, texPATH)
   const run = (argv: readonly string[], timeoutMs = DOCTOR_PROBE_MS) =>
     host.run(argv, { timeoutMs }).then(
       result => result,
@@ -410,7 +413,7 @@ export async function probeDiagrams(host: DoctorHost, input: ProbeInput): Promis
     return { path, ...(line ? { version: line } : {}) }
   }
   const linux = input.os.platform !== 'darwin'
-  const PATH = input.env.PATH
+  const PATH = texPATH ?? input.env.PATH
   const [latexAt, dvisvgmAt, kpsewhichAt, tlmgrAt, bwrapAt, prlimitAt] = await Promise.all(
     ['latex', 'dvisvgm', 'kpsewhich', 'tlmgr', 'bwrap', 'prlimit'].map(name => (linux || (name !== 'bwrap' && name !== 'prlimit') ? which(host, name, PATH) : Promise.resolve(undefined))),
   )
