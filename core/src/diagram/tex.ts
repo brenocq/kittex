@@ -491,15 +491,18 @@ export function texError(log: string, offset = 0): string {
   // A LaTeX or package error's own prefix says little the message doesn't.
   message = message.replace(/^(?:LaTeX|Package \S+|Class \S+) Error:\s*/, '')
   let line: number | undefined
+  // The undefined command ends TeX's first context line: the source line's (`l.N …`), or a macro argument's
+  // (`<argument> \lewis`) when it was read inside one, where the source line ends with the outer command instead.
+  if (/^Undefined control sequence$/.test(message)) {
+    const first = (lines[at + 1] ?? '').replace(/^l\.\d+ /, '')
+    const token = /(\\[A-Za-z@]+|\\.)\s*$/.exec(first)?.[1]
+    if (token) message += ` ${token}`
+  }
   for (const next of lines.slice(at + 1, at + 12)) {
     const context = /^l\.(\d+) (.*)$/.exec(next)
     if (context) {
       const n = Number(context[1]) - offset
       if (n >= 1) line = n
-      if (/^Undefined control sequence$/.test(message)) {
-        const token = /(\\[A-Za-z@]+|\\.)\s*$/.exec(context[2]!)?.[1]
-        if (token) message += ` ${token}`
-      }
       break
     }
   }

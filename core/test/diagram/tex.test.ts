@@ -167,6 +167,13 @@ describe('TeX errors', () => {
     expect(texError(log, 4)).toBe('Undefined control sequence \\foo (line 3)')
   })
 
+  // Opus wrote chemfig's long-gone \lewis inside \chemfig{...}: TeX names it on its first context line (the macro
+  // argument it was reading), and the note named \chemfig, the last command on the source line, instead.
+  test('an undefined command inside an argument is named as TeX names it, not the line’s last command', () => {
+    const log = '! Undefined control sequence.\n<argument> \\lewis \n                  {0:,HO}{}^{\\ominus }\nl.20   \\chemfig\n              {HO-C(-[2]H)(-[6]H)(<:[:30]CH_3)}^^M\n'
+    expect(texError(log, 14)).toBe('Undefined control sequence \\lewis (line 6)')
+  })
+
   test("a package's error keeps its message, without its prefix", () => {
     const log = "! Package pgfkeys Error: I do not know the key '/tikz/foo', to which you passed 'bar', and I am going to ignore it. Perhaps you misspelled it.\n\nSee the pgfkeys package documentation for explanation.\nType  H <return>  for immediate help.\n ...\n\nl.14 \\draw[foo=bar] (0,0) -- (1,1);\n"
     expect(texError(log, 12)).toBe("I do not know the key '/tikz/foo', to which you passed 'bar', and I am going to ignore it. Perhaps you misspelled it (line 2)")
