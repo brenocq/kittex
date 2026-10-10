@@ -230,6 +230,39 @@ describe('diagrams landing', () => {
     expect(plan.pieces.map(piece => (piece.kind === 'prose' ? piece.text : '')).join('')).toContain(records[0]!.preview)
   })
 
+  test('a picture narrower than its label hides it: no letter of the placeholder shows beside the image', async () => {
+    // A tall chain (\chemfig{A-[2]B-[2]...}) is drawn two cells wide: its
+    // `· molecule ·` label stuck out on both sides of the image (kitty, 7×13 cells).
+    await init()
+    const TALL = `<?xml version='1.0'?><svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 200'><path d='M2 0V200' stroke='#000' stroke-width='1' fill='none'/></svg>`
+    const fake = fakeTex('ok', TALL)
+    texBook.reset(fake.host, fake.setup)
+    const { landed, records } = await streamed([`Look:\n\n${FENCE}\n`, '\nDone.\n'])
+    const env = kittyEnv()
+    const pictureEnv = pictureEnvFor(env)
+    const plan = planLanded(landed, records, {
+      maxColumns: renderEnvFor(env).maxColumns,
+      draw: () => {
+        throw new Error('no math here')
+      },
+      diagram: (source, kind, rows) => {
+        const job = diagramJob(source, kind)
+        const outcome = job && 'document' in job ? texBook.known(job.document) : undefined
+        return outcome?.ok ? renderPicture(outcome.picture, pictureEnv, rows) : null
+      },
+    })
+    const [overlay] = plan.pieces.flatMap(piece => (piece.kind === 'prose' ? (piece.inline ?? []) : []))
+    expect(overlay!.image.columns).toBeLessThan('· diagram ·'.length)
+    // Every visible character of the placeholder lies under the image's cells.
+    for (const line of lines(records[0]!.preview)) {
+      const cells = [...line.replaceAll('&nbsp;', ' ').replaceAll('͏', '')]
+      for (const [col, char] of cells.entries()) {
+        if (char === ' ' || char === '⠀') continue
+        expect(col >= overlay!.col && col < overlay!.col + overlay!.image.columns, `'${char}' at column ${col}`).toBe(true)
+      }
+    }
+  })
+
   test('after --resume the block as written is drawn too; a refused one keeps its source and a note', async () => {
     await init()
     const fake = fakeTex()

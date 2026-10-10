@@ -2132,7 +2132,7 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     if (drawn === null) return writer.text(segment.raw)
     changed = true
     if ('error' in drawn) return void writer.block([...segment.raw.split('\n'), '', put({ kind: 'note', text: notRenderedText(drawn.error, maxColumns) })])
-    markBlock(diagramPlaceholder(diagramLabel(segment.tex), drawn.rows, maxColumns, segment.tex), { tex: segment.tex, columns: maxColumns, rows: drawn.rows, diagram: segment.diagram! })
+    markBlock(diagramPlaceholder(diagramLabel(segment.tex), drawn.rows, maxColumns, segment.tex, drawn.columns), { tex: segment.tex, columns: maxColumns, rows: drawn.rows, diagram: segment.diagram! })
   }
 
   // Prose between the previews found: a streamed block's is never scanned again, except where its stream gave up.
@@ -2889,28 +2889,34 @@ function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
   if (!outcome.ok) return failed(outcome.error)
   const pictureEnv = pictureEnvFor(env)
   let rows: number
+  let columns: number
   try {
-    rows = measurePicture(outcome.picture, pictureEnv).rows
+    ;({ rows, columns } = measurePicture(outcome.picture, pictureEnv))
   } catch (error) {
     if (!(error instanceof TexError)) throw error
     return failed(reasonOf(error))
   }
   // Its picture lies over the placeholder once landed: the text after it goes on in the same piece.
-  const preview = writer.block(diagramPlaceholder(job.label, rows, pictureEnv.maxColumns, segment.tex))
+  const preview = writer.block(diagramPlaceholder(job.label, rows, pictureEnv.maxColumns, segment.tex, columns))
   records.push({ preview, tex: segment.tex, rows, diagram: kind })
 }
 
 /**
  * A diagram's placeholder lines while it waits to land: `rows` rows, its
- * label in the middle one, centred in `maxColumns`. Its last row ends with a
+ * label in the middle one, centred in `maxColumns`. The picture, centred
+ * likewise, lies over it once landed: a picture `columns` wide that is
+ * narrower than the label gets a shorter one, or none, so no letter of it
+ * shows beside the image. Its last row ends with a
  * tag of its source (PLACEHOLDER_TAG blank cells, each followed by
  * INLINE_MARK or not, by the source's hash): two diagrams of the same size
  * would otherwise write the same placeholder, and a landed block finds each
  * preview by its text.
  */
-export function diagramPlaceholder(label: string, rows: number, maxColumns: number, source = ''): string[] {
+export function diagramPlaceholder(label: string, rows: number, maxColumns: number, source = '', columns = maxColumns): string[] {
   const lines = Array.from({ length: Math.max(1, rows) }, () => '')
-  lines[Math.floor((lines.length - 1) / 2)] = oneLine(`· ${label} ·`, previewColumns(maxColumns))
+  const room = Math.min(previewColumns(maxColumns), columns)
+  const word = [`· ${label} ·`, label].find(text => cellsOf(text) <= room) ?? ''
+  lines[Math.floor((lines.length - 1) / 2)] = word === '' ? '' : oneLine(word, previewColumns(maxColumns))
   const out = previewMarkdownLines(lines, maxColumns)
   let hash = 0x811c9dc5
   for (let i = 0; i < source.length; i++) hash = Math.imul(hash ^ source.charCodeAt(i), 0x01000193)
