@@ -642,9 +642,11 @@ export function formatDoctor(facts: DoctorFacts): string {
   } else if (elsewhere) {
     line(INFO, `the ${facts.surface} surface: kittex leaves replies to its own drawing here (images need kitty or Ghostty, in a terminal).`)
   } else if (t) {
-    const name = TERMINAL_NAMES[t.kind]
-    const program = t.program && t.program.toLowerCase() !== name.toLowerCase() ? (t.program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? t.program.slice(name.length + 1) : t.program) : undefined
-    const where = [program ? plain(program) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
+    // Terminal.app names itself only in TERM_PROGRAM.
+    const name = t.kind === 'other' && /^Apple_Terminal(?:\s|$)/.test(t.program ?? '') ? 'Terminal.app' : TERMINAL_NAMES[t.kind]
+    const program = t.program?.replace(/^Apple_Terminal(?=\s|$)/, 'Terminal.app')
+    const shown = program && program.toLowerCase() !== name.toLowerCase() ? (program.toLowerCase().startsWith(`${name.toLowerCase()} `) ? program.slice(name.length + 1) : program) : undefined
+    const where = [shown ? plain(shown) : t.kind === 'other' && t.term ? `TERM=${plain(t.term)}` : undefined, t.multiplexer ? `inside ${t.multiplexer}` : undefined, t.ssh ? 'over ssh' : undefined].filter(Boolean).join(', ')
     if (t.images) {
       line(OK, `${name}${where ? ` (${where})` : ''}: kitty graphics with Unicode placeholders`)
       const c = t.claude
@@ -655,7 +657,7 @@ export function formatDoctor(facts: DoctorFacts): string {
       } else if (c?.state === 'pending') line(INFO, `Claude Code hasn't asked the terminal about pictures yet${said}: run this again in a moment`)
       else if (c) line(INFO, "Claude Code's own check on pictures: known once kittex has drawn an image (run this again after a reply with math)")
     } else {
-      const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
+      const why = t.multiplexer ? `${t.multiplexer} doesn't pass kitty graphics through` : name === 'Terminal.app' ? 'Terminal.app has no kitty graphics' : t.kind === 'other' ? 'no kitty graphics detected' : `${name} has no kitty Unicode placeholders`
       line(NO, `${name}${where ? ` (${where})` : ''}: ${why}. kittex shows math as Unicode text instead; images work in kitty (0.28 or newer) and Ghostty${t.multiplexer ? `, outside ${t.multiplexer}` : ''}.`)
     }
     if (t.cell) line(t.cell.measured ? OK : NO, t.cell.measured ? `cell ${t.cell.width}×${t.cell.height} px, measured` : `cell not measured: drawing for ${t.cell.width}×${t.cell.height} px (perl or python3 reads the size from the terminal)`)
@@ -754,6 +756,7 @@ export function formatDoctor(facts: DoctorFacts): string {
   if (d.postscript) line(INFO, `this dvisvgm runs PostScript through its own Ghostscript, without -dSAFER, whatever it is told (3.5 to 3.6.1): kittex's pictures hold none; a document that rotates or scales ${d.bwrap?.usable ? 'runs inside bubblewrap' : 'is refused, as there is no sandbox'}`)
   if (d.format) {
     if (d.format.bytes !== undefined && d.format.bytes > 0) line(OK, `format: built, ${path(d.format.path)} (${bytes(d.format.bytes)})`)
+    else if (!d.drawn) line(INFO, 'format: not built (kittex dumps it only where it draws diagrams)')
     else line(INFO, `format: not built yet${d.files?.some(file => file.name === 'mylatexformat.ltx' && !file.path) ? ' (needs mylatexformat)' : ': kittex dumps it in the background once a session finds TeX'}`)
   }
   const trial = d.trial

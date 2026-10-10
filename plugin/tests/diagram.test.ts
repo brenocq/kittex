@@ -556,4 +556,15 @@ describe('instructions to the model', () => {
     expect(asked).not.toContain('latex')
     expect(asked).not.toContain('dvisvgm')
   })
+
+  test('a terminal kittex draws no images in (Terminal.app, iTerm2): TeX is never run, nor its format dumped', async ($, on) => {
+    const asked: string[][] = []
+    const answer = (argv: readonly string[]) => {
+      asked.push([...argv])
+      return { exitCode: 0, stdout: `${argv[0]} 1.0\n` }
+    }
+    await startSession($, on, { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal' }, 'dark', CELL, answer)
+    await $.prompt.compose(COMPOSE)
+    expect(asked.filter(argv => argv.some(arg => /^(latex|dvisvgm|kpsewhich)$/.test(arg)))).toEqual([])
+  })
 })

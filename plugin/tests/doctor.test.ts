@@ -461,6 +461,12 @@ describe('the report', () => {
     expect(tmux).toContain("– colours: text #ffffff (the Claude theme's default: the terminal's colours couldn't be read)")
     const wez = formatDoctor(facts(d, { terminal: { kind: 'wezterm', images: false, program: 'WezTerm 20240203', colors: 'theme' } }))
     expect(wez).toContain('✗ WezTerm (20240203): WezTerm has no kitty Unicode placeholders.')
+    // Terminal.app (TERM_PROGRAM Apple_Terminal) by its name.
+    const terminalApp = formatDoctor(facts(d, { os: MACOS, terminal: { kind: 'other', images: false, term: 'xterm-256color', program: 'Apple_Terminal 470.2', colors: 'theme' } }))
+    expect(terminalApp).toContain('✗ Terminal.app (470.2): Terminal.app has no kitty graphics. kittex shows math as Unicode text instead; images work in kitty (0.28 or newer) and Ghostty.')
+    // No session there dumps the format: not promised.
+    const unbuilt = formatDoctor(facts({ ...d, drawn: false, format: { path: '/home/u/.cache/kittex/tex/fmt/kittex-00000000.fmt' } }, { os: MACOS }))
+    expect(unbuilt).toContain('– format: not built (kittex dumps it only where it draws diagrams)')
     const desktop = formatDoctor(facts(d, { surface: 'desktop' }))
     expect(desktop).toContain('– the desktop surface: kittex leaves replies to its own drawing here')
   })

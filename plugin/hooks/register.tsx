@@ -295,7 +295,9 @@ export const register: Register = (on, options) => {
     // The first session keeps what renders before it read from TeX's cache (a resume's diagrams).
     if (sessions > 1) texBook.reset()
     texProbe = undefined
-    if (latex === 'auto' && math.block !== 'unicode') {
+    // Only where kittex draws images: elsewhere (Terminal.app, iTerm2) diagrams stay code, so TeX would never be shown.
+    const drawsImages = (await readEnv($).catch(() => null))?.images === true
+    if (latex === 'auto' && math.block !== 'unicode' && drawsImages) {
       redraw = () => $.ui.invalidate('ui.render')
       // Not awaited: a few short commands (each with its time limit) that settle meanwhile.
       texProbe = setUpTex($)
