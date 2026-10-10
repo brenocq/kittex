@@ -145,8 +145,20 @@ export const cellProbePython: Probe<CellSize> = {
   parse: parseWinsize,
 }
 
-/** Cell probes to try in order until one parses: perl, then python3. */
+/** Cell probes to try in order until one runs (cellProbeRan): perl, then python3. */
 export const cellProbes: readonly Probe<CellSize>[] = [cellProbe, cellProbePython]
+
+/**
+ * Whether a cell probe ran and answered, so the next one would say the same:
+ * the size (exit 0, pixels or none: a terminal that doesn't report them), or
+ * no terminal among its ancestors (exit 1). Only a probe that couldn't run
+ * (its interpreter missing or broken) calls for the next: macOS always has
+ * perl, and its python3 is a stub that, without the developer tools, opens a
+ * dialog offering to install them.
+ */
+export function cellProbeRan(exitCode: number, stdout: string): boolean {
+  return exitCode === 1 || (exitCode === 0 && /^\s*\d+\s+\d+\s+\d+\s+\d+\s*$/m.test(stdout))
+}
 
 /**
  * Pixels per em for math set next to text in cells of this size.

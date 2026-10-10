@@ -14,6 +14,7 @@
 import type { EngineInterface, FsEntry, MatchedHook, Register, RenderElement, Timer } from 'claude-code'
 
 import {
+  cellProbeRan,
   cellProbes,
   chooseInk,
   createLineScanner,
@@ -935,13 +936,13 @@ async function probeSystem($: $): Promise<string | undefined> {
   }
 }
 
-/** The cell size from the first cell probe that answers (perl, then python3). */
+/** The cell size from the first cell probe that runs (perl, then python3 where perl can't: cellProbeRan). */
 async function probeCell($: $): Promise<CellSize | undefined> {
   for (const probe of cellProbes) {
     try {
       const { exitCode, stdout } = await $.process.run(probe.argv, { timeoutMs: PROBE_TIMEOUT_MS })
       const cell = exitCode === 0 ? probe.parse(stdout) : undefined
-      if (cell) return cell
+      if (cell || cellProbeRan(exitCode, stdout)) return cell
     } catch {
       // the next probe
     }

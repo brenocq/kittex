@@ -7,6 +7,7 @@ import { kittyColorProbes, readKittyColors } from './kitty.js'
 export {
   cellProbe,
   cellProbePython,
+  cellProbeRan,
   cellProbes,
   emPxForCell,
   fontCell,

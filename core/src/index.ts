@@ -39,6 +39,7 @@ export {
 export type { Adapted, Confinement, DiagramLang, PaperColors, TexDocument } from './diagram/index.js'
 export {
   cellProbe,
+  cellProbeRan,
   cellProbes,
   chooseInk,
   claudeCustomThemePath,

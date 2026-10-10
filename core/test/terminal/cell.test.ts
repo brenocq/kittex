@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { cellProbe, cellProbePython, cellProbes, emPxForCell, fontCell, MATH_X_HEIGHT, mathEmPx, parseWinsize, textBaseline, textLayout, X_HEIGHT_RATIO } from '../../src/terminal/index.js'
+import { cellProbe, cellProbePython, cellProbeRan, cellProbes, emPxForCell, fontCell, MATH_X_HEIGHT, mathEmPx, parseWinsize, textBaseline, textLayout, X_HEIGHT_RATIO } from '../../src/terminal/index.js'
 import type { FontMetrics } from '../../src/terminal/index.js'
 import type { CellAdjust, KittyAdjust, Probe } from '../../src/types.js'
 
@@ -48,6 +48,18 @@ function run(probe: Probe<unknown>) {
   const result = spawnSync(probe.argv[0]!, probe.argv.slice(1), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 })
   return result.error ? undefined : { status: result.status, stdout: result.stdout }
 }
+
+describe('cellProbeRan: the next probe only where one could not run', () => {
+  test('an answer, with pixels or without, or no terminal at all, settles it', () => {
+    expect(cellProbeRan(0, '50 100 1300 1000\n')).toBe(true)
+    // A terminal that leaves the pixels 0: python3 would read the same zeros.
+    expect(cellProbeRan(0, '50 100 0 0\n')).toBe(true)
+    expect(cellProbeRan(1, '')).toBe(true)
+    // perl broken (no Fcntl, a syntax error: 255) or printing nothing: the next probe.
+    expect(cellProbeRan(255, '')).toBe(false)
+    expect(cellProbeRan(0, '')).toBe(false)
+  })
+})
 
 describe('the probes on this machine', () => {
   const perl = run(cellProbe)

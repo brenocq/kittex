@@ -201,3 +201,38 @@ describe('inline formulas', () => {
     expect(after).toMatchObject({ rows: 1, height: 18, width: after.columns * 9 })
   })
 })
+
+describe('the cell probe: python3 only where perl did not run', () => {
+  // macOS ships perl; its python3 is a stub that, without the developer tools, opens a dialog to install them.
+  test("perl answering without pixels (a terminal that doesn't report them): no python3 at setup or on a resize", async ($, on) => {
+    const clock = mock.clock(on)
+    const commands: string[] = []
+    await startSession($, on, { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal' }, 'dark', { cellWidth: 0, cellHeight: 0 }, argv => {
+      commands.push(argv[0]!)
+      return undefined
+    })
+    await init()
+    await mountAt($, COLUMNS + 20)
+    await clock.advance(RESIZE_SETTLE_MS)
+    expect(commands.filter(name => name === 'python3')).toEqual([])
+  })
+
+  test('perl missing: python3 measures the cells', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' })
+    const ran: string[] = []
+    on('process.run', ($, e) => {
+      ran.push(e.argv[0]!)
+      if (e.argv[0] === 'perl') return { deny: 'ENOENT: Executable not found in $PATH: "perl"' }
+      const stdout = e.argv[0] === 'python3' ? `50 ${COLUMNS} ${COLUMNS * 9} ${50 * 18}\n` : ''
+      return { value: { exitCode: e.argv[0] === 'python3' ? 0 : 1, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    on('config.list', () => ({ value: [] }) as never)
+    on('session.start', ($, e) => ({ cwd: e.cwd }))
+    on('prompt.compose', () => ({ sections: [] }))
+    on('ui.render', { component: 'AssistantMessage' }, ($, e) => ({ type: 'Text' as const, children: [e.props.text] }))
+    await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+    await init()
+    expect(ran).toContain('python3')
+    expect(await storedEnv($)).toEqual({ columns: COLUMNS, cellWidth: 9, cellHeight: 18 })
+  })
+})
