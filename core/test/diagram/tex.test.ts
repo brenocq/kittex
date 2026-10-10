@@ -34,6 +34,21 @@ describe('fences and environments', () => {
     expect(drawsPicture('\\usepackage{amsmath}', 'latex')).toBe(false)
     expect(drawsPicture('\\draw (0,0) -- (1,0);', 'tikz')).toBe(true)
   })
+
+  // Opus, asked for pgfplots and tikz-cd figures, opened each reply with the preamble they need: a document with
+  // nothing in it (comments at most), or no body at all. TeX makes no page of it, and the block landed with
+  // "dvisvgm: can't open file 'kittex.dvi'" under it. It is code to read, as a bare \usepackage line is.
+  test('a document that draws nothing (a preamble shown as code) stays code', () => {
+    const preamble = '\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{pgfplots}\n\\pgfplotsset{compat=1.18}\n'
+    expect(drawsPicture(`${preamble}\n\\begin{document}\n% ... figures below go here ...\n\\end{document}`, 'latex')).toBe(false)
+    expect(drawsPicture(`${preamble}\\begin{document}\n\n  %\n\\end{document}`, 'latex')).toBe(false)
+    expect(drawsPicture(preamble, 'latex')).toBe(false)
+    expect(drawsPicture(`${preamble}\\begin{document}\n\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\n\\end{document}`, 'latex')).toBe(true)
+    // A body that only typesets text still makes a page: drawn, as before.
+    expect(drawsPicture(`${preamble}\\begin{document}\n% the result\nHello\n\\end{document}`, 'latex')).toBe(true)
+    // \% is a percent sign, not a comment.
+    expect(drawsPicture(`${preamble}\\begin{document}\\%\\end{document}`, 'latex')).toBe(true)
+  })
 })
 
 describe('documents', () => {
@@ -150,6 +165,13 @@ describe('TeX errors', () => {
   test('an undefined control sequence names it and its line', () => {
     const log = 'No file x.aux.\n! Undefined control sequence.\nl.7 Hello \\foo\n               bar baz\nNo pages of output.'
     expect(texError(log, 4)).toBe('Undefined control sequence \\foo (line 3)')
+  })
+
+  // Opus wrote chemfig's long-gone \lewis inside \chemfig{...}: TeX names it on its first context line (the macro
+  // argument it was reading), and the note named \chemfig, the last command on the source line, instead.
+  test('an undefined command inside an argument is named as TeX names it, not the line’s last command', () => {
+    const log = '! Undefined control sequence.\n<argument> \\lewis \n                  {0:,HO}{}^{\\ominus }\nl.20   \\chemfig\n              {HO-C(-[2]H)(-[6]H)(<:[:30]CH_3)}^^M\n'
+    expect(texError(log, 14)).toBe('Undefined control sequence \\lewis (line 6)')
   })
 
   test("a package's error keeps its message, without its prefix", () => {

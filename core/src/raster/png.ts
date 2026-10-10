@@ -113,8 +113,31 @@ export function encodeQuantizedPng(rgba: Uint8Array, width: number, height: numb
       }
       return chosen
     }
+    // Solids: the most covered colours first (a colormap keeps its shades), then, in the slots left, each time
+    // the colour farthest from all chosen so far, so a hue of a small area (a thin shaded bar) has one near it;
+    // among the most covered colours (CANDIDATES at most) that make up all but COVER_TAIL of the solid pixels,
+    // so stray blends of a pixel or two don't take those slots.
+    const cover = (weights: Map<number, number>, most: number, apart: number) => {
+      const sorted = [...weights].sort((a, b) => b[1] - a[1]).slice(0, CANDIDATES)
+      const chosen = pick(new Map(sorted), most - FARTHEST_SLOTS, apart)
+      const total = sorted.reduce((sum, [, w]) => sum + w, 0)
+      let kept = 0
+      let sum = 0
+      while (kept < sorted.length && sum < total * (1 - COVER_TAIL)) sum += sorted[kept++]![1]
+      const candidates = sorted.slice(0, kept).map(([rgb]): [number, number, number] => [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255])
+      const gap = candidates.map(c => Math.min(Infinity, ...chosen.map(one => distance(one, c))))
+      while (chosen.length < most) {
+        let far = -1
+        for (let k = 0; k < candidates.length; k++) if (gap[k]! > apart && (far < 0 || gap[k]! > gap[far]!)) far = k
+        if (far < 0) break
+        const c = candidates[far]!
+        chosen.push(c)
+        for (let k = 0; k < candidates.length; k++) gap[k] = Math.min(gap[k]!, distance(c, candidates[k]!))
+      }
+      return chosen
+    }
     const inks = pick(weight, MAX_INKS, INK_DISTANCE)
-    const solids = pick(solidWeight, SOLID_COLOURS, SOLID_DISTANCE)
+    const solids = cover(solidWeight, SOLID_COLOURS, SOLID_DISTANCE)
     const levels = Math.min(MAX_LEVELS, Math.floor((255 - solids.length) / inks.length))
     plte = [0, 0, 0]
     trns = [0]
@@ -177,6 +200,12 @@ const INK_DISTANCE = 40 * 40
 const SOLID = 248
 const SOLID_COLOURS = 104
 const SOLID_DISTANCE = 6 * 6
+/** The solid colours, most covered first, the palette's solids are chosen from (the rest take their nearest). */
+const CANDIDATES = 4096
+/** The share of solid pixels, in the least covered colours, left out of the farthest-colour slots. */
+const COVER_TAIL = 0.005
+/** Solid colours chosen as the farthest from those before them (the rest by coverage). */
+const FARTHEST_SLOTS = 40
 
 function distance(a: readonly number[], b: readonly number[]): number {
   return (a[0]! - b[0]!) ** 2 + (a[1]! - b[1]!) ** 2 + (a[2]! - b[2]!) ** 2

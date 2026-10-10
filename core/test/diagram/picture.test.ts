@@ -178,6 +178,27 @@ describe('pictures', () => {
     expect(MIN_PICTURE_SCALE).toBeGreaterThan(0)
   })
 
+  // A Riemann sum with each bar shaded (Opus, 2026-10-10): eight shadings of about thirty shades each passed the
+  // palette's 104 solid colours, which went to the largest areas, so the small blue bars were drawn in the purple
+  // of the larger ones. Every colour now has a palette colour near it, however small its area.
+  test('a picture with more colours than the palette keeps every hue, small areas included', () => {
+    const hues = ['#00f', '#0a0', '#f00', '#f0f', '#0cc', '#fa0', '#60c', '#888']
+    const defs = hues.map((hue, k) => `<linearGradient id='g${k}' gradientTransform='rotate(90)'><stop offset='0' stop-color='#fff'/><stop offset='1' stop-color='${hue}'/></linearGradient>`).join('')
+    // The first bar small, the others four times its width.
+    const bars = hues.map((_, k) => `<rect x='${k === 0 ? 0 : 5 + (k - 1) * 20}' y='0' width='${k === 0 ? 5 : 20}' height='100' fill='url(#g${k})'/>`).join('')
+    const picture = readSvg(`<svg viewBox='0 0 150 100'><defs>${defs}</defs>${bars}</svg>`, { baseline: 'bottom', emPerUnit: 0.1 })
+    const light = { ...DARK, ink: { r: 20, g: 20, b: 20 }, background: { r: 255, g: 255, b: 255 }, maxRows: 40 }
+    const png = decode(renderPicture(picture, light).png)
+    // The small bar's foot, near its full blue.
+    const x = Math.round(png.width * (2.5 / 150))
+    const y = Math.round(png.height * 0.97)
+    const at = (y * png.width + x) * 4
+    const [r, g, b] = [png.rgba[at]!, png.rgba[at + 1]!, png.rgba[at + 2]!]
+    expect(b).toBeGreaterThan(200)
+    expect(r).toBeLessThan(80)
+    expect(g).toBeLessThan(80)
+  })
+
   test("white paints nothing: the terminal's background shows through", () => {
     const picture: Picture = readSvg(`<svg viewBox='0 0 20 20'><path d='M0 0H20V20H0Z' fill='#f00'/><path d='M5 5H15V15H5Z' fill='#fff'/></svg>`, { baseline: 'bottom', emPerUnit: 0.1 })
     const png = decode(renderPicture(picture, { ...DARK, maxColumns: 4 }).png)
