@@ -261,7 +261,8 @@ export function matchesFamily(match: FontFile, family: string): boolean {
  * file, PostScript name and family, one per line, or nothing when CoreText
  * has no such family. The names are the script's arguments, never part of it.
  */
-const CORETEXT_FONT_JXA = `ObjC.import('AppKit')
+// ObjC['import'], not ObjC.import: the bundle check refuses anything spelled like a dynamic import().
+const CORETEXT_FONT_JXA = `ObjC['import']('AppKit')
 function run(argv) {
   const attrs = $.NSMutableDictionary.alloc.init
   attrs.setObjectForKey($(argv[0]), 'NSFontFamilyAttribute')

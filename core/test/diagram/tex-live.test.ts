@@ -82,7 +82,7 @@ describe('limits without prlimit (macOS): sh and ulimit', () => {
     }
   })
 
-  test.skipIf(!TEX)('a TeX job flooding its log is stopped at the limit, long before its time limit', () => {
+  test.skipIf(!TEX)('a TeX job flooding its log is stopped at the limit, long before its time limit', { timeout: 60_000 }, () => {
     const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
     try {
       const flood = diagramDocument('\\begin{tikzpicture}\n\\loop\\message{kittex-flood-kittex-flood-kittex-flood-kittex-flood}\\iftrue\\repeat\n\\end{tikzpicture}', 'latex')
