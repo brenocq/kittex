@@ -447,10 +447,9 @@ export const register: Register = (on, options) => {
   // mobile) is not hooked: it has no kitty graphics and draws the text it
   // holds as markdown (and math) its own way, where a formula's Unicode laid
   // out in rows would run together on one line.
-  const landed = { component: 'AssistantMessage' } as const
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { ...landed, surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { ...landed, surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', props: { text: sourcePattern(math, latex === 'auto') } }, ($, e, next) => drawLanded($, e, next, math))
 }
 
 /** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
