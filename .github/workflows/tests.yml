@@ -40,7 +40,7 @@ jobs:
       # The plugin's own checks run against the Claude Code version kittex is built for.
       - name: Install Claude Code
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash -s 2.1.291
+          curl -fsSL https://claude.ai/install.sh | bash -s 2.1.300
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Plugin tests

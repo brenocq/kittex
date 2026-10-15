@@ -17,7 +17,28 @@ import type { KittexEnv } from '../hooks/math.ts'
  */
 export function test(name: string, ...rest: TestRest): void {
   const [options, body] = rest.length === 1 ? [{}, rest[0]] : rest
-  kitTest(name, { timeoutMs: 30_000, ...options }, body)
+  kitTest(name, { timeoutMs: 30_000, ...options }, ($, on) => body(withoutParts($), on))
+}
+
+/**
+ * The engine with its mounts' `drawn()` trees as kittex's tests compare them:
+ * without the `part` the kit marks its own drawings with since 2.1.300
+ * (`{ plugin: 'test' }`, on the engine's drawing of a block no hook draws).
+ * The trees are the same on 2.1.291, which marks nothing.
+ */
+function withoutParts($: Engine): Engine {
+  const mount = async (...args: Parameters<Engine['ui']['mount']>) => {
+    const mounted = await $.ui.mount(...args)
+    const drawn = async (...scope: Parameters<typeof mounted.drawn>) => dropParts(await mounted.drawn(...scope))
+    return Object.create(mounted, { drawn: { value: drawn } }) as typeof mounted
+  }
+  return Object.create($, { ui: { value: Object.create($.ui, { mount: { value: mount } }) } }) as Engine
+}
+
+function dropParts<T>(tree: T): T {
+  if (Array.isArray(tree)) return tree.map(dropParts) as T
+  if (tree === null || typeof tree !== 'object') return tree
+  return Object.fromEntries(Object.entries(tree).filter(([key]) => key !== 'part').map(([key, value]) => [key, dropParts(value)])) as T
 }
 
 /** A kitty window of 100×50 cells of 13×20 px. */
