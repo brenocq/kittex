@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inflateSync, deflateSync } from 'node:zlib'
 import { test } from 'vitest'
-import { diagramDocument, drawsPicture, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, latexArgv, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
+import { diagramDocument, drawsPicture, inlineTables, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, latexArgv, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
 import type { DiagramLang, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture, scan } from '../../src/index.ts'
 
@@ -204,7 +204,8 @@ test.skipIf(!CORPUS)('the diagram corpus through kittex and through TeX', { time
       writeFileSync(join(OUT, `${id}.src.tex`), source)
       const result: Result = { n, reply: reply + 1, family: family(source), lines: source.split('\n').length }
       results.push(result)
-      const refused = unsafeTex(source)
+      const inlined = inlineTables(source)
+      const refused = unsafeTex(inlined)
       if (refused) result.refused = refused
       // TeX's own picture, whatever kittex does.
       {
@@ -224,7 +225,7 @@ test.skipIf(!CORPUS)('the diagram corpus through kittex and through TeX', { time
         rmSync(dir, { recursive: true, force: true })
       }
       if (refused) continue
-      const document: TexDocument = diagramDocument(source, lang)
+      const document: TexDocument = diagramDocument(inlined, lang)
       const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
       try {
         writeFileSync(join(dir, `${JOB_NAME}.tex`), document.text)

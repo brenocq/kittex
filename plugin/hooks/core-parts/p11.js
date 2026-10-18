@@ -522,12 +522,11 @@ var NAMED = JSON.parse(`{
  "teal":{"r":0,"g":128,"b":128},"orange":{"r":255,"g":165,"b":0},"brown":{"r":165,"g":42,"b":42},"pink":{"r":255,"g":192,"b":203},"violet":{"r":238,"g":130,"b":238},"darkgray":{"r":169,"g":169,"b":169},
  "lightgray":{"r":211,"g":211,"b":211}
 }`);
-var PREAMBLE_VERSION = 4;
+var PREAMBLE_VERSION = 5;
 var JOB_NAME = "kittex";
 var MAX_TEX_SOURCE = 24e3;
 var DIAGRAM_ENVS = ["tikzpicture", "tikzcd", "circuitikz"];
 var STANDALONE_NO_PS = "\\def\\sa@papersize{\\global\\let\\sa@papersize\\relax\\global\\sa@yoffset=\\paperheight\\global\\setbox\\@begindvibox\\vbox{\\special{papersize=\\the\\paperwidth,\\the\\paperheight}\\unvbox\\@begindvibox\\special{papersize=\\the\\paperwidth,\\the\\paperheight}}}";
-var TIKZ_LIBRARIES = "arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains";
 var DUMP_POINT = "\\csname endofdump\\endcsname";
 var MATH_PREAMBLE = ["\\documentclass[dvisvgm]{article}", "\\usepackage{amsmath,amssymb,mathtools}", "\\usepackage{siunitx}", "\\pagestyle{empty}"];
 var REFUSED_COMMANDS = JSON.parse(`[
@@ -536,7 +535,7 @@ var REFUSED_COMMANDS = JSON.parse(`[
  "VerbatimInput","BVerbatimInput","LVerbatimInput","includepdf","pgfplotstabletypeset","IfFileExists","verbatiminput","lstinputlisting","inputminted","includegraphics","includestandalone","import",
  "subimport","inputfrom","subinputfrom","graphicspath","pgfimage","pgfdeclareimage","filecontents","font","tikzexternalize","pgfplotstableread","DTLloaddb","DTLloadrawdb","csvreader","csvautotabular",
  "detokenize","csname","ifcsname","catcode","scantokens","everyeof","endlinechar","ExplSyntaxOn","makeatletter","UseName","ExpandArgs","NewCommandCopy","csuse","csdef","csgdef","csedef","csxdef",
- "cslet","letcs","csletcs","ifcsdef","ifcsundef","ifcsmacro","cspreto","csappto","csgappto","csepreto","pgfkeysvalueof","pgfutilifcsname","lowercase","uppercase","uccode","lccode"
+ "cslet","letcs","csletcs","ifcsdef","ifcsundef","ifcsmacro","cspreto","csappto","csgappto","csepreto","pgfutilifcsname","lowercase","uppercase","uccode","lccode","endcsname"
 ]`);
 var MAX_CPU_SECONDS = 20;
 var NEAR = 2;
@@ -671,7 +670,7 @@ var CLAUDE_THEME_TEXT = {
 var ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
 var MIN_INLINE_SCALE = 0.85;
 var INLINE_OVERFLOW = 0.06;
-var BUILD_ID = "kittex-build:2906ce44153e6ed8";
+var BUILD_ID = "kittex-build:c8a8888e1ca2b4b3";
 var MAX_TEX_LENGTH = 4096;
 var MAX_PIXELS = 16e6;
 var MAX_IMAGE_SIDE = 4096;
@@ -1610,4 +1609,4 @@ var init_Parser = __esm({
     };
   }
 });
-export{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,TexError,GlyphError,init_errors,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,PATTERN_OPACITY,GRADIENT_BANDS,NAMED,STANDALONE_NO_PS,TIKZ_LIBRARIES,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};
+export{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,TexError,GlyphError,init_errors,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,PATTERN_OPACITY,GRADIENT_BANDS,NAMED,STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};

@@ -5,6 +5,7 @@ import {
   diagramFence,
   drawsPicture,
   dvisvgmArgv,
+  inlineTables,
   isJobDir,
   jobDirTemplate,
   LATEX_ARGV,
@@ -287,5 +288,85 @@ describe('refused sources', () => {
 
   test.each(LEGIT.map(source => [source.slice(0, 50), source]))('%s is allowed', (_name, source) => {
     expect(unsafeTex(source)).toBeUndefined()
+  })
+})
+
+describe('tables read inline', () => {
+  const READ = '\\pgfplotstableread{\nx a b\n2019 1 2 % first\n2020 3 4\n}\\tg\n'
+  const PLOT = '\\begin{axis}\n\\addplot table[x=x, y=a]{\\tg};\n\\addplot table {\\tg};\n\\end{axis}'
+
+  test('the rows go inline at each table that names them, on one line, the read left blank', () => {
+    const source = `\\begin{tikzpicture}\n${READ}${PLOT}\n\\end{tikzpicture}`
+    const inlined = inlineTables(source)
+    expect(inlined).toContain('\\addplot table[row sep=\\\\, x=x, y=a]{x a b\\\\2019 1 2\\\\2020 3 4\\\\};')
+    expect(inlined).toContain('\\addplot table[row sep=\\\\]{x a b\\\\2019 1 2\\\\2020 3 4\\\\};')
+    expect(inlined).not.toContain('pgfplotstableread')
+    expect(inlined.split('\n')).toHaveLength(source.split('\n').length)
+    expect(unsafeTex(source)).toBeDefined()
+    expect(unsafeTex(inlined)).toBeUndefined()
+  })
+
+  test("the read's options come before the plot's, and a braced name is read too", () => {
+    const inlined = inlineTables('\\pgfplotstableread[col sep=comma]{\nx,y\n1,2\n}{\\data}\n\\addplot table[y=y]{\\data};')
+    expect(inlined).toContain('table[row sep=\\\\, col sep=comma, y=y]{x,y\\\\1,2\\\\}')
+  })
+
+  test.each([
+    ['a file name', '\\pgfplotstableread{data.csv}\\tg\n\\addplot table {\\tg};'],
+    ['a name used outside a table', `${READ}\\pgfplotstabletypeset{\\tg}\n${PLOT}`],
+    ['rows already split by \\\\', '\\pgfplotstableread{x y \\\\\n 1 2 \\\\}\\tg\n\\addplot table {\\tg};'],
+  ])('%s leaves the source as written (and refused)', (_name, source) => {
+    expect(inlineTables(source)).toBe(source)
+    expect(unsafeTex(source)).toBeDefined()
+  })
+
+  test('a \\usepackage{pgfplotstable} goes with the read, the other packages on its line kept', () => {
+    const inlined = inlineTables(`\\usepackage{pgfplotstable}\n\\usepackage{xcolor, pgfplotstable}\n${READ}${PLOT}`)
+    expect(inlined).not.toContain('pgfplotstable')
+    expect(inlined).toContain('\\usepackage{xcolor}')
+    expect(unsafeTex(inlined)).toBeUndefined()
+  })
+
+  test('what the rows hold is still checked', () => {
+    expect(unsafeTex(inlineTables('\\pgfplotstableread{\nx y\n\\input{/etc/passwd} 1\n}\\tg\n\\addplot table {\\tg};'))).toBeDefined()
+  })
+})
+
+describe('drawing packages', () => {
+  test.each([
+    ['\\begin{quantikz}\n\\lstick{$q$} & \\gate{H} & \\meter{}\n\\end{quantikz}', '\\usepackage{quantikz}'],
+    ['\\feynmandiagram [horizontal=a to b] { a -- [photon] b };', '\\usepackage{tikz-feynman}'],
+    ['\\begin{ganttchart}{1}{4}\n\\ganttbar{A}{1}{2}\n\\end{ganttchart}', '\\usepackage{pgfgantt}'],
+    ['\\[\n\\xymatrix{A \\ar[r] & B}\n\\]', '\\usepackage[all]{xy}'],
+    ['\\begin{tikzpicture}\n\\pie{40/A, 60/B}\n\\end{tikzpicture}', '\\usepackage{pgf-pie}'],
+    ['\\begin{tikzpicture}\n\\node {\\ce{H2O}};\n\\end{tikzpicture}', '\\usepackage[version=4]{mhchem}'],
+  ])('%s is a drawing, and gets the package it forgot to load', (source, line) => {
+    expect(drawsPicture(source, 'latex')).toBe(true)
+    expect(diagramDocument(source, 'latex').text).toContain(`${line}\n`)
+  })
+
+  test('a package the source loads is not loaded again', () => {
+    const text = diagramDocument('\\usepackage{quantikz}\n\\begin{quantikz}\n& \\gate{H}\n\\end{quantikz}', 'latex').text
+    expect(text.match(/\\usepackage\{quantikz\}/g)).toHaveLength(1)
+  })
+
+  test("a box or a listing is still code: it sets text, it doesn't draw", () => {
+    expect(drawsPicture('\\usepackage{tcolorbox}\n\\begin{tcolorbox}\nTheorem.\n\\end{tcolorbox}', 'latex')).toBe(false)
+  })
+
+  test("display math in a fragment becomes display-style inline math (standalone's page takes no display), a \\\\[2pt] break left alone", () => {
+    const text = diagramDocument('\\[\n\\xymatrix{A \\ar[r] & B}\n\\]\n\\begin{tikzpicture}\\node[align=left]{a\\\\[2pt]b};\\end{tikzpicture}', 'latex').text
+    expect(text).toContain('$\\displaystyle \n\\xymatrix{A \\ar[r] & B}\n$')
+    expect(text).toContain('a\\\\[2pt]b')
+  })
+})
+
+describe('pgfkeys', () => {
+  test("\\pgfkeysvalueof reads a key (a name under pgfkeys' prefix)", () => {
+    expect(unsafeTex('\\begin{tikzpicture}\\node {\\pgfkeysvalueof{/pgf/minimum width}};\\end{tikzpicture}')).toBeUndefined()
+  })
+
+  test('a key that closes its name early to build another is refused', () => {
+    expect(unsafeTex('\\pgfkeysvalueof{x\\endcsname\\expandafter\\x}')).toBeDefined()
   })
 })

@@ -1,4 +1,4 @@
-import{STANDALONE_NO_PS,TIKZ_LIBRARIES,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,__kittexLate}from'./p31.js';export*from'./p31.js';
+import{STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,__kittexLate}from'./p31.js';export*from'./p31.js';
 __kittexLate.clamp01=()=>clamp01;
 var clamp01 = (v) => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
 // core/src/diagram/tex.ts
@@ -11,7 +11,36 @@ function diagramFence(info) {
 function drawsPicture(source, lang) {
   if (lang !== "latex") return true;
   if (isDocument(source)) return hasBody(source);
-  return /\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/.test(source);
+  return PICTURE.test(source) || IMPLIED_PACKAGES.some((implied) => implied.drawing && implied.use.test(source));
+}
+var PICTURE = /\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/;
+var IMPLIED_PACKAGES = [
+  { use: /\\begin\{quantikz\}/, line: "\\usepackage{quantikz}", name: "quantikz", drawing: true },
+  { use: /\\feynmandiagram\b|\\begin\{feynman\}/, line: "\\usepackage{tikz-feynman}", name: "tikz-feynman", drawing: true },
+  { use: /\\begin\{ganttchart\}/, line: "\\usepackage{pgfgantt}", name: "pgfgantt", drawing: true },
+  { use: /\\smartdiagram\b/, line: "\\usepackage{smartdiagram}", name: "smartdiagram", drawing: true },
+  { use: /\\begin\{karnaugh-map\}/, line: "\\usepackage{karnaugh-map}", name: "karnaugh-map", drawing: true },
+  { use: /\\begin\{tikztimingtable\}|\\texttiming\b/, line: "\\usepackage{tikz-timing}", name: "tikz-timing", drawing: true },
+  { use: /\\begin\{neuralnetwork\}/, line: "\\usepackage{neuralnetwork}", name: "neuralnetwork", drawing: true },
+  { use: /\\begin\{sequencediagram\}/, line: "\\usepackage{pgf-umlsd}", name: "pgf-umlsd", drawing: true },
+  { use: /\\begin\{dependency\}/, line: "\\usepackage{tikz-dependency}", name: "tikz-dependency", drawing: true },
+  { use: /\\begin\{(?:BodeMagPlot|BodePhPlot|BodePlot|NyquistPlot|NicholsChart)\}/, line: "\\usepackage{bodeplot}", name: "bodeplot", drawing: true },
+  { use: /\\xymatrix\b|\\begin\{xy\}/, line: "\\usepackage[all]{xy}", name: "xy", drawing: true },
+  { use: /\\Qcircuit\b/, line: "\\usepackage[braket,qm]{qcircuit}", name: "qcircuit", drawing: true },
+  { use: /\\pie\s*[[{]/, line: "\\usepackage{pgf-pie}", name: "pgf-pie", drawing: true },
+  { use: /\\Tree\s*\[/, line: "\\usepackage{tikz-qtree}", name: "tikz-qtree", drawing: true },
+  { use: /\\begin\{forest\}/, line: "\\usepackage{forest}", name: "forest" },
+  { use: /\\tkz[A-Z]/, line: "\\usepackage{tkz-euclide}", name: "tkz-euclide" },
+  { use: /\\tdplotsetmaincoords\b|\btdplot_main_coords\b/, line: "\\usepackage{tikz-3dplot}", name: "tikz-3dplot" },
+  { use: /\\ce\s*\{/, line: "\\usepackage[version=4]{mhchem}", name: "mhchem" },
+  { use: /\\bm\s*\{/, line: "\\usepackage{bm}", name: "bm" },
+  { use: /\\mathscr\s*\{/, line: "\\usepackage{mathrsfs}", name: "mathrsfs" },
+  { use: /\\(?:toprule|midrule|bottomrule)\b/, line: "\\usepackage{booktabs}", name: "booktabs" },
+  { use: /\\multirow\b/, line: "\\usepackage{multirow}", name: "multirow" }
+];
+function impliedPackages(body, moved) {
+  const loaded2 = new Set(moved.flatMap((line) => /^\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/.exec(line)?.[1]?.split(",").map((name) => name.trim()) ?? []));
+  return IMPLIED_PACKAGES.filter((implied) => implied.use.test(body) && !loaded2.has(implied.name)).map((implied) => implied.line);
 }
 function isDocument(source) {
   return /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(source) || /\\begin\{document\}/.test(source);
@@ -23,6 +52,12 @@ function hasBody(source) {
   const body = source.slice(start.index + start[0].length, end < 0 ? void 0 : end);
   return body.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, "$1$2").trim() !== "";
 }
+var TIKZ_LIBRARIES = [
+  "arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains",
+  // What replies use and often don't load: braces, text along a path, the old arrow tips (stealth', latex'), shapes'
+  // other families, fadings, magnified insets, \graph, \tikzmath, mindmaps, petri nets, plot marks, bent tips.
+  "arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,calligraphy,perspective"
+].join(",");
 var FRAGMENT_PREAMBLE = [
   "\\documentclass[dvisvgm,border=1pt]{standalone}",
   `\\makeatletter${STANDALONE_NO_PS}\\makeatother`,
@@ -31,8 +66,8 @@ var FRAGMENT_PREAMBLE = [
   `\\usetikzlibrary{${TIKZ_LIBRARIES}}`,
   "\\usepackage{pgfplots}",
   "\\pgfplotsset{compat=1.18}",
-  // pgfplots' own libraries: polar axes, groups of plots, box plots, more colormaps, patch plots and ternary axes.
-  "\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary}",
+  // pgfplots' own libraries: polar axes, groups of plots, box plots, more colormaps, patch plots, ternary axes and dates.
+  "\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary,dateplot}",
   "\\usepackage{chemfig}",
   "\\usepackage{circuitikz}",
   "\\usepackage{tikz-cd}",
@@ -70,6 +105,49 @@ function curvesSampledOnce(source) {
   }
   return out + source.slice(from);
 }
+function inlineTables(source) {
+  const read = /\\pgfplotstableread\s*/g;
+  const tables = /* @__PURE__ */ new Map();
+  let blanked = "";
+  let from = 0;
+  for (let match = read.exec(source); match; match = read.exec(source)) {
+    let at = match.index + match[0].length;
+    let options3 = "";
+    if (source[at] === "[") {
+      const close2 = matchingBracket(source, at, "[", "]");
+      if (close2 < 0) return source;
+      options3 = source.slice(at + 1, close2).trim();
+      at = skipBlanks(source, close2 + 1);
+    }
+    if (source[at] !== "{") return source;
+    const close = matchingBracket(source, at, "{", "}");
+    if (close < 0) return source;
+    const rows = source.slice(at + 1, close).split("\n").map((line) => line.replace(/(?<!\\)%.*$/, "").trim()).filter((line) => line !== "");
+    if (rows.length < 2 || !source.slice(at + 1, close).includes("\n") || /\\\\/.test(source.slice(at + 1, close))) return source;
+    at = skipBlanks(source, close + 1);
+    const name = /^(?:\{\s*(\\[A-Za-z]+)\s*\}|(\\[A-Za-z]+)(?![A-Za-z]))/.exec(source.slice(at));
+    if (!name) return source;
+    const end = at + name[0].length;
+    tables.set(name[1] ?? name[2], { options: options3, rows: rows.map((row) => `${row}\\\\`).join("") });
+    blanked += source.slice(from, match.index) + source.slice(match.index, end).replace(/[^\n]/g, "");
+    from = end;
+  }
+  if (tables.size === 0) return source;
+  blanked += source.slice(from);
+  let inlined = blanked.replace(/^([ \t]*\\usepackage\s*(?:\[[^\]]*\]\s*)?\{)([^}]*)\}/gm, (_, head, names) => {
+    const kept = names.split(",").filter((name) => name.trim() !== "pgfplotstable");
+    return kept.length === 0 ? "" : `${head}${kept.join(",")}}`;
+  });
+  for (const [name, table2] of tables) {
+    const use2 = new RegExp(String.raw`\btable\s*(?:\[([^\]]*)\])?\s*\{\s*\\${name.slice(1)}\s*\}`, "g");
+    inlined = inlined.replace(use2, (_, options3) => {
+      const all = ["row sep=\\\\", table2.options, options3?.trim() ?? ""].filter((option) => option !== "").join(", ");
+      return `table[${all}]{${table2.rows}}`;
+    });
+    if (new RegExp(String.raw`\\${name.slice(1)}(?![A-Za-z])`).test(inlined)) return source;
+  }
+  return inlined;
+}
 function skipBlanks(text, at) {
   while (at < text.length && /\s/.test(text[at])) at++;
   return at;
@@ -102,10 +180,11 @@ ${classed.replace(/\\begin\{document\}/, "\\begin{document}\\pagestyle{empty}\\t
   }
   const moved = [...trimmed2.matchAll(PREAMBLE_LINE)].map((match) => match[0].trim());
   let body = moved.length > 0 ? trimmed2.replace(PREAMBLE_LINE, "") : trimmed2;
+  body = body.replace(/(?<!\\)\\\[([\s\S]*?)(?<!\\)\\\]/g, "$\\displaystyle $1$").replace(/\$\$([\s\S]*?)\$\$/g, "$\\displaystyle $1$");
   if (lang === "tikz" && !/\\begin\{tikzpicture\}|\\tikz\b/.test(body)) body = `\\begin{tikzpicture}
 ${body}
 \\end{tikzpicture}`;
-  const head = [...FRAGMENT_PREAMBLE, DUMP_POINT, ...moved, "\\begin{document}"];
+  const head = [...FRAGMENT_PREAMBLE, DUMP_POINT, ...moved, ...impliedPackages(body, moved), "\\begin{document}"];
   const wrapped = lang === "tikz" && body !== trimmed2 && body.startsWith("\\begin{tikzpicture}\n") && !trimmed2.startsWith("\\begin{tikzpicture}");
   const offset = head.length + (wrapped ? 1 : 0);
   return { text: `${head.join("\n")}
@@ -1328,4 +1407,4 @@ function concat2(parts) {
   }
   return out;
 }
-export{inkAlpha,Coverage,encodeAlphaPng,encodeQuantizedPng,recolorPng,assumedBackground,adaptColor,FORMAT_SOURCE,LATEX_ARGV,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,isJobDir,jobDirTemplate,latexArgv,mathDocument,texEnvironment,texError,texPicture,ulimitProbe,unsafeTex};
+export{inkAlpha,Coverage,encodeAlphaPng,encodeQuantizedPng,recolorPng,assumedBackground,adaptColor,FORMAT_SOURCE,LATEX_ARGV,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,texEnvironment,texError,texPicture,ulimitProbe,unsafeTex};

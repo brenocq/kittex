@@ -20,6 +20,7 @@ export {
   FORMAT_SOURCE,
   formatArgv,
   formatName,
+  inlineTables,
   isJobDir,
   latexArgv,
   JOB_NAME,

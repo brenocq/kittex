@@ -17,6 +17,7 @@ import {
   FORMAT_SOURCE,
   formatArgv,
   formatName,
+  inlineTables,
   isJobDir,
   latexArgv,
   JOB_NAME,
@@ -641,9 +642,10 @@ export type DiagramJob = { document: TexDocument; label: string } | { refused: s
 export function diagramJob(source: string, kind: DiagramKind): DiagramJob {
   const lang = kind === 'env' ? 'env' : kind
   if (!drawsPicture(source, lang)) return undefined
-  const refused = unsafeTex(source)
+  const inlined = inlineTables(source)
+  const refused = unsafeTex(inlined)
   if (refused !== undefined) return { refused }
-  return { document: diagramDocument(source, lang), label: diagramLabel(source) }
+  return { document: diagramDocument(inlined, lang), label: diagramLabel(source) }
 }
 
 /** The document a formula MathJax refused compiles as, or undefined when its source is refused. */
