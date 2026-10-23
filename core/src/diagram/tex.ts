@@ -42,7 +42,7 @@
  */
 
 /** Bump when a document below changes what any picture looks like: it keys the disk cache. */
-export const PREAMBLE_VERSION = 5
+export const PREAMBLE_VERSION = 6
 
 /** The job file's name in the job directory, and its outputs'. */
 export const JOB_NAME = 'kittex'
@@ -109,6 +109,8 @@ const IMPLIED_PACKAGES: readonly { use: RegExp; line: string; name: string; draw
   { use: /\\mathscr\s*\{/, line: '\\usepackage{mathrsfs}', name: 'mathrsfs' },
   { use: /\\(?:toprule|midrule|bottomrule)\b/, line: '\\usepackage{booktabs}', name: 'booktabs' },
   { use: /\\multirow\b/, line: '\\usepackage{multirow}', name: 'multirow' },
+  // A TikZ library from spath3, which a basic TeX Live (BasicTeX, the README's lists) lacks: loaded only when used.
+  { use: /\\(?:calligraphy|pen)\b|calligraphic|copperplate|nib style|pen colou?r/, line: '\\usetikzlibrary{calligraphy}', name: 'calligraphy' },
 ]
 
 /** The \usepackage lines a fragment's drawing needs and its own lines (`moved`) don't load. */
@@ -164,7 +166,7 @@ const TIKZ_LIBRARIES = [
   'arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains',
   // What replies use and often don't load: braces, text along a path, the old arrow tips (stealth', latex'), shapes'
   // other families, fadings, magnified insets, \graph, \tikzmath, mindmaps, petri nets, plot marks, bent tips.
-  'arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,calligraphy,perspective',
+  'arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,perspective',
 ].join(',')
 
 /**

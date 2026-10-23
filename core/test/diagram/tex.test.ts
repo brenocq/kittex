@@ -350,6 +350,12 @@ describe('drawing packages', () => {
     expect(text.match(/\\usepackage\{quantikz\}/g)).toHaveLength(1)
   })
 
+  test('the calligraphy library (spath3, missing from a basic TeX Live) is loaded only by a picture that uses it', () => {
+    expect(diagramDocument('\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}', 'latex').text).not.toContain('calligraphy')
+    const text = diagramDocument('\\begin{tikzpicture}\n\\draw[decorate, decoration={calligraphic brace}] (0,0) -- (2,0);\n\\end{tikzpicture}', 'latex').text
+    expect(text).toContain('\\usetikzlibrary{calligraphy}\n')
+  })
+
   test("a box or a listing is still code: it sets text, it doesn't draw", () => {
     expect(drawsPicture('\\usepackage{tcolorbox}\n\\begin{tcolorbox}\nTheorem.\n\\end{tcolorbox}', 'latex')).toBe(false)
   })
