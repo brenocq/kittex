@@ -1,5 +1,6 @@
 import type { Picture } from '../types.js'
 import { readSvg } from './svg.js'
+import type { SvgTextTypesetter } from './svg-text.js'
 import { emPerUnit, type TexDocument } from './tex.js'
 
 export { adaptColor, assumedBackground, type Adapted, type PaperColors } from './color.js'
@@ -39,9 +40,14 @@ export {
   type DiagramLang,
   type TexDocument,
 } from './tex.js'
+export { MAX_TEXT_CHARS, svgTextTex, type SvgTextRun, type SvgTextTypesetter } from './svg-text.js'
 export { XmlError } from './xml.js'
 
-/** dvisvgm's SVG of a compiled document as a Picture, in the document's em. Throws SvgError or XmlError. */
-export function texPicture(svg: string, document: Pick<TexDocument, 'baseline' | 'fontSize'>): Picture {
-  return readSvg(svg, { baseline: document.baseline, emPerUnit: emPerUnit(document) })
+/**
+ * dvisvgm's SVG of a compiled document (or a PDF page's) as a Picture, in the
+ * document's em, its `<text>` set by `text` (none without it). Throws SvgError
+ * or XmlError.
+ */
+export function texPicture(svg: string, document: Pick<TexDocument, 'baseline' | 'fontSize'>, text?: SvgTextTypesetter): Picture {
+  return readSvg(svg, { baseline: document.baseline, emPerUnit: emPerUnit(document), ...(text ? { text } : {}) })
 }

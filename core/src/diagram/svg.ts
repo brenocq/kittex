@@ -1,6 +1,7 @@
 import type { Matrix, Paint, Picture, PictureClip, PictureOp, RGB, StrokeStyle } from '../types.js'
 import { flattenSubpaths } from '../raster/path.js'
 import { NAMED_COLORS, parseStylesheet, RuleIndex, type CssRule } from './css.js'
+import { FONT_PROPERTIES, fontOf, INITIAL_FONT, MAX_TEXT_CHARS, setText, textChars, textSetter, type SvgTextTypesetter, type TextFont, type TextSetter, type TextSpan } from './svg-text.js'
 import { parseXml, type XmlElement } from './xml.js'
 
 /*
@@ -22,8 +23,12 @@ import { parseXml, type XmlElement } from './xml.js'
  * mean colour, and a pattern that can't be tiled within MAX_PATTERN_OPS its
  * first colour at PATTERN_OPACITY (a flat tint).
  *
- * Degraded, the rest still drawn: text that isn't outlines (`<text>`, and
- * draw.io's HTML labels in `<foreignObject>`) is skipped, as are markers;
+ * Text (`<text>` and its `<tspan>`s) is set in kittex's font by the
+ * caller's typesetter (SvgReadOptions.text; svg-text.ts), and skipped without
+ * one.
+ *
+ * Degraded, the rest still drawn: draw.io's HTML labels in `<foreignObject>`
+ * are skipped (its `<switch>` fallback text is drawn), as are markers;
  * filters are ignored (the shape is drawn unfiltered: a drop shadow's own
  * shape, without the shadow). Refused (SvgError), so nothing is drawn half
  * wrong: embedded bitmaps (`<image>`, a matplotlib imshow), masks (they hide
@@ -50,6 +55,8 @@ export interface SvgReadOptions {
    * pixel (0.75 bp), as a browser draws a lone SVG.
    */
   userUnit?: 'bp' | 'document'
+  /** Typesets a `<text>`'s runs (svg-text.ts); without it, text is not drawn. */
+  text?: SvgTextTypesetter
 }
 
 /** Shapes one picture may paint, at most. */
@@ -96,6 +103,7 @@ interface Style {
   opacity: number
   color: RGB
   clip: number | undefined
+  font: TextFont
 }
 
 /** A color with its own alpha (`rgba(…)`, `#rrggbbaa`), which multiplies into the paint's opacity. */
@@ -122,16 +130,16 @@ const INITIAL: Style = {
   opacity: 1,
   color: BLACK,
   clip: undefined,
+  font: INITIAL_FONT,
 }
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0]
 
 /**
  * Elements not drawn, the rest of the picture drawn without them: those that
- * hold only definitions or metadata, and text that isn't outlines (see the
- * note at the top).
+ * hold only definitions or metadata, and HTML (see the note at the top).
  */
-const SKIPPED = new Set(['defs', 'clipPath', 'linearGradient', 'radialGradient', 'pattern', 'symbol', 'marker', 'mask', 'filter', 'title', 'desc', 'metadata', 'style', 'script', 'text', 'foreignObject'])
+const SKIPPED = new Set(['defs', 'clipPath', 'linearGradient', 'radialGradient', 'pattern', 'symbol', 'marker', 'mask', 'filter', 'title', 'desc', 'metadata', 'style', 'script', 'foreignObject'])
 /** Elements a picture can't be drawn without, and why. */
 const REFUSED = new Map([
   ['image', 'embedded bitmaps (<image>) are not drawn'],
@@ -422,6 +430,45 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
     return true
   }
 
+  // ─── Text ───
+  const typesetter = options.text
+  let setter: TextSetter | undefined
+  let textCount = 0
+  /** Each text element's and tspan's font, the em its position lists are read in. */
+  const fonts = new Map<XmlElement, TextFont>()
+
+  interface Span extends TextSpan {
+    style: Style
+  }
+  const spanOf = (style: Style, hidden: boolean): Span => ({ font: style.font, paint: paintOf(style.fill, style.fillOpacity * style.opacity, style), hidden, style })
+  const childSpan = (el: XmlElement, parent: Span): Span | undefined => {
+    if (declared(el, 'display') === 'none') return undefined
+    const style = styleOf(el, parent.style)
+    fonts.set(el, style.font)
+    // Visibility is inherited, and a tspan may show what its text hides.
+    const visibility = declared(el, 'visibility')
+    return spanOf(style, visibility === undefined || visibility === 'inherit' ? parent.hidden : visibility !== 'visible')
+  }
+
+  /** A `<text>`'s glyphs, filled in their spans' fills (see svg-text.ts). */
+  const drawText = (el: XmlElement, ctm: Matrix, style: Style, hidden: boolean, typeset: SvgTextTypesetter) => {
+    fonts.set(el, style.font)
+    let chars
+    try {
+      chars = textChars<Span>(el, spanOf(style, hidden), childSpan)
+    } catch (error) {
+      if (error instanceof RangeError) throw new SvgError(`picture too complex (${error.message})`)
+      throw error
+    }
+    textCount += chars.length
+    if (textCount > MAX_TEXT_CHARS) throw new SvgError(`picture too complex (more than ${MAX_TEXT_CHARS} characters of text)`)
+    setter ??= textSetter(typeset)
+    const transform = multiply(toEm, ctm)
+    for (const fill of setText(chars, setter, owner => (fonts.get(owner) ?? style.font).size)) {
+      push({ type: 'fill', d: fill.d, transform: multiply(transform, fill.transform), rule: 'nonzero', paint: fill.paint, glyph: true, ...(style.clip !== undefined ? { clip: style.clip } : {}) })
+    }
+  }
+
   // Depth first, in document order, with a stack of its own: dvisvgm nests a group per pgfplots patch (thousands deep).
   interface Frame {
     el: XmlElement
@@ -460,6 +507,9 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
           if (chosen) stack.push({ el: chosen, ctm: m, inherited: style, root: false, glyph, uses })
           continue
         }
+        case 'text':
+          if (typesetter !== undefined) drawText(el, m, style, hidden || declared(el, 'visibility') === 'collapse', typesetter)
+          continue
         case 'use': {
           const id = hrefOf(el)
           const target = id === undefined ? undefined : ids.get(id)
@@ -673,6 +723,11 @@ function styleOf(el: XmlElement, inherited: Style): Style {
   const join = declared(el, 'stroke-linejoin')
   if (join === 'miter' || join === 'round' || join === 'bevel') style.join = join
   else if (join === 'miter-clip' || join === 'arcs') style.join = 'miter'
+  // Read only where declared: most elements of a dvisvgm picture name none of them.
+  const css = el.attrs.style
+  if (FONT_PROPERTIES.some(name => el.attrs[name] !== undefined) || (css !== undefined && /font|text-|baseline|space/.test(css))) {
+    style.font = fontOf(name => declared(el, name), inherited.font)
+  }
   const dash = declared(el, 'stroke-dasharray')
   if (dash !== undefined && dash !== 'inherit') {
     const lengths = dash === 'none' ? [] : dash.split(/[\s,]+/).filter(Boolean).map(Number)
@@ -975,6 +1030,12 @@ export function parseColor(value: string, current: RGB): RGB | undefined {
 function parseTint(value: string, current: RGB): Tint | undefined {
   const v = value.trim().toLowerCase()
   if (v === 'currentcolor') return current
+  // light-dark(a, b), draw.io's colors: the light one, as the SVG is drawn on paper (kittex adapts it to the terminal).
+  const pair = /^light-dark\((.*)\)$/.exec(v)
+  if (pair) {
+    const first = /^((?:[^,(]|\([^)]*\))*),/.exec(pair[1]!)
+    return first ? parseTint(first[1]!, current) : undefined
+  }
   if (v === 'transparent') return { r: 0, g: 0, b: 0, alpha: 0 }
   const byte = (x: number) => Math.min(255, Math.max(0, Math.round(x)))
   const withAlpha = (rgb: RGB, alpha: number | undefined): Tint | undefined => {
