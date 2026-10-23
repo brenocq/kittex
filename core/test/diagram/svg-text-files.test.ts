@@ -178,20 +178,22 @@ describe('draw.io', () => {
 
 describe('mermaid', () => {
   const { glyphs } = open(fixture('mermaid'))
-  // Its labels are centred across by `#my-svg .node .label text { text-anchor: middle }`, a descendant selector
-  // css.ts doesn't read: they start at their node's centre. Down, their em-unit y and dy place them.
-  test('each node’s label sits on its node’s middle line, its lines set by em-unit y and dy', () => {
+  // Its styles are descendant rules: `#my-svg .node .label text{text-anchor:middle}` centres the labels,
+  // `#my-svg .node rect{fill:#ECECFF}` colours the nodes.
+  test('each node’s label is centred in its node, its lines set by em-unit y and dy', () => {
     expect(glyphs).toHaveLength(5 + 7 + 6 + 8 + 3)
-    for (const [cy, count] of [
-      [33.5, 5],
-      [119.5, 7],
-      [268.5, 6],
-      [477.5, 8],
-    ] as const) {
-      const row = inside(glyphs, { left: 90, top: cy - 15, right: 200, bottom: cy + 15 })
-      expect(row).toHaveLength(count)
-      expect(Math.abs(centerY(union(row.map(x => x.box))) - cy)).toBeLessThan(3)
-    }
+    // Mermaid sizes a node by its label in the browser's font: within a few units in ours.
+    expectLabel(glyphs, { left: 20.5, top: 12, right: 172.5, bottom: 55 }, 5, { cx: 96.5, cy: 33.5, tolerance: 3 })
+    expectLabel(glyphs, { left: 21.5, top: 95, right: 171.5, bottom: 144 }, 7, { cx: 96.5, cy: 119.5, tolerance: 3 })
+    expectLabel(glyphs, { left: 50, top: 240, right: 143, bottom: 297 }, 6, { cx: 96.5, cy: 268.5, tolerance: 3 })
+    expectLabel(glyphs, { left: 20.5, top: 456, right: 172.5, bottom: 499 }, 8, { cx: 96.5, cy: 477.5, tolerance: 3 })
+  })
+
+  test('its nodes and labels take the colors of its descendant rules', () => {
+    const { picture } = open(fixture('mermaid'))
+    const nodes = picture.ops.filter(op => op.type === 'fill' && !op.glyph && op.paint.color.r === 0xec && op.paint.color.g === 0xec && op.paint.color.b === 0xff)
+    expect(nodes.length).toBeGreaterThanOrEqual(4)
+    expect(glyphs.every(g => g.paint.color.r === 0x33 && g.paint.color.g === 0x33 && g.paint.color.b === 0x33)).toBe(true)
   })
 })
 

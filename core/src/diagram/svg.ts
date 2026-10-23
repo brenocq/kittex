@@ -546,10 +546,20 @@ function applyStyleSheets(elements: readonly XmlElement[]): void {
   }
   if (rules.length === 0) return
   const index = new RuleIndex(rules)
+  // Each element's parent, for the rules that match by ancestry (`#chart .node text`).
+  const parents = new Map<XmlElement, XmlElement>()
+  for (const el of elements) for (const child of el.children) parents.set(child, el)
+  const parentOf = (el: XmlElement) => parents.get(el)
   // A rule is copied onto every element it matches, so a sheet within its cap can still multiply past any (a long `*` rule over thousands of elements).
   let folded = 0
   for (const el of elements) {
-    const declarations = index.declarationsFor(el)
+    let declarations: string
+    try {
+      declarations = index.declarationsFor(el, parentOf)
+    } catch (error) {
+      if (error instanceof RangeError) throw new SvgError('picture too complex (its style sheet)')
+      throw error
+    }
     if (declarations === '') continue
     folded += declarations.length
     if (folded > MAX_FOLDED_STYLE) throw new SvgError('picture too complex (its style sheet)')

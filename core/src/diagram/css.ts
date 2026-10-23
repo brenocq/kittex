@@ -3,23 +3,42 @@ import type { XmlElement } from './xml.js'
 
 /*
  * The CSS an ordinary SVG carries: a `<style>` sheet's rules (Illustrator's
- * `.st0{fill:#fff}`, matplotlib's `*{stroke-linecap:butt}`) and the named
- * colors. Only simple selectors are read, a type, a class, an id or `*`, alone
- * or compounded (`path.st0`), comma lists of them included; a rule with any
- * other selector (a descendant, a pseudo-class, an attribute) and every
- * at-rule are skipped, so their properties fall back to the attributes.
+ * `.st0{fill:#fff}`, matplotlib's `*{stroke-linecap:butt}`, mermaid's
+ * `#my-svg .node .label text{text-anchor:middle}`) and the named colors.
+ * Selectors are read when made of compounds of a type, a class, an id or `*`
+ * (`path.st0`), joined by descendant and child combinators, comma lists of
+ * them included; a rule with any other selector (a pseudo-class, an
+ * attribute, a sibling combinator) and every at-rule are skipped, so their
+ * properties fall back to the attributes.
  */
 
 /** Rules one sheet may hold, at most; past them the rest are skipped. */
 const MAX_RULES = 4000
 /** Classes and ids one compound selector may join (`.a.b#c`); a longer one is skipped. */
 const MAX_COMPOUND = 16
+/** Compounds one selector may chain (`#a .b > c` is three); a longer one is skipped. */
+const MAX_CHAIN = 8
+/**
+ * Ancestors the matching of one document's rules may look at in all: a
+ * descendant selector checks every ancestor of every element it might match,
+ * and a deep document with a long sheet would multiply them past any budget.
+ */
+export const MAX_MATCH_STEPS = 4_000_000
 
-export interface CssRule {
+/** One compound selector: a type (none for `*`), an id and classes, all of which an element must have. */
+interface Compound {
   tag?: string
   id?: string
   classes: readonly string[]
-  /** id × 10 000 + classes × 100 + type, as CSS ranks them. */
+}
+
+export interface CssRule extends Compound {
+  /**
+   * The compounds left of the subject, nearest first, each with how it relates
+   * to the one right of it: its parent (`>`) or any ancestor (a space).
+   */
+  context: readonly { compound: Compound; child: boolean }[]
+  /** ids × 10 000 + classes × 100 + types, over every compound, as CSS ranks them. */
   specificity: number
   /** The rule's place in the sheets, for rules of equal specificity. */
   order: number
@@ -63,7 +82,8 @@ function blockEnd(css: string, open: number): number {
 
 const SIMPLE = /^(\*|[A-Za-z][-\w]*)?((?:[.#][-\w]+)*)$/
 
-function simpleRule(selector: string, declarations: string, order: number): CssRule | undefined {
+/** A compound selector and its specificity, or undefined for one this reader skips (see the note at the top). */
+function compound(selector: string): { compound: Compound; specificity: number } | undefined {
   const match = SIMPLE.exec(selector)
   if (!match || selector === '') return undefined
   const tag = match[1] === undefined || match[1] === '*' ? undefined : match[1]
@@ -73,10 +93,29 @@ function simpleRule(selector: string, declarations: string, order: number): CssR
   if (ids.length > 1 || parts.length > MAX_COMPOUND) return undefined
   const classes = parts.filter(part => part.startsWith('.')).map(part => part.slice(1))
   return {
-    ...(tag !== undefined ? { tag } : {}),
-    ...(ids[0] !== undefined ? { id: ids[0] } : {}),
-    classes,
+    compound: { ...(tag !== undefined ? { tag } : {}), ...(ids[0] !== undefined ? { id: ids[0] } : {}), classes },
     specificity: ids.length * 10_000 + classes.length * 100 + (tag !== undefined ? 1 : 0),
+  }
+}
+
+/** A selector's rule: its compounds, joined by descendant (a space) and child (`>`) combinators. */
+function simpleRule(selector: string, declarations: string, order: number): CssRule | undefined {
+  // Compounds and the combinators between them, alternately: `#a .b > c` is ['#a', ' ', '.b', ' > ', 'c'].
+  const tokens = selector.split(/(\s*>\s*|\s+)/)
+  if (tokens.length > 2 * MAX_CHAIN - 1) return undefined
+  const compounds: { compound: Compound; specificity: number }[] = []
+  for (let i = 0; i < tokens.length; i += 2) {
+    const read = compound(tokens[i]!)
+    if (!read) return undefined
+    compounds.push(read)
+  }
+  const subject = compounds[compounds.length - 1]!
+  const context: { compound: Compound; child: boolean }[] = []
+  for (let i = compounds.length - 2; i >= 0; i--) context.push({ compound: compounds[i]!.compound, child: tokens[2 * i + 1]!.includes('>') })
+  return {
+    ...subject.compound,
+    context,
+    specificity: compounds.reduce((sum, c) => sum + c.specificity, 0),
     order,
     declarations,
   }
@@ -103,11 +142,45 @@ export class RuleIndex {
     }
   }
 
-  /** The declarations of every rule `el` matches, lowest specificity first (so the strongest come last and win). */
-  declarationsFor(el: XmlElement): string {
-    const classes = new Set((el.attrs.class ?? '').split(/\s+/).filter(Boolean))
+  readonly #classes = new Map<XmlElement, ReadonlySet<string>>()
+  #steps = 0
+
+  #classesOf(el: XmlElement): ReadonlySet<string> {
+    let classes = this.#classes.get(el)
+    if (!classes) {
+      classes = new Set((el.attrs.class ?? '').split(/\s+/).filter(Boolean))
+      this.#classes.set(el, classes)
+    }
+    return classes
+  }
+
+  #matches(c: Compound, el: XmlElement): boolean {
+    if ((c.tag !== undefined && c.tag !== el.name) || (c.id !== undefined && c.id !== el.attrs.id)) return false
+    const classes = this.#classesOf(el)
+    return c.classes.every(name => classes.has(name))
+  }
+
+  /** Whether `el`'s ancestors match a rule's context, from its `i`th compound on (trying each ancestor a descendant combinator allows). */
+  #inContext(rule: CssRule, i: number, el: XmlElement, parentOf: (el: XmlElement) => XmlElement | undefined): boolean {
+    const step = rule.context[i]
+    if (step === undefined) return true
+    for (let at = parentOf(el); at; at = parentOf(at)) {
+      if (++this.#steps > MAX_MATCH_STEPS) throw new RangeError('style sheet too costly to match')
+      if (this.#matches(step.compound, at) && this.#inContext(rule, i + 1, at, parentOf)) return true
+      if (step.child) return false
+    }
+    return false
+  }
+
+  /**
+   * The declarations of every rule `el` matches, lowest specificity first (so
+   * the strongest come last and win); `parentOf` gives an element's parent.
+   * Throws RangeError past MAX_MATCH_STEPS.
+   */
+  declarationsFor(el: XmlElement, parentOf: (el: XmlElement) => XmlElement | undefined): string {
+    const classes = this.#classesOf(el)
     const candidates = [...this.#universal, ...(this.#byTag.get(el.name) ?? []), ...(el.attrs.id !== undefined ? (this.#byId.get(el.attrs.id) ?? []) : []), ...[...classes].flatMap(name => this.#byClass.get(name) ?? [])]
-    const matched = [...new Set(candidates)].filter(rule => (rule.tag === undefined || rule.tag === el.name) && (rule.id === undefined || rule.id === el.attrs.id) && rule.classes.every(name => classes.has(name)))
+    const matched = [...new Set(candidates)].filter(rule => this.#matches(rule, el) && this.#inContext(rule, 0, el, parentOf))
     return matched
       .toSorted((a, b) => a.specificity - b.specificity || a.order - b.order)
       .map(rule => rule.declarations)
