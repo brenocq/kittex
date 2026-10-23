@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { readSvg, svgTextTex, type SvgTextTypesetter } from '../../src/diagram/index.ts'
+import { readImageFile, texPicture } from '../../src/index.ts'
 import { flattenSubpaths } from '../../src/raster/path.ts'
 import { GlyphError, typeset } from '../../src/typeset/index.ts'
 import type { Picture, PictureOp } from '../../src/types.ts'
@@ -206,5 +207,19 @@ describe('matplotlib with svg.fonttype none', () => {
       expect(Math.abs(centerX(box) - centerX(theirs[i]!))).toBeLessThan(1)
       expect(Math.abs(box.bottom - theirs[i]!.bottom)).toBeLessThan(0.5)
     })
+  })
+})
+
+describe('readImageFile', () => {
+  test('sets an SVG file’s labels, its bytes read as UTF-8', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40" viewBox="0 0 100 40"><text x="50" y="25" text-anchor="middle" font-size="14">Café ∑</text></svg>`
+    const source = readImageFile(new TextEncoder().encode(svg))
+    if (source === 'pdf' || source.kind !== 'picture') throw new Error('not a picture')
+    expect(source.picture.ops.filter(op => op.type === 'fill' && op.glyph)).toHaveLength(5)
+  })
+
+  test('core’s texPicture (a PDF page’s SVG, when its converter keeps text) sets its <text> too', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="40pt" viewBox="0 0 100 40"><text x="10" y="25" font-size="12">Page 1</text></svg>`
+    expect(texPicture(svg, { baseline: 'bottom', fontSize: 10 }).ops.filter(op => op.type === 'fill' && op.glyph)).toHaveLength(5)
   })
 })

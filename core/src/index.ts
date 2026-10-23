@@ -1,5 +1,5 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { adaptColor, assumedBackground, readSvg, texPicture } from './diagram/index.js'
+import { adaptColor, assumedBackground, readSvg, svgTextTex, texPicture as readTexPicture, type SvgTextRun, type TexDocument } from './diagram/index.js'
 import { fitImage, type ImageBox, type ImageSpec } from './image/block.js'
 import { type Bitmap, decodeImage, encodeRgbaPng as encodeBitmapPng, ImageError, imageHeader, MAX_IMAGE_PIXELS, scaleBitmap } from './image/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
@@ -39,7 +39,6 @@ export {
   TRIAL_PDF,
   texEnvironment,
   texError,
-  texPicture,
   ulimitProbe,
   unsafeTex,
   XmlError,
@@ -618,7 +617,7 @@ export function readImageFile(bytes: Uint8Array): ImageSource | 'pdf' {
   const header = imageHeader(bytes)
   if (!header) throw new ImageError('not a PNG, JPEG, SVG or PDF file')
   if (header.format === 'pdf') return 'pdf'
-  if (header.format === 'svg') return pictureSource(readSvg(byteString(bytes), { baseline: 'bottom', emPerUnit: SVG_EM_PER_UNIT, userUnit: 'document' }))
+  if (header.format === 'svg') return pictureSource(readSvg(svgString(bytes), { baseline: 'bottom', emPerUnit: SVG_EM_PER_UNIT, userUnit: 'document', text: typesetSvgText }))
   if (header.width !== undefined && header.height !== undefined && header.width * header.height > MAX_IMAGE_PIXELS) {
     throw new ImageError(`image too large to draw (${header.width} × ${header.height} pixels)`)
   }
@@ -629,15 +628,38 @@ export function readImageFile(bytes: Uint8Array): ImageSource | 'pdf' {
   return { kind: 'bitmap', width: bitmap.width, height: bitmap.height, bitmap: kept }
 }
 
+/** The sandbox's TextDecoder (AGENTS.md lists it), which core's lib (ES2023, no DOM) doesn't declare. */
+declare const TextDecoder: new () => { decode(bytes: Uint8Array): string }
+
+/** An SVG file's bytes as text: UTF-8, as nearly every SVG is (a byte that isn't is U+FFFD, a character the font lacks). */
+function svgString(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes)
+}
+
+const svgTextCache = new Map<string, TypesetResult | null>()
+
 /**
- * Bytes as a string, one character per byte. Enough for readSvg: SVG's
- * markup is ASCII, and the text it would read beyond that (a <text>) it
- * refuses anyway.
+ * An SVG text's run typeset (readSvg's `text`): MathJax's `\text{}` in New
+ * Computer Modern, every character escaped (svgTextTex), cached across
+ * pictures; undefined for a run holding a character the font lacks.
  */
-function byteString(bytes: Uint8Array): string {
-  let out = ''
-  for (let at = 0; at < bytes.length; at += 8192) out += String.fromCharCode(...bytes.subarray(at, at + 8192))
-  return out
+function typesetSvgText(run: SvgTextRun): TypesetResult | undefined {
+  const tex = svgTextTex(run)
+  if (svgTextCache.has(tex)) return remember(svgTextCache, tex) ?? undefined
+  let result: TypesetResult | null
+  try {
+    result = typeset(tex, { display: false })
+  } catch (error) {
+    // TexError too: the run is then set a character at a time (svg-text.ts), so one bad character costs only itself.
+    if (!(error instanceof GlyphError || error instanceof TexError)) throw error
+    result = null
+  }
+  return store(svgTextCache, tex, result) ?? undefined
+}
+
+/** dvisvgm's SVG of a compiled document, or a PDF page's, as a Picture, its `<text>` set in kittex's font. Throws SvgError or XmlError. */
+export function texPicture(svg: string, document: Pick<TexDocument, 'baseline' | 'fontSize'>): Picture {
+  return readTexPicture(svg, document, typesetSvgText)
 }
 
 /** A picture (an SVG file's, a PDF page's) as an ImageSource. Throws ImageError for an empty one. */
