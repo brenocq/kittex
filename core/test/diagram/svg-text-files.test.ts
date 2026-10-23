@@ -1,7 +1,7 @@
 // The labels of real SVG files, set by MathJax through readSvg's `text`, as
 // core/src/index.ts sets them: where each label's ink lands against its node.
-// graphviz-labels.svg is written in dot 12's output form (one <text> per line,
-// HTML labels as start-anchored runs), inkscape-text.svg and drawio.svg are
+// graphviz-dot.svg is dot 16.1's output of graphviz-dot.gv (one <text> per
+// line, HTML labels as start-anchored runs), inkscape-text.svg and drawio.svg are
 // trimmed from those editors' files, and mermaid.svg is mmdc's (htmlLabels off).
 
 import { readFileSync } from 'node:fs'
@@ -74,60 +74,61 @@ function expectLabel(glyphs: readonly Glyph[], region: Box, count: number, cente
 }
 
 describe('graphviz', () => {
-  // dot's graph coordinates, under its translate(4 256), in the SVG's user units.
-  const g = (left: number, top: number, right: number, bottom: number): Box => ({ left: left + 4, top: top + 256, right: right + 4, bottom: bottom + 256 })
-  const { glyphs } = open(fixture('graphviz-labels'))
+  // dot's graph coordinates, under its translate(4 224.48), in the SVG's user units.
+  const Y = 224.48
+  const g = (left: number, top: number, right: number, bottom: number): Box => ({ left: left + 4, top: top + Y, right: right + 4, bottom: bottom + Y })
+  const { glyphs } = open(fixture('graphviz-dot'))
 
   test('every label is drawn, each character an outline', () => {
     expect(glyphs).toHaveLength(5 + 8 + 4 + 9 + 4 + 5 + 11)
   })
 
   test('an ellipse node’s label is centred in its ellipse, across and down', () => {
-    expectLabel(glyphs, g(31.5, -252, 94.5, -216), 5, { cx: 63 + 4, tolerance: 1.5 })
     // Down, within a fifth of the 14 pt font (the p descends).
-    expectLabel(glyphs, g(31.5, -252, 94.5, -216), 5, { cy: -234 + 256, tolerance: 2.8 })
+    expectLabel(glyphs, g(8.75, -219.98, 69.49, -183.98), 5, { cx: 39.12 + 4, tolerance: 1.5 })
+    expectLabel(glyphs, g(8.75, -219.98, 69.49, -183.98), 5, { cy: -201.98 + Y, tolerance: 2.8 })
   })
 
   test('a two-line label: one text a line, each centred, the first above the second', () => {
-    const node = g(31.5, -170.74, 94.5, -117.26)
-    expectLabel(glyphs, node, 8, { cx: 67, cy: -144 + 256, tolerance: 2 })
-    const two = inside(glyphs, { ...node, bottom: -140 + 256 })
-    const lines = inside(glyphs, { ...node, top: -140 + 256 })
+    const node = g(9.78, -130.98, 68.46, -73)
+    expectLabel(glyphs, node, 8, { cx: 39.12 + 4, cy: -101.99 + Y, tolerance: 2 })
+    const two = inside(glyphs, { ...node, bottom: -101 + Y })
+    const lines = inside(glyphs, { ...node, top: -101 + Y })
     expect([two.length, lines.length]).toEqual([3, 5])
-    expect(Math.abs(centerX(union(two.map(x => x.box))) - 67)).toBeLessThan(1.5)
-    expect(Math.abs(centerX(union(lines.map(x => x.box))) - 67)).toBeLessThan(1.5)
+    expect(Math.abs(centerX(union(two.map(x => x.box))) - 43.12)).toBeLessThan(1.5)
+    expect(Math.abs(centerX(union(lines.map(x => x.box))) - 43.12)).toBeLessThan(1.5)
   })
 
   test('an edge label beside its edge', () => {
-    expectLabel(glyphs, g(60, -200, 100, -178), 4, { cx: 77.62 + 4, tolerance: 1.5 })
+    expectLabel(glyphs, g(30, -170, 75, -148), 4, { cx: 51.88 + 4, tolerance: 1.5 })
   })
 
   test('an HTML label’s bold and italic runs, in its fontcolor, inside its box', () => {
     const typed: string[] = []
-    open(fixture('graphviz-labels'), run => {
+    open(fixture('graphviz-dot'), run => {
       typed.push(`${run.text}${run.bold ? ':bold' : ''}${run.italic ? ':italic' : ''}`)
       return mathjax(run)
     })
     expect(typed).toContain('Bold:bold')
     expect(typed).toContain('it&co:italic')
-    const box = g(23.3, -54, 102.7, -18)
+    const box = g(0, -36, 78.25, 0)
     expectLabel(glyphs, box, 9)
     expect(inside(glyphs, box).every(x => x.paint.color.r === 255 && x.paint.color.g === 0)).toBe(true)
   })
 
   test('a record’s fields, each centred in its cell', () => {
-    expectLabel(glyphs, g(133, -53.5, 174, -18.5), 4, { cx: 153.5 + 4, tolerance: 1.5 })
-    expectLabel(glyphs, g(174, -53.5, 217, -18.5), 5, { cx: 195.5 + 4, tolerance: 1.5 })
+    expectLabel(glyphs, g(87.38, -219.98, 121.38, -183.98), 4, { cx: 104.38 + 4, tolerance: 1.5 })
+    expectLabel(glyphs, g(121.38, -219.98, 162.88, -183.98), 5, { cx: 142.12 + 4, tolerance: 1.5 })
   })
 
   test('a left-justified line (text-anchor start) begins at its x', () => {
-    const ink = expectLabel(glyphs, g(130, -162, 226, -126), 11)
-    expect(ink.left).toBeGreaterThan(138 + 4 - 0.5)
-    expect(ink.left).toBeLessThan(138 + 4 + 1)
+    const ink = expectLabel(glyphs, g(181.38, -219.98, 258.88, -183.98), 11)
+    expect(ink.left).toBeGreaterThan(189.38 + 4 - 0.5)
+    expect(ink.left).toBeLessThan(189.38 + 4 + 1)
   })
 
   test('without a typesetter, the labels are not drawn and the rest is', () => {
-    const bare = open(fixture('graphviz-labels'), null)
+    const bare = open(fixture('graphviz-dot'), null)
     expect(bare.glyphs).toHaveLength(0)
     expect(bare.picture.ops.length).toBeGreaterThan(10)
   })
