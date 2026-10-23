@@ -1,3 +1,5 @@
+import { once } from 'node:events'
+import { createDeflate } from 'node:zlib'
 import { zlibSync } from 'fflate'
 import { describe, expect, test } from 'vitest'
 import { decodeImage, ImageError, MAX_IMAGE_PIXELS } from '../../src/image/index.js'
@@ -177,6 +179,21 @@ describe('decodeImage: corrupt PNG', () => {
     const bomb = new Uint8Array(raw.length + 1_000_000)
     bomb.set(raw)
     expect(() => decodeImage(pngFile(ihdr(W, H, 8, 0), chunk('IDAT', zlibSync(bomb))))).toThrow(/inflates to/)
+  })
+
+  test('a zlib bomb is refused in well under 100 ms, not inflated whole first', async () => {
+    // 256 MiB of zeros, about 250 KB deflated, streamed so the test never holds the inflated bytes.
+    const deflate = createDeflate({ level: 9 })
+    const parts: Buffer[] = []
+    deflate.on('data', (part: Buffer) => parts.push(part))
+    const zeros = Buffer.alloc(1 << 20)
+    for (let i = 0; i < 256; i++) if (!deflate.write(zeros)) await once(deflate, 'drain')
+    deflate.end()
+    await once(deflate, 'end')
+    const bomb = pngFile(ihdr(W, H, 8, 0), chunk('IDAT', Buffer.concat(parts)))
+    const start = performance.now()
+    expect(() => decodeImage(bomb)).toThrow(/inflates to more than/)
+    expect(performance.now() - start).toBeLessThan(100)
   })
 
   test('image data that inflates to less than the header needs throws', () => {

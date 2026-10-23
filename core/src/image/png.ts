@@ -1,5 +1,4 @@
-import { unzlibSync } from 'fflate'
-import { concat } from '../raster/png.js'
+import { Unzlib } from 'fflate'
 import { type Bitmap, checkSize, ImageError } from './bitmap.js'
 
 /*
@@ -11,9 +10,10 @@ import { type Bitmap, checkSize, ImageError } from './bitmap.js'
  * stored. CRCs are not checked; a corrupt stream fails in inflate or in the
  * filter bytes instead.
  *
- * The inflated size is known from the header, so inflate writes into a buffer
- * of exactly that size: a stream that inflates to more (a zlib bomb) or less
- * (truncated) is refused rather than grown into.
+ * The inflated size is known from the header, so inflate streams into a
+ * buffer of exactly that size: a stream that inflates to more (a zlib bomb) is
+ * refused as soon as it passes the size, and one that inflates to less
+ * (truncated) is refused at its end.
  */
 
 const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -108,19 +108,33 @@ function passes(h: Header): Array<readonly [number, number, number, number, numb
   )
 }
 
+/*
+ * Deflate expands at most about 1032 to 1, so INFLATE_STEP bytes of input
+ * inflate to at most about 4 MB before the next size check: a bomb is refused
+ * within one step instead of being inflated whole (unzlibSync with a fixed
+ * `out` keeps inflating past its end and drops the rest). Smaller steps cost
+ * nothing measurable on a valid image; 64 KiB steps let one step run to 67 MB.
+ */
+const INFLATE_STEP = 4096
+
 function inflate(idat: Uint8Array[], h: Header): Uint8Array {
   const expected = passes(h).reduce((n, [, , , , w, rows]) => n + rows * (1 + stride(w, h)), 0)
-  const data = idat.length === 1 ? idat[0]! : concat(idat)
-  // One byte of headroom: a stream that fills it inflates to more than the header allows.
-  const out = new Uint8Array(expected + 1)
-  let raw: Uint8Array
+  const out = new Uint8Array(expected)
+  let length = 0
+  const stream = new Unzlib((chunk) => {
+    if (length + chunk.length > expected) throw new ImageError(`PNG image data inflates to more than the ${expected} bytes its header allows`)
+    out.set(chunk, length)
+    length += chunk.length
+  })
   try {
-    raw = unzlibSync(data, { out })
+    for (const data of idat) for (let at = 0; at < data.length; at += INFLATE_STEP) stream.push(data.subarray(at, at + INFLATE_STEP))
+    stream.push(new Uint8Array(0), true)
   } catch (error) {
+    if (error instanceof ImageError) throw error
     throw new ImageError(`PNG image data is corrupt or truncated (${error instanceof Error ? error.message : String(error)})`)
   }
-  if (raw.length !== expected) throw new ImageError(`PNG image data inflates to ${raw.length} bytes, not ${expected}`)
-  return raw
+  if (length !== expected) throw new ImageError(`PNG image data inflates to ${length} bytes, not ${expected}`)
+  return out
 }
 
 function toRgba(raw: Uint8Array, h: Header, palette: Uint8Array | undefined, trns: Uint8Array | undefined): Bitmap {
