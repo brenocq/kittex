@@ -7,6 +7,7 @@ import type { CellBox, Picture, RasterOptions, RGB, TextCurve, TypesetResult, Un
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
+export * from './image/index.js'
 export {
   adaptColor,
   assumedBackground,

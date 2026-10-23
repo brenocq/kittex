@@ -217,7 +217,7 @@ function filterRgba(rgba: Uint8Array, w: number, h: number): Uint8Array {
 }
 
 /** Rows of `bpp`-byte pixels, each prefixed with the filter (None, Sub, Up or Paeth) that leaves the smallest absolute sum. */
-function filterBytes(rgba: Uint8Array, w: number, h: number, bpp: number): Uint8Array {
+export function filterBytes(rgba: Uint8Array, w: number, h: number, bpp: number): Uint8Array {
   const stride = w * bpp
   const out = new Uint8Array(h * (stride + 1))
   const trial = [new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride)]
@@ -368,7 +368,7 @@ function filter(alpha: Uint8Array, w: number, h: number): Uint8Array {
   return out
 }
 
-function chunk(type: string, data: Uint8Array): Uint8Array {
+export function chunk(type: string, data: Uint8Array): Uint8Array {
   const out = new Uint8Array(12 + data.length)
   const view = new DataView(out.buffer)
   view.setUint32(0, data.length)
@@ -390,7 +390,7 @@ function crc32(bytes: Uint8Array, from: number, to: number): number {
   return (crc ^ 0xffffffff) >>> 0
 }
 
-function concat(parts: Uint8Array[]): Uint8Array {
+export function concat(parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
   let at = 0
   for (const p of parts) {
