@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import { texPicture } from '../../src/diagram/index.ts'
 import { decodeImage } from '../../src/image/index.ts'
-import { IMAGE_FILE_BYTES, measureImage, pictureSource, readImageFile, renderImage, type ImageSource, type PictureEnv } from '../../src/index.ts'
+import { fitImageBlock, IMAGE_FILE_BYTES, type ImageBlock, measureImage, measureImageBlock, pictureSource, readImageFile, renderImage, renderImageBlock, type ImageSource, type PictureEnv } from '../../src/index.ts'
 import type { Picture } from '../../src/types.ts'
 
 // 100 columns of 10 × 20 px cells (1000 px), 30 rows (600 px).
 const ENV: PictureEnv = { cellWidth: 10, cellHeight: 20, maxColumns: 100, maxRows: 30, emPx: 20, ink: { r: 220, g: 220, b: 220 }, background: { r: 20, g: 20, b: 20 } }
 
 /** A `width` × `height` bitmap source of pseudo-random opaque pixels (a photo's worth of entropy: PNG barely compresses it). */
-function noise(width: number, height: number): ImageSource {
+function noise(width: number, height: number, seed = 12345): ImageSource {
   const rgba = new Uint8Array(width * height * 4)
-  let s = 12345
+  let s = seed
   for (let i = 0; i < rgba.length; i++) {
     s = (Math.imul(s, 1103515245) + 12345) >>> 0
     rgba[i] = i % 4 === 3 ? 255 : s >>> 24
@@ -109,5 +109,87 @@ describe('an image file as a picture (SVG, a PDF page)', () => {
 
   test('an empty picture is refused', () => {
     expect(() => pictureSource({ ...box, width: 0 })).toThrow('the picture is empty')
+  })
+})
+
+describe('renderImageBlock: several images as one picture', () => {
+  /** A flat bitmap source of one colour. */
+  const solid = (width: number, height: number, rgb: readonly [number, number, number]): ImageSource => {
+    const rgba = new Uint8Array(width * height * 4)
+    for (let i = 0; i < rgba.length; i += 4) rgba.set([...rgb, 255], i)
+    return { kind: 'bitmap', width, height, bitmap: { width, height, rgba } }
+  }
+  const RED = [200, 0, 0] as const
+  const BLUE = [0, 0, 200] as const
+  const pair: ImageBlock = { rows: [[{ path: 'a.png' }, { path: 'b.png' }]] }
+  const pixel = (image: { png: Uint8Array }) => {
+    const drawn = decodeImage(image.png)
+    return { drawn, at: (x: number, y: number) => [...drawn.rgba.subarray((y * drawn.width + x) * 4, (y * drawn.width + x) * 4 + 4)] }
+  }
+
+  test('two images side by side, the shorter centred on the row, a transparent gap between, the PNG its cells exactly', () => {
+    // 200 × 100 and 200 × 50, 30 px apart (3% of 1000): 430 × 100 px, 43 columns and 5 rows exactly.
+    const sources = [solid(200, 100, RED), solid(200, 50, BLUE)]
+    expect(measureImageBlock(sources, pair, ENV)).toEqual({ columns: 43, rows: 5, scale: 1 })
+    const image = renderImageBlock(sources, pair, ENV)
+    expect(image).toMatchObject({ columns: 43, rows: 5, density: 1 })
+    const { drawn, at } = pixel(image)
+    expect([drawn.width, drawn.height]).toEqual([430, 100])
+    expect([at(0, 0), at(199, 99), at(100, 50)]).toEqual([[...RED, 255], [...RED, 255], [...RED, 255]])
+    expect([at(200, 50)[3], at(229, 50)[3]]).toEqual([0, 0])
+    expect([at(230, 50), at(429, 50)]).toEqual([[...BLUE, 255], [...BLUE, 255]])
+    // 50 px in 100: 25 transparent rows above and below.
+    expect([at(330, 24)[3], at(330, 25)[3], at(330, 74)[3], at(330, 75)[3]]).toEqual([0, 255, 255, 0])
+  })
+
+  test('the images are centred in their cells, at least minRows tall', () => {
+    // 195 + 30 + 200 = 425 px in 43 columns (430): 2.5 px either side, rounded to 3 on the left.
+    const image = renderImageBlock([solid(195, 100, RED), solid(200, 100, BLUE)], pair, ENV, 7)
+    expect(image.rows).toBe(7)
+    const { drawn, at } = pixel(image)
+    expect([drawn.width, drawn.height]).toEqual([430, 140])
+    // 100 px in 140: 20 rows above.
+    expect([at(2, 70)[3], at(3, 70), at(100, 19)[3], at(100, 20)]).toEqual([0, [...RED, 255], 0, [...RED, 255]])
+  })
+
+  test('a picture takes its place beside a bitmap, in its colours, nothing of it outside', () => {
+    // A 4 × 1 em black box: 79.7 × 19.9 px of its own, drawn at that size beside a 100 × 40 bitmap.
+    const wide = pictureSource({ width: 4, height: 1, depth: 0, ops: [{ type: 'fill', d: 'M0 0H4V-1H0Z', transform: [1, 0, 0, 1, 0, 0], rule: 'nonzero', paint: { color: { r: 0, g: 0, b: 0 }, opacity: 1 } }], clips: [] })
+    const sources = [solid(100, 40, RED), wide]
+    const fit = fitImageBlock(sources, pair, { maxColumns: 100, maxRows: 30, cellWidth: 10, cellHeight: 20 })
+    const image = renderImageBlock(sources, pair, ENV)
+    const { drawn, at } = pixel(image)
+    const left = Math.round((drawn.width - fit.widthPx) / 2)
+    const top = Math.round((drawn.height - fit.heightPx) / 2)
+    const place = fit.images[1]!
+    // Ink in the middle of its place; nothing in the gap between the two images, nor below it.
+    expect(at(left + place.x + Math.floor(place.widthPx / 2), top + place.y + Math.floor(place.heightPx / 2))[3]).toBeGreaterThan(200)
+    expect(at(left + 100 + 15, top + 20)[3]).toBe(0)
+    expect(at(left + place.x + Math.floor(place.widthPx / 2), top + place.y + place.heightPx + 2)[3]).toBe(0)
+  })
+
+  test('photos are drawn at fewer pixels until the one PNG fits, in the same cells', () => {
+    // Four photos in two rows, each at its own size, fill the column and the 30 rows: 1000 × 600 px of noise, past what one PNG may hold.
+    const grid: ImageBlock = { rows: [[{ path: 'a.png' }, { path: 'b.png' }], [{ path: 'c.png' }, { path: 'd.png' }]] }
+    // Each its own noise: a copy of one beside it would be a repeat deflate finds along the scanline.
+    const sources = [1, 2, 3, 4].map(seed => noise(485, 285, seed))
+    const box = measureImageBlock(sources, grid, ENV)
+    expect(box).toEqual({ columns: 100, rows: 30, scale: 1 })
+    const image = renderImageBlock(sources, grid, ENV)
+    expect(image.png.length).toBeLessThanOrEqual(IMAGE_FILE_BYTES)
+    expect(image.density).toBeLessThan(1)
+    expect([image.columns, image.rows]).toEqual([box.columns, box.rows])
+    const half = renderImageBlock(sources, grid, ENV, image.rows, image.density / 2)
+    expect(half.png.length).toBeLessThan(image.png.length / 2)
+  })
+
+  test('a lone image is drawn as renderImage draws it; the sources must match the images', () => {
+    const lone: ImageBlock = { rows: [[{ path: 'a.png', width: { kind: 'line', fraction: 0.5 } }]] }
+    const source = noise(300, 200)
+    expect(renderImageBlock([source], lone, ENV).png).toEqual(renderImage(source, lone.rows[0]![0]!, ENV).png)
+    // A picture too: its cells as renderPicture lays them out, its PNG as renderPicture encodes it.
+    const picture = pictureSource({ width: 4, height: 1, depth: 0, ops: [{ type: 'fill', d: 'M0 0H4V-1H0Z', transform: [1, 0, 0, 1, 0, 0], rule: 'nonzero', paint: { color: { r: 0, g: 0, b: 0 }, opacity: 1 } }], clips: [] })
+    expect(renderImageBlock([picture], lone, ENV)).toEqual(renderImage(picture, lone.rows[0]![0]!, ENV))
+    expect(() => renderImageBlock([source], pair, ENV)).toThrow(RangeError)
   })
 })

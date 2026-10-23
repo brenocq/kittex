@@ -1,6 +1,6 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { adaptColor, assumedBackground, readSvg, svgTextTex, texPicture as readTexPicture, type SvgTextRun, type TexDocument } from './diagram/index.js'
-import { fitImage, type ImageBox, type ImageSpec } from './image/block.js'
+import { type BlockFit, type BlockImage, blockImages, fitImage, fitImageBlock, type ImageBlock, type ImageBox, type ImageSpec } from './image/block.js'
 import { type Bitmap, decodeImage, encodeRgbaPng as encodeBitmapPng, ImageError, imageHeader, MAX_IMAGE_PIXELS, scaleBitmap } from './image/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
@@ -76,8 +76,8 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
-export { fitImage, imageBlock, LINE_WIDTH_PT, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
-export type { ImageBox, ImageFit, ImageLength, ImageSpec } from './image/block.js'
+export { blockImages, fitImage, fitImageBlock, IMAGE_GAP, imageBlock, LINE_WIDTH_PT, MAX_BLOCK_IMAGES, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
+export type { BlockFit, BlockImage, ImageBlock, ImageBox, ImageFit, ImageLength, ImageSpec } from './image/block.js'
 export { ImageError, imageHeader, MAX_IMAGE_PIXELS } from './image/index.js'
 export type { Bitmap, ImageFormat } from './image/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset, typesetLoaded }
@@ -733,6 +733,103 @@ function drawBitmap(bitmap: Bitmap, width: number, height: number, boxWidth: num
   const y0 = Math.floor((H - h) / 2)
   for (let y = 0; y < h; y++) rgba.set(scaled.rgba.subarray(y * w * 4, (y + 1) * w * 4), ((y0 + y) * W + x0) * 4)
   return encodeBitmapPng({ width: W, height: H, rgba })
+}
+
+/** A block's only image where it stands alone (no subfigure or minipage around it), which is drawn as one image file is. */
+function soleImage(block: ImageBlock): BlockImage | undefined {
+  const [row, ...more] = block.rows
+  const image = row?.length === 1 && more.length === 0 ? row[0] : undefined
+  return image?.box === undefined ? image : undefined
+}
+
+function checkSources(sources: readonly ImageSource[], block: ImageBlock): void {
+  const count = blockImages(block).length
+  if (sources.length !== count) throw new RangeError(`image block: ${sources.length} sources for ${count} images`)
+}
+
+/** The cells an image block takes (its streaming placeholder's and its image's), `sources` its files in reading order (blockImages). Throws TexError. */
+export function measureImageBlock(sources: readonly ImageSource[], block: ImageBlock, env: PictureEnv): CellBox {
+  checkSources(sources, block)
+  const sole = soleImage(block)
+  if (sole) return measureImage(sources[0]!, sole, env)
+  const fit = fitImageBlock(sources, block, imageBox(env))
+  return { columns: fit.columns, rows: fit.rows, scale: 1 }
+}
+
+/**
+ * Draws an image block, `sources` its files in reading order: a lone image
+ * as renderImage draws it; several as one picture of them all, sized and
+ * placed by fitImageBlock and centred in its cells, at least `minRows` tall.
+ * One picture keeps the block one Image under the drawing's byte budget:
+ * drawn at fewer pixels (`density`, as renderImage's) until its PNG fits
+ * IMAGE_FILE_BYTES. Throws TexError.
+ */
+export function renderImageBlock(sources: readonly ImageSource[], block: ImageBlock, env: PictureEnv, minRows?: number, density = 1): RenderedImage & { density: number } {
+  checkSources(sources, block)
+  const sole = soleImage(block)
+  if (sole) return renderImage(sources[0]!, sole, env, minRows, density)
+  const fit = fitImageBlock(sources, block, imageBox(env))
+  const rows = Math.max(fit.rows, minRows ?? 0)
+  const fullWidth = fit.columns * env.cellWidth
+  const fullHeight = rows * env.cellHeight
+  // A photo among them: started as renderImage starts one. Pictures alone compress well and start at full density.
+  const photo = sources.some(source => source.kind === 'bitmap')
+  let d = Math.min(1, Math.max(MIN_IMAGE_DENSITY, density), photo ? Math.sqrt(IMAGE_FILE_BYTES / (fullWidth * fullHeight)) : 1)
+  for (;;) {
+    const png = encodeBitmapPng(composeBlock(sources, fit, env, fullWidth, fullHeight, d))
+    if (png.length <= IMAGE_FILE_BYTES) return { columns: fit.columns, rows, scale: 1, png, density: d }
+    if (d <= MIN_IMAGE_DENSITY) throw new TexError('images too large to send to the terminal')
+    d = Math.max(MIN_IMAGE_DENSITY, d * 0.7)
+  }
+}
+
+/** A block's images on a transparent `fullWidth` × `fullHeight` (whole cells) at `density`, their area centred in it. */
+function composeBlock(sources: readonly ImageSource[], fit: BlockFit, env: PictureEnv, fullWidth: number, fullHeight: number, density: number): Bitmap {
+  const width = Math.max(1, Math.round(fullWidth * density))
+  const height = Math.max(1, Math.round(fullHeight * density))
+  const canvas: Bitmap = { width, height, rgba: new Uint8Array(width * height * 4) }
+  const left = (fullWidth - fit.widthPx) / 2
+  const top = (fullHeight - fit.heightPx) / 2
+  for (const [i, place] of fit.images.entries()) {
+    const source = sources[i]!
+    const w = Math.max(1, Math.round(place.widthPx * density))
+    const h = Math.max(1, Math.round(place.heightPx * density))
+    const drawn = source.kind === 'bitmap' ? scaleBitmap(source.bitmap, w, h) : pictureBitmap(source.picture, w, h, env)
+    paintOver(canvas, drawn, Math.round((left + place.x) * density) + Math.floor((w - drawn.width) / 2), Math.round((top + place.y) * density) + Math.floor((h - drawn.height) / 2))
+  }
+  return canvas
+}
+
+/** A picture drawn to fill `width` × `height` pixels (less its stroke pad), its colours adapted as renderPicture's are. */
+function pictureBitmap(picture: Picture, width: number, height: number, env: PictureEnv): Bitmap {
+  const raster = rasterizePicture(picture, { ...pictureOptions(env), emPx: width / picture.width, cellWidth: width, cellHeight: height, maxColumns: 1, maxRows: 1 })
+  return { width: raster.widthPx, height: raster.heightPx, rgba: raster.rgba }
+}
+
+/** Paints straight-alpha `src` over `dst` with its top left at (`x0`, `y0`), clipped to `dst`. */
+function paintOver(dst: Bitmap, src: Bitmap, x0: number, y0: number): void {
+  const to = dst.rgba
+  const from = src.rgba
+  for (let y = Math.max(0, -y0); y < src.height && y0 + y < dst.height; y++) {
+    for (let x = Math.max(0, -x0); x < src.width && x0 + x < dst.width; x++) {
+      const s = (y * src.width + x) * 4
+      const t = ((y0 + y) * dst.width + x0 + x) * 4
+      const a = from[s + 3]!
+      if (a === 0) continue
+      const b = to[t + 3]!
+      if (a === 255 || b === 0) {
+        to[t] = from[s]!
+        to[t + 1] = from[s + 1]!
+        to[t + 2] = from[s + 2]!
+        to[t + 3] = a
+        continue
+      }
+      const under = (b * (255 - a)) / 255
+      const out = a + under
+      for (let c = 0; c < 3; c++) to[t + c] = Math.round((from[s + c]! * a + to[t + c]! * under) / out)
+      to[t + 3] = Math.round(out)
+    }
+  }
 }
 
 /** renderDisplay for a formula TeX drew (texFormula), at least `minRows` tall. Throws TexError. */
