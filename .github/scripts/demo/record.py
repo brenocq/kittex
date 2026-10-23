@@ -101,6 +101,28 @@ QUERY = re.compile(
     re.S,
 )
 ESCAPES = re.compile(r'\x1b\[\d*[CG]|\x1b\[[0-9;:?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[P_^X].*?\x1b\\|\x1b.', re.S)
+# An escape sequence complete from its ESC: a CSI, an OSC ended by BEL or ST, a
+# string (DCS, APC, PM, SOS) ended by ST, or a two-byte escape.
+COMPLETE = re.compile(rb'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P_^X].*?\x1b\\|[^\[\]P_^X])', re.S)
+# The start of one that a read cut before its end.
+PARTIAL = re.compile(rb'\x1b(?:\[[0-?]*[ -/]*|\][^\x07\x1b]*\x1b?|[P_^X](?:(?!\x1b\\).)*)?', re.S)
+
+
+def split_escape(buf):
+    """buf as the part that holds whole escape sequences, and the sequence a
+    read cut at its end (kept for the next read). Each sequence is walked from
+    its ESC, so the ST closing an APC or OSC (ESC \\) is read as that
+    sequence's end, never as a new escape still to come."""
+    at = 0
+    while (start := buf.find(b'\x1b', at)) != -1:
+        whole = COMPLETE.match(buf, start)
+        if whole:
+            at = whole.end()
+        elif PARTIAL.fullmatch(buf, start):
+            return buf[:start], buf[start:]
+        else:
+            at = start + 1
+    return buf, b''
 
 
 def spaces(m):
@@ -201,15 +223,14 @@ class Session:
                 return
             self.record(o=base64.b64encode(b).decode())
             self.last_output = time.time()
-            buf = self.tail + b
-            cut = buf.rfind(b'\x1b')
-            if cut != -1 and not re.match(rb'\x1b(\[[0-9;:?<>=]*[ -/]*[@-~]|\][^\x07]*\x07|.*?\x1b\\)', buf[cut:], re.S):
-                self.tail, buf = buf[cut:], buf[:cut]
-            else:
-                self.tail = b''
-            self.answer(buf)
-            plain = ESCAPES.sub(spaces, buf.decode('utf-8', 'replace'))
-            self.text = (self.text + plain)[-20000:]
+            self.feed(b)
+
+    def feed(self, b):
+        """One read of Claude Code's output: its queries answered, its text kept."""
+        buf, self.tail = split_escape(self.tail + b)
+        self.answer(buf)
+        plain = ESCAPES.sub(spaces, buf.decode('utf-8', 'replace'))
+        self.text = (self.text + plain)[-20000:]
 
     def wait_for(self, pattern, timeout):
         rx = re.compile(pattern, re.I)

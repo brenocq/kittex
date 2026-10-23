@@ -25,6 +25,10 @@ jobs:
       - name: Core tests
         run: npm test
 
+      # The demo recorder must answer Claude Code's startup queries however the pty splits them.
+      - name: Script tests
+        run: npm run test:scripts
+
       # The build fails when a bundle file passes the size Claude Code reads.
       - name: Build
         run: npm run build
