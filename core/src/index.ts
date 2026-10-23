@@ -1,5 +1,7 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { adaptColor, assumedBackground, texPicture } from './diagram/index.js'
+import { adaptColor, assumedBackground, readSvg, texPicture } from './diagram/index.js'
+import { fitImage, type ImageBox, type ImageSpec } from './image/block.js'
+import { type Bitmap, decodeImage, encodeRgbaPng as encodeBitmapPng, ImageError, imageHeader, MAX_IMAGE_PIXELS, scaleBitmap } from './image/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset, typesetLoaded } from './typeset/index.js'
@@ -73,6 +75,8 @@ export {
 export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
 export { fitImage, imageBlock, LINE_WIDTH_PT, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
 export type { ImageBox, ImageFit, ImageLength, ImageSpec } from './image/block.js'
+export { ImageError, imageHeader, MAX_IMAGE_PIXELS } from './image/index.js'
+export type { Bitmap, ImageFormat } from './image/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset, typesetLoaded }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'
@@ -568,6 +572,141 @@ export function measureDisplayResult(result: TypesetResult, env: RenderEnv): Cel
   const box = measure(result, rasterOptions(env))
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
   return box
+}
+
+// ─── Image files (image/) ────────────────────────────────────────────────────
+
+/** The most bytes of an image file read: what Claude Code's file read takes (it refuses a larger file). */
+export const MAX_IMAGE_FILE_BYTES = 4 * 1024 * 1024
+
+/** Pixels a decoded image keeps for drawing: a larger one is scaled down to it once (its own size still sizes it). More than the largest box it is drawn in. */
+export const KEPT_IMAGE_PIXELS = 6_000_000
+
+/** The PNG bytes one image file is drawn within: half of what one drawing may send, so a reply with a photo keeps room for its formulas. */
+export const IMAGE_FILE_BYTES = MAX_IMAGE_BYTES / 2
+
+/** The least density (fraction of its cells' pixels each way) an image file is drawn at to fit IMAGE_FILE_BYTES; below it, it is refused. */
+export const MIN_IMAGE_DENSITY = 0.1
+
+/** A vector image's own pixels per em of its picture (10 TeX points): two per big point, as on a 2× screen. */
+export const VECTOR_PX_PER_EM = 2 * (72 / 72.27) * 10
+
+/** Em per SVG user unit for an SVG file: a unit is a big point, an em 10 TeX points (as TeX's pictures). */
+const SVG_EM_PER_UNIT = 72.27 / 72 / 10
+
+/**
+ * An image file ready to draw: its pixels (PNG, JPEG), kept at most
+ * KEPT_IMAGE_PIXELS, or its picture (SVG, a PDF's first page), with its own
+ * size in pixels (a vector's at VECTOR_PX_PER_EM), which sizes it.
+ */
+export type ImageSource =
+  | { kind: 'bitmap'; width: number; height: number; bitmap: Bitmap }
+  | { kind: 'picture'; width: number; height: number; picture: Picture }
+
+/**
+ * An image file's bytes as an ImageSource, by what they are (not by the
+ * file's name); `pdf` for a PDF, which the host converts (pictureSource).
+ * Throws ImageError (not an image, too large, undecodable), SvgError or
+ * XmlError (an SVG kittex can't draw).
+ */
+export function readImageFile(bytes: Uint8Array): ImageSource | 'pdf' {
+  if (bytes.length > MAX_IMAGE_FILE_BYTES) throw new ImageError(`file larger than ${MAX_IMAGE_FILE_BYTES / 1024 / 1024} MiB`)
+  const header = imageHeader(bytes)
+  if (!header) throw new ImageError('not a PNG, JPEG, SVG or PDF file')
+  if (header.format === 'pdf') return 'pdf'
+  if (header.format === 'svg') return pictureSource(readSvg(byteString(bytes), { baseline: 'bottom', emPerUnit: SVG_EM_PER_UNIT }))
+  if (header.width !== undefined && header.height !== undefined && header.width * header.height > MAX_IMAGE_PIXELS) {
+    throw new ImageError(`image too large to draw (${header.width} × ${header.height} pixels)`)
+  }
+  const bitmap = decodeImage(bytes, { maxPixels: MAX_IMAGE_PIXELS })
+  const pixels = bitmap.width * bitmap.height
+  const k = pixels > KEPT_IMAGE_PIXELS ? Math.sqrt(KEPT_IMAGE_PIXELS / pixels) : 1
+  const kept = k < 1 ? scaleBitmap(bitmap, Math.max(1, Math.round(bitmap.width * k)), Math.max(1, Math.round(bitmap.height * k))) : bitmap
+  return { kind: 'bitmap', width: bitmap.width, height: bitmap.height, bitmap: kept }
+}
+
+/**
+ * Bytes as a string, one character per byte. Enough for readSvg: SVG's
+ * markup is ASCII, and the text it would read beyond that (a <text>) it
+ * refuses anyway.
+ */
+function byteString(bytes: Uint8Array): string {
+  let out = ''
+  for (let at = 0; at < bytes.length; at += 8192) out += String.fromCharCode(...bytes.subarray(at, at + 8192))
+  return out
+}
+
+/** A picture (an SVG file's, a PDF page's) as an ImageSource. Throws ImageError for an empty one. */
+export function pictureSource(picture: Picture): ImageSource {
+  const width = picture.width * VECTOR_PX_PER_EM
+  const height = (picture.height + picture.depth) * VECTOR_PX_PER_EM
+  if (!(width > 0 && height > 0)) throw new ImageError('the picture is empty')
+  return { kind: 'picture', width, height, picture }
+}
+
+/** The cells an image file may take where a TeX picture is drawn (pictureOptions' limits). */
+function imageBox(env: PictureEnv): ImageBox {
+  return {
+    maxColumns: imageColumns(env),
+    maxRows: Math.max(1, Math.min(255, env.maxRows ?? MAX_PICTURE_ROWS, Math.floor(MAX_IMAGE_SIDE / env.cellHeight))),
+    cellWidth: env.cellWidth,
+    cellHeight: env.cellHeight,
+  }
+}
+
+/** Where a picture source is drawn at the size its block asks for: the math's env with the em that gives it fitImage's width. */
+function pictureImageEnv(source: Extract<ImageSource, { kind: 'picture' }>, spec: Pick<ImageSpec, 'width' | 'height' | 'scale'>, env: PictureEnv): PictureEnv {
+  const box = imageBox(env)
+  const fit = fitImage(source, spec, box)
+  return { ...env, emPx: fit.widthPx / source.picture.width, maxRows: box.maxRows }
+}
+
+/** The cells an image file takes (its streaming placeholder's and its image's): fitImage's, a picture's as renderPicture lays it out. Throws TexError. */
+export function measureImage(source: ImageSource, spec: Pick<ImageSpec, 'width' | 'height' | 'scale'>, env: PictureEnv): CellBox {
+  if (source.kind === 'picture') return measurePicture(source.picture, pictureImageEnv(source, spec, env))
+  const fit = fitImage(source, spec, imageBox(env))
+  return { columns: fit.columns, rows: fit.rows, scale: 1 }
+}
+
+/**
+ * Draws an image file at the size its block asks for (fitImage), at least
+ * `minRows` tall, centred in its cells. `density` below 1 draws it with that
+ * fraction of its cells' pixels each way; a photo is drawn at less still
+ * where its PNG would pass IMAGE_FILE_BYTES (the terminal scales it to its
+ * cells, so the cells stay). `density` in the result: the one it was drawn
+ * at. A picture is drawn as a TeX picture is (renderPicture, its colours
+ * adapted to the background). Throws TexError.
+ */
+export function renderImage(source: ImageSource, spec: Pick<ImageSpec, 'width' | 'height' | 'scale'>, env: PictureEnv, minRows?: number, density = 1): RenderedImage & { density: number } {
+  if (source.kind === 'picture') return { ...renderPicture(source.picture, pictureImageEnv(source, spec, env), minRows, density), density }
+  const fit = fitImage(source, spec, imageBox(env))
+  const rows = Math.max(fit.rows, minRows ?? 0)
+  const fullWidth = fit.columns * env.cellWidth
+  const fullHeight = rows * env.cellHeight
+  // Started where the raw pixels are four times the bytes allowed: a photo's PNG is rarely smaller than a quarter of them.
+  let d = Math.min(1, Math.max(MIN_IMAGE_DENSITY, density), Math.sqrt(IMAGE_FILE_BYTES / (fullWidth * fullHeight)))
+  for (;;) {
+    const png = drawBitmap(source.bitmap, fit.widthPx * d, fit.heightPx * d, fullWidth * d, fullHeight * d)
+    if (png.length <= IMAGE_FILE_BYTES) return { columns: fit.columns, rows, scale: 1, png, density: d }
+    if (d <= MIN_IMAGE_DENSITY) throw new TexError('image too large to send to the terminal')
+    d = Math.max(MIN_IMAGE_DENSITY, d * 0.7)
+  }
+}
+
+/** `bitmap` scaled to `width` × `height` pixels, centred on a transparent `boxWidth` × `boxHeight` (each rounded to whole pixels), as a PNG. */
+function drawBitmap(bitmap: Bitmap, width: number, height: number, boxWidth: number, boxHeight: number): Uint8Array {
+  const W = Math.max(1, Math.round(boxWidth))
+  const H = Math.max(1, Math.round(boxHeight))
+  // Never more pixels than the kept bitmap has: it was kept at least as large as any box it is drawn in.
+  const w = Math.min(W, bitmap.width, Math.max(1, Math.round(width)))
+  const h = Math.min(H, bitmap.height, Math.max(1, Math.round(height)))
+  const scaled = w === bitmap.width && h === bitmap.height ? bitmap : scaleBitmap(bitmap, w, h)
+  if (w === W && h === H) return encodeBitmapPng(scaled)
+  const rgba = new Uint8Array(W * H * 4)
+  const x0 = Math.floor((W - w) / 2)
+  const y0 = Math.floor((H - h) / 2)
+  for (let y = 0; y < h; y++) rgba.set(scaled.rgba.subarray(y * w * 4, (y + 1) * w * 4), ((y0 + y) * W + x0) * 4)
+  return encodeBitmapPng({ width: W, height: H, rgba })
 }
 
 /** renderDisplay for a formula TeX drew (texFormula), at least `minRows` tall. Throws TexError. */
