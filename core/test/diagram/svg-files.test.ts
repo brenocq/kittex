@@ -142,6 +142,27 @@ describe('style sheets', () => {
     expect(rgb(blue!)).toEqual({ r: 0, g: 0, b: 255 })
   })
 
+  test('descendant and child combinators match by ancestry, their compounds’ specificities added up', () => {
+    const box = (attrs = '') => `<rect width='1' height='1' ${attrs}/>`
+    const fills = (sheet: string, body: string) => ops(`<style>${sheet}</style>${body}`).map(op => rgb(op).r)
+    // Descendant: any ancestor; the same rect outside it isn't matched.
+    expect(fills(`#a rect { fill: #010000 }`, `<g id='a'><g>${box()}</g></g>${box()}`)).toEqual([1, 0])
+    // Child: the parent only.
+    expect(fills(`#a > rect { fill: #010000 }`, `<g id='a'>${box()}<g>${box()}</g></g>`)).toEqual([1, 0])
+    // `.x > .y rect` under .x > .y > .y: the nearest .y's parent isn't .x, the next one's is.
+    expect(fills(`.x > .y rect { fill: #010000 }`, `<g class='x'><g class='y'><g class='y'>${box()}</g></g></g><g class='y'>${box()}</g>`)).toEqual([1, 0])
+    // #a rect (an id and a type) over .c (a class), whatever their order.
+    expect(fills(`#a rect { fill: #010000 } .c { fill: #020000 }`, `<g id='a'>${box(`class='c'`)}</g>`)).toEqual([1])
+    // Sibling combinators, pseudo-classes and attribute selectors are still skipped.
+    expect(fills(`rect + rect { fill: #010000 } g rect:hover { fill: #010000 } [x] rect { fill: #010000 }`, `<g x='1'>${box()}${box()}</g>`)).toEqual([0, 0])
+  })
+
+  test('matching ancestry is bounded: a deep document under a descendant rule is refused, not ground through', () => {
+    const deep = (n: number) => `${'<g>'.repeat(n)}<rect width='1' height='1'/>${'</g>'.repeat(n)}`
+    expect(() => ops(`<style>.none g { fill: red }</style>${deep(1000)}`)).not.toThrow()
+    expect(() => ops(`<style>.none g { fill: red }</style>${deep(4000)}`)).toThrow(/style sheet/)
+  })
+
   test('a style sheet past 256 KiB is refused', () => {
     expect(() => ops(`<style>${'.a{fill:red}'.repeat(30_000)}</style>`)).toThrow(XmlError)
   })
