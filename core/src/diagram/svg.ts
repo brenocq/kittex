@@ -496,11 +496,19 @@ function applyStyleSheets(elements: readonly XmlElement[]): void {
   }
   if (rules.length === 0) return
   const index = new RuleIndex(rules)
+  // A rule is copied onto every element it matches, so a sheet within its cap can still multiply past any (a long `*` rule over thousands of elements).
+  let folded = 0
   for (const el of elements) {
     const declarations = index.declarationsFor(el)
-    if (declarations !== '') el.attrs.style = el.attrs.style === undefined ? declarations : `${declarations};${el.attrs.style}`
+    if (declarations === '') continue
+    folded += declarations.length
+    if (folded > MAX_FOLDED_STYLE) throw new SvgError('picture too complex (its style sheet)')
+    el.attrs.style = el.attrs.style === undefined ? declarations : `${declarations};${el.attrs.style}`
   }
 }
+
+/** Characters of style sheet declarations the elements of one picture may take in all (applyStyleSheets). */
+const MAX_FOLDED_STYLE = 8 * 1024 * 1024
 
 /** Big points per CSS unit. */
 const BP_PER: Record<string, number> = { px: 0.75, pt: 1, pc: 12, mm: 72 / 25.4, cm: 72 / 2.54, in: 72, q: 72 / 101.6 }
@@ -519,14 +527,20 @@ function documentScale(root: XmlElement, box: { width: number; height: number })
   const height = bigPoints(root.attrs.height)
   const sx = width === undefined ? undefined : width / box.width
   const sy = height === undefined ? undefined : height / box.height
+  let scale: [number, number]
   if (sx === undefined || sy === undefined) {
     const s = sx ?? sy ?? BP_PER.px!
-    return [s, s]
+    scale = [s, s]
+  } else if (/^\s*none\b/.test(root.attrs.preserveAspectRatio ?? '')) {
+    // preserveAspectRatio="none" stretches the viewBox to the width and height.
+    scale = [sx, sy]
+  } else {
+    const s = Math.min(sx, sy)
+    scale = [s, s]
   }
-  // preserveAspectRatio="none" stretches the viewBox to the width and height.
-  if (/^\s*none\b/.test(root.attrs.preserveAspectRatio ?? '')) return [sx, sy]
-  const s = Math.min(sx, sy)
-  return [s, s]
+  // A viewBox of 1e-300 inside a width of 100pt: no size a picture can be drawn at.
+  if (!scale.every(s => Number.isFinite(s) && s > 0 && Number.isFinite(s * Math.max(box.width, box.height)))) throw new SvgError('the picture has no drawable size')
+  return scale
 }
 
 /** How many numbers path data holds, as SVG reads them (`0.5.5` is two, `1e-5` one). */

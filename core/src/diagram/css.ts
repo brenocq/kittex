@@ -12,6 +12,8 @@ import type { XmlElement } from './xml.js'
 
 /** Rules one sheet may hold, at most; past them the rest are skipped. */
 const MAX_RULES = 4000
+/** Classes and ids one compound selector may join (`.a.b#c`); a longer one is skipped. */
+const MAX_COMPOUND = 16
 
 export interface CssRule {
   tag?: string
@@ -67,7 +69,8 @@ function simpleRule(selector: string, declarations: string, order: number): CssR
   const tag = match[1] === undefined || match[1] === '*' ? undefined : match[1]
   const parts = match[2]!.match(/[.#][-\w]+/g) ?? []
   const ids = parts.filter(part => part.startsWith('#')).map(part => part.slice(1))
-  if (ids.length > 1) return undefined
+  // Two ids match no element; a compound longer than MAX_COMPOUND is no writer's, and would be matched part by part.
+  if (ids.length > 1 || parts.length > MAX_COMPOUND) return undefined
   const classes = parts.filter(part => part.startsWith('.')).map(part => part.slice(1))
   return {
     ...(tag !== undefined ? { tag } : {}),
@@ -102,9 +105,9 @@ export class RuleIndex {
 
   /** The declarations of every rule `el` matches, lowest specificity first (so the strongest come last and win). */
   declarationsFor(el: XmlElement): string {
-    const classes = (el.attrs.class ?? '').split(/\s+/).filter(Boolean)
-    const candidates = [...this.#universal, ...(this.#byTag.get(el.name) ?? []), ...(el.attrs.id !== undefined ? (this.#byId.get(el.attrs.id) ?? []) : []), ...classes.flatMap(name => this.#byClass.get(name) ?? [])]
-    const matched = [...new Set(candidates)].filter(rule => (rule.tag === undefined || rule.tag === el.name) && (rule.id === undefined || rule.id === el.attrs.id) && rule.classes.every(name => classes.includes(name)))
+    const classes = new Set((el.attrs.class ?? '').split(/\s+/).filter(Boolean))
+    const candidates = [...this.#universal, ...(this.#byTag.get(el.name) ?? []), ...(el.attrs.id !== undefined ? (this.#byId.get(el.attrs.id) ?? []) : []), ...[...classes].flatMap(name => this.#byClass.get(name) ?? [])]
+    const matched = [...new Set(candidates)].filter(rule => (rule.tag === undefined || rule.tag === el.name) && (rule.id === undefined || rule.id === el.attrs.id) && rule.classes.every(name => classes.has(name)))
     return matched
       .toSorted((a, b) => a.specificity - b.specificity || a.order - b.order)
       .map(rule => rule.declarations)

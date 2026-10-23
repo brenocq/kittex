@@ -217,6 +217,24 @@ describe('the document size', () => {
 })
 
 describe('the caps hold for ordinary files', () => {
+  test('a sheet within its own cap that folds onto every element past 8 MiB in all refuses the picture', () => {
+    const long = `*{fill:red;${'stroke-dasharray:1 1;'.repeat(40)}}`
+    expect(() => ops(`<style>${long}</style>${"<rect width='1' height='1'/>".repeat(1000)}`)).not.toThrow()
+    expect(() => ops(`<style>${long}</style>${"<rect width='1' height='1'/>".repeat(12_000)}`)).toThrow(/style sheet/)
+  })
+
+  test('a compound selector of more than 16 parts is skipped, not matched part by part', () => {
+    const classes = Array.from({ length: 17 }, (_, i) => `c${i}`)
+    const sheet = (n: number) => `<style>.${classes.slice(0, n).join('.')}{fill:red}</style>`
+    const body = `<path class='${classes.join(' ')}' fill='blue' d='M0 0H1V1Z'/>`
+    expect(rgb(ops(sheet(16) + body)[0]!)).toEqual({ r: 255, g: 0, b: 0 })
+    expect(rgb(ops(sheet(17) + body)[0]!)).toEqual({ r: 0, g: 0, b: 255 })
+  })
+
+  test('a size no picture can be drawn at is refused', () => {
+    expect(() => open(doc(`<rect width='1' height='1'/>`, `width='100pt' height='100pt' viewBox='0 0 1e-320 1e-320'`))).toThrow(/no drawable size/)
+  })
+
   test('more shapes than MAX_PICTURE_OPS, through a class rule, refuse the picture', () => {
     const many = `<style>.r{fill:red}</style>${"<rect class='r' width='1' height='1'/>".repeat(MAX_PICTURE_OPS + 1)}`
     expect(() => ops(many)).toThrow(SvgError)
