@@ -375,6 +375,8 @@ describe('image blocks in a session', () => {
     expect(imageInstructions(false)).toContain('the Read tool shows it to you alone')
     // The block draws local files only: an image URL is fetched to one first.
     expect(imageInstructions(false)).toContain('downloaded to a temporary file first')
+    // Told that a hook was skipped, a model hedges under the image though it draws; kittex notes a failure itself.
+    expect(imageInstructions(false)).toContain('add no fallback advice after the block')
   })
 
   test('where the local TeX converts PDF: the instructions offer PDFs, and a PDF block is drawn from its first page', async ($, on) => {

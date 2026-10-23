@@ -2743,7 +2743,8 @@ export function imageInstructions(pdf: boolean): string {
     `(PNG, JPEG, SVG${pdf ? ' or the first page of a PDF' : ''}) in its place, as wide as the option asks. ` +
     'That block is how an image is shown to the user: the Read tool shows it to you alone, so "show me this image" means the block, not Read. ' +
     'An image on the web is downloaded to a temporary file first (for example with `curl -o`), then shown the same way. ' +
-    "Don't open, read or verify the file first: a file that can't be drawn leaves the block as code with the reason under it."
+    "Don't open, read or verify the file first, and add no fallback advice after the block (opening it elsewhere, what to do if it doesn't appear): " +
+    "a file that can't be drawn leaves the block as code with the reason under it."
   )
 }
 
