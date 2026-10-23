@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="100mm"
+   height="60mm"
+   viewBox="0 0 100 60"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   sodipodi:docname="labels.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     inkscape:document-units="mm" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#e5f0ff;stroke:#000000;stroke-width:0.264583"
+       id="rect1"
+       width="50"
+       height="24"
+       x="5"
+       y="5" />
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;line-height:1.25;font-family:sans-serif;text-align:center;text-anchor:middle;fill:#1a1a1a;stroke-width:0.264583"
+       x="30"
+       y="14.5"
+       id="text1"><tspan
+         sodipodi:role="line"
+         id="tspan1"
+         style="stroke-width:0.264583"
+         x="30"
+         y="14.5">First line</tspan><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.264583"
+         x="30"
+         y="22.4375"
+         id="tspan2">Second <tspan
+           style="font-weight:bold;fill:#c00000"
+           id="tspan3">bold</tspan> line</tspan></text>
+    <rect
+       style="fill:none;stroke:#000000;stroke-width:0.264583"
+       id="rect2"
+       width="12"
+       height="50"
+       x="80"
+       y="5" />
+    <text
+       xml:space="preserve"
+       style="font-style:italic;font-size:5.64444px;font-family:serif;fill:#000000;fill-opacity:0.8;stroke-width:0.264583"
+       x="-48"
+       y="88"
+       id="text2"
+       transform="rotate(-90)"><tspan
+         sodipodi:role="line"
+         id="tspan4"
+         style="stroke-width:0.264583"
+         x="-48"
+         y="88">Rotated  side</tspan></text>
+  </g>
+</svg>

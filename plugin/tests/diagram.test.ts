@@ -10,6 +10,7 @@ import { init, LATEX_ARGV, mathDocument, measureDisplayResult, measurePicture, r
 import {
   DIAGRAM_INSTRUCTIONS,
   diagramPlaceholder,
+  imageInstructions,
   MATH_INSTRUCTIONS,
   MessageStream,
   NOT_RENDERED,
@@ -586,14 +587,14 @@ describe('instructions to the model', () => {
     await startSession($, on, KITTY, 'dark', CELL, argv => ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version' ? { exitCode: 0, stdout: `${argv[0]} 1.0\n` } : undefined))
     const { sections } = await $.prompt.compose(COMPOSE)
     const section = sections.find(one => one.id === SECTION_ID)
-    expect(section?.text).toBe(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`)
+    expect(section?.text).toBe(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS} ${imageInstructions(false)}`)
     expect(sections[0]).toEqual(INTRO)
   })
 
-  test('without TeX, the math instructions alone', async ($, on) => {
+  test('without TeX, no diagram line: the math, and image files', async ($, on) => {
     await startSession($, on)
     const { sections } = await $.prompt.compose(COMPOSE)
-    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(MATH_INSTRUCTIONS)
+    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(`${MATH_INSTRUCTIONS} ${imageInstructions(false)}`)
   })
 
   test('with the option off, TeX is never asked', { options: { latex: 'off' } }, async ($, on) => {
@@ -603,7 +604,7 @@ describe('instructions to the model', () => {
       return { exitCode: 0, stdout: 'x 1.0\n' }
     })
     const { sections } = await $.prompt.compose(COMPOSE)
-    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(MATH_INSTRUCTIONS)
+    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(`${MATH_INSTRUCTIONS} ${imageInstructions(false)}`)
     expect(asked).not.toContain('latex')
     expect(asked).not.toContain('dvisvgm')
   })

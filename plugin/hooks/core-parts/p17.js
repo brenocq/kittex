@@ -1,2384 +1,1730 @@
-import{__esm,init_TokenMap,init_PrioritizedList,init_FunctionList,PrioritizedList,FunctionList,CharacterMap,init_HandlerTypes,init_Options,init_Tags,ConfigurationType,HandlerType,TagsFactory,defaultOptions,userOptions,init_Entities,init_MmlNode,init_TexError,init_ParseUtil,init_UnitUtil,init_NodeUtil,init_StackItem,init_Styles,init_TexConstants,BaseItem,NodeUtil_default,TexError_default,ParseUtil,TexConstant,TEXCLASS,entities,TRBL,UnitUtil,TexParser,init_TexParser,init_mo,init_string,MmlMo,replaceUnicode,lookup,Label,__kittexLate}from'./p16.js';export*from'./p16.js';
-__kittexLate.init_MapHandler=()=>init_MapHandler;__kittexLate.MapHandler=()=>MapHandler;
-// node_modules/@mathjax/src/mjs/input/tex/MapHandler.js
-var maps;
-var MapHandler;
-var SubHandler;
-var SubHandlers;
-var init_MapHandler = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/MapHandler.js"() {
-    init_TokenMap();
-    init_PrioritizedList();
-    init_FunctionList();
-    maps = /* @__PURE__ */ new Map();
-    MapHandler = {
-      register(map) {
-        maps.set(map.name, map);
-      },
-      getMap(name) {
-        return maps.get(name);
-      }
-    };
-    SubHandler = class _SubHandler {
-      constructor() {
-        this._configuration = new PrioritizedList();
-        this._fallback = new FunctionList();
-      }
-      add(maps3, fallback, priority = PrioritizedList.DEFAULTPRIORITY) {
-        for (const name of maps3.slice().reverse()) {
-          const map = MapHandler.getMap(name);
-          if (!map) {
-            this.warn(`Configuration '${name}' not found! Omitted.`);
-            return;
-          }
-          this._configuration.add(map, priority);
-        }
-        if (fallback) {
-          this._fallback.add(fallback, priority);
-        }
-      }
-      remove(maps3, fallback = null) {
-        for (const name of maps3) {
-          const map = this.retrieve(name);
-          if (map) {
-            this._configuration.remove(map);
-          }
-        }
-        if (fallback) {
-          this._fallback.remove(fallback);
-        }
-      }
-      parse(input) {
-        for (const { item: map } of this._configuration) {
-          const result = map.parse(input);
-          if (result === _SubHandler.FALLBACK) {
-            break;
-          }
-          if (result) {
-            return result;
-          }
-        }
-        const [env, token2] = input;
-        Array.from(this._fallback)[0].item(env, token2);
-        return;
-      }
-      lookup(token2) {
-        const map = this.applicable(token2);
-        return map ? map.lookup(token2) : null;
-      }
-      contains(token2) {
-        const map = this.applicable(token2);
-        return !!map && !(map instanceof CharacterMap && map.lookup(token2).char === null);
-      }
-      toString() {
-        const names = [];
-        for (const { item: map } of this._configuration) {
-          names.push(map.name);
-        }
-        return names.join(", ");
-      }
-      applicable(token2) {
-        for (const { item: map } of this._configuration) {
-          if (map.contains(token2)) {
-            return map;
-          }
-        }
-        return null;
-      }
-      retrieve(name) {
-        for (const { item: map } of this._configuration) {
-          if (map.name === name) {
-            return map;
-          }
-        }
-        return null;
-      }
-      warn(message) {
-        console.log("TexParser Warning: " + message);
-      }
-    };
-    SubHandler.FALLBACK = /* @__PURE__ */ Symbol("fallback");
-    SubHandlers = class {
-      constructor() {
-        this.map = /* @__PURE__ */ new Map();
-      }
-      add(handlers, fallbacks, priority = PrioritizedList.DEFAULTPRIORITY) {
-        for (const key of Object.keys(handlers)) {
-          const name = key;
-          let subHandler = this.get(name);
-          if (!subHandler) {
-            subHandler = new SubHandler();
-            this.set(name, subHandler);
-          }
-          subHandler.add(handlers[name], fallbacks[name], priority);
-        }
-      }
-      remove(handlers, fallbacks) {
-        for (const name of Object.keys(handlers)) {
-          const subHandler = this.get(name);
-          if (subHandler) {
-            subHandler.remove(handlers[name], fallbacks[name]);
-          }
-        }
-      }
-      set(name, subHandler) {
-        this.map.set(name, subHandler);
-      }
-      get(name) {
-        return this.map.get(name);
-      }
-      retrieve(name) {
-        for (const handler of this.map.values()) {
-          const map = handler.retrieve(name);
-          if (map) {
-            return map;
-          }
-        }
-        return null;
-      }
-      keys() {
-        return this.map.keys();
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/Configuration.js
-var Configuration;
-var maps2;
-var ConfigurationHandler;
-var ParserConfiguration;
-var init_Configuration = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/Configuration.js"() {
+import{__esm,init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_MmlNode,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,AbstractMmlNode,TexConstant,TexError_default,UnitUtil,init_Factory,AbstractFactory,init_NodeUtil,NodeUtil_default,init_Entities,TEXCLASS,entities,init_Options,lookup,defaultOptions,__kittexLate}from'./p16.js';export*from'./p16.js';
+// node_modules/@mathjax/src/mjs/input/tex/TexParser.js
+var TexParser;
+var init_TexParser = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexParser.js"() {
     init_HandlerTypes();
-    init_Options();
-    init_MapHandler();
-    init_FunctionList();
-    init_PrioritizedList();
-    init_Tags();
-    Configuration = class _Configuration {
-      static makeProcessor(func, priority) {
-        return Array.isArray(func) ? func : [func, priority];
-      }
-      static _create(name, config2 = {}) {
-        var _a2;
-        const priority = (_a2 = config2.priority) !== null && _a2 !== void 0 ? _a2 : PrioritizedList.DEFAULTPRIORITY;
-        const init2 = config2.init ? this.makeProcessor(config2.init, priority) : null;
-        const conf = config2.config ? this.makeProcessor(config2.config, priority) : null;
-        const preprocessors = (config2.preprocessors || []).map((pre) => this.makeProcessor(pre, priority));
-        const postprocessors = (config2.postprocessors || []).map((post) => this.makeProcessor(post, priority));
-        const parser2 = config2.parser || "tex";
-        return new _Configuration(name, config2[ConfigurationType.HANDLER] || {}, config2[ConfigurationType.FALLBACK] || {}, config2[ConfigurationType.ITEMS] || {}, config2[ConfigurationType.TAGS] || {}, config2[ConfigurationType.OPTIONS] || {}, config2[ConfigurationType.NODES] || {}, preprocessors, postprocessors, init2, conf, priority, parser2);
-      }
-      static create(name, config2 = {}) {
-        const configuration = _Configuration._create(name, config2);
-        ConfigurationHandler.set(name, configuration);
-        return configuration;
-      }
-      static local(config2 = {}) {
-        return _Configuration._create("", config2);
-      }
-      constructor(name, handler = {}, fallback = {}, items = {}, tags = {}, options3 = {}, nodes = {}, preprocessors = [], postprocessors = [], initMethod = null, configMethod = null, priority, parser2) {
-        this.name = name;
-        this.handler = handler;
-        this.fallback = fallback;
-        this.items = items;
-        this.tags = tags;
-        this.options = options3;
-        this.nodes = nodes;
-        this.preprocessors = preprocessors;
-        this.postprocessors = postprocessors;
-        this.initMethod = initMethod;
-        this.configMethod = configMethod;
-        this.priority = priority;
-        this.parser = parser2;
-        this.handler = Object.assign({
-          [HandlerType.CHARACTER]: [],
-          [HandlerType.DELIMITER]: [],
-          [HandlerType.MACRO]: [],
-          [HandlerType.ENVIRONMENT]: []
-        }, handler);
-      }
-      get init() {
-        return this.initMethod ? this.initMethod[0] : null;
-      }
-      get config() {
-        return this.configMethod ? this.configMethod[0] : null;
-      }
-    };
-    maps2 = /* @__PURE__ */ new Map();
-    ConfigurationHandler = {
-      set(name, map) {
-        maps2.set(name, map);
-      },
-      get(name) {
-        return maps2.get(name);
-      },
-      keys() {
-        return maps2.keys();
-      }
-    };
-    ParserConfiguration = class {
-      constructor(packages, parsers = ["tex"]) {
-        this.initMethod = new FunctionList();
-        this.configMethod = new FunctionList();
-        this.configurations = new PrioritizedList();
-        this.parsers = [];
-        this.handlers = new SubHandlers();
-        this.items = {};
-        this.tags = {};
-        this.options = {};
-        this.nodes = {};
-        this.parsers = parsers;
-        for (const pkg of packages.slice().reverse()) {
-          this.addPackage(pkg);
-        }
-        for (const { item: config2, priority } of this.configurations) {
-          this.append(config2, priority);
-        }
-      }
-      init() {
-        this.initMethod.execute(this);
-      }
-      config(jax) {
-        this.configMethod.execute(this, jax);
-        for (const config2 of this.configurations) {
-          this.addFilters(jax, config2.item);
-        }
-      }
-      addPackage(pkg) {
-        const name = typeof pkg === "string" ? pkg : pkg[0];
-        const conf = this.getPackage(name);
-        if (conf) {
-          this.configurations.add(conf, typeof pkg === "string" ? conf.priority : pkg[1]);
-        }
-      }
-      add(name, jax, options3 = {}) {
-        const config2 = this.getPackage(name);
-        this.append(config2);
-        this.configurations.add(config2, config2.priority);
-        this.init();
-        const parser2 = jax.parseOptions;
-        parser2.nodeFactory.setCreators(config2.nodes);
-        for (const kind of Object.keys(config2.items)) {
-          parser2.itemFactory.setNodeClass(kind, config2.items[kind]);
-        }
-        TagsFactory.addTags(config2.tags);
-        defaultOptions(parser2.options, config2.options);
-        userOptions(parser2.options, options3);
-        this.addFilters(jax, config2);
-        if (config2.config) {
-          config2.config(this, jax);
-        }
-      }
-      getPackage(name) {
-        const config2 = ConfigurationHandler.get(name);
-        if (config2 && !this.parsers.includes(config2.parser)) {
-          throw Error(`Package '${name}' doesn't target the proper parser`);
-        }
-        if (!config2) {
-          this.warn(`Package '${name}' not found.  Omitted.`);
-        }
-        return config2;
-      }
-      append(config2, priority) {
-        priority = priority || config2.priority;
-        if (config2.initMethod) {
-          this.initMethod.add(config2.initMethod[0], config2.initMethod[1]);
-        }
-        if (config2.configMethod) {
-          this.configMethod.add(config2.configMethod[0], config2.configMethod[1]);
-        }
-        this.handlers.add(config2.handler, config2.fallback, priority);
-        Object.assign(this.items, config2.items);
-        Object.assign(this.tags, config2.tags);
-        defaultOptions(this.options, config2.options);
-        Object.assign(this.nodes, config2.nodes);
-      }
-      addFilters(jax, config2) {
-        for (const [pre, priority] of config2.preprocessors) {
-          jax.preFilters.add(pre, priority);
-        }
-        for (const [post, priority] of config2.postprocessors) {
-          jax.postFilters.add(post, priority);
-        }
-      }
-      warn(message) {
-        console.warn("MathJax Warning: " + message);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/base/BaseItems.js
-var StartItem;
-var StopItem;
-var OpenItem;
-var CloseItem;
-var NullItem;
-var PrimeItem;
-var SubsupItem;
-var OverItem;
-var LeftItem;
-var Middle;
-var RightItem;
-var BreakItem;
-var BeginItem;
-var EndItem;
-var StyleItem;
-var PositionItem;
-var CellItem;
-var MmlItem;
-var FnItem;
-var NotItem;
-var NonscriptItem;
-var DotsItem;
-var ArrayItem;
-var EqnArrayItem;
-var MstyleItem;
-var EquationItem;
-var init_BaseItems = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/base/BaseItems.js"() {
-    init_MapHandler();
-    init_Entities();
-    init_MmlNode();
-    init_TexError();
-    init_ParseUtil();
     init_UnitUtil();
-    init_NodeUtil();
+    init_Stack();
+    init_TexError();
+    init_MmlNode();
     init_StackItem();
-    init_Styles();
     init_TexConstants();
-    StartItem = class extends BaseItem {
-      constructor(factory, global) {
-        super(factory);
-        this.global = global;
-      }
-      get kind() {
-        return "start";
-      }
-      get isOpen() {
-        return true;
-      }
-      checkItem(item) {
-        if (item.isKind("stop")) {
-          let node = this.toMml();
-          if (!this.global.isInner) {
-            node = this.factory.configuration.tags.finalize(node, this.env);
+    TexParser = class _TexParser {
+      constructor(_string, env, configuration) {
+        this._string = _string;
+        this.configuration = configuration;
+        this.macroCount = 0;
+        this.i = 0;
+        this.currentCS = "";
+        this.saveI = 0;
+        const inner = Object.hasOwn(env, "isInner");
+        const isInner = env["isInner"];
+        delete env["isInner"];
+        let ENV;
+        if (env) {
+          ENV = {};
+          for (const id of Object.keys(env)) {
+            ENV[id] = env[id];
           }
-          return [[this.factory.create("mml", node)], true];
         }
-        return super.checkItem(item);
+        this.configuration.pushParser(this);
+        this.stack = new Stack(this.itemFactory, ENV, inner ? isInner : true);
+        this.Parse();
+        this.Push(this.itemFactory.create("stop"));
+        this.stack.env = ENV;
       }
-    };
-    StopItem = class extends BaseItem {
-      get kind() {
-        return "stop";
+      get options() {
+        return this.configuration.options;
       }
-      get isClose() {
-        return true;
+      get itemFactory() {
+        return this.configuration.itemFactory;
       }
-    };
-    OpenItem = class extends BaseItem {
-      get kind() {
-        return "open";
+      get tags() {
+        return this.configuration.tags;
       }
-      get isOpen() {
-        return true;
+      set string(str) {
+        this._string = str;
       }
-      checkItem(item) {
-        if (item.isKind("close")) {
-          const mml = this.toMml();
-          const node = this.create("node", "TeXAtom", [mml]);
-          item.addLatexItem(node);
-          return [[this.factory.create("mml", node)], true];
+      get string() {
+        return this._string;
+      }
+      parse(kind, input) {
+        const i2 = this.saveI;
+        this.saveI = this.i - (kind === "character" && input[1] !== "&" ? input[1].length : 0);
+        const result = this.configuration.handlers.get(kind).parse(input);
+        if (kind !== "macro") {
+          this.updateResult(input[1], i2);
         }
-        return super.checkItem(item);
+        this.saveI = i2;
+        return result;
       }
-    };
-    OpenItem.errors = Object.assign(Object.create(BaseItem.errors), {
-      stop: ["ExtraOpenMissingClose", "Extra open brace or missing close brace"]
-    });
-    CloseItem = class extends BaseItem {
-      get kind() {
-        return "close";
+      lookup(kind, token2) {
+        return this.configuration.handlers.get(kind).lookup(token2);
       }
-      get isClose() {
-        return true;
-      }
-    };
-    NullItem = class extends BaseItem {
-      get kind() {
-        return "null";
-      }
-    };
-    PrimeItem = class extends BaseItem {
-      get kind() {
-        return "prime";
-      }
-      checkItem(item) {
-        const [top0, top1] = this.Peek(2);
-        const isSup = (NodeUtil_default.isType(top0, "msubsup") || NodeUtil_default.isType(top0, "msup")) && !NodeUtil_default.getChildAt(top0, top0.sup);
-        const isOver = (NodeUtil_default.isType(top0, "munderover") || NodeUtil_default.isType(top0, "mover")) && !NodeUtil_default.getChildAt(top0, top0.over) && !NodeUtil_default.getProperty(top0, "subsupOK");
-        if (!isSup && !isOver) {
-          const node = this.create("node", top0.getProperty("movesupsub") ? "mover" : "msup", [top0, top1]);
-          return [[node, item], true];
-        }
-        const pos = isSup ? top0.sup : top0.over;
-        NodeUtil_default.setChild(top0, pos, top1);
-        return [[top0, item], true];
-      }
-    };
-    SubsupItem = class extends BaseItem {
-      get kind() {
-        return "subsup";
-      }
-      checkItem(item) {
-        if (item.isKind("open") || item.isKind("left")) {
-          return BaseItem.success;
-        }
-        const top = this.First;
-        const position = this.getProperty("position");
-        if (item.isKind("mml")) {
-          if (this.getProperty("primes")) {
-            if (position !== 2) {
-              NodeUtil_default.setChild(top, 2, this.getProperty("primes"));
-            } else {
-              NodeUtil_default.setProperty(this.getProperty("primes"), "variantForm", true);
-              const node = this.create("node", "mrow", [
-                this.getProperty("primes"),
-                item.First
-              ]);
-              item.First = node;
-            }
-          }
-          NodeUtil_default.setChild(top, position, item.First);
-          if (this.getProperty("movesupsub") != null) {
-            NodeUtil_default.setProperty(top, "movesupsub", this.getProperty("movesupsub"));
-          }
-          const result = this.factory.create("mml", top);
-          return [[result], true];
-        }
-        super.checkItem(item);
-        const error = this.getErrors(["", "sub", "sup"][position]);
-        throw new TexError_default(error[0], error[1], ...error.splice(2));
-      }
-    };
-    SubsupItem.errors = Object.assign(Object.create(BaseItem.errors), {
-      stop: ["MissingScript", "Missing superscript or subscript argument"],
-      sup: ["MissingOpenForSup", "Missing open brace for superscript"],
-      sub: ["MissingOpenForSub", "Missing open brace for subscript"]
-    });
-    OverItem = class extends BaseItem {
-      constructor(factory) {
-        super(factory);
-        this.setProperty("name", "\\over");
-      }
-      get kind() {
-        return "over";
-      }
-      get isClose() {
-        return true;
-      }
-      checkItem(item) {
-        if (item.isKind("over")) {
-          throw new TexError_default("AmbiguousUseOf", "Ambiguous use of %1", item.getName());
-        }
-        if (item.isClose) {
-          let mml = this.create("node", "mfrac", [
-            this.getProperty("num"),
-            this.toMml(false)
-          ]);
-          if (this.getProperty("thickness") != null) {
-            NodeUtil_default.setAttribute(mml, "linethickness", this.getProperty("thickness"));
-          }
-          if (this.getProperty("ldelim") || this.getProperty("rdelim")) {
-            NodeUtil_default.setProperty(mml, "withDelims", true);
-            mml = ParseUtil.fixedFence(this.factory.configuration, this.getProperty("ldelim"), mml, this.getProperty("rdelim"));
-          }
-          mml.attributes.set(TexConstant.Attr.LATEXITEM, this.getProperty("name"));
-          return [[this.factory.create("mml", mml), item], true];
-        }
-        return super.checkItem(item);
+      contains(kind, token2) {
+        return this.configuration.handlers.get(kind).contains(token2);
       }
       toString() {
-        return "over[" + this.getProperty("num") + " / " + this.nodes.join("; ") + "]";
-      }
-    };
-    LeftItem = class extends BaseItem {
-      constructor(factory, delim) {
-        super(factory);
-        this.setProperty("delim", delim);
-      }
-      get kind() {
-        return "left";
-      }
-      get isOpen() {
-        return true;
-      }
-      checkItem(item) {
-        if (item.isKind("right")) {
-          const fenced = ParseUtil.fenced(this.factory.configuration, this.getProperty("delim"), this.toMml(), item.getProperty("delim"), "", item.getProperty("color"));
-          const left = fenced.childNodes[0];
-          const right = fenced.childNodes[fenced.childNodes.length - 1];
-          const mrow = this.factory.create("mml", fenced);
-          this.addLatexItem(left, "\\left");
-          item.addLatexItem(right, "\\right");
-          mrow.Peek()[0].attributes.set(TexConstant.Attr.LATEXITEM, "\\left" + item.startStr.slice(this.startI, item.stopI));
-          return [[mrow], true];
+        let str = "";
+        for (const config2 of Array.from(this.configuration.handlers.keys())) {
+          str += config2 + ": " + this.configuration.handlers.get(config2) + "\n";
         }
-        if (item.isKind("middle")) {
-          const def2 = { stretchy: true, symmetric: true };
-          if (item.getProperty("color")) {
-            def2.mathcolor = item.getProperty("color");
-          }
-          const middle = this.create("token", "mo", def2, item.getProperty("delim"));
-          item.addLatexItem(middle, "\\middle");
-          this.Push(this.create("node", "TeXAtom", [], { texClass: TEXCLASS.CLOSE }), middle, this.create("node", "TeXAtom", [], { texClass: TEXCLASS.OPEN }));
-          this.env = {};
-          return [[this], true];
-        }
-        return super.checkItem(item);
+        return str;
       }
-    };
-    LeftItem.errors = Object.assign(Object.create(BaseItem.errors), {
-      stop: ["ExtraLeftMissingRight", "Extra \\left or missing \\right"]
-    });
-    Middle = class extends BaseItem {
-      constructor(factory, delim, color) {
-        super(factory);
-        this.setProperty("delim", delim);
-        if (color) {
-          this.setProperty("color", color);
-        }
-      }
-      get kind() {
-        return "middle";
-      }
-      get isClose() {
-        return true;
-      }
-    };
-    RightItem = class extends BaseItem {
-      constructor(factory, delim, color) {
-        super(factory);
-        this.setProperty("delim", delim);
-        if (color) {
-          this.setProperty("color", color);
-        }
-      }
-      get kind() {
-        return "right";
-      }
-      get isClose() {
-        return true;
-      }
-    };
-    BreakItem = class extends BaseItem {
-      get kind() {
-        return "break";
-      }
-      constructor(factory, linebreak, insert2) {
-        super(factory);
-        this.setProperty("linebreak", linebreak);
-        this.setProperty("insert", insert2);
-      }
-      checkItem(item) {
-        var _a2, _b2;
-        const linebreak = this.getProperty("linebreak");
-        if (item.isKind("mml")) {
-          const mml2 = item.First;
-          if (mml2.isKind("mo")) {
-            const style = ((_b2 = (_a2 = NodeUtil_default.getOp(mml2)) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2.linebreakstyle) || NodeUtil_default.getAttribute(mml2, "linebreakstyle");
-            if (style !== "after") {
-              NodeUtil_default.setAttribute(mml2, "linebreak", linebreak);
-              return [[item], true];
-            }
-            if (!this.getProperty("insert")) {
-              return [[item], true];
-            }
-          }
-        }
-        const mml = this.create("token", "mspace", { linebreak });
-        return [[this.factory.create("mml", mml), item], true];
-      }
-    };
-    BeginItem = class extends BaseItem {
-      get kind() {
-        return "begin";
-      }
-      get isOpen() {
-        return true;
-      }
-      checkItem(item) {
-        if (item.isKind("end")) {
-          if (item.getName() !== this.getName()) {
-            throw new TexError_default("EnvBadEnd", "\\begin{%1} ended with \\end{%2}", this.getName(), item.getName());
-          }
-          const node = this.toMml();
-          item.addLatexItem(node);
-          return [[this.factory.create("mml", node)], true];
-        }
-        if (item.isKind("stop")) {
-          throw new TexError_default("EnvMissingEnd", "Missing \\end{%1}", this.getName());
-        }
-        return super.checkItem(item);
-      }
-    };
-    EndItem = class extends BaseItem {
-      get kind() {
-        return "end";
-      }
-      get isClose() {
-        return true;
-      }
-    };
-    StyleItem = class extends BaseItem {
-      get kind() {
-        return "style";
-      }
-      checkItem(item) {
-        if (!item.isClose) {
-          return super.checkItem(item);
-        }
-        const mml = this.create("node", "mstyle", this.nodes, this.getProperty("styles"));
-        return [[this.factory.create("mml", mml), item], true];
-      }
-    };
-    PositionItem = class extends BaseItem {
-      get kind() {
-        return "position";
-      }
-      checkItem(item) {
-        if (item.isClose) {
-          throw new TexError_default("MissingBoxFor", "Missing box for %1", this.getName());
-        }
-        if (item.isFinal) {
-          let mml = item.toMml();
-          switch (this.getProperty("move")) {
-            case "vertical":
-              mml = this.create("node", "mpadded", [mml], {
-                height: this.getProperty("dh"),
-                depth: this.getProperty("dd"),
-                voffset: this.getProperty("dh")
-              });
-              return [[this.factory.create("mml", mml)], true];
-            case "horizontal":
-              return [
-                [
-                  this.factory.create("mml", this.getProperty("left")),
-                  item,
-                  this.factory.create("mml", this.getProperty("right"))
-                ],
-                true
-              ];
-          }
-        }
-        return super.checkItem(item);
-      }
-    };
-    CellItem = class extends BaseItem {
-      get kind() {
-        return "cell";
-      }
-      get isClose() {
-        return true;
-      }
-    };
-    MmlItem = class extends BaseItem {
-      get isFinal() {
-        return true;
-      }
-      get kind() {
-        return "mml";
-      }
-    };
-    FnItem = class extends BaseItem {
-      get kind() {
-        return "fn";
-      }
-      checkItem(item) {
-        const top = this.First;
-        if (top) {
-          if (item.isOpen) {
-            return BaseItem.success;
-          }
-          if (!item.isKind("fn")) {
-            let mml = item.First;
-            if (!item.isKind("mml") || !mml) {
-              return [[top, item], true];
-            }
-            if (NodeUtil_default.isType(mml, "mstyle") && mml.childNodes.length && NodeUtil_default.isType(mml.childNodes[0].childNodes[0], "mspace") || NodeUtil_default.isType(mml, "mspace")) {
-              return [[top, item], true];
-            }
-            if (NodeUtil_default.isEmbellished(mml)) {
-              mml = NodeUtil_default.getCoreMO(mml);
-            }
-            const form = NodeUtil_default.getForm(mml);
-            if (form != null && [0, 0, 1, 1, 0, 1, 1, 0, 0, 0][form[2]]) {
-              return [[top, item], true];
-            }
-          }
-          if (top.isKind("TeXAtom") && top.isEmpty) {
-            return [[top, item], true];
-          }
-          const node = this.create("token", "mo", { texClass: TEXCLASS.NONE }, entities.ApplyFunction);
-          return [[top, node, item], true];
-        }
-        return super.checkItem(item);
-      }
-    };
-    NotItem = class extends BaseItem {
-      constructor() {
-        super(...arguments);
-        this.remap = MapHandler.getMap("not_remap");
-      }
-      get kind() {
-        return "not";
-      }
-      checkItem(item) {
-        let mml;
+      Parse() {
         let c;
-        let textNode;
-        if (item.isKind("open") || item.isKind("left")) {
-          return BaseItem.success;
+        while (this.i < this.string.length) {
+          c = this.getCodePoint();
+          this.i += c.length;
+          this.parse(HandlerType.CHARACTER, [this, c]);
         }
-        if (item.isKind("mml") && (NodeUtil_default.isType(item.First, "mo") || NodeUtil_default.isType(item.First, "mi") || NodeUtil_default.isType(item.First, "mtext"))) {
-          mml = item.First;
-          c = NodeUtil_default.getText(mml);
-          if (c.length === 1 && !NodeUtil_default.getProperty(mml, "movesupsub") && NodeUtil_default.getChildren(mml).length === 1) {
-            if (this.remap.contains(c)) {
-              textNode = this.create("text", this.remap.lookup(c).char);
-              NodeUtil_default.setChild(mml, 0, textNode);
-            } else {
-              textNode = this.create("text", "\u0338");
-              NodeUtil_default.appendChildren(mml, [textNode]);
+      }
+      Push(arg) {
+        if (arg instanceof BaseItem) {
+          arg.startI = this.saveI;
+          arg.stopI = this.i;
+          arg.startStr = this.string;
+        }
+        if (arg instanceof AbstractMmlNode && arg.isInferred) {
+          this.PushAll(arg.childNodes);
+        } else {
+          this.stack.Push(arg);
+        }
+      }
+      PushAll(args) {
+        for (const arg of args) {
+          this.stack.Push(arg);
+        }
+      }
+      mml() {
+        this.configuration.popParser();
+        if (!this.stack.Top().isKind("mml")) {
+          return null;
+        }
+        const node = this.stack.Top().First;
+        const latex = this.trimTex(this.string);
+        if (latex) {
+          node.attributes.set(TexConstant.Attr.LATEX, latex);
+        }
+        return node;
+      }
+      convertDelimiter(c) {
+        var _a2;
+        const token2 = this.lookup(HandlerType.DELIMITER, c);
+        return (_a2 = token2 === null || token2 === void 0 ? void 0 : token2.char) !== null && _a2 !== void 0 ? _a2 : null;
+      }
+      getCodePoint() {
+        const code = this.string.codePointAt(this.i);
+        return code === void 0 ? "" : String.fromCodePoint(code);
+      }
+      nextIsSpace() {
+        return !!this.string.charAt(this.i).match(/\s/);
+      }
+      GetNext() {
+        while (this.nextIsSpace()) {
+          this.i++;
+        }
+        return this.getCodePoint();
+      }
+      GetCS() {
+        const CS = this.string.slice(this.i).match(/^(([a-z]+) ?|[\uD800-\uDBFF].|.)/i);
+        if (CS) {
+          this.i += CS[0].length;
+          return CS[2] || CS[1];
+        } else {
+          this.i++;
+          return " ";
+        }
+      }
+      GetArgument(_name, noneOK = false) {
+        switch (this.GetNext()) {
+          case "":
+            if (!noneOK) {
+              throw new TexError_default("MissingArgFor", "Missing argument for %1", this.currentCS);
             }
-            return [[item], true];
-          }
-        }
-        textNode = this.create("text", "⧸");
-        const mtextNode = this.create("node", "mtext", [], {}, textNode);
-        const paddedNode = this.create("node", "mpadded", [mtextNode], {
-          width: 0
-        });
-        mml = this.create("node", "TeXAtom", [paddedNode], {
-          texClass: TEXCLASS.REL
-        });
-        return [[mml, item], true];
-      }
-    };
-    NonscriptItem = class extends BaseItem {
-      get kind() {
-        return "nonscript";
-      }
-      checkItem(item) {
-        if (item.isKind("mml") && item.Size() === 1) {
-          let mml = item.First;
-          if (mml.isKind("mstyle") && mml.notParent) {
-            mml = NodeUtil_default.getChildren(NodeUtil_default.getChildren(mml)[0])[0];
-          }
-          if (mml.isKind("mspace")) {
-            if (mml !== item.First) {
-              const mrow = this.create("node", "mrow", [item.Pop()]);
-              item.Push(mrow);
+            return null;
+          case "}":
+            if (!noneOK) {
+              throw new TexError_default("ExtraCloseMissingOpen", "Extra close brace or missing open brace");
             }
-            this.factory.configuration.addNode("nonscript", item.First);
-          }
-        }
-        return [[item], true];
-      }
-    };
-    DotsItem = class extends BaseItem {
-      get kind() {
-        return "dots";
-      }
-      checkItem(item) {
-        if (item.isKind("open") || item.isKind("left")) {
-          return BaseItem.success;
-        }
-        let dots = this.getProperty("ldots");
-        const top = item.First;
-        if (item.isKind("mml") && NodeUtil_default.isEmbellished(top)) {
-          const tclass = NodeUtil_default.getTexClass(NodeUtil_default.getCoreMO(top));
-          if (tclass === TEXCLASS.BIN || tclass === TEXCLASS.REL) {
-            dots = this.getProperty("cdots");
-          }
-        }
-        return [[dots, item], true];
-      }
-    };
-    ArrayItem = class extends BaseItem {
-      constructor() {
-        super(...arguments);
-        this.table = [];
-        this.row = [];
-        this.frame = [];
-        this.hfill = [];
-        this.arraydef = {};
-        this.cstart = [];
-        this.cend = [];
-        this.cextra = [];
-        this.atEnd = false;
-        this.ralign = [];
-        this.breakAlign = {
-          cell: "",
-          row: "",
-          table: ""
-        };
-        this.templateSubs = 0;
-      }
-      get kind() {
-        return "array";
-      }
-      get isOpen() {
-        return true;
-      }
-      get copyEnv() {
-        return false;
-      }
-      checkItem(item) {
-        if (item.isClose && !item.isKind("over")) {
-          if (item.getProperty("isEntry")) {
-            this.EndEntry();
-            this.clearEnv();
-            this.StartEntry();
-            return BaseItem.fail;
-          }
-          if (item.getProperty("isCR")) {
-            this.EndEntry();
-            this.EndRow();
-            this.clearEnv();
-            this.StartEntry();
-            return BaseItem.fail;
-          }
-          this.EndTable();
-          this.clearEnv();
-          const newItem = this.factory.create("mml", this.createMml());
-          if (this.getProperty("requireClose")) {
-            if (item.isKind("close")) {
-              return [[newItem], true];
+            return null;
+          case "\\":
+            this.i++;
+            return "\\" + this.GetCS();
+          case "{": {
+            const j = ++this.i;
+            let parens2 = 1;
+            while (this.i < this.string.length) {
+              switch (this.string.charAt(this.i++)) {
+                case "\\":
+                  this.i++;
+                  break;
+                case "{":
+                  parens2++;
+                  break;
+                case "}":
+                  if (--parens2 === 0) {
+                    return this.string.slice(j, this.i - 1);
+                  }
+                  break;
+              }
             }
             throw new TexError_default("MissingCloseBrace", "Missing close brace");
           }
-          return [[newItem, item], true];
         }
-        return super.checkItem(item);
+        const c = this.getCodePoint();
+        this.i += c.length;
+        return c;
       }
-      createMml() {
-        const scriptlevel = this.arraydef["scriptlevel"];
-        delete this.arraydef["scriptlevel"];
-        let mml = this.create("node", "mtable", this.table, this.arraydef);
-        if (scriptlevel) {
-          mml.setProperty("smallmatrix", true);
+      GetBrackets(_name, def2, matchBrackets = false) {
+        if (this.GetNext() !== "[") {
+          return def2;
         }
-        if (this.breakAlign.table) {
-          NodeUtil_default.setAttribute(mml, "data-break-align", this.breakAlign.table);
-        }
-        if (this.getProperty("arrayPadding")) {
-          NodeUtil_default.setAttribute(mml, "data-frame-styles", "");
-          NodeUtil_default.setAttribute(mml, "framespacing", this.getProperty("arrayPadding"));
-        }
-        mml = this.handleFrame(mml);
-        if (scriptlevel !== void 0) {
-          mml = this.create("node", "mstyle", [mml], { scriptlevel });
-        }
-        if (this.getProperty("open") || this.getProperty("close")) {
-          mml = ParseUtil.fenced(this.factory.configuration, this.getProperty("open"), mml, this.getProperty("close"));
-        }
-        return mml;
-      }
-      handleFrame(mml) {
-        if (!this.frame.length)
-          return mml;
-        const sides2 = new Map(this.frame);
-        const fstyle = this.frame.reduce((fstyle2, [, style]) => style === fstyle2 ? style : "", this.frame[0][1]);
-        if (fstyle) {
-          if (this.frame.length === 4) {
-            NodeUtil_default.setAttribute(mml, "frame", fstyle);
-            NodeUtil_default.removeAttribute(mml, "data-frame-styles");
-            return mml;
-          }
-          if (fstyle === "solid") {
-            NodeUtil_default.setAttribute(mml, "data-frame-styles", "");
-            mml = this.create("node", "menclose", [mml], {
-              notation: Array.from(sides2.keys()).join(" "),
-              "data-padding": 0
-            });
-            return mml;
-          }
-        }
-        const styles = TRBL.map((side) => sides2.get(side) || "none").join(" ");
-        NodeUtil_default.setAttribute(mml, "data-frame-styles", styles);
-        return mml;
-      }
-      StartEntry() {
-        const n = this.row.length;
-        let start = this.cstart[n];
-        let end = this.cend[n];
-        const ralign = this.ralign[n];
-        const cextra = this.cextra;
-        if (!start && !end && !ralign && !cextra[n] && !cextra[n + 1])
-          return;
-        let [prefix, entry, term, found] = this.getEntry();
-        if (cextra[n] && (!this.atEnd || cextra[n + 1])) {
-          start += "&";
-        }
-        if (term !== "&") {
-          found = !!entry.trim() || !!(n || term && term.substring(0, 4) !== "\\end");
-          if (cextra[n + 1] && !cextra[n]) {
-            end = (end || "") + "&";
-            this.atEnd = true;
-          }
-        }
-        if (!found && !prefix)
-          return;
-        const parser2 = this.parser;
-        if (found) {
-          if (start) {
-            entry = ParseUtil.addArgs(parser2, start, entry);
-          }
-          if (end) {
-            entry = ParseUtil.addArgs(parser2, entry, end);
-          }
-          if (ralign) {
-            entry = "\\text{" + entry.trim() + "}";
-          }
-          if (start || end || ralign) {
-            if (++this.templateSubs > parser2.configuration.options.maxTemplateSubtitutions) {
-              throw new TexError_default("MaxTemplateSubs", "Maximum template substitutions exceeded; is there an invalid use of \\\\ in the template?");
-            }
-          }
-        }
-        if (prefix) {
-          entry = ParseUtil.addArgs(parser2, prefix, entry);
-        }
-        parser2.string = ParseUtil.addArgs(parser2, entry, parser2.string);
-        parser2.i = 0;
-      }
-      getEntry() {
-        const parser2 = this.parser;
-        const pattern = /^([^]*?)([&{}]|\\\\|\\(?:begin|end)\s*\{array\}|\\cr|\\)/;
+        const j = ++this.i;
         let braces = 0;
-        let envs = 0;
-        let i2 = parser2.i;
-        let match;
-        const fail2 = ["", "", "", false];
-        while ((match = parser2.string.slice(i2).match(pattern)) !== null) {
-          i2 += match[0].length;
-          switch (match[2]) {
+        let brackets = 0;
+        while (this.i < this.string.length) {
+          switch (this.string.charAt(this.i++)) {
+            case "{":
+              braces++;
+              break;
             case "\\":
-              i2++;
+              this.i++;
+              break;
+            case "}":
+              if (braces-- <= 0) {
+                throw new TexError_default("ExtraCloseLooking", "Extra close brace while looking for %1", "']'");
+              }
+              break;
+            case "[":
+              if (braces === 0)
+                brackets++;
+              break;
+            case "]":
+              if (braces === 0) {
+                if (!matchBrackets || brackets === 0) {
+                  return this.string.slice(j, this.i - 1);
+                }
+                brackets--;
+              }
+              break;
+          }
+        }
+        throw new TexError_default("MissingCloseBracket", "Could not find closing ']' for argument to %1", this.currentCS);
+      }
+      GetDelimiter(name, braceOK = false) {
+        let c = this.GetNext();
+        this.i += c.length;
+        if (this.i <= this.string.length) {
+          if (c === "\\") {
+            c += this.GetCS();
+          } else if (c === "{" && braceOK) {
+            this.i--;
+            c = this.GetArgument(name).trim();
+          }
+          if (this.contains(HandlerType.DELIMITER, c)) {
+            return this.convertDelimiter(c);
+          }
+        }
+        throw new TexError_default("MissingOrUnrecognizedDelim", "Missing or unrecognized delimiter for %1", this.currentCS);
+      }
+      GetDimen(name) {
+        if (this.GetNext() === "{") {
+          const dimen = this.GetArgument(name);
+          const [value, unit] = UnitUtil.matchDimen(dimen);
+          if (value) {
+            return value + unit;
+          }
+        } else {
+          const dimen = this.string.slice(this.i);
+          const [value, unit, length4] = UnitUtil.matchDimen(dimen, true);
+          if (value) {
+            this.i += length4;
+            return value + unit;
+          }
+        }
+        throw new TexError_default("MissingDimOrUnits", "Missing dimension or its units for %1", this.currentCS);
+      }
+      GetUpTo(_name, token2) {
+        while (this.nextIsSpace()) {
+          this.i++;
+        }
+        const j = this.i;
+        let braces = 0;
+        while (this.i < this.string.length) {
+          const k = this.i;
+          let c = this.GetNext();
+          this.i += c.length;
+          switch (c) {
+            case "\\":
+              c += this.GetCS();
               break;
             case "{":
               braces++;
               break;
             case "}":
-              if (!braces)
-                return fail2;
+              if (braces === 0) {
+                throw new TexError_default("ExtraCloseLooking", "Extra close brace while looking for %1", token2);
+              }
               braces--;
               break;
-            case "\\begin{array}":
-              if (!braces) {
-                envs++;
-              }
-              break;
-            case "\\end{array}":
-              if (!braces && envs) {
-                envs--;
-                break;
-              }
-            default: {
-              if (braces || envs)
-                continue;
-              i2 -= match[2].length;
-              let entry = parser2.string.slice(parser2.i, i2).trim();
-              const prefix = entry.match(/^(?:\s*\\(?:h(?:dash)?line|hfil{1,3}|rowcolor\s*\{.*?\}))+/);
-              if (prefix) {
-                entry = entry.slice(prefix[0].length);
-              }
-              parser2.string = parser2.string.slice(i2);
-              parser2.i = 0;
-              return [(prefix === null || prefix === void 0 ? void 0 : prefix[0]) || "", entry, match[2], true];
-            }
+          }
+          if (braces === 0 && c === token2) {
+            return this.string.slice(j, k);
           }
         }
-        return fail2;
+        throw new TexError_default("TokenNotFoundForCommand", "Could not find %1 for %2", token2, this.currentCS);
       }
-      EndEntry() {
-        const mtd = this.create("node", "mtd", this.nodes);
-        if (this.hfill.length) {
-          if (this.hfill[0] === 0) {
-            NodeUtil_default.setAttribute(mtd, "columnalign", "right");
-          }
-          if (this.hfill[this.hfill.length - 1] === this.Size()) {
-            NodeUtil_default.setAttribute(mtd, "columnalign", NodeUtil_default.getAttribute(mtd, "columnalign") ? "center" : "left");
-          }
-        }
-        const ralign = this.ralign[this.row.length];
-        if (ralign) {
-          const [valign, cwidth, calign] = ralign;
-          const box = this.create("node", "mpadded", mtd.childNodes[0].childNodes, {
-            width: cwidth,
-            "data-overflow": "auto",
-            "data-align": calign,
-            "data-vertical-align": valign
-          });
-          box.setProperty("vbox", valign);
-          mtd.childNodes[0].childNodes = [];
-          mtd.appendChild(box);
-        } else if (this.breakAlign.cell) {
-          NodeUtil_default.setAttribute(mtd, "data-vertical-align", this.breakAlign.cell);
-        }
-        this.breakAlign.cell = "";
-        this.row.push(mtd);
-        this.Clear();
-        this.hfill = [];
+      ParseArg(name) {
+        return new _TexParser(this.GetArgument(name), this.stack.env, this.configuration).mml();
       }
-      EndRow() {
-        let type = "mtr";
-        if (this.getProperty("isNumbered") && this.row.length === 3) {
-          this.row.unshift(this.row.pop());
-          type = "mlabeledtr";
-        } else if (this.getProperty("isLabeled")) {
-          type = "mlabeledtr";
-          this.setProperty("isLabeled", false);
-        }
-        const node = this.create("node", type, this.row);
-        if (this.breakAlign.row) {
-          NodeUtil_default.setAttribute(node, "data-break-align", this.breakAlign.row);
-          this.breakAlign.row = "";
-        }
-        this.addLatexItem(node);
-        this.table.push(node);
-        this.row = [];
-        this.atEnd = false;
+      ParseUpTo(name, token2) {
+        return new _TexParser(this.GetUpTo(name, token2), this.stack.env, this.configuration).mml();
       }
-      EndTable() {
-        if (this.Size() || this.row.length) {
-          this.EndEntry();
-          this.EndRow();
-        }
-        this.checkLines();
-      }
-      checkLines() {
-        if (this.arraydef.rowlines) {
-          const lines2 = this.arraydef.rowlines.split(/ /);
-          if (lines2.length === this.table.length) {
-            this.frame.push(["bottom", lines2.pop()]);
-            if (lines2.length) {
-              this.arraydef.rowlines = lines2.join(" ");
-            } else {
-              delete this.arraydef.rowlines;
-            }
-          } else if (lines2.length < this.table.length - 1) {
-            this.arraydef.rowlines += " none";
-          }
-        }
-        if (this.getProperty("rowspacing")) {
-          const rows = this.arraydef.rowspacing.split(/ /);
-          while (rows.length < this.table.length) {
-            rows.push(this.getProperty("rowspacing") + "em");
-          }
-          this.arraydef.rowspacing = rows.join(" ");
-        }
-      }
-      addRowSpacing(spacing) {
-        if (this.arraydef["rowspacing"]) {
-          const rows = this.arraydef["rowspacing"].split(/ /);
-          if (!this.getProperty("rowspacing")) {
-            const dimem = UnitUtil.dimen2em(rows[0]);
-            this.setProperty("rowspacing", dimem);
-          }
-          const rowspacing = this.getProperty("rowspacing");
-          while (rows.length < this.table.length) {
-            rows.push(UnitUtil.em(rowspacing));
-          }
-          rows[this.table.length - 1] = UnitUtil.em(Math.max(0, rowspacing + UnitUtil.dimen2em(spacing)));
-          this.arraydef["rowspacing"] = rows.join(" ");
-        }
-      }
-    };
-    EqnArrayItem = class extends ArrayItem {
-      constructor(factory, ...args) {
-        super(factory);
-        this.maxrow = 0;
-        this.factory.configuration.tags.start(args[0], args[2], args[1]);
-      }
-      get kind() {
-        return "eqnarray";
-      }
-      EndEntry() {
-        const calign = this.arraydef.columnalign.split(/ /);
-        const align = this.row.length && calign.length ? calign[this.row.length % calign.length] : "right";
-        if (align !== "right") {
-          ParseUtil.fixInitialMO(this.factory.configuration, this.nodes);
-        }
-        super.EndEntry();
-      }
-      EndRow() {
-        if (this.row.length > this.maxrow) {
-          this.maxrow = this.row.length;
-        }
-        const tag3 = this.factory.configuration.tags.getTag();
-        if (tag3) {
-          this.row = [tag3].concat(this.row);
-          this.setProperty("isLabeled", true);
-        }
-        this.factory.configuration.tags.clearTag();
-        super.EndRow();
-      }
-      EndTable() {
-        super.EndTable();
-        this.factory.configuration.tags.end();
-        this.extendArray("columnalign", this.maxrow);
-        this.extendArray("columnwidth", this.maxrow);
-        this.extendArray("columnspacing", this.maxrow - 1);
-        this.extendArray("data-break-align", this.maxrow);
-        this.addIndentshift();
-      }
-      extendArray(name, max2) {
-        if (!this.arraydef[name])
-          return;
-        const repeat = this.arraydef[name].split(/ /);
-        const columns = [...repeat];
-        if (columns.length > 1) {
-          while (columns.length < max2) {
-            columns.push(...repeat);
-          }
-          this.arraydef[name] = columns.slice(0, max2).join(" ");
-        }
-      }
-      addIndentshift() {
-        const align = this.arraydef.columnalign.split(/ /);
-        let prev = "";
-        for (const i2 of align.keys()) {
-          if (align[i2] === "left" && i2 > 0) {
-            const indentshift = prev === "center" ? ".7em" : "2em";
-            for (const row of this.table) {
-              const cell = row.childNodes[row.isKind("mlabeledtr") ? i2 + 1 : i2];
-              if (cell) {
-                const mstyle = this.create("node", "mstyle", cell.childNodes[0].childNodes, { indentshift });
-                cell.childNodes[0].childNodes = [];
-                cell.appendChild(mstyle);
-              }
-            }
-          }
-          prev = align[i2];
-        }
-      }
-    };
-    MstyleItem = class extends BeginItem {
-      get kind() {
-        return "mstyle";
-      }
-      constructor(factory, attr, name) {
-        super(factory);
-        this.attrList = attr;
-        this.setProperty("name", name);
-      }
-      checkItem(item) {
-        if (item.isKind("end") && item.getName() === this.getName()) {
-          const mml = this.create("node", "mstyle", [this.toMml()], this.attrList);
-          return [[mml], true];
-        }
-        return super.checkItem(item);
-      }
-    };
-    EquationItem = class extends BaseItem {
-      constructor(factory, ...args) {
-        super(factory);
-        this.factory.configuration.tags.start("equation", true, args[0]);
-      }
-      get kind() {
-        return "equation";
-      }
-      get isOpen() {
-        return true;
-      }
-      checkItem(item) {
-        if (item.isKind("end")) {
-          const mml = this.toMml();
-          const tag3 = this.factory.configuration.tags.getTag();
-          this.factory.configuration.tags.end();
-          return [
-            [tag3 ? this.factory.configuration.tags.enTag(mml, tag3) : mml, item],
-            true
-          ];
-        }
-        if (item.isKind("stop")) {
-          throw new TexError_default("EnvMissingEnd", "Missing \\end{%1}", this.getName());
-        }
-        return super.checkItem(item);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/lengths.js
-function length2em(length4, size = 0, scale2 = 1, em2 = 16) {
-  if (typeof length4 !== "string") {
-    length4 = String(length4);
-  }
-  if (length4 === "" || length4 == null) {
-    return size;
-  }
-  if (MATHSPACE[length4]) {
-    return MATHSPACE[length4];
-  }
-  const match = length4.match(/^\s*([-+]?(?:\.\d+|\d+(?:\.\d*)?))?(pt|em|ex|mu|px|pc|in|mm|cm|%)?/);
-  if (!match || match[0] === "") {
-    return size;
-  }
-  const m = parseFloat(match[1] || "1");
-  const unit = match[2];
-  if (Object.hasOwn(UNITS, unit)) {
-    return m * UNITS[unit] / em2 / scale2;
-  }
-  if (Object.hasOwn(RELUNITS, unit)) {
-    return m * RELUNITS[unit];
-  }
-  if (unit === "%") {
-    return m / 100 * size;
-  }
-  return m * size;
-}
-function percent(m) {
-  return (100 * m).toFixed(1).replace(/\.?0+$/, "") + "%";
-}
-function em(m) {
-  if (Math.abs(m) < 1e-3)
-    return "0";
-  return m.toFixed(3).replace(/\.?0+$/, "") + "em";
-}
-function px(m, M = -BIGDIMEN, em2 = 16) {
-  m *= em2;
-  if (M && m < M)
-    m = M;
-  if (Math.abs(m) < 0.1)
-    return "0";
-  return m.toFixed(1).replace(/\.0$/, "") + "px";
-}
-var BIGDIMEN;
-var UNITS;
-var RELUNITS;
-var MATHSPACE;
-var init_lengths = __esm({
-  "node_modules/@mathjax/src/mjs/util/lengths.js"() {
-    BIGDIMEN = 1e6;
-    UNITS = {
-      px: 1,
-      "in": 96,
-      cm: 96 / 2.54,
-      mm: 96 / 25.4
-    };
-    RELUNITS = {
-      em: 1,
-      ex: 0.431,
-      pt: 1 / 10,
-      pc: 12 / 10,
-      mu: 1 / 18
-    };
-    MATHSPACE = {
-      veryverythinmathspace: 1 / 18,
-      verythinmathspace: 2 / 18,
-      thinmathspace: 3 / 18,
-      mediummathspace: 4 / 18,
-      thickmathspace: 5 / 18,
-      verythickmathspace: 6 / 18,
-      veryverythickmathspace: 7 / 18,
-      negativeveryverythinmathspace: -1 / 18,
-      negativeverythinmathspace: -2 / 18,
-      negativethinmathspace: -3 / 18,
-      negativemediummathspace: -4 / 18,
-      negativethickmathspace: -5 / 18,
-      negativeverythickmathspace: -6 / 18,
-      negativeveryverythickmathspace: -7 / 18,
-      thin: 0.04,
-      medium: 0.06,
-      thick: 0.1,
-      normal: 1,
-      big: 2,
-      small: 1 / Math.sqrt(2),
-      infinity: BIGDIMEN
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/base/BaseMethods.js
-function splitAlignArray(align, n = Infinity) {
-  const list3 = align.replace(/\s+/g, "").split("").map((s) => {
-    const name = { t: "top", b: "bottom", m: "middle", c: "center" }[s];
-    if (!name) {
-      throw new TexError_default("BadBreakAlign", "Invalid alignment character: %1", s);
-    }
-    return name;
-  });
-  if (list3.length > n) {
-    throw new TexError_default("TooManyAligns", "Too many alignment characters: %1", align);
-  }
-  return n === 1 ? list3[0] : list3.join(" ");
-}
-function parseRoot(parser2, n) {
-  const env = parser2.stack.env;
-  const inRoot = env["inRoot"];
-  env["inRoot"] = true;
-  const newParser = new TexParser(n, env, parser2.configuration);
-  let node = newParser.mml();
-  const global = newParser.stack.global;
-  if (global["leftRoot"] || global["upRoot"]) {
-    const def2 = {};
-    if (global["leftRoot"]) {
-      def2["width"] = global["leftRoot"];
-    }
-    if (global["upRoot"]) {
-      def2["voffset"] = global["upRoot"];
-      def2["height"] = global["upRoot"];
-    }
-    node = parser2.create("node", "mpadded", [node], def2);
-  }
-  env["inRoot"] = inRoot;
-  return node;
-}
-var P_HEIGHT;
-var MmlTokenAllow;
-var BaseMethods;
-var BaseMethods_default;
-var init_BaseMethods = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/base/BaseMethods.js"() {
-    init_HandlerTypes();
-    init_BaseItems();
-    init_NodeUtil();
-    init_TexError();
-    init_TexParser();
-    init_TexConstants();
-    init_ParseUtil();
-    init_UnitUtil();
-    init_MmlNode();
-    init_mo();
-    init_Tags();
-    init_lengths();
-    init_Entities();
-    init_Options();
-    init_string();
-    P_HEIGHT = 1.2 / 0.85;
-    MmlTokenAllow = {
-      fontfamily: 1,
-      fontsize: 1,
-      fontweight: 1,
-      fontstyle: 1,
-      color: 1,
-      background: 1,
-      id: 1,
-      class: 1,
-      href: 1,
-      style: 1
-    };
-    BaseMethods = {
-      Open(parser2, _c) {
-        parser2.Push(parser2.itemFactory.create("open"));
-      },
-      Close(parser2, _c) {
-        parser2.Push(parser2.itemFactory.create("close"));
-      },
-      Bar(parser2, c) {
-        const mo = parser2.create("token", "mo", { stretchy: false, texClass: TEXCLASS.ORD }, c);
-        mo.setProperty("keep-attrs", "stretchy");
-        parser2.Push(mo);
-      },
-      Tilde(parser2, _c) {
-        parser2.Push(parser2.create("token", "mtext", {}, entities.nbsp));
-      },
-      Space(_parser, _c) {
-      },
-      Superscript(parser2, _c) {
-        if (parser2.GetNext().match(/\d/)) {
-          parser2.string = parser2.string.substring(0, parser2.i + 1) + " " + parser2.string.substring(parser2.i + 1);
-        }
-        let primes;
-        let base;
-        const top = parser2.stack.Top();
-        if (top.isKind("prime")) {
-          [base, primes] = top.Peek(2);
-          parser2.stack.Pop();
-        } else {
-          base = parser2.stack.Prev();
-          if (!base) {
-            base = parser2.create("token", "mi", {}, "");
-          }
-        }
-        const movesupsub = NodeUtil_default.getProperty(base, "movesupsub");
-        let position = NodeUtil_default.isType(base, "msubsup") ? base.sup : base.over;
-        if (NodeUtil_default.isType(base, "msubsup") && !NodeUtil_default.isType(base, "msup") && NodeUtil_default.getChildAt(base, base.sup) || NodeUtil_default.isType(base, "munderover") && !NodeUtil_default.isType(base, "mover") && NodeUtil_default.getChildAt(base, base.over) && !NodeUtil_default.getProperty(base, "subsupOK")) {
-          throw new TexError_default("DoubleExponent", "Double exponent: use braces to clarify");
-        }
-        if (!NodeUtil_default.isType(base, "msubsup") || NodeUtil_default.isType(base, "msup")) {
-          if (movesupsub) {
-            if (!NodeUtil_default.isType(base, "munderover") || NodeUtil_default.isType(base, "mover") || NodeUtil_default.getChildAt(base, base.over)) {
-              base = parser2.create("node", "munderover", [base], {
-                movesupsub: true
-              });
-            }
-            position = base.over;
-          } else {
-            base = parser2.create("node", "msubsup", [base]);
-            position = base.sup;
-          }
-        }
-        parser2.Push(parser2.itemFactory.create("subsup", base).setProperties({
-          position,
-          primes,
-          movesupsub
-        }));
-      },
-      Subscript(parser2, _c) {
-        if (parser2.GetNext().match(/\d/)) {
-          parser2.string = parser2.string.substring(0, parser2.i + 1) + " " + parser2.string.substring(parser2.i + 1);
-        }
-        let primes, base;
-        const top = parser2.stack.Top();
-        if (top.isKind("prime")) {
-          [base, primes] = top.Peek(2);
-          parser2.stack.Pop();
-        } else {
-          base = parser2.stack.Prev();
-          if (!base) {
-            base = parser2.create("token", "mi", {}, "");
-          }
-        }
-        const movesupsub = NodeUtil_default.getProperty(base, "movesupsub");
-        let position = NodeUtil_default.isType(base, "msubsup") ? base.sub : base.under;
-        if (NodeUtil_default.isType(base, "msubsup") && !NodeUtil_default.isType(base, "msup") && NodeUtil_default.getChildAt(base, base.sub) || NodeUtil_default.isType(base, "munderover") && !NodeUtil_default.isType(base, "mover") && NodeUtil_default.getChildAt(base, base.under) && !NodeUtil_default.getProperty(base, "subsupOK")) {
-          throw new TexError_default("DoubleSubscripts", "Double subscripts: use braces to clarify");
-        }
-        if (!NodeUtil_default.isType(base, "msubsup") || NodeUtil_default.isType(base, "msup")) {
-          if (movesupsub) {
-            if (!NodeUtil_default.isType(base, "munderover") || NodeUtil_default.isType(base, "mover") || NodeUtil_default.getChildAt(base, base.under)) {
-              base = parser2.create("node", "munderover", [base], {
-                movesupsub: true
-              });
-            }
-            position = base.under;
-          } else {
-            base = parser2.create("node", "msubsup", [base]);
-            position = base.sub;
-          }
-        }
-        parser2.Push(parser2.itemFactory.create("subsup", base).setProperties({
-          position,
-          primes,
-          movesupsub
-        }));
-      },
-      Prime(parser2, c) {
-        let base = parser2.stack.Prev();
-        if (!base) {
-          base = parser2.create("token", "mi");
-        }
-        if (NodeUtil_default.isType(base, "msubsup") && !NodeUtil_default.isType(base, "msup") && NodeUtil_default.getChildAt(base, base.sup) || NodeUtil_default.isType(base, "munderover") && !NodeUtil_default.isType(base, "mover") && NodeUtil_default.getChildAt(base, base.over) && !NodeUtil_default.getProperty(base, "subsupOK")) {
-          throw new TexError_default("DoubleExponentPrime", "Prime causes double exponent: use braces to clarify");
-        }
-        let sup = "";
-        parser2.i--;
-        do {
-          sup += entities.prime;
-          parser2.i++;
-          c = parser2.GetNext();
-        } while (c === "'" || c === entities.rsquo);
-        sup = ["", "′", "″", "‴", "⁗"][sup.length] || sup;
-        const node = parser2.create("token", "mo", { variantForm: true }, sup);
-        parser2.Push(parser2.itemFactory.create("prime", base, node));
-      },
-      Comment(parser2, _c) {
-        while (parser2.i < parser2.string.length && parser2.string.charAt(parser2.i) !== "\n") {
-          parser2.i++;
-        }
-      },
-      Hash(_parser, _c) {
-        throw new TexError_default("CantUseHash1", "You can't use 'macro parameter character #' in math mode");
-      },
-      MathFont(parser2, name, variant, italic2 = "") {
-        const text = parser2.GetArgument(name);
-        const mml = new TexParser(text, Object.assign(Object.assign({ multiLetterIdentifiers: parser2.options.identifierPattern }, parser2.stack.env), { font: variant, italicFont: italic2, noAutoOP: true }), parser2.configuration).mml();
-        parser2.Push(parser2.create("node", "TeXAtom", [mml]));
-      },
-      SetFont(parser2, _name, font) {
-        parser2.stack.env["font"] = font;
-        parser2.Push(parser2.itemFactory.create("null"));
-      },
-      SetStyle(parser2, _name, texStyle, style, level) {
-        parser2.stack.env["style"] = texStyle;
-        parser2.stack.env["level"] = level;
-        parser2.Push(parser2.itemFactory.create("style").setProperty("styles", { displaystyle: style, scriptlevel: level }));
-      },
-      SetSize(parser2, _name, size) {
-        parser2.stack.env["size"] = size;
-        parser2.Push(parser2.itemFactory.create("style").setProperty("styles", { mathsize: em(size) }));
-      },
-      Spacer(parser2, _name, space) {
-        const node = parser2.create("node", "mspace", [], { width: em(space) });
-        const style = parser2.create("node", "mstyle", [node], { scriptlevel: 0 });
-        parser2.Push(style);
-      },
-      DiscretionaryTimes(parser2, _name) {
-        parser2.Push(parser2.create("token", "mo", { linebreakmultchar: "×" }, "\u2062"));
-      },
-      AllowBreak(parser2, _name) {
-        parser2.Push(parser2.create("token", "mspace"));
-      },
-      Break(parser2, _name) {
-        parser2.Push(parser2.create("token", "mspace", {
-          linebreak: TexConstant.LineBreak.NEWLINE
-        }));
-      },
-      Linebreak(parser2, _name, linebreak) {
-        let insert2 = true;
-        const prev = parser2.stack.Prev(true);
-        if (prev && prev.isKind("mo")) {
-          const style = NodeUtil_default.getMoAttribute(prev, "linebreakstyle");
-          if (style !== TexConstant.LineBreakStyle.BEFORE) {
-            prev.attributes.set("linebreak", linebreak);
-            insert2 = false;
-          }
-        }
-        parser2.Push(parser2.itemFactory.create("break", linebreak, insert2));
-      },
-      LeftRight(parser2, name) {
-        const first = name.substring(1);
-        parser2.Push(parser2.itemFactory.create(first, parser2.GetDelimiter(name), parser2.stack.env.color));
-      },
-      NamedFn(parser2, name, id) {
-        if (!id) {
-          id = name.substring(1);
-        }
-        const mml = parser2.create("token", "mi", { texClass: TEXCLASS.OP }, id);
-        parser2.Push(parser2.itemFactory.create("fn", mml));
-      },
-      NamedOp(parser2, name, id) {
-        if (!id) {
-          id = name.substring(1);
-        }
-        id = id.replace(/&thinsp;/, "\u2006");
-        const mml = parser2.create("token", "mo", {
-          movablelimits: true,
-          movesupsub: true,
-          form: TexConstant.Form.PREFIX,
-          texClass: TEXCLASS.OP
-        }, id);
-        parser2.Push(mml);
-      },
-      Limits(parser2, _name, limits) {
-        let op = parser2.stack.Prev(true);
-        if (!op || NodeUtil_default.getTexClass(NodeUtil_default.getCoreMO(op)) !== TEXCLASS.OP && NodeUtil_default.getProperty(op, "movesupsub") == null) {
-          throw new TexError_default("MisplacedLimits", "%1 is allowed only on operators", parser2.currentCS);
-        }
-        const top = parser2.stack.Top();
-        let node;
-        if (NodeUtil_default.isType(op, "munderover") && !limits) {
-          node = parser2.create("node", "msubsup");
-          NodeUtil_default.copyChildren(op, node);
-          op = top.First = node;
-        } else if (NodeUtil_default.isType(op, "msubsup") && limits) {
-          node = parser2.create("node", "munderover");
-          NodeUtil_default.copyChildren(op, node);
-          op = top.First = node;
-        }
-        NodeUtil_default.setProperty(op, "movesupsub", limits ? true : false);
-        NodeUtil_default.setProperties(NodeUtil_default.getCoreMO(op), { movablelimits: false });
-        if ((NodeUtil_default.isType(op, "mo") ? NodeUtil_default.getMoAttribute(op, "movableLimits") : NodeUtil_default.getAttribute(op, "movablelimits")) || NodeUtil_default.getProperty(op, "movablelimits")) {
-          NodeUtil_default.setProperties(op, { movablelimits: false });
-        }
-      },
-      Over(parser2, name, open, close) {
-        const mml = parser2.itemFactory.create("over").setProperty("name", parser2.currentCS);
-        if (open || close) {
-          mml.setProperty("ldelim", open);
-          mml.setProperty("rdelim", close);
-        } else if (name.match(/withdelims$/)) {
-          mml.setProperty("ldelim", parser2.GetDelimiter(name));
-          mml.setProperty("rdelim", parser2.GetDelimiter(name));
-        }
-        if (name.match(/^\\above/)) {
-          mml.setProperty("thickness", parser2.GetDimen(name));
-        } else if (name.match(/^\\atop/) || open || close) {
-          mml.setProperty("thickness", 0);
-        }
-        parser2.Push(mml);
-      },
-      Frac(parser2, name) {
-        const num3 = parser2.ParseArg(name);
-        const den = parser2.ParseArg(name);
-        const node = parser2.create("node", "mfrac", [num3, den]);
-        parser2.Push(node);
-      },
-      Sqrt(parser2, name) {
-        const n = parser2.GetBrackets(name);
-        let arg = parser2.GetArgument(name);
-        if (arg === "\\frac") {
-          arg += "{" + parser2.GetArgument(arg) + "}{" + parser2.GetArgument(arg) + "}";
-        }
-        let mml = new TexParser(arg, parser2.stack.env, parser2.configuration).mml();
-        if (!n) {
-          mml = parser2.create("node", "msqrt", [mml]);
-        } else {
-          mml = parser2.create("node", "mroot", [mml, parseRoot(parser2, n)]);
-        }
-        parser2.Push(mml);
-      },
-      Root(parser2, name) {
-        const n = parser2.GetUpTo(name, "\\of");
-        const arg = parser2.ParseArg(name);
-        const node = parser2.create("node", "mroot", [arg, parseRoot(parser2, n)]);
-        parser2.Push(node);
-      },
-      MoveRoot(parser2, name, id) {
-        if (!parser2.stack.env["inRoot"]) {
-          throw new TexError_default("MisplacedMoveRoot", "%1 can appear only within a root", parser2.currentCS);
-        }
-        if (parser2.stack.global[id]) {
-          throw new TexError_default("MultipleMoveRoot", "Multiple use of %1", parser2.currentCS);
-        }
-        let n = parser2.GetArgument(name);
-        if (!n.match(/-?[0-9]+/)) {
-          throw new TexError_default("IntegerArg", "The argument to %1 must be an integer", parser2.currentCS);
-        }
-        n = parseInt(n, 10) / 15 + "em";
-        if (n.substring(0, 1) !== "-") {
-          n = "+" + n;
-        }
-        parser2.stack.global[id] = n;
-      },
-      Accent(parser2, name, accent, stretchy) {
-        const c = parser2.ParseArg(name);
-        const def2 = Object.assign(Object.assign({}, ParseUtil.getFontDef(parser2)), { accent: true, mathaccent: stretchy === void 0 ? true : stretchy });
-        const entity = NodeUtil_default.createEntity(accent);
-        const mml = parser2.create("token", "mo", def2, entity);
-        NodeUtil_default.setAttribute(mml, "stretchy", stretchy ? true : false);
-        const mo = NodeUtil_default.isEmbellished(c) ? NodeUtil_default.getCoreMO(c) : c;
-        if (NodeUtil_default.isType(mo, "mo") || NodeUtil_default.getProperty(mo, "movablelimits")) {
-          NodeUtil_default.setProperties(mo, { movablelimits: false });
-        }
-        const muoNode = parser2.create("node", "munderover");
-        NodeUtil_default.setChild(muoNode, 0, c);
-        NodeUtil_default.setChild(muoNode, 1, null);
-        NodeUtil_default.setChild(muoNode, 2, mml);
-        const texAtom = parser2.create("node", "TeXAtom", [muoNode]);
-        parser2.Push(texAtom);
-      },
-      UnderOver(parser2, name, c, stack2) {
-        const entity = NodeUtil_default.createEntity(c);
-        const mo = parser2.create("token", "mo", { stretchy: true, accent: true }, entity);
-        if (entity.match(MmlMo.mathaccentsWithWidth)) {
-          mo.setProperty("mathaccent", false);
-        }
-        const pos = name.charAt(1) === "o" ? "over" : "under";
-        const base = parser2.ParseArg(name);
-        parser2.Push(ParseUtil.underOver(parser2, base, mo, pos, stack2));
-      },
-      Overset(parser2, name) {
-        const top = parser2.ParseArg(name);
-        const base = parser2.ParseArg(name);
-        const topMo = top.coreMO();
-        const accent = topMo.isKind("mo") && NodeUtil_default.getMoAttribute(topMo, "accent") === true;
-        ParseUtil.checkMovableLimits(base);
-        const node = parser2.create("node", "mover", [base, top], { accent });
-        parser2.Push(node);
-      },
-      Underset(parser2, name) {
-        const bot = parser2.ParseArg(name);
-        const base = parser2.ParseArg(name);
-        const botMo = bot.coreMO();
-        const accentunder = botMo.isKind("mo") && NodeUtil_default.getMoAttribute(botMo, "accent") === true;
-        ParseUtil.checkMovableLimits(base);
-        const node = parser2.create("node", "munder", [base, bot], { accentunder });
-        parser2.Push(node);
-      },
-      Overunderset(parser2, name) {
-        const top = parser2.ParseArg(name);
-        const bot = parser2.ParseArg(name);
-        const base = parser2.ParseArg(name);
-        const topMo = top.coreMO();
-        const botMo = bot.coreMO();
-        const accent = topMo.isKind("mo") && NodeUtil_default.getMoAttribute(topMo, "accent") === true;
-        const accentunder = botMo.isKind("mo") && NodeUtil_default.getMoAttribute(botMo, "accent") === true;
-        ParseUtil.checkMovableLimits(base);
-        const node = parser2.create("node", "munderover", [base, bot, top], {
-          accent,
-          accentunder
-        });
-        parser2.Push(node);
-      },
-      TeXAtom(parser2, name, mclass) {
-        const def2 = { texClass: mclass };
-        let mml;
-        let node;
-        if (mclass === TEXCLASS.OP) {
-          def2["movesupsub"] = def2["movablelimits"] = true;
-          const arg = parser2.GetArgument(name);
-          const match = arg.match(/^\s*\\rm\s+([a-zA-Z0-9 ]+)$/);
-          if (match) {
-            def2["mathvariant"] = TexConstant.Variant.NORMAL;
-            node = parser2.create("token", "mi", def2, match[1]);
-          } else {
-            const parsed = new TexParser(arg, parser2.stack.env, parser2.configuration).mml();
-            node = parser2.create("node", "TeXAtom", [parsed], def2);
-          }
-          mml = parser2.itemFactory.create("fn", node);
-        } else {
-          mml = parser2.create("node", "TeXAtom", [parser2.ParseArg(name)], def2);
-        }
-        parser2.Push(mml);
-      },
-      VBox(parser2, name, align) {
-        const arg = new TexParser(parser2.GetArgument(name), parser2.stack.env, parser2.configuration);
-        const def2 = {
-          "data-vertical-align": align,
-          texClass: TEXCLASS.ORD
-        };
-        if (arg.stack.env.hsize) {
-          def2.width = arg.stack.env.hsize;
-          def2["data-overflow"] = "linebreak";
-        }
-        const mml = parser2.create("node", "mpadded", [arg.mml()], def2);
-        mml.setProperty("vbox", align);
-        parser2.Push(mml);
-      },
-      Hsize(parser2, name) {
-        if (parser2.GetNext() === "=") {
-          parser2.i++;
-        }
-        parser2.stack.env.hsize = parser2.GetDimen(name);
-        parser2.Push(parser2.itemFactory.create("null"));
-      },
-      ParBox(parser2, name) {
-        const c = parser2.GetBrackets(name, "c");
-        const width = parser2.GetDimen(name);
-        const text = ParseUtil.internalMath(parser2, parser2.GetArgument(name));
-        const align = splitAlignArray(c, 1);
-        const mml = parser2.create("node", "mpadded", text, {
-          width,
-          "data-overflow": "linebreak",
-          "data-vertical-align": align
-        });
-        mml.setProperty("vbox", align);
-        parser2.Push(mml);
-      },
-      BreakAlign(parser2, name) {
-        const top = parser2.stack.Top();
-        if (!(top instanceof ArrayItem)) {
-          throw new TexError_default("BreakNotInArray", "%1 must be used in an alignment environment", parser2.currentCS);
-        }
-        const type = parser2.GetArgument(name).trim();
-        switch (type) {
-          case "c":
-            if (top.First) {
-              throw new TexError_default("BreakFirstInEntry", "%1 must be at the beginning of an alignment entry", parser2.currentCS + "{c}");
-            }
-            top.breakAlign.cell = splitAlignArray(parser2.GetArgument(name), 1);
-            break;
-          case "r":
-            if (top.row.length || top.First) {
-              throw new TexError_default("BreakFirstInRow", "%1 must be at the beginning of an alignment row", parser2.currentCS + "{r}");
-            }
-            top.breakAlign.row = splitAlignArray(parser2.GetArgument(name));
-            break;
-          case "t":
-            if (top.table.length || top.row.length || top.First) {
-              throw new TexError_default("BreakFirstInTable", "%1 must be at the beginning of an alignment", parser2.currentCS + "{t}");
-            }
-            top.breakAlign.table = splitAlignArray(parser2.GetArgument(name));
-            break;
-          default:
-            throw new TexError_default("BreakType", "First argument to %1 must be one of c, r, or t", parser2.currentCS);
-        }
-      },
-      MmlToken(parser2, name) {
-        const kind = parser2.GetArgument(name);
-        let attr = parser2.GetBrackets(name, "").replace(/^\s+/, "");
-        const text = parser2.GetArgument(name);
-        const def2 = {};
-        const keep = [];
-        let node;
-        try {
-          node = parser2.create("node", kind);
-        } catch (_e) {
-          node = null;
-        }
-        if (!node || !node.isToken) {
-          throw new TexError_default("NotMathMLToken", "%1 is not a token element", kind);
-        }
-        while (attr !== "") {
-          const match = attr.match(/^([a-z]+)\s*=\s*('[^'\n]*'|"[^"\n]*"|[^ ,\n]*)[\s\n]*,?[\s\n]*/i);
-          if (!match) {
-            throw new TexError_default("InvalidMathMLAttr", "Invalid MathML attribute: %1", attr.split(/[\s\n=]/)[0]);
-          }
-          if (!node.attributes.hasDefault(match[1]) && !MmlTokenAllow[match[1]]) {
-            throw new TexError_default("UnknownAttrForElement", "%1 is not a recognized attribute for %2", match[1], kind);
-          }
-          let value = ParseUtil.mmlFilterAttribute(parser2, match[1], match[2].replace(/^(['"])(.*)\1$/, "$2"));
-          if (value) {
-            if (value.toLowerCase() === "true") {
-              value = true;
-            } else if (value.toLowerCase() === "false") {
-              value = false;
-            }
-            def2[match[1]] = value;
-            keep.push(match[1]);
-          }
-          attr = attr.substring(match[0].length);
-        }
-        if (keep.length) {
-          node.setProperty("keep-attrs", keep.join(" "));
-        }
-        const textNode = parser2.create("text", replaceUnicode(text));
-        node.appendChild(textNode);
-        NodeUtil_default.setProperties(node, def2);
-        parser2.Push(node);
-      },
-      Strut(parser2, _name) {
-        const row = parser2.create("node", "mrow");
-        const padded2 = parser2.create("node", "mpadded", [row], {
-          height: "8.6pt",
-          depth: "3pt",
-          width: 0
-        });
-        parser2.Push(padded2);
-      },
-      Phantom(parser2, name, v, h) {
-        let box = parser2.create("node", "mphantom", [parser2.ParseArg(name)]);
-        if (v || h) {
-          box = parser2.create("node", "mpadded", [box]);
-          if (h) {
-            NodeUtil_default.setAttribute(box, "height", 0);
-            NodeUtil_default.setAttribute(box, "depth", 0);
-          }
-          if (v) {
-            NodeUtil_default.setAttribute(box, "width", 0);
-          }
-        }
-        const atom = parser2.create("node", "TeXAtom", [box]);
-        parser2.Push(atom);
-      },
-      Smash(parser2, name) {
-        const bt = UnitUtil.trimSpaces(parser2.GetBrackets(name, ""));
-        const smash = parser2.create("node", "mpadded", [parser2.ParseArg(name)]);
-        switch (bt) {
-          case "b":
-            NodeUtil_default.setAttribute(smash, "depth", 0);
-            break;
-          case "t":
-            NodeUtil_default.setAttribute(smash, "height", 0);
-            break;
-          default:
-            NodeUtil_default.setAttribute(smash, "height", 0);
-            NodeUtil_default.setAttribute(smash, "depth", 0);
-        }
-        const atom = parser2.create("node", "TeXAtom", [smash]);
-        parser2.Push(atom);
-      },
-      Lap(parser2, name) {
-        const mml = parser2.create("node", "mpadded", [parser2.ParseArg(name)], {
-          width: 0
-        });
-        if (name === "\\llap") {
-          NodeUtil_default.setAttribute(mml, "lspace", "-1width");
-        }
-        const atom = parser2.create("node", "TeXAtom", [mml]);
-        parser2.Push(atom);
-      },
-      RaiseLower(parser2, name) {
-        let h = parser2.GetDimen(name);
-        const item = parser2.itemFactory.create("position").setProperties({ name: parser2.currentCS, move: "vertical" });
-        if (h.charAt(0) === "-") {
-          h = h.slice(1);
-          name = name.substring(1) === "raise" ? "\\lower" : "\\raise";
-        }
-        if (name === "\\lower") {
-          item.setProperty("dh", "-" + h);
-          item.setProperty("dd", "+" + h);
-        } else {
-          item.setProperty("dh", "+" + h);
-          item.setProperty("dd", "-" + h);
-        }
-        parser2.Push(item);
-      },
-      MoveLeftRight(parser2, name) {
-        let h = parser2.GetDimen(name);
-        let nh = h.charAt(0) === "-" ? h.slice(1) : "-" + h;
-        if (name === "\\moveleft") {
-          const tmp = h;
-          h = nh;
-          nh = tmp;
-        }
-        parser2.Push(parser2.itemFactory.create("position").setProperties({
-          name: parser2.currentCS,
-          move: "horizontal",
-          left: parser2.create("node", "mspace", [], { width: h }),
-          right: parser2.create("node", "mspace", [], { width: nh })
-        }));
-      },
-      Hskip(parser2, name, nobreak = false) {
-        const node = parser2.create("node", "mspace", [], {
-          width: parser2.GetDimen(name)
-        });
-        if (nobreak) {
-          NodeUtil_default.setAttribute(node, "linebreak", "nobreak");
-        }
-        parser2.Push(node);
-      },
-      Nonscript(parser2, _name) {
-        parser2.Push(parser2.itemFactory.create("nonscript"));
-      },
-      Rule(parser2, name, style) {
-        const w = parser2.GetDimen(name), h = parser2.GetDimen(name), d = parser2.GetDimen(name);
-        const def2 = { width: w, height: h, depth: d };
-        if (style !== "blank") {
-          def2["mathbackground"] = parser2.stack.env["color"] || "black";
-        }
-        const node = parser2.create("node", "mspace", [], def2);
-        parser2.Push(node);
-      },
-      rule(parser2, name) {
-        const v = parser2.GetBrackets(name), w = parser2.GetDimen(name), h = parser2.GetDimen(name);
-        let mml = parser2.create("node", "mspace", [], {
-          width: w,
-          height: h,
-          mathbackground: parser2.stack.env["color"] || "black"
-        });
-        if (v) {
-          mml = parser2.create("node", "mpadded", [mml], { voffset: v });
-          if (v.match(/^-/)) {
-            NodeUtil_default.setAttribute(mml, "height", v);
-            NodeUtil_default.setAttribute(mml, "depth", "+" + v.substring(1));
-          } else {
-            NodeUtil_default.setAttribute(mml, "height", "+" + v);
-          }
-        }
-        parser2.Push(mml);
-      },
-      MakeBig(parser2, name, mclass, size) {
-        size *= P_HEIGHT;
-        const sizeStr = String(size).replace(/(\.\d\d\d).+/, "$1") + "em";
-        const delim = parser2.GetDelimiter(name, true);
-        const mo = parser2.create("token", "mo", {
-          minsize: sizeStr,
-          maxsize: sizeStr,
-          fence: true,
-          stretchy: true,
-          symmetric: true
-        }, delim);
-        const node = parser2.create("node", "TeXAtom", [mo], { texClass: mclass });
-        parser2.Push(node);
-      },
-      BuildRel(parser2, name) {
-        const top = parser2.ParseUpTo(name, "\\over");
-        const bot = parser2.ParseArg(name);
-        const node = parser2.create("node", "munderover");
-        NodeUtil_default.setChild(node, 0, bot);
-        NodeUtil_default.setChild(node, 1, null);
-        NodeUtil_default.setChild(node, 2, top);
-        const atom = parser2.create("node", "TeXAtom", [node], {
-          texClass: TEXCLASS.REL
-        });
-        parser2.Push(atom);
-      },
-      HBox(parser2, name, style, font) {
-        parser2.PushAll(ParseUtil.internalMath(parser2, parser2.GetArgument(name), style, font));
-      },
-      FBox(parser2, name) {
-        const internal = ParseUtil.internalMath(parser2, parser2.GetArgument(name));
-        const node = parser2.create("node", "menclose", internal, {
-          notation: "box"
-        });
-        parser2.Push(node);
-      },
-      FrameBox(parser2, name) {
-        const width = parser2.GetBrackets(name);
-        const pos = parser2.GetBrackets(name) || "c";
-        let mml = ParseUtil.internalMath(parser2, parser2.GetArgument(name));
-        if (width) {
-          mml = [
-            parser2.create("node", "mpadded", mml, {
-              width,
-              "data-align": lookup(pos, { l: "left", r: "right" }, "center")
-            })
-          ];
-        }
-        const node = parser2.create("node", "TeXAtom", [parser2.create("node", "menclose", mml, { notation: "box" })], { texClass: TEXCLASS.ORD });
-        parser2.Push(node);
-      },
-      MakeBox(parser2, name) {
-        const width = parser2.GetBrackets(name);
-        const pos = parser2.GetBrackets(name, "c");
-        const mml = parser2.create("node", "mpadded", ParseUtil.internalMath(parser2, parser2.GetArgument(name)));
-        if (width) {
-          NodeUtil_default.setAttribute(mml, "width", width);
-        }
-        const align = lookup(pos.toLowerCase(), { c: "center", r: "right" }, "");
-        if (align) {
-          NodeUtil_default.setAttribute(mml, "data-align", align);
-        }
-        if (pos.toLowerCase() !== pos) {
-          NodeUtil_default.setAttribute(mml, "data-overflow", "linebreak");
-        }
-        parser2.Push(mml);
-      },
-      Not(parser2, _name) {
-        parser2.Push(parser2.itemFactory.create("not"));
-      },
-      Dots(parser2, _name) {
-        const ldotsEntity = NodeUtil_default.createEntity("2026");
-        const cdotsEntity = NodeUtil_default.createEntity("22EF");
-        const ldots = parser2.create("token", "mo", { stretchy: false }, ldotsEntity);
-        const cdots = parser2.create("token", "mo", { stretchy: false }, cdotsEntity);
-        parser2.Push(parser2.itemFactory.create("dots").setProperties({
-          ldots,
-          cdots
-        }));
-      },
-      Matrix(parser2, _name, open, close, align, spacing, vspacing, style, cases, numbered) {
-        const c = parser2.GetNext();
+      GetDelimiterArg(name) {
+        const c = UnitUtil.trimSpaces(this.GetArgument(name));
         if (c === "") {
-          throw new TexError_default("MissingArgFor", "Missing argument for %1", parser2.currentCS);
+          return null;
         }
-        if (c === "{") {
-          parser2.i++;
-        } else {
-          parser2.string = c + "}" + parser2.string.slice(parser2.i + 1);
-          parser2.i = 0;
+        if (this.contains(HandlerType.DELIMITER, c)) {
+          return c;
         }
-        const array = parser2.itemFactory.create("array").setProperty("requireClose", true);
-        if (open || !align) {
-          array.setProperty("arrayPadding", ".2em .125em");
+        throw new TexError_default("MissingOrUnrecognizedDelim", "Missing or unrecognized delimiter for %1", this.currentCS);
+      }
+      GetStar() {
+        const star = this.GetNext() === "*";
+        if (star) {
+          this.i++;
         }
-        array.arraydef = {
-          rowspacing: vspacing || "4pt",
-          columnspacing: spacing || "1em"
-        };
-        if (cases) {
-          array.setProperty("isCases", true);
+        return star;
+      }
+      create(kind, ...rest) {
+        const node = this.configuration.nodeFactory.create(kind, ...rest);
+        if (node.isToken && node.attributes.hasExplicit("mathvariant")) {
+          if (node.attributes.get("mathvariant").charAt(0) === "-") {
+            node.setProperty("ignore-variant", true);
+          }
         }
-        if (numbered) {
-          array.setProperty("isNumbered", true);
-          array.arraydef.side = numbered;
-        }
-        if (open || close) {
-          array.setProperty("open", open);
-          array.setProperty("close", close);
-        }
-        if (style === "D") {
-          array.arraydef.displaystyle = true;
-        }
-        if (align != null) {
-          array.arraydef.columnalign = align;
-        }
-        parser2.Push(array);
-      },
-      Entry(parser2, name) {
-        parser2.Push(parser2.itemFactory.create("cell").setProperties({ isEntry: true, name }));
-        const top = parser2.stack.Top();
-        const env = top.getProperty("casesEnv");
-        const cases = top.getProperty("isCases");
-        if (!cases && !env)
+        return node;
+      }
+      trimTex(tex) {
+        return tex.trim() + (tex.match(/(?:^|[^\\])(?:\\\\)*\\\s+$/) ? " " : "");
+      }
+      updateResult(input, old) {
+        const node = this.stack.Prev(true);
+        if (!node) {
           return;
-        const str = parser2.string;
-        let braces = 0;
-        let close = -1;
-        let i2 = parser2.i;
-        let m = str.length;
-        const end = env ? new RegExp(`^\\\\end\\s*\\{${env.replace(/\*/, "\\*")}\\}`) : null;
-        while (i2 < m) {
-          const c = str.charAt(i2);
-          if (c === "{") {
-            braces++;
-            i2++;
-          } else if (c === "}") {
-            if (braces === 0) {
-              m = 0;
+        }
+        const LATEX = TexConstant.Attr.LATEX;
+        const latex = node.attributes.get(LATEX);
+        const existing = node.attributes.get(TexConstant.Attr.LATEXITEM);
+        if (existing !== void 0) {
+          if (!latex) {
+            if (input === "}" || existing === "}") {
+              this.composeBraces(node);
             } else {
-              braces--;
-              if (braces === 0 && close < 0) {
-                close = i2 - parser2.i;
+              node.attributes.set(LATEX, existing);
+            }
+          }
+          return;
+        }
+        old = old < this.saveI ? this.saveI : old;
+        const str = this.trimTex(old !== this.i ? this.string.slice(old, this.i) : input);
+        if (!str || str === latex || input === "\\" && str === "\\") {
+          return;
+        }
+        if (str === "_" || str === "^") {
+          node.setProperty("sub-sup", str);
+        } else {
+          switch (node.getProperty("sub-sup")) {
+            case "^":
+              if (node.childNodes[2]) {
+                if (str === "}") {
+                  this.composeBraces(node.childNodes[2]);
+                } else if (!node.childNodes[2].attributes.hasExplicit(LATEX)) {
+                  node.childNodes[2].attributes.set(LATEX, str);
+                }
               }
-              i2++;
-            }
-          } else if (c === "&" && braces === 0) {
-            throw new TexError_default("ExtraAlignTab", "Extra alignment tab in \\cases text");
-          } else if (c === "\\") {
-            const rest = str.substring(i2);
-            if (rest.match(/^((\\cr)[^a-zA-Z]|\\\\)/) || end && rest.match(end)) {
-              m = 0;
-            } else {
-              i2 += 2;
-            }
-          } else {
-            i2++;
+              if (node.childNodes[1]) {
+                const sub = node.childNodes[1].attributes.get(LATEX);
+                this.composeLatex(node, `_${sub}^`, 0, 2);
+              } else {
+                this.composeLatex(node, "^", 0, 2);
+              }
+              return;
+            case "_":
+              if (node.childNodes[1]) {
+                if (str === "}") {
+                  this.composeBraces(node.childNodes[1]);
+                } else if (!node.childNodes[1].attributes.hasExplicit(LATEX)) {
+                  node.childNodes[1].attributes.set(LATEX, str);
+                }
+              }
+              if (node.childNodes[2]) {
+                const sup = node.childNodes[2].attributes.get(LATEX);
+                this.composeLatex(node, `^${sup}_`, 0, 1);
+              } else {
+                this.composeLatex(node, "_", 0, 1);
+              }
+              return;
           }
-        }
-        const text = str.substring(parser2.i, i2);
-        if (!text.match(/^\s*\\text[^a-zA-Z]/) || close !== text.replace(/\s+$/, "").length - 1) {
-          const internal = ParseUtil.internalMath(parser2, UnitUtil.trimSpaces(text), 0);
-          parser2.PushAll(internal);
-          parser2.i = i2;
-        }
-      },
-      Cr(parser2, name) {
-        parser2.Push(parser2.itemFactory.create("cell").setProperties({ isCR: true, name }));
-      },
-      CrLaTeX(parser2, name, nobrackets = false) {
-        let n;
-        if (!nobrackets) {
-          if (parser2.string.charAt(parser2.i) === "*") {
-            parser2.i++;
-          }
-          if (parser2.string.charAt(parser2.i) === "[") {
-            const dim = parser2.GetBrackets(name, "");
-            const [value, unit] = UnitUtil.matchDimen(dim);
-            if (dim && !value) {
-              throw new TexError_default("BracketMustBeDimension", "Bracket argument to %1 must be a dimension", parser2.currentCS);
-            }
-            n = value + unit;
-          }
-        }
-        parser2.Push(parser2.itemFactory.create("cell").setProperties({ isCR: true, name, linebreak: true }));
-        const top = parser2.stack.Top();
-        let node;
-        if (top instanceof ArrayItem) {
-          if (n) {
-            top.addRowSpacing(n);
-          }
-        } else {
-          node = parser2.create("node", "mspace", [], {
-            linebreak: TexConstant.LineBreak.NEWLINE
-          });
-          if (n) {
-            NodeUtil_default.setAttribute(node, "data-lineleading", n);
-          }
-          parser2.Push(node);
-        }
-      },
-      HLine(parser2, _name, style) {
-        if (style == null) {
-          style = "solid";
-        }
-        const top = parser2.stack.Top();
-        if (!(top instanceof ArrayItem) || top.Size()) {
-          throw new TexError_default("Misplaced", "Misplaced %1", parser2.currentCS);
-        }
-        if (!top.table.length) {
-          top.frame.push(["top", style]);
-        } else {
-          const lines2 = top.arraydef["rowlines"] ? top.arraydef["rowlines"].split(/ /) : [];
-          while (lines2.length < top.table.length) {
-            lines2.push("none");
-          }
-          lines2[top.table.length - 1] = style;
-          top.arraydef["rowlines"] = lines2.join(" ");
-        }
-      },
-      HFill(parser2, _name) {
-        const top = parser2.stack.Top();
-        if (top instanceof ArrayItem) {
-          top.hfill.push(top.Size());
-        } else {
-          throw new TexError_default("UnsupportedHFill", "Unsupported use of %1", parser2.currentCS);
-        }
-      },
-      NewColumnType(parser2, name) {
-        const c = parser2.GetArgument(name);
-        const n = parser2.GetBrackets(name, "0");
-        const macro = parser2.GetArgument(name);
-        if (c.length !== 1) {
-          throw new TexError_default("BadColumnName", "Column specifier must be exactly one character: %1", c);
-        }
-        if (!n.match(/^\d+$/)) {
-          throw new TexError_default("PositiveIntegerArg", "Argument to %1 must be a positive integer", n);
-        }
-        const cparser = parser2.configuration.columnParser;
-        cparser.columnHandler[c] = (state) => cparser.macroColumn(state, macro, parseInt(n));
-        parser2.Push(parser2.itemFactory.create("null"));
-      },
-      BeginEnd(parser2, name) {
-        const env = parser2.GetArgument(name);
-        if (env.match(/\\/)) {
-          throw new TexError_default("InvalidEnv", "Invalid environment name '%1'", env);
-        }
-        const macro = parser2.configuration.handlers.get(HandlerType.ENVIRONMENT).lookup(env);
-        if (macro && name === "\\end") {
-          if (!macro.args[0]) {
-            const mml = parser2.itemFactory.create("end").setProperty("name", env);
-            parser2.Push(mml);
+          if (str === "}") {
+            this.composeBraces(node);
             return;
           }
-          parser2.stack.env["closing"] = env;
         }
-        ParseUtil.checkMaxMacros(parser2, false);
-        parser2.parse(HandlerType.ENVIRONMENT, [parser2, env]);
-      },
-      Array(parser2, begin, open, close, align, spacing, vspacing, style, raggedHeight) {
-        if (!align) {
-          align = parser2.GetArgument("\\begin{" + begin.getName() + "}");
-        }
-        const array = parser2.itemFactory.create("array");
-        if (begin.getName() === "array") {
-          array.setProperty("arrayPadding", ".5em .125em");
-        }
-        array.parser = parser2;
-        array.arraydef = {
-          columnspacing: spacing || "1em",
-          rowspacing: vspacing || "4pt"
-        };
-        parser2.configuration.columnParser.process(parser2, align, array);
-        if (open) {
-          array.setProperty("open", parser2.convertDelimiter(open));
-        }
-        if (close) {
-          array.setProperty("close", parser2.convertDelimiter(close));
-        }
-        if ((style || "").charAt(1) === "'") {
-          array.arraydef["data-cramped"] = true;
-          style = style.charAt(0);
-        }
-        if (style === "D") {
-          array.arraydef["displaystyle"] = true;
-        } else if (style) {
-          array.arraydef["displaystyle"] = false;
-        }
-        array.arraydef["scriptlevel"] = style === "S" ? 1 : 0;
-        if (raggedHeight) {
-          array.arraydef["useHeight"] = false;
-        }
-        parser2.Push(begin);
-        array.StartEntry();
-        return array;
-      },
-      AlignedArray(parser2, begin, style = "") {
-        const align = parser2.GetBrackets("\\begin{" + begin.getName() + "}");
-        const item = BaseMethods.Array(parser2, begin, null, null, null, null, null, style);
-        return ParseUtil.setArrayAlign(item, align);
-      },
-      IndentAlign(parser2, begin) {
-        const name = `\\begin{${begin.getName()}}`;
-        const first = parser2.GetBrackets(name, "");
-        const shift = parser2.GetBrackets(name, "");
-        const last = parser2.GetBrackets(name, "");
-        if (first && !UnitUtil.matchDimen(first)[0] || shift && !UnitUtil.matchDimen(shift)[0] || last && !UnitUtil.matchDimen(last)[0]) {
-          throw new TexError_default("BracketMustBeDimension", "Bracket argument to %1 must be a dimension", name);
-        }
-        const lcr = parser2.GetArgument(name);
-        if (lcr && !lcr.match(/^([lcr]{1,3})?$/)) {
-          throw new TexError_default("BadAlignment", "Alignment must be one to three copies of l, c, or r");
-        }
-        const align = [...lcr].map((c) => ({ l: "left", c: "center", r: "right" })[c]);
-        if (align.length === 1) {
-          align.push(align[0]);
-        }
-        const attr = {};
-        for (const [name2, value] of [
-          ["indentshiftfirst", first],
-          ["indentshift", shift || first],
-          ["indentshiftlast", last],
-          ["indentalignfirst", align[0]],
-          ["indentalign", align[1]],
-          ["indentalignlast", align[2]]
-        ]) {
-          if (value) {
-            attr[name2] = value;
-          }
-        }
-        parser2.Push(parser2.itemFactory.create("mstyle", attr, begin.getName()));
-      },
-      Equation(parser2, begin, numbered, display = true) {
-        parser2.configuration.mathItem.display = display;
-        parser2.stack.env.display = display;
-        ParseUtil.checkEqnEnv(parser2);
-        parser2.Push(begin);
-        return parser2.itemFactory.create("equation", numbered).setProperty("name", begin.getName());
-      },
-      EqnArray(parser2, begin, numbered, taggable, align, balign, spacing) {
-        const name = begin.getName();
-        const isGather = name === "gather" || name === "gather*";
-        if (taggable) {
-          ParseUtil.checkEqnEnv(parser2, !isGather);
-        }
-        parser2.Push(begin);
-        align = align.replace(/[^clr]/g, "").split("").join(" ");
-        align = align.replace(/l/g, "left").replace(/r/g, "right").replace(/c/g, "center");
-        balign = splitAlignArray(balign);
-        const newItem = parser2.itemFactory.create("eqnarray", name, numbered, taggable, parser2.stack.global);
-        newItem.arraydef = {
-          displaystyle: true,
-          columnalign: align,
-          columnspacing: spacing || "1em",
-          rowspacing: "3pt",
-          "data-break-align": balign,
-          side: parser2.options["tagSide"],
-          minlabelspacing: parser2.options["tagIndent"]
-        };
-        if (isGather) {
-          newItem.setProperty("nestable", true);
-        }
-        return newItem;
-      },
-      HandleNoTag(parser2, _name) {
-        parser2.tags.notag();
-      },
-      HandleLabel(parser2, name) {
-        const label = parser2.GetArgument(name);
-        if (label === "") {
+        node.attributes.set(LATEX, str);
+      }
+      composeLatex(node, comp, pos1, pos2) {
+        if (!node.childNodes[pos1] || !node.childNodes[pos2])
           return;
+        const LATEX = TexConstant.Attr.LATEX;
+        const expr = (node.childNodes[pos1].attributes.get(LATEX) || "") + comp + node.childNodes[pos2].attributes.get(LATEX);
+        node.attributes.set(LATEX, expr);
+      }
+      composeBraces(atom) {
+        const str = this.composeBracedContent(atom);
+        atom.attributes.set(TexConstant.Attr.LATEX, `{${str}}`);
+      }
+      composeBracedContent(atom) {
+        var _a2, _b2;
+        const children = ((_a2 = atom.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.childNodes) || [];
+        let expr = "";
+        for (const child of children) {
+          const att = ((_b2 = child === null || child === void 0 ? void 0 : child.attributes) === null || _b2 === void 0 ? void 0 : _b2.get(TexConstant.Attr.LATEX)) || "";
+          if (!att)
+            continue;
+          expr += expr && expr.match(/[a-zA-Z]$/) && att.match(/^[a-zA-Z]/) ? " " + att : att;
         }
-        if (parser2.tags.label) {
-          throw new TexError_default("MultipleCommand", "Multiple %1", parser2.currentCS);
-        }
-        parser2.tags.label = label;
-        if (!parser2.tags.refUpdate) {
-          if ((parser2.tags.allLabels[label] || parser2.tags.labels[label]) && !parser2.options["ignoreDuplicateLabels"]) {
-            throw new TexError_default("MultipleLabel", "Label '%1' multiply defined", label);
-          }
-          parser2.tags.labels[label] = new Label();
-        }
-      },
-      HandleRef(parser2, name, eqref) {
-        const label = parser2.GetArgument(name);
-        let ref = parser2.tags.allLabels[label] || parser2.tags.labels[label];
-        if (!ref) {
-          if (!parser2.tags.refUpdate) {
-            parser2.tags.redo = true;
-          }
-          ref = new Label();
-        }
-        let tag3 = ref.tag;
-        if (eqref) {
-          tag3 = parser2.tags.formatRef(tag3);
-        }
-        const node = parser2.create("node", "mrow", ParseUtil.internalMath(parser2, Array.isArray(tag3) ? tag3.join("") : tag3), {
-          href: parser2.tags.formatUrl(ref.id, parser2.options.baseURL),
-          class: "MathJax_ref"
-        });
-        parser2.Push(node);
-      },
-      Macro(parser2, name, macro, argcount, def2) {
-        if (argcount) {
-          const args = [];
-          if (def2 != null) {
-            const optional = parser2.GetBrackets(name);
-            args.push(optional == null ? def2 : optional);
-          }
-          for (let i2 = args.length; i2 < argcount; i2++) {
-            args.push(parser2.GetArgument(name));
-          }
-          macro = ParseUtil.substituteArgs(parser2, args, macro);
-        }
-        parser2.string = ParseUtil.addArgs(parser2, macro, parser2.string.slice(parser2.i));
-        parser2.i = 0;
-        ParseUtil.checkMaxMacros(parser2);
-      },
-      MathChoice(parser2, name) {
-        const D = parser2.ParseArg(name);
-        const T = parser2.ParseArg(name);
-        const S = parser2.ParseArg(name);
-        const SS = parser2.ParseArg(name);
-        parser2.Push(parser2.create("node", "MathChoice", [D, T, S, SS]));
+        return expr;
       }
     };
-    BaseMethods_default = BaseMethods;
   }
 });
-export{init_BaseMethods,init_lengths,em,MATHSPACE,BaseMethods_default,MapHandler,init_Configuration,init_MapHandler,init_BaseItems,Configuration,StartItem,StopItem,OpenItem,CloseItem,NullItem,PrimeItem,SubsupItem,OverItem,LeftItem,Middle,RightItem,BreakItem,BeginItem,EndItem,StyleItem,PositionItem,CellItem,MmlItem,FnItem,NotItem,NonscriptItem,DotsItem,ArrayItem,EqnArrayItem,EquationItem,MstyleItem,ParserConfiguration,BIGDIMEN,percent,length2em,px,SubHandler,splitAlignArray};
+// node_modules/@mathjax/src/mjs/input/tex/StackItemFactory.js
+var DummyItem;
+var StackItemFactory;
+var StackItemFactory_default;
+var init_StackItemFactory = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/StackItemFactory.js"() {
+    init_StackItem();
+    init_Factory();
+    DummyItem = class extends BaseItem {
+    };
+    StackItemFactory = class extends AbstractFactory {
+      constructor() {
+        super(...arguments);
+        this.defaultKind = "dummy";
+        this.configuration = null;
+      }
+    };
+    StackItemFactory.DefaultStackItems = {
+      [DummyItem.prototype.kind]: DummyItem
+    };
+    StackItemFactory_default = StackItemFactory;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/NodeFactory.js
+var NodeFactory;
+var init_NodeFactory2 = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/NodeFactory.js"() {
+    init_NodeUtil();
+    NodeFactory = class _NodeFactory {
+      constructor() {
+        this.mmlFactory = null;
+        this.factory = {
+          node: _NodeFactory.createNode,
+          token: _NodeFactory.createToken,
+          text: _NodeFactory.createText,
+          error: _NodeFactory.createError
+        };
+      }
+      static createNode(factory, kind, children = [], def2 = {}, text) {
+        const node = factory.mmlFactory.create(kind);
+        node.setChildren(children);
+        if (text) {
+          node.appendChild(text);
+        }
+        NodeUtil_default.setProperties(node, def2);
+        return node;
+      }
+      static createToken(factory, kind, def2 = {}, text = "") {
+        const textNode = factory.create("text", text);
+        return factory.create("node", kind, [], def2, textNode);
+      }
+      static createText(factory, text) {
+        if (text == null) {
+          return null;
+        }
+        return factory.mmlFactory.create("text").setText(text);
+      }
+      static createError(factory, message) {
+        const text = factory.create("text", message);
+        const mtext = factory.create("node", "mtext", [], {}, text);
+        const error = factory.create("node", "merror", [mtext], {
+          "data-mjx-error": message
+        });
+        return error;
+      }
+      setMmlFactory(mmlFactory) {
+        this.mmlFactory = mmlFactory;
+      }
+      set(kind, func) {
+        this.factory[kind] = func;
+      }
+      setCreators(maps3) {
+        for (const kind in maps3) {
+          this.set(kind, maps3[kind]);
+        }
+      }
+      create(kind, ...rest) {
+        const func = this.factory[kind] || this.factory["node"];
+        const node = func(this, rest[0], ...rest.slice(1));
+        if (kind === "node") {
+          this.configuration.addNode(rest[0], node);
+        }
+        return node;
+      }
+      get(kind) {
+        return this.factory[kind];
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ParseUtil.js
+function readKeyval(text, l3keys = false) {
+  const options3 = {};
+  let rest = text;
+  let end, key, val;
+  let dropBrace = true;
+  while (rest) {
+    [key, end, rest] = readValue(rest, ["=", ","], l3keys, dropBrace);
+    dropBrace = false;
+    if (end === "=") {
+      [val, end, rest] = readValue(rest, [","], l3keys);
+      val = val === "false" || val === "true" ? JSON.parse(val) : val;
+      options3[key] = val;
+    } else if (key) {
+      options3[key] = true;
+    }
+  }
+  return options3;
+}
+function removeBraces(text, count) {
+  if (count === 0) {
+    return text.replace(/^\s+/, "").replace(/([^\\\s]|^)((?:\\\\)*(?:\\\s)?)?\s+$/, "$1$2");
+  }
+  while (count > 0) {
+    text = text.trim().slice(1, -1);
+    count--;
+  }
+  return text;
+}
+function readValue(text, end, l3keys = false, dropBrace = false) {
+  const length4 = text.length;
+  let braces = 0;
+  let value = "";
+  let index = 0;
+  let start = 0;
+  let countBraces = true;
+  while (index < length4) {
+    const c = text[index++];
+    switch (c) {
+      case "\\":
+        value += c + (text[index++] || "");
+        countBraces = false;
+        continue;
+      case " ":
+        break;
+      case "{":
+        if (countBraces) {
+          start++;
+        }
+        braces++;
+        break;
+      case "}":
+        if (!braces) {
+          throw new TexError_default("ExtraCloseMissingOpen", "Extra close brace or missing open brace");
+        }
+        braces--;
+        countBraces = false;
+        break;
+      default:
+        if (!braces && end.includes(c)) {
+          return [
+            removeBraces(value, l3keys ? Math.min(1, start) : start),
+            c,
+            text.slice(index)
+          ];
+        }
+        if (start > braces) {
+          start = braces;
+        }
+        countBraces = false;
+    }
+    value += c;
+  }
+  if (braces) {
+    throw new TexError_default("ExtraOpenMissingClose", "Extra open brace or missing close brace");
+  }
+  return dropBrace && start ? ["", "", removeBraces(value, 1)] : [
+    removeBraces(value, l3keys ? Math.min(1, start) : start),
+    "",
+    text.slice(index)
+  ];
+}
+var KeyValueDef;
+var KeyValueTypes;
+var ParseUtil;
+var init_ParseUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ParseUtil.js"() {
+    init_MmlNode();
+    init_NodeUtil();
+    init_TexParser();
+    init_TexError();
+    init_Entities();
+    init_UnitUtil();
+    KeyValueDef = class {
+      static oneof(...values) {
+        return new this("string", (value) => values.includes(value), (value) => value);
+      }
+      constructor(name, verify, convert) {
+        this.name = name;
+        this.verify = verify;
+        this.convert = convert;
+      }
+    };
+    KeyValueTypes = {
+      boolean: new KeyValueDef("boolean", (value) => value === "true" || value === "false", (value) => value === "true"),
+      number: new KeyValueDef("number", (value) => !!value.match(/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/), (value) => parseFloat(value)),
+      integer: new KeyValueDef("integer", (value) => !!value.match(/^[-+]?\d+$/), (value) => parseInt(value)),
+      string: new KeyValueDef("string", (_value) => true, (value) => value),
+      dimen: new KeyValueDef("dimen", (value) => UnitUtil.matchDimen(value)[0] !== null, (value) => value)
+    };
+    ParseUtil = {
+      cols(...W) {
+        return W.map((n) => UnitUtil.em(n)).join(" ");
+      },
+      fenced(configuration, open, mml, close, big = "", color = "") {
+        const nf = configuration.nodeFactory;
+        const mrow = nf.create("node", "mrow", [], {
+          open,
+          close,
+          texClass: TEXCLASS.INNER
+        });
+        let mo;
+        if (big) {
+          mo = new TexParser("\\" + big + "l" + open, configuration.parser.stack.env, configuration).mml();
+        } else {
+          const openNode = nf.create("text", open);
+          mo = nf.create("node", "mo", [], {
+            fence: true,
+            stretchy: true,
+            symmetric: true,
+            texClass: TEXCLASS.OPEN
+          }, openNode);
+        }
+        NodeUtil_default.appendChildren(mrow, [mo, mml]);
+        if (big) {
+          mo = new TexParser("\\" + big + "r" + close, configuration.parser.stack.env, configuration).mml();
+        } else {
+          const closeNode = nf.create("text", close);
+          mo = nf.create("node", "mo", [], {
+            fence: true,
+            stretchy: true,
+            symmetric: true,
+            texClass: TEXCLASS.CLOSE
+          }, closeNode);
+        }
+        if (color) {
+          mo.attributes.set("mathcolor", color);
+        }
+        NodeUtil_default.appendChildren(mrow, [mo]);
+        return mrow;
+      },
+      fixedFence(configuration, open, mml, close) {
+        const mrow = configuration.nodeFactory.create("node", "mrow", [], {
+          open,
+          close,
+          texClass: TEXCLASS.ORD
+        });
+        if (open) {
+          NodeUtil_default.appendChildren(mrow, [
+            ParseUtil.mathPalette(configuration, open, "l")
+          ]);
+        }
+        if (NodeUtil_default.isType(mml, "mrow")) {
+          NodeUtil_default.appendChildren(mrow, NodeUtil_default.getChildren(mml));
+        } else {
+          NodeUtil_default.appendChildren(mrow, [mml]);
+        }
+        if (close) {
+          NodeUtil_default.appendChildren(mrow, [
+            ParseUtil.mathPalette(configuration, close, "r")
+          ]);
+        }
+        return mrow;
+      },
+      mathPalette(configuration, fence, side) {
+        if (fence === "{" || fence === "}") {
+          fence = "\\" + fence;
+        }
+        const D = "{\\bigg" + side + " " + fence + "}";
+        const T = "{\\big" + side + " " + fence + "}";
+        return new TexParser("\\mathchoice" + D + T + T + T, {}, configuration).mml();
+      },
+      fixInitialMO(configuration, nodes) {
+        for (let i2 = 0, m = nodes.length; i2 < m; i2++) {
+          const child = nodes[i2];
+          if (child && !NodeUtil_default.isType(child, "mspace") && (!NodeUtil_default.isType(child, "TeXAtom") || NodeUtil_default.getChildren(child)[0] && NodeUtil_default.getChildren(NodeUtil_default.getChildren(child)[0]).length)) {
+            if (NodeUtil_default.isEmbellished(child) || NodeUtil_default.isType(child, "TeXAtom") && NodeUtil_default.getTexClass(child) === TEXCLASS.REL) {
+              const mi = configuration.nodeFactory.create("node", "mi");
+              nodes.unshift(mi);
+            }
+            break;
+          }
+        }
+      },
+      internalMath(parser2, text, level, font) {
+        text = text.replace(/ +/g, " ");
+        if (parser2.configuration.options.internalMath) {
+          return parser2.configuration.options.internalMath(parser2, text, level, font);
+        }
+        const mathvariant = font || parser2.stack.env.font;
+        const def2 = mathvariant ? { mathvariant } : {};
+        let mml = [], i2 = 0, k = 0, c, node, match = "", braces = 0;
+        if (text.match(/\\?[${}\\]|\\\(|\\(?:eq)?ref\s*\{|\\U/)) {
+          while (i2 < text.length) {
+            c = text.charAt(i2++);
+            if (c === "$") {
+              if (match === "$" && braces === 0) {
+                node = parser2.create("node", "TeXAtom", [
+                  new TexParser(text.slice(k, i2 - 1), {}, parser2.configuration).mml()
+                ]);
+                mml.push(node);
+                match = "";
+                k = i2;
+              } else if (match === "") {
+                if (k < i2 - 1) {
+                  mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 1), def2));
+                }
+                match = "$";
+                k = i2;
+              }
+            } else if (c === "{" && match !== "") {
+              braces++;
+            } else if (c === "}") {
+              if (match === "}" && braces === 0) {
+                const atom = new TexParser(text.slice(k, i2), {}, parser2.configuration).mml();
+                node = parser2.create("node", "TeXAtom", [atom], def2);
+                mml.push(node);
+                match = "";
+                k = i2;
+              } else if (match !== "") {
+                if (braces) {
+                  braces--;
+                }
+              }
+            } else if (c === "\\") {
+              if (match === "" && text.substring(i2).match(/^(eq)?ref\s*\{/)) {
+                const len = RegExp["$&"].length;
+                if (k < i2 - 1) {
+                  mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 1), def2));
+                }
+                match = "}";
+                k = i2 - 1;
+                i2 += len;
+              } else {
+                c = text.charAt(i2++);
+                if (c === "(" && match === "") {
+                  if (k < i2 - 2) {
+                    mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 2), def2));
+                  }
+                  match = ")";
+                  k = i2;
+                } else if (c === ")" && match === ")" && braces === 0) {
+                  node = parser2.create("node", "TeXAtom", [
+                    new TexParser(text.slice(k, i2 - 2), {}, parser2.configuration).mml()
+                  ]);
+                  mml.push(node);
+                  match = "";
+                  k = i2;
+                } else if (c.match(/[${}\\]/) && match === "") {
+                  i2--;
+                  text = text.substring(0, i2 - 1) + text.substring(i2);
+                } else if (c === "U") {
+                  const arg = text.substring(i2).match(/^\s*(?:([0-9A-F])|\{\s*([0-9A-F]+)\s*\})/);
+                  if (!arg) {
+                    throw new TexError_default("BadRawUnicode", "Argument to %1 must a hexadecimal number with 1 to 6 digits", "\\U");
+                  }
+                  const c2 = String.fromCodePoint(parseInt(arg[1] || arg[2], 16));
+                  text = text.substring(0, i2 - 2) + c2 + text.substring(i2 + arg[0].length);
+                  i2 = i2 - 2 + c2.length;
+                }
+              }
+            }
+          }
+          if (match !== "") {
+            throw new TexError_default("MathNotTerminated", "Math mode is not properly terminated");
+          }
+        }
+        if (k < text.length) {
+          mml.push(ParseUtil.internalText(parser2, text.slice(k), def2));
+        }
+        if (level != null) {
+          mml = [
+            parser2.create("node", "mstyle", mml, {
+              displaystyle: false,
+              scriptlevel: level
+            })
+          ];
+        } else if (mml.length > 1) {
+          mml = [parser2.create("node", "mrow", mml)];
+        }
+        return mml;
+      },
+      internalText(parser2, text, def2) {
+        text = text.replace(/\n+/g, " ").replace(/^ +/, entities.nbsp).replace(/ +$/, entities.nbsp);
+        const textNode = parser2.create("text", text);
+        return parser2.create("node", "mtext", [], def2, textNode);
+      },
+      underOver(parser2, base, script2, pos, stack2) {
+        ParseUtil.checkMovableLimits(base);
+        if (NodeUtil_default.isType(base, "munderover") && NodeUtil_default.isEmbellished(base)) {
+          NodeUtil_default.setProperties(NodeUtil_default.getCoreMO(base), {
+            lspace: 0,
+            rspace: 0
+          });
+          const mo = parser2.create("node", "mo", [], { rspace: 0 });
+          base = parser2.create("node", "mrow", [mo, base]);
+        }
+        const mml = parser2.create("node", "munderover", [base]);
+        NodeUtil_default.setChild(mml, pos === "over" ? mml.over : mml.under, script2);
+        let node = mml;
+        if (stack2) {
+          node = parser2.create("node", "TeXAtom", [
+            parser2.create("node", "mstyle", [mml], {
+              displaystyle: true,
+              scriptlevel: 0
+            })
+          ], {
+            texClass: TEXCLASS.OP,
+            movesupsub: true
+          });
+        }
+        NodeUtil_default.setProperty(node, "subsupOK", true);
+        return node;
+      },
+      checkMovableLimits(base) {
+        const symbol = NodeUtil_default.isType(base, "mo") ? NodeUtil_default.getForm(base) : null;
+        if (NodeUtil_default.getProperty(base, "movablelimits") || symbol && symbol[3] && symbol[3].movablelimits) {
+          NodeUtil_default.setProperties(base, { movablelimits: false });
+        }
+      },
+      setArrayAlign(array, align, parser2) {
+        if (!parser2) {
+          align = UnitUtil.trimSpaces(align || "");
+        }
+        if (align === "t") {
+          array.arraydef.align = "baseline 1";
+        } else if (align === "b") {
+          array.arraydef.align = "baseline -1";
+        } else if (align === "c") {
+          array.arraydef.align = "axis";
+        } else if (align) {
+          if (parser2) {
+            parser2.string = `[${align}]` + parser2.string.slice(parser2.i);
+            parser2.i = 0;
+          } else {
+            array.arraydef.align = align;
+          }
+        }
+        return array;
+      },
+      substituteArgs(parser2, args, str) {
+        let text = "";
+        let newstring = "";
+        let i2 = 0;
+        while (i2 < str.length) {
+          let c = str.charAt(i2++);
+          if (c === "\\") {
+            text += c + str.charAt(i2++);
+          } else if (c === "#") {
+            c = str.charAt(i2++);
+            if (c === "#") {
+              text += c;
+            } else {
+              if (!c.match(/[1-9]/) || parseInt(c, 10) > args.length) {
+                throw new TexError_default("IllegalMacroParam", "Illegal macro parameter reference");
+              }
+              newstring = ParseUtil.addArgs(parser2, ParseUtil.addArgs(parser2, newstring, text), args[parseInt(c, 10) - 1]);
+              text = "";
+            }
+          } else {
+            text += c;
+          }
+        }
+        return ParseUtil.addArgs(parser2, newstring, text);
+      },
+      addArgs(parser2, s1, s2) {
+        if (s2.match(/^[a-z]/i) && s1.match(/(^|[^\\])(\\\\)*\\[a-z]+$/i)) {
+          s1 += " ";
+        }
+        if (s1.length + s2.length > parser2.configuration.options["maxBuffer"]) {
+          throw new TexError_default("MaxBufferSize", "MathJax internal buffer size exceeded; is there a recursive macro call?");
+        }
+        return s1 + s2;
+      },
+      checkMaxMacros(parser2, isMacro = true) {
+        if (++parser2.macroCount <= parser2.configuration.options["maxMacros"]) {
+          return;
+        }
+        if (isMacro) {
+          throw new TexError_default("MaxMacroSub1", "MathJax maximum macro substitution count exceeded; is here a recursive macro call?");
+        } else {
+          throw new TexError_default("MaxMacroSub2", "MathJax maximum substitution count exceeded; is there a recursive latex environment?");
+        }
+      },
+      checkEqnEnv(parser2, nestable = true) {
+        const top = parser2.stack.Top();
+        const first = top.First;
+        if (top.getProperty("nestable") && nestable && !first || top.getProperty("nestStart")) {
+          return;
+        }
+        if (!top.isKind("start") || first) {
+          throw new TexError_default("ErroneousNestingEq", "Erroneous nesting of equation structures");
+        }
+      },
+      copyNode(node, parser2) {
+        const tree = node.copy();
+        const options3 = parser2.configuration;
+        tree.walkTree((n) => {
+          options3.addNode(n.kind, n);
+          const lists = (n.getProperty("in-lists") || "").split(/,/);
+          for (const list3 of lists) {
+            if (list3) {
+              options3.addNode(list3, n);
+            }
+          }
+        });
+        return tree;
+      },
+      mmlFilterAttribute(_parser, _name, value) {
+        return value;
+      },
+      getFontDef(parser2) {
+        const font = parser2.stack.env["font"];
+        return font ? { mathvariant: font } : {};
+      },
+      keyvalOptions(attrib, allowed = null, error = false, l3keys = false) {
+        const def2 = readKeyval(attrib, l3keys);
+        if (allowed) {
+          for (const key of Object.keys(def2)) {
+            if (Object.hasOwn(allowed, key)) {
+              if (allowed[key] instanceof KeyValueDef) {
+                const type = allowed[key];
+                const value = String(def2[key]);
+                if (!type.verify(value)) {
+                  throw new TexError_default("InvalidValue", "Value for key '%1' is not of the expected type", key);
+                }
+                def2[key] = type.convert(value);
+              }
+            } else {
+              if (error) {
+                throw new TexError_default("InvalidOption", "Invalid option: %1", key);
+              }
+              delete def2[key];
+            }
+          }
+        }
+        return def2;
+      },
+      isLatinOrGreekChar(c) {
+        return !!c.normalize("NFD").match(/[a-zA-Z\u0370-\u03F0]/);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ColumnParser.js
+var ColumnParser;
+var init_ColumnParser = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ColumnParser.js"() {
+    init_TexError();
+    init_Options();
+    init_ParseUtil();
+    init_UnitUtil();
+    ColumnParser = class {
+      constructor() {
+        this.columnHandler = {
+          l: (state) => state.calign[state.j++] = "left",
+          c: (state) => state.calign[state.j++] = "center",
+          r: (state) => state.calign[state.j++] = "right",
+          p: (state) => this.getColumn(state, "top"),
+          m: (state) => this.getColumn(state, "middle"),
+          b: (state) => this.getColumn(state, "bottom"),
+          w: (state) => this.getColumn(state, "top", ""),
+          W: (state) => this.getColumn(state, "top", ""),
+          "|": (state) => this.addRule(state, "solid"),
+          ":": (state) => this.addRule(state, "dashed"),
+          ">": (state) => state.cstart[state.j] = this.getBraces(state) + (state.cstart[state.j] || ""),
+          "<": (state) => state.cend[state.j - 1] = this.getBraces(state) + (state.cend[state.j - 1] || ""),
+          "@": (state) => this.addAt(state, this.getBraces(state)),
+          "!": (state) => this.addBang(state, this.getBraces(state)),
+          "*": (state) => this.repeat(state),
+          "{": (state) => this.brace(state),
+          P: (state) => this.macroColumn(state, ">{$}p{#1}<{$}", 1),
+          M: (state) => this.macroColumn(state, ">{$}m{#1}<{$}", 1),
+          B: (state) => this.macroColumn(state, ">{$}b{#1}<{$}", 1),
+          " ": (_state) => {
+          },
+          "\n": (_state_) => {
+          }
+        };
+        this.MAXCOLUMNS = 1e4;
+      }
+      process(parser2, template, array) {
+        const state = {
+          parser: parser2,
+          template,
+          i: 0,
+          j: 0,
+          c: "",
+          cwidth: [],
+          calign: [],
+          cspace: [],
+          clines: [],
+          cstart: array.cstart,
+          cend: array.cend,
+          ralign: array.ralign,
+          cextra: array.cextra
+        };
+        if (template.charAt(0) === "{" && template.slice(-1) === "}") {
+          const braced = this.getBraces(state);
+          if (braced.length === template.length - 2) {
+            state.template = braced;
+          }
+          state.i = 0;
+        }
+        let n = 0;
+        while (state.i < state.template.length) {
+          if (n++ > this.MAXCOLUMNS) {
+            throw new TexError_default("MaxColumns", "Too many column specifiers (perhaps looping column definitions?)");
+          }
+          const code = state.template.codePointAt(state.i);
+          const c = state.c = String.fromCodePoint(code);
+          state.i += c.length;
+          this.processColumn(state, c);
+        }
+        this.setColumnAlign(state, array);
+        this.setColumnWidths(state, array);
+        this.setColumnSpacing(state, array);
+        this.setColumnLines(state, array);
+        this.setPadding(state, array);
+      }
+      processColumn(state, c) {
+        if (!Object.hasOwn(this.columnHandler, c)) {
+          throw new TexError_default("BadPreamToken", "Illegal pream-token (%1)", c);
+        }
+        this.columnHandler[c](state);
+      }
+      setColumnAlign(state, array) {
+        array.arraydef.columnalign = state.calign.join(" ");
+      }
+      setColumnWidths(state, array) {
+        if (!state.cwidth.length)
+          return;
+        const cwidth = [...state.cwidth];
+        if (cwidth.length < state.calign.length) {
+          cwidth.push("auto");
+        }
+        array.arraydef.columnwidth = cwidth.map((w) => w || "auto").join(" ");
+      }
+      setColumnSpacing(state, array) {
+        if (!state.cspace.length)
+          return;
+        const cspace = [...state.cspace];
+        if (cspace.length < state.calign.length) {
+          cspace.push("1em");
+        }
+        array.arraydef.columnspacing = cspace.slice(1).map((d) => d || "1em").join(" ");
+      }
+      setColumnLines(state, array) {
+        if (!state.clines.length)
+          return;
+        const clines = [...state.clines];
+        if (clines[0]) {
+          array.frame.push(["left", clines[0]]);
+        }
+        if (clines.length > state.calign.length) {
+          array.frame.push(["right", clines.pop()]);
+        } else if (clines.length < state.calign.length) {
+          clines.push("none");
+        }
+        if (clines.length > 1) {
+          array.arraydef.columnlines = clines.slice(1).map((l) => l || "none").join(" ");
+        }
+      }
+      setPadding(state, array) {
+        if (!state.cextra[0] && !state.cextra[state.calign.length - 1])
+          return;
+        const i2 = state.calign.length - 1;
+        const cspace = state.cspace;
+        const space = !state.cextra[i2] ? null : cspace[i2];
+        array.arraydef["data-array-padding"] = `${cspace[0] || ".5em"} ${space || ".5em"}`;
+      }
+      getColumn(state, ralign, calign = "left") {
+        state.calign[state.j] = calign || this.getAlign(state);
+        state.cwidth[state.j] = this.getDimen(state);
+        state.ralign[state.j] = [
+          ralign,
+          state.cwidth[state.j],
+          state.calign[state.j]
+        ];
+        state.j++;
+      }
+      getDimen(state) {
+        const dim = this.getBraces(state);
+        if (!UnitUtil.matchDimen(dim)[0]) {
+          throw new TexError_default("MissingColumnDimOrUnits", "Missing dimension or its units for %1 column declaration", state.c);
+        }
+        return dim;
+      }
+      getAlign(state) {
+        const align = this.getBraces(state);
+        return lookup(align.toLowerCase(), { l: "left", c: "center", r: "right" }, "");
+      }
+      getBraces(state) {
+        while (state.template[state.i] === " ")
+          state.i++;
+        if (state.i >= state.template.length) {
+          throw new TexError_default("MissingArgForColumn", "Missing argument for %1 column declaration", state.c);
+        }
+        if (state.template[state.i] !== "{") {
+          return state.template[state.i++];
+        }
+        const i2 = ++state.i;
+        let braces = 1;
+        while (state.i < state.template.length) {
+          switch (state.template.charAt(state.i++)) {
+            case "\\":
+              state.i++;
+              break;
+            case "{":
+              braces++;
+              break;
+            case "}":
+              if (--braces === 0) {
+                return state.template.slice(i2, state.i - 1);
+              }
+              break;
+          }
+        }
+        throw new TexError_default("MissingCloseBrace", "Missing close brace");
+      }
+      macroColumn(state, macro, n) {
+        const args = [];
+        while (n > 0 && n--) {
+          args.push(this.getBraces(state));
+        }
+        state.template = ParseUtil.substituteArgs(state.parser, args, macro) + state.template.slice(state.i);
+        state.i = 0;
+      }
+      addRule(state, rule) {
+        if (state.clines[state.j]) {
+          this.addAt(state, "\\,");
+        }
+        state.clines[state.j] = rule;
+        if (state.cspace[state.j] === "0") {
+          state.cstart[state.j] = "\\hspace{.5em}";
+        }
+      }
+      addAt(state, macro) {
+        const { cstart, cspace, j } = state;
+        state.cextra[j] = true;
+        state.calign[j] = "center";
+        if (state.clines[j]) {
+          if (cspace[j] === ".5em") {
+            cstart[j - 1] += "\\hspace{.25em}";
+          } else if (!cspace[j]) {
+            state.cend[j - 1] = (state.cend[j - 1] || "") + "\\hspace{.5em}";
+          }
+        }
+        cstart[j] = macro;
+        cspace[j] = "0";
+        cspace[++state.j] = "0";
+      }
+      addBang(state, macro) {
+        const { cstart, cspace, j } = state;
+        state.cextra[j] = true;
+        state.calign[j] = "center";
+        cstart[j] = (cspace[j] === "0" && state.clines[j] ? "\\hspace{.25em}" : "") + macro;
+        if (!cspace[j]) {
+          cspace[j] = ".5em";
+        }
+        cspace[++state.j] = ".5em";
+      }
+      repeat(state) {
+        const num3 = this.getBraces(state);
+        const cols = this.getBraces(state);
+        const n = parseInt(num3);
+        if (String(n) !== num3) {
+          throw new TexError_default("ColArgNotNum", "First argument to %1 column specifier must be a number", "*");
+        }
+        state.template = new Array(n).fill(cols).join("") + state.template.substring(state.i);
+        state.i = 0;
+      }
+      brace(state) {
+        state.i--;
+        this.processColumn(state, this.getBraces(state));
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/ParseOptions.js
+var MATHVARIANT;
+var ParseOptions;
+var ParseOptions_default;
+var init_ParseOptions = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ParseOptions.js"() {
+    init_StackItemFactory();
+    init_NodeFactory2();
+    init_NodeUtil();
+    init_TexConstants();
+    init_Options();
+    init_ColumnParser();
+    MATHVARIANT = TexConstant.Variant;
+    ParseOptions = class _ParseOptions {
+      constructor(configuration, options3 = []) {
+        this.options = {};
+        this.columnParser = new ColumnParser();
+        this.packageData = /* @__PURE__ */ new Map();
+        this.parsers = [];
+        this.root = null;
+        this.nodeLists = {};
+        this.error = false;
+        this.handlers = configuration.handlers;
+        this.nodeFactory = new NodeFactory();
+        this.nodeFactory.configuration = this;
+        this.nodeFactory.setCreators(configuration.nodes);
+        this.itemFactory = new StackItemFactory_default(configuration.items);
+        this.itemFactory.configuration = this;
+        defaultOptions(this.options, ...options3);
+        defaultOptions(this.options, configuration.options);
+        this.mathStyle = _ParseOptions.getVariant.get(this.options.mathStyle) || _ParseOptions.getVariant.get("TeX");
+      }
+      pushParser(parser2) {
+        this.parsers.unshift(parser2);
+      }
+      popParser() {
+        this.parsers.shift();
+      }
+      get parser() {
+        return this.parsers[0];
+      }
+      clear() {
+        this.parsers = [];
+        this.root = null;
+        this.nodeLists = {};
+        this.error = false;
+        this.tags.resetTag();
+      }
+      addNode(property, node) {
+        let list3 = this.nodeLists[property];
+        if (!list3) {
+          list3 = this.nodeLists[property] = [];
+        }
+        list3.push(node);
+        if (node.kind !== property) {
+          const inlists = NodeUtil_default.getProperty(node, "in-lists") || "";
+          const lists = (inlists ? inlists.split(/,/) : []).concat(property).join(",");
+          NodeUtil_default.setProperty(node, "in-lists", lists);
+        }
+      }
+      getList(property) {
+        const list3 = this.nodeLists[property] || [];
+        const result = [];
+        for (const node of list3) {
+          if (this.inTree(node)) {
+            result.push(node);
+          }
+        }
+        this.nodeLists[property] = result;
+        return result;
+      }
+      removeFromList(property, nodes) {
+        const list3 = this.nodeLists[property] || [];
+        for (const node of nodes) {
+          const i2 = list3.indexOf(node);
+          if (i2 >= 0) {
+            list3.splice(i2, 1);
+          }
+        }
+      }
+      inTree(node) {
+        while (node && node !== this.root) {
+          node = node.parent;
+        }
+        return !!node;
+      }
+    };
+    ParseOptions.getVariant = /* @__PURE__ */ new Map([
+      [
+        "TeX",
+        (c, b) => b ? c.match(/^[\u0391-\u03A9\u03F4]/) ? MATHVARIANT.NORMAL : "" : ""
+      ],
+      ["ISO", (_c) => MATHVARIANT.ITALIC],
+      [
+        "French",
+        (c) => c.normalize("NFD").match(/^[a-z]/) ? MATHVARIANT.ITALIC : MATHVARIANT.NORMAL
+      ],
+      ["upright", (_c) => MATHVARIANT.NORMAL]
+    ]);
+    ParseOptions_default = ParseOptions;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/Tags.js
+var Label;
+var TagInfo;
+var AbstractTags;
+var NoTags;
+var AllTags;
+var tagsMapping;
+var defaultTags;
+var TagsFactory;
+var init_Tags = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Tags.js"() {
+    init_TexParser();
+    Label = class {
+      constructor(tag3 = "???", id = "") {
+        this.tag = tag3;
+        this.id = id;
+      }
+    };
+    TagInfo = class {
+      constructor(env = "", taggable = false, defaultTags2 = false, tag3 = null, tagId = "", tagFormat = "", noTag = false, labelId = "") {
+        this.env = env;
+        this.taggable = taggable;
+        this.defaultTags = defaultTags2;
+        this.tag = tag3;
+        this.tagId = tagId;
+        this.tagFormat = tagFormat;
+        this.noTag = noTag;
+        this.labelId = labelId;
+      }
+    };
+    AbstractTags = class {
+      constructor() {
+        this.counter = 0;
+        this.allCounter = 0;
+        this.configuration = null;
+        this.ids = {};
+        this.allIds = {};
+        this.labels = {};
+        this.allLabels = {};
+        this.redo = false;
+        this.refUpdate = false;
+        this.currentTag = new TagInfo();
+        this.history = [];
+        this.stack = [];
+        this.enTag = function(node, tag3) {
+          const nf = this.configuration.nodeFactory;
+          const cell = nf.create("node", "mtd", [node]);
+          const row = nf.create("node", "mlabeledtr", [tag3, cell]);
+          const table2 = nf.create("node", "mtable", [row], {
+            side: this.configuration.options["tagSide"],
+            minlabelspacing: this.configuration.options["tagIndent"],
+            displaystyle: true
+          });
+          return table2;
+        };
+      }
+      start(env, taggable, defaultTags2) {
+        if (this.currentTag) {
+          this.stack.push(this.currentTag);
+        }
+        const label = this.label;
+        this.currentTag = new TagInfo(env, taggable, defaultTags2);
+        this.label = label;
+      }
+      get env() {
+        return this.currentTag.env;
+      }
+      end() {
+        this.history.push(this.currentTag);
+        const label = this.label;
+        this.currentTag = this.stack.pop();
+        if (label && !this.label) {
+          this.label = label;
+        }
+      }
+      tag(tag3, noFormat) {
+        this.currentTag.tag = tag3;
+        this.currentTag.tagFormat = noFormat ? tag3 : this.formatTag(tag3);
+        this.currentTag.noTag = false;
+      }
+      notag() {
+        this.tag("", true);
+        this.currentTag.noTag = true;
+      }
+      get noTag() {
+        return this.currentTag.noTag;
+      }
+      set label(label) {
+        this.currentTag.labelId = label;
+      }
+      get label() {
+        return this.currentTag.labelId;
+      }
+      formatUrl(id, base) {
+        return base + "#" + encodeURIComponent(id);
+      }
+      formatTag(tag3) {
+        return ["(", tag3, ")"];
+      }
+      formatRef(tag3) {
+        return this.formatTag(tag3);
+      }
+      formatId(id) {
+        return "mjx-eqn:" + id.replace(/\s/g, "_");
+      }
+      formatNumber(n) {
+        return n.toString();
+      }
+      autoTag() {
+        if (this.currentTag.tag == null) {
+          this.counter++;
+          this.tag(this.formatNumber(this.counter), false);
+        }
+      }
+      clearTag() {
+        this.tag(null, true);
+        this.currentTag.tagId = "";
+      }
+      getTag(force = false) {
+        if (force) {
+          this.autoTag();
+          return this.makeTag();
+        }
+        const ct = this.currentTag;
+        if (ct.taggable && !ct.noTag) {
+          if (ct.defaultTags) {
+            this.autoTag();
+          }
+          if (ct.tag) {
+            return this.makeTag();
+          }
+        }
+        return null;
+      }
+      resetTag() {
+        this.history = [];
+        this.redo = false;
+        this.refUpdate = false;
+        this.clearTag();
+      }
+      reset(offset = 0) {
+        this.resetTag();
+        this.counter = this.allCounter = offset;
+        this.allLabels = {};
+        this.allIds = {};
+        this.label = "";
+      }
+      startEquation(math) {
+        this.history = [];
+        this.stack = [];
+        this.clearTag();
+        this.currentTag = new TagInfo("", void 0, void 0);
+        this.labels = {};
+        this.ids = {};
+        this.counter = this.allCounter;
+        this.redo = false;
+        const recompile = math.inputData.recompile;
+        if (recompile) {
+          this.refUpdate = true;
+          this.counter = recompile.counter;
+        }
+      }
+      finishEquation(math) {
+        if (this.redo) {
+          math.inputData.recompile = {
+            state: math.state(),
+            counter: this.allCounter
+          };
+        }
+        if (!this.refUpdate) {
+          this.allCounter = this.counter;
+        }
+        Object.assign(this.allIds, this.ids);
+        Object.assign(this.allLabels, this.labels);
+      }
+      finalize(node, env) {
+        if (!env.display || this.currentTag.env || this.currentTag.tag == null) {
+          return node;
+        }
+        const tag3 = this.makeTag();
+        const table2 = this.enTag(node, tag3);
+        return table2;
+      }
+      makeId() {
+        this.currentTag.tagId = this.formatId(this.configuration.options["useLabelIds"] ? this.label || this.currentTag.tag : this.currentTag.tag);
+      }
+      makeTag() {
+        var _a2;
+        this.makeId();
+        if (this.label) {
+          this.labels[this.label] = new Label(this.currentTag.tag, this.currentTag.tagId);
+          this.label = "";
+        }
+        const format = this.currentTag.tagFormat;
+        const tag3 = Array.isArray(format) ? format : ((_a2 = format.match(/^(\(|\[|\{)(.*)(\}|\]|\))$/)) === null || _a2 === void 0 ? void 0 : _a2.slice(1)) || [format];
+        const mml = new TexParser(tag3.map((part) => part ? `\\text{${part}}` : "").join(""), {}, this.configuration).mml();
+        return this.configuration.nodeFactory.create("node", "mtd", [mml], {
+          id: this.currentTag.tagId,
+          rowalign: this.configuration.options.tagAlign
+        });
+      }
+    };
+    NoTags = class extends AbstractTags {
+      autoTag() {
+      }
+      getTag() {
+        return !this.currentTag.tag ? null : super.getTag();
+      }
+    };
+    AllTags = class extends AbstractTags {
+      finalize(node, env) {
+        if (!env.display || this.history.find(function(x2) {
+          return x2.taggable;
+        })) {
+          return node;
+        }
+        const tag3 = this.getTag(true);
+        return this.enTag(node, tag3);
+      }
+    };
+    tagsMapping = /* @__PURE__ */ new Map([
+      ["none", NoTags],
+      ["all", AllTags]
+    ]);
+    defaultTags = "none";
+    TagsFactory = {
+      OPTIONS: {
+        tags: defaultTags,
+        tagSide: "right",
+        tagIndent: "0.8em",
+        useLabelIds: true,
+        ignoreDuplicateLabels: false,
+        tagAlign: "baseline"
+      },
+      add(name, constr) {
+        tagsMapping.set(name, constr);
+      },
+      addTags(tags) {
+        for (const key of Object.keys(tags)) {
+          TagsFactory.add(key, tags[key]);
+        }
+      },
+      create(name) {
+        const constr = tagsMapping.get(name) || tagsMapping.get(defaultTags);
+        if (!constr) {
+          throw Error("Unknown tags class");
+        }
+        return new constr();
+      },
+      setDefault(name) {
+        defaultTags = name;
+      },
+      getDefault() {
+        return TagsFactory.create(defaultTags);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/Token.js
+var Token;
+var Macro;
+var init_Token = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Token.js"() {
+    Token = class {
+      constructor(_token, _char, _attributes) {
+        this._token = _token;
+        this._char = _char;
+        this._attributes = _attributes;
+      }
+      get token() {
+        return this._token;
+      }
+      get char() {
+        return this._char;
+      }
+      get attributes() {
+        return this._attributes;
+      }
+    };
+    Macro = class {
+      constructor(_token, _func, _args = []) {
+        this._token = _token;
+        this._func = _func;
+        this._args = _args;
+      }
+      get token() {
+        return this._token;
+      }
+      get func() {
+        return this._func;
+      }
+      get args() {
+        return this._args;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TokenMap.js
+function parseResult(result) {
+  return result === void 0 ? true : result;
+}
+var AbstractTokenMap;
+var RegExpMap;
+var AbstractParseMap;
+var CharacterMap;
+var DelimiterMap;
+var MacroMap;
+var CommandMap;
+var EnvironmentMap;
+var init_TokenMap = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TokenMap.js"() {
+    init_Token();
+    (__kittexLate.init_MapHandler?.())();
+    AbstractTokenMap = class {
+      constructor(_name, _parser) {
+        this._name = _name;
+        this._parser = _parser;
+        (__kittexLate.MapHandler?.()).register(this);
+      }
+      get name() {
+        return this._name;
+      }
+      parserFor(token2) {
+        return this.contains(token2) ? this.parser : null;
+      }
+      parse([env, token2]) {
+        const parser2 = this.parserFor(token2);
+        const mapped = this.lookup(token2);
+        return parser2 && mapped ? parseResult(parser2(env, mapped)) : null;
+      }
+      set parser(parser2) {
+        this._parser = parser2;
+      }
+      get parser() {
+        return this._parser;
+      }
+    };
+    RegExpMap = class extends AbstractTokenMap {
+      constructor(name, parser2, _regExp) {
+        super(name, parser2);
+        this._regExp = _regExp;
+      }
+      contains(token2) {
+        return this._regExp.test(token2);
+      }
+      lookup(token2) {
+        return this.contains(token2) ? token2 : null;
+      }
+    };
+    AbstractParseMap = class extends AbstractTokenMap {
+      constructor() {
+        super(...arguments);
+        this.map = /* @__PURE__ */ new Map();
+      }
+      lookup(token2) {
+        return this.map.get(token2);
+      }
+      contains(token2) {
+        return this.map.has(token2);
+      }
+      add(token2, object) {
+        this.map.set(token2, object);
+      }
+      remove(token2) {
+        this.map.delete(token2);
+      }
+    };
+    CharacterMap = class extends AbstractParseMap {
+      constructor(name, parser2, json) {
+        super(name, parser2);
+        for (const key of Object.keys(json)) {
+          const value = json[key];
+          const [char, attrs] = typeof value === "string" ? [value, null] : value;
+          const character = new Token(key, char, attrs);
+          this.add(key, character);
+        }
+      }
+    };
+    DelimiterMap = class extends CharacterMap {
+      parse([env, token2]) {
+        return super.parse([env, "\\" + token2]);
+      }
+    };
+    MacroMap = class extends AbstractParseMap {
+      constructor(name, json, functionMap = {}) {
+        super(name, null);
+        const getMethod = (func) => typeof func === "string" ? functionMap[func] : func;
+        for (const [key, value] of Object.entries(json)) {
+          let func;
+          let args;
+          if (Array.isArray(value)) {
+            func = getMethod(value[0]);
+            args = value.slice(1);
+          } else {
+            func = getMethod(value);
+            args = [];
+          }
+          const character = new Macro(key, func, args);
+          this.add(key, character);
+        }
+      }
+      parserFor(token2) {
+        const macro = this.lookup(token2);
+        return macro ? macro.func : null;
+      }
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const parser2 = this.parserFor(token2);
+        if (!macro || !parser2) {
+          return null;
+        }
+        return parseResult(parser2(env, macro.token, ...macro.args));
+      }
+    };
+    CommandMap = class extends MacroMap {
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const parser2 = this.parserFor(token2);
+        if (!macro || !parser2) {
+          return null;
+        }
+        const saveCommand = env.currentCS;
+        env.currentCS = "\\" + token2;
+        const result = parser2(env, "\\" + macro.token, ...macro.args);
+        env.currentCS = saveCommand;
+        return parseResult(result);
+      }
+    };
+    EnvironmentMap = class extends MacroMap {
+      constructor(name, parser2, json, functionMap = {}) {
+        super(name, json, functionMap);
+        this.parser = parser2;
+      }
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const envParser = this.parserFor(token2);
+        if (!macro || !envParser) {
+          return null;
+        }
+        return parseResult(this.parser(env, macro.token, envParser, macro.args));
+      }
+    };
+  }
+});
+export{init_TokenMap,CharacterMap,init_Tags,TagsFactory,init_ParseUtil,ParseUtil,TexParser,init_TexParser,Label,RegExpMap,MacroMap,DelimiterMap,CommandMap,EnvironmentMap,AbstractTags,init_ParseOptions,ParseOptions_default,init_Token,Token,Macro,NodeFactory,init_NodeFactory2};

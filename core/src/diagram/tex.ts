@@ -42,7 +42,7 @@
  */
 
 /** Bump when a document below changes what any picture looks like: it keys the disk cache. */
-export const PREAMBLE_VERSION = 5
+export const PREAMBLE_VERSION = 6
 
 /** The job file's name in the job directory, and its outputs'. */
 export const JOB_NAME = 'kittex'
@@ -109,6 +109,8 @@ const IMPLIED_PACKAGES: readonly { use: RegExp; line: string; name: string; draw
   { use: /\\mathscr\s*\{/, line: '\\usepackage{mathrsfs}', name: 'mathrsfs' },
   { use: /\\(?:toprule|midrule|bottomrule)\b/, line: '\\usepackage{booktabs}', name: 'booktabs' },
   { use: /\\multirow\b/, line: '\\usepackage{multirow}', name: 'multirow' },
+  // A TikZ library from spath3, which a basic TeX Live (BasicTeX, the README's lists) lacks: loaded only when used.
+  { use: /\\(?:calligraphy|pen)\b|calligraphic|copperplate|nib style|pen colou?r/, line: '\\usetikzlibrary{calligraphy}', name: 'calligraphy' },
 ]
 
 /** The \usepackage lines a fragment's drawing needs and its own lines (`moved`) don't load. */
@@ -164,7 +166,7 @@ const TIKZ_LIBRARIES = [
   'arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains',
   // What replies use and often don't load: braces, text along a path, the old arrow tips (stealth', latex'), shapes'
   // other families, fadings, magnified insets, \graph, \tikzmath, mindmaps, petri nets, plot marks, bent tips.
-  'arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,calligraphy,perspective',
+  'arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,perspective',
 ].join(',')
 
 /**
@@ -578,6 +580,66 @@ export function dvisvgmArgv(dir: string): string[] {
   // A libgs that isn't there: dvisvgm never loads Ghostscript (it would on every run, PostScript specials off or not: 35 ms, and code that reads PostScript).
   return ['dvisvgm', '--no-fonts', '--exact-bbox', '--no-specials=ps,pdf,html', `--libgs=${dir}/no-ghostscript`, '--no-mktexmf', '--cache=none', `--tmpdir=${dir}`, '--page=1', '--stdout', '--verbosity=1', `${JOB_NAME}.dvi`]
 }
+
+// ─── PDF images ──────────────────────────────────────────────────────────────
+
+/*
+ * A PDF a reply includes (\includegraphics{figure.pdf}) is drawn from its
+ * first page, turned into SVG with glyphs as paths and read like a TeX
+ * picture. The PDF is untrusted input, so it is copied into a job directory of
+ * its own and converted there under the job's confinement.
+ *
+ * mutool (MuPDF) converts it wherever it runs: it draws every kind of font,
+ * and runs nothing a document asks for. dvisvgm --pdf is no substitute for
+ * it: with mutool as its backend it takes glyph outlines from the embedded
+ * font programs, and a Type 3 font (matplotlib's default) has none, so every
+ * label of a plot comes out blank.
+ *
+ * Where mutool fails, dvisvgm --pdf with Ghostscript (before 10.01) is the
+ * fallback, and only inside bubblewrap's namespace: dvisvgm starts Ghostscript
+ * with -dDELAYSAFER and never makes it safe (PSInterpreter.cpp), so a PDF can
+ * reach everything Ghostscript's interpreter can (files, pipes).
+ */
+
+/** The job's copy of the PDF being converted. */
+export const PDF_NAME = 'kittex-image.pdf'
+
+/** What turns a PDF into SVG: mutool draw, or dvisvgm --pdf with Ghostscript (only inside bubblewrap). */
+export type PdfConverter = 'mutool' | 'ghostscript'
+
+/** The converter's command on the job's PDF: its first page as SVG on stdout, glyphs as paths, nothing cached. */
+export function pdfArgv(converter: PdfConverter, dir: string): string[] {
+  if (converter === 'mutool') return ['mutool', 'draw', '-q', '-F', 'svg', '-O', 'text=path', '-o', '-', PDF_NAME, '1']
+  return ['dvisvgm', '--pdf', '--page=1', '--no-fonts', '--cache=none', `--tmpdir=${dir}`, '--stdout', '--verbosity=1', PDF_NAME]
+}
+
+/** Copying the PDF at `path` (absolute) into the job's directory, under the job's limits but outside its namespace, which hides the PDF. */
+export function pdfCopyArgv(path: string, dir: string, confinement: Confinement): string[] {
+  return confined(['cp', '--', path, `${dir}/${PDF_NAME}`], dir, { prlimit: confinement.prlimit, ...(confinement.ulimit ? { ulimit: true as const } : {}) })
+}
+
+/**
+ * A one-page PDF filling a 30 × 20 pt blue rectangle on a 50 × 40 pt page:
+ * what a host's trial conversion draws (probePdf), offsets and all.
+ */
+export const TRIAL_PDF: string = (() => {
+  const content = '0 0 1 rg 10 10 30 20 re f\n'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 50 40] /Contents 4 0 R /Resources << >> >>',
+    `<< /Length ${content.length} >>\nstream\n${content}endstream`,
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length)
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}`
+  return `${pdf}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+})()
 
 /** The variables TeX and dvisvgm run with, over the host's: the restrictions above, and no wrapped log lines. */
 export function texEnvironment(dir: string): Record<string, string> {

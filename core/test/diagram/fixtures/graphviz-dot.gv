@@ -1,0 +1,9 @@
+digraph G {
+  a [label="Input"];
+  b [label="Two\nlines"];
+  c [shape=box, fontcolor=red, label=<<B>Bold</B> <I>it&amp;co</I>>];
+  r [shape=record, label="left|right"];
+  d [shape=box, label="left aligned\l"];
+  a -> b [label="edge"];
+  b -> c;
+}

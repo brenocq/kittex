@@ -1,1074 +1,1578 @@
-import{wrapLine,codeWidth,unfollowableFrom,marked2,linksHold,MAX_ITEMS,MAX_INDENT,MIN_TEXT,inline2,cutPartial,LEADING_SPACE,textWidth,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,unfollowable,visibleProse,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,proseBlocks}from'./p29.js';export*from'./p29.js';
-function wrapRows(line, columns, sequences = false) {
-  const wrapped = wrapLine(line, columns, true, sequences);
-  if (!wrapped) return null;
-  const rows = Array.from({ length: wrapped.rows }, () => "");
-  for (let i2 = 0; i2 < line.length; i2++) {
-    const at = wrapped.row[i2];
-    if (!wrapped.hidden[i2]) rows[at] = rows[at] + line[i2];
-  }
-  return rows;
-}
-// core/src/layout/list.ts
-var Canvas = class {
-  /** `sequences`: emoji sequences are characters (charAt). `partial`: draw up to what can't be followed (see stop). */
-  constructor(width, sequences = false, partial = false) {
-    this.width = width;
-    this.sequences = sequences;
-    this.partial = partial;
-  }
-  width;
-  sequences;
-  partial;
-  text = [];
-  source = [];
-  row = [];
-  col = [];
-  /** Whether the character is the last of a text the engine trims at its end (the end of an item's text or a paragraph). */
-  end = [];
-  cells = [];
-  rows = 0;
-  /**
-   * A partial drawing (`partial`): the markdown offset from which nothing is
-   * drawn, once something the replay doesn't follow was met (Infinity until
-   * then). Everything drawn before it is where the engine draws it.
-   */
-  stop = Infinity;
-  /** Stops the drawing at a markdown offset (a partial drawing; see stop). */
-  halt(offset) {
-    this.stop = Math.min(this.stop, offset);
-  }
-  /** Puts text that isn't from a span (a marker) at a cell. */
-  put(text, row, col) {
-    this.grow(row + 1);
-    for (const [k, char] of [...text].entries()) this.cells[row][col + k] = char;
-  }
-  /**
-   * Draws a text (the engine's prose, after its trims) from `top`, wrapped in
-   * a box `width` cells wide whose left edge is `left`. False when a line
-   * can't be laid out.
-   */
-  draw(visible, top, left, width) {
-    let r = top;
-    let at = 0;
-    for (const line of visible.text.split("\n")) {
-      const wrapped = wrapLine(line, width, true, this.sequences, this.partial);
-      if (!wrapped) return false;
-      this.grow(r + wrapped.rows);
-      const known = wrapped.known ?? line.length;
-      for (let i2 = 0; i2 < known; i2++) {
-        this.unit(line[i2], visible.source[at + i2], r + wrapped.row[i2], left + wrapped.col[i2], !wrapped.hidden[i2], wrapped.cells[i2]);
+import{_defaults,_Tokenizer,other,block,inline,escape,cleanUrl,_getDefaults,changeDefaults,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE}from'./p29.js';export*from'./p29.js';
+var _Lexer = class __Lexer {
+  tokens;
+  options;
+  state;
+  tokenizer;
+  inlineQueue;
+  constructor(options3) {
+    this.tokens = [];
+    this.tokens.links = /* @__PURE__ */ Object.create(null);
+    this.options = options3 || _defaults;
+    this.options.tokenizer = this.options.tokenizer || new _Tokenizer();
+    this.tokenizer = this.options.tokenizer;
+    this.tokenizer.options = this.options;
+    this.tokenizer.lexer = this;
+    this.inlineQueue = [];
+    this.state = {
+      inLink: false,
+      inRawBlock: false,
+      top: true
+    };
+    const rules = {
+      other,
+      block: block.normal,
+      inline: inline.normal
+    };
+    if (this.options.pedantic) {
+      rules.block = block.pedantic;
+      rules.inline = inline.pedantic;
+    } else if (this.options.gfm) {
+      rules.block = block.gfm;
+      if (this.options.breaks) {
+        rules.inline = inline.breaks;
+      } else {
+        rules.inline = inline.gfm;
       }
-      if (known < line.length) {
-        for (let i2 = at + known; i2 < visible.source.length; i2++) if (visible.source[i2] >= 0) this.halt(visible.source[i2]);
-        if (visible.stop !== void 0) this.halt(visible.stop);
+    }
+    this.tokenizer.rules = rules;
+  }
+  /**
+   * Expose Rules
+   */
+  static get rules() {
+    return {
+      block,
+      inline
+    };
+  }
+  /**
+   * Static Lex Method
+   */
+  static lex(src, options3) {
+    const lexer2 = new __Lexer(options3);
+    return lexer2.lex(src);
+  }
+  /**
+   * Static Lex Inline Method
+   */
+  static lexInline(src, options3) {
+    const lexer2 = new __Lexer(options3);
+    return lexer2.inlineTokens(src);
+  }
+  /**
+   * Preprocessing
+   */
+  lex(src) {
+    src = src.replace(other.carriageReturn, "\n");
+    this.blockTokens(src, this.tokens);
+    for (let i2 = 0; i2 < this.inlineQueue.length; i2++) {
+      const next = this.inlineQueue[i2];
+      this.inlineTokens(next.src, next.tokens);
+    }
+    this.inlineQueue = [];
+    return this.tokens;
+  }
+  blockTokens(src, tokens = [], lastParagraphClipped = false) {
+    if (this.options.pedantic) {
+      src = src.replace(other.tabCharGlobal, "    ").replace(other.spaceLine, "");
+    }
+    while (src) {
+      let token2;
+      if (this.options.extensions?.block?.some((extTokenizer) => {
+        if (token2 = extTokenizer.call({ lexer: this }, src, tokens)) {
+          src = src.substring(token2.raw.length);
+          tokens.push(token2);
+          return true;
+        }
         return false;
+      })) {
+        continue;
       }
-      this.text.push("\n");
-      this.source.push(-1);
-      this.row.push(r + wrapped.rows - 1);
-      this.col.push(-1);
-      this.end.push(false);
-      r += wrapped.rows;
-      at += line.length + 1;
+      if (token2 = this.tokenizer.space(src)) {
+        src = src.substring(token2.raw.length);
+        const lastToken = tokens.at(-1);
+        if (token2.raw.length === 1 && lastToken !== void 0) {
+          lastToken.raw += "\n";
+        } else {
+          tokens.push(token2);
+        }
+        continue;
+      }
+      if (token2 = this.tokenizer.code(src)) {
+        src = src.substring(token2.raw.length);
+        const lastToken = tokens.at(-1);
+        if (lastToken?.type === "paragraph" || lastToken?.type === "text") {
+          lastToken.raw += "\n" + token2.raw;
+          lastToken.text += "\n" + token2.text;
+          this.inlineQueue.at(-1).src = lastToken.text;
+        } else {
+          tokens.push(token2);
+        }
+        continue;
+      }
+      if (token2 = this.tokenizer.fences(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.heading(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.hr(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.blockquote(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.list(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.html(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.def(src)) {
+        src = src.substring(token2.raw.length);
+        const lastToken = tokens.at(-1);
+        if (lastToken?.type === "paragraph" || lastToken?.type === "text") {
+          lastToken.raw += "\n" + token2.raw;
+          lastToken.text += "\n" + token2.raw;
+          this.inlineQueue.at(-1).src = lastToken.text;
+        } else if (!this.tokens.links[token2.tag]) {
+          this.tokens.links[token2.tag] = {
+            href: token2.href,
+            title: token2.title
+          };
+        }
+        continue;
+      }
+      if (token2 = this.tokenizer.table(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.lheading(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      let cutSrc = src;
+      if (this.options.extensions?.startBlock) {
+        let startIndex = Infinity;
+        const tempSrc = src.slice(1);
+        let tempStart;
+        this.options.extensions.startBlock.forEach((getStartIndex) => {
+          tempStart = getStartIndex.call({ lexer: this }, tempSrc);
+          if (typeof tempStart === "number" && tempStart >= 0) {
+            startIndex = Math.min(startIndex, tempStart);
+          }
+        });
+        if (startIndex < Infinity && startIndex >= 0) {
+          cutSrc = src.substring(0, startIndex + 1);
+        }
+      }
+      if (this.state.top && (token2 = this.tokenizer.paragraph(cutSrc))) {
+        const lastToken = tokens.at(-1);
+        if (lastParagraphClipped && lastToken?.type === "paragraph") {
+          lastToken.raw += "\n" + token2.raw;
+          lastToken.text += "\n" + token2.text;
+          this.inlineQueue.pop();
+          this.inlineQueue.at(-1).src = lastToken.text;
+        } else {
+          tokens.push(token2);
+        }
+        lastParagraphClipped = cutSrc.length !== src.length;
+        src = src.substring(token2.raw.length);
+        continue;
+      }
+      if (token2 = this.tokenizer.text(src)) {
+        src = src.substring(token2.raw.length);
+        const lastToken = tokens.at(-1);
+        if (lastToken?.type === "text") {
+          lastToken.raw += "\n" + token2.raw;
+          lastToken.text += "\n" + token2.text;
+          this.inlineQueue.pop();
+          this.inlineQueue.at(-1).src = lastToken.text;
+        } else {
+          tokens.push(token2);
+        }
+        continue;
+      }
+      if (src) {
+        const errMsg = "Infinite loop on byte: " + src.charCodeAt(0);
+        if (this.options.silent) {
+          console.error(errMsg);
+          break;
+        } else {
+          throw new Error(errMsg);
+        }
+      }
     }
-    this.text.pop();
-    this.source.pop();
-    this.row.pop();
-    this.col.pop();
-    this.end.pop();
-    if (visible.stop !== void 0) {
-      this.halt(visible.stop);
-      return false;
-    }
-    if (this.end.length > 0) this.end[this.end.length - 1] = true;
-    return true;
+    this.state.top = true;
+    return tokens;
+  }
+  inline(src, tokens = []) {
+    this.inlineQueue.push({ src, tokens });
+    return tokens;
   }
   /**
-   * Puts one UTF-16 unit of drawn text at a cell (its column as wrapLine
-   * gives it); `drawn: false` counts it without drawing it (a space the
-   * engine hides at a row's start). `cells`: the cells of the character the
-   * unit starts, as wrapLine gives them (-1: the unit continues the character
-   * before it, in its cell); by default, its code point's.
+   * Lexing/Compiling
    */
-  unit(unit, source, row, col, drawn = true, cells2) {
-    this.grow(row + 1);
-    this.text.push(unit);
-    this.source.push(source);
-    this.row.push(row);
-    this.col.push(col);
-    this.end.push(false);
-    if (!drawn) return;
-    const line = this.cells[row];
-    const code = unit.charCodeAt(0);
-    let width;
-    if (cells2 === void 0 ? code >= 56320 && code <= 57343 : cells2 < 0) {
-      line[col] = (line[col] ?? "") + unit;
-      width = cells2 === void 0 ? codeWidth(line[col].codePointAt(0)) : 0;
-    } else if (code < 55296 && codeWidth(code) === 0) {
-      const at = Math.max(0, col - 1);
-      line[at] = (line[at] ?? "") + unit;
-      return;
-    } else {
-      line[col] = unit;
-      width = cells2 ?? codeWidth(code);
+  inlineTokens(src, tokens = []) {
+    let maskedSrc = src;
+    let match = null;
+    if (this.tokens.links) {
+      const links = Object.keys(this.tokens.links);
+      if (links.length > 0) {
+        while ((match = this.tokenizer.rules.inline.reflinkSearch.exec(maskedSrc)) != null) {
+          if (links.includes(match[0].slice(match[0].lastIndexOf("[") + 1, -1))) {
+            maskedSrc = maskedSrc.slice(0, match.index) + "[" + "a".repeat(match[0].length - 2) + "]" + maskedSrc.slice(this.tokenizer.rules.inline.reflinkSearch.lastIndex);
+          }
+        }
+      }
     }
-    if (width === 2) line[col + 1] = "";
-  }
-  lines() {
-    this.grow(this.rows);
-    return this.cells.slice(0, this.rows).map((cells2) => Array.from(cells2, (cell) => cell ?? " ").join("").replace(/ +$/, ""));
-  }
-  grow(rows) {
-    while (this.cells.length < rows) this.cells.push([]);
-    this.rows = Math.max(this.rows, rows);
+    while ((match = this.tokenizer.rules.inline.blockSkip.exec(maskedSrc)) != null) {
+      maskedSrc = maskedSrc.slice(0, match.index) + "[" + "a".repeat(match[0].length - 2) + "]" + maskedSrc.slice(this.tokenizer.rules.inline.blockSkip.lastIndex);
+    }
+    while ((match = this.tokenizer.rules.inline.anyPunctuation.exec(maskedSrc)) != null) {
+      maskedSrc = maskedSrc.slice(0, match.index) + "++" + maskedSrc.slice(this.tokenizer.rules.inline.anyPunctuation.lastIndex);
+    }
+    let keepPrevChar = false;
+    let prevChar = "";
+    while (src) {
+      if (!keepPrevChar) {
+        prevChar = "";
+      }
+      keepPrevChar = false;
+      let token2;
+      if (this.options.extensions?.inline?.some((extTokenizer) => {
+        if (token2 = extTokenizer.call({ lexer: this }, src, tokens)) {
+          src = src.substring(token2.raw.length);
+          tokens.push(token2);
+          return true;
+        }
+        return false;
+      })) {
+        continue;
+      }
+      if (token2 = this.tokenizer.escape(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.tag(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.link(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.reflink(src, this.tokens.links)) {
+        src = src.substring(token2.raw.length);
+        const lastToken = tokens.at(-1);
+        if (token2.type === "text" && lastToken?.type === "text") {
+          lastToken.raw += token2.raw;
+          lastToken.text += token2.text;
+        } else {
+          tokens.push(token2);
+        }
+        continue;
+      }
+      if (token2 = this.tokenizer.emStrong(src, maskedSrc, prevChar)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.codespan(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.br(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.del(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (token2 = this.tokenizer.autolink(src)) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      if (!this.state.inLink && (token2 = this.tokenizer.url(src))) {
+        src = src.substring(token2.raw.length);
+        tokens.push(token2);
+        continue;
+      }
+      let cutSrc = src;
+      if (this.options.extensions?.startInline) {
+        let startIndex = Infinity;
+        const tempSrc = src.slice(1);
+        let tempStart;
+        this.options.extensions.startInline.forEach((getStartIndex) => {
+          tempStart = getStartIndex.call({ lexer: this }, tempSrc);
+          if (typeof tempStart === "number" && tempStart >= 0) {
+            startIndex = Math.min(startIndex, tempStart);
+          }
+        });
+        if (startIndex < Infinity && startIndex >= 0) {
+          cutSrc = src.substring(0, startIndex + 1);
+        }
+      }
+      if (token2 = this.tokenizer.inlineText(cutSrc)) {
+        src = src.substring(token2.raw.length);
+        if (token2.raw.slice(-1) !== "_") {
+          prevChar = token2.raw.slice(-1);
+        }
+        keepPrevChar = true;
+        const lastToken = tokens.at(-1);
+        if (lastToken?.type === "text") {
+          lastToken.raw += token2.raw;
+          lastToken.text += token2.text;
+        } else {
+          tokens.push(token2);
+        }
+        continue;
+      }
+      if (src) {
+        const errMsg = "Infinite loop on byte: " + src.charCodeAt(0);
+        if (this.options.silent) {
+          console.error(errMsg);
+          break;
+        } else {
+          throw new Error(errMsg);
+        }
+      }
+    }
+    return tokens;
   }
 };
-function drawList(markdown, width, mode = {}, partial = false) {
-  if (!(width >= 1)) return null;
-  const cut = unfollowableFrom(markdown);
-  if (cut !== void 0) {
-    if (!partial || cut === 0) return null;
-    const canvas2 = drawList(markdown.slice(0, cut), width, mode, true);
-    canvas2?.halt(cut);
-    return canvas2;
+var _Renderer = class {
+  options;
+  parser;
+  // set by the parser
+  constructor(options3) {
+    this.options = options3 || _defaults;
   }
-  const links = { hyperlinks: mode.hyperlinks, linked: { value: false } };
-  let tokens;
-  try {
-    tokens = marked2.lexer(markdown);
-  } catch {
-    return null;
+  space(token2) {
+    return "";
   }
-  const canvas = new Canvas(width, mode.emojiSequences === true, partial);
-  const stopped = () => partial && canvas.stop < Infinity && linksHold(markdown, links) ? canvas : null;
-  let at = 0;
-  let listed = false;
-  let after = "";
-  for (const token2 of tokens) {
-    if (!markdown.startsWith(token2.raw, at)) return null;
-    const mapped = { text: token2.raw, map: Array.from({ length: token2.raw.length }, (_, k) => at + k) };
-    if (token2.type === "paragraph" && !listed && at === 0) {
-      const paragraph2 = token2;
-      const visible = textOf([{ tokens: paragraph2.tokens ?? [], text: paragraph2.text, at: 0 }], mapped, false, links, partial);
-      if (!visible || !fits(visible, width, partial) || !canvas.draw(visible, 0, 0, width)) return stopped();
-    } else if (token2.type === "list" && (!listed || after === "list")) {
-      listed = true;
-      if (!drawItems(canvas, token2, mapped, 0, 0, links)) return stopped();
-    } else if (token2.type !== "space" || !listed) {
-      if (!partial || !listed) return null;
-      canvas.halt(at);
-      return stopped();
+  code({ text, lang, escaped }) {
+    const langString = (lang || "").match(other.notSpaceStart)?.[0];
+    const code = text.replace(other.endingNewline, "") + "\n";
+    if (!langString) {
+      return "<pre><code>" + (escaped ? code : escape(code, true)) + "</code></pre>\n";
     }
-    at += token2.raw.length;
-    after = token2.type;
+    return '<pre><code class="language-' + escape(langString) + '">' + (escaped ? code : escape(code, true)) + "</code></pre>\n";
   }
-  return listed && at === markdown.length && linksHold(markdown, links) ? canvas : null;
+  blockquote({ tokens }) {
+    const body = this.parser.parse(tokens);
+    return `<blockquote>
+${body}</blockquote>
+`;
+  }
+  html({ text }) {
+    return text;
+  }
+  heading({ tokens, depth }) {
+    return `<h${depth}>${this.parser.parseInline(tokens)}</h${depth}>
+`;
+  }
+  hr(token2) {
+    return "<hr>\n";
+  }
+  list(token2) {
+    const ordered = token2.ordered;
+    const start = token2.start;
+    let body = "";
+    for (let j = 0; j < token2.items.length; j++) {
+      const item = token2.items[j];
+      body += this.listitem(item);
+    }
+    const type = ordered ? "ol" : "ul";
+    const startAttr = ordered && start !== 1 ? ' start="' + start + '"' : "";
+    return "<" + type + startAttr + ">\n" + body + "</" + type + ">\n";
+  }
+  listitem(item) {
+    let itemBody = "";
+    if (item.task) {
+      const checkbox = this.checkbox({ checked: !!item.checked });
+      if (item.loose) {
+        if (item.tokens[0]?.type === "paragraph") {
+          item.tokens[0].text = checkbox + " " + item.tokens[0].text;
+          if (item.tokens[0].tokens && item.tokens[0].tokens.length > 0 && item.tokens[0].tokens[0].type === "text") {
+            item.tokens[0].tokens[0].text = checkbox + " " + escape(item.tokens[0].tokens[0].text);
+            item.tokens[0].tokens[0].escaped = true;
+          }
+        } else {
+          item.tokens.unshift({
+            type: "text",
+            raw: checkbox + " ",
+            text: checkbox + " ",
+            escaped: true
+          });
+        }
+      } else {
+        itemBody += checkbox + " ";
+      }
+    }
+    itemBody += this.parser.parse(item.tokens, !!item.loose);
+    return `<li>${itemBody}</li>
+`;
+  }
+  checkbox({ checked }) {
+    return "<input " + (checked ? 'checked="" ' : "") + 'disabled="" type="checkbox">';
+  }
+  paragraph({ tokens }) {
+    return `<p>${this.parser.parseInline(tokens)}</p>
+`;
+  }
+  table(token2) {
+    let header = "";
+    let cell = "";
+    for (let j = 0; j < token2.header.length; j++) {
+      cell += this.tablecell(token2.header[j]);
+    }
+    header += this.tablerow({ text: cell });
+    let body = "";
+    for (let j = 0; j < token2.rows.length; j++) {
+      const row = token2.rows[j];
+      cell = "";
+      for (let k = 0; k < row.length; k++) {
+        cell += this.tablecell(row[k]);
+      }
+      body += this.tablerow({ text: cell });
+    }
+    if (body)
+      body = `<tbody>${body}</tbody>`;
+    return "<table>\n<thead>\n" + header + "</thead>\n" + body + "</table>\n";
+  }
+  tablerow({ text }) {
+    return `<tr>
+${text}</tr>
+`;
+  }
+  tablecell(token2) {
+    const content = this.parser.parseInline(token2.tokens);
+    const type = token2.header ? "th" : "td";
+    const tag3 = token2.align ? `<${type} align="${token2.align}">` : `<${type}>`;
+    return tag3 + content + `</${type}>
+`;
+  }
+  /**
+   * span level renderer
+   */
+  strong({ tokens }) {
+    return `<strong>${this.parser.parseInline(tokens)}</strong>`;
+  }
+  em({ tokens }) {
+    return `<em>${this.parser.parseInline(tokens)}</em>`;
+  }
+  codespan({ text }) {
+    return `<code>${escape(text, true)}</code>`;
+  }
+  br(token2) {
+    return "<br>";
+  }
+  del({ tokens }) {
+    return `<del>${this.parser.parseInline(tokens)}</del>`;
+  }
+  link({ href, title, tokens }) {
+    const text = this.parser.parseInline(tokens);
+    const cleanHref = cleanUrl(href);
+    if (cleanHref === null) {
+      return text;
+    }
+    href = cleanHref;
+    let out = '<a href="' + href + '"';
+    if (title) {
+      out += ' title="' + escape(title) + '"';
+    }
+    out += ">" + text + "</a>";
+    return out;
+  }
+  image({ href, title, text }) {
+    const cleanHref = cleanUrl(href);
+    if (cleanHref === null) {
+      return escape(text);
+    }
+    href = cleanHref;
+    let out = `<img src="${href}" alt="${text}"`;
+    if (title) {
+      out += ` title="${escape(title)}"`;
+    }
+    out += ">";
+    return out;
+  }
+  text(token2) {
+    return "tokens" in token2 && token2.tokens ? this.parser.parseInline(token2.tokens) : "escaped" in token2 && token2.escaped ? token2.text : escape(token2.text);
+  }
+};
+var _TextRenderer = class {
+  // no need for block level renderers
+  strong({ text }) {
+    return text;
+  }
+  em({ text }) {
+    return text;
+  }
+  codespan({ text }) {
+    return text;
+  }
+  del({ text }) {
+    return text;
+  }
+  html({ text }) {
+    return text;
+  }
+  text({ text }) {
+    return text;
+  }
+  link({ text }) {
+    return "" + text;
+  }
+  image({ text }) {
+    return "" + text;
+  }
+  br() {
+    return "";
+  }
+};
+var _Parser = class __Parser {
+  options;
+  renderer;
+  textRenderer;
+  constructor(options3) {
+    this.options = options3 || _defaults;
+    this.options.renderer = this.options.renderer || new _Renderer();
+    this.renderer = this.options.renderer;
+    this.renderer.options = this.options;
+    this.renderer.parser = this;
+    this.textRenderer = new _TextRenderer();
+  }
+  /**
+   * Static Parse Method
+   */
+  static parse(tokens, options3) {
+    const parser2 = new __Parser(options3);
+    return parser2.parse(tokens);
+  }
+  /**
+   * Static Parse Inline Method
+   */
+  static parseInline(tokens, options3) {
+    const parser2 = new __Parser(options3);
+    return parser2.parseInline(tokens);
+  }
+  /**
+   * Parse Loop
+   */
+  parse(tokens, top = true) {
+    let out = "";
+    for (let i2 = 0; i2 < tokens.length; i2++) {
+      const anyToken = tokens[i2];
+      if (this.options.extensions?.renderers?.[anyToken.type]) {
+        const genericToken = anyToken;
+        const ret = this.options.extensions.renderers[genericToken.type].call({ parser: this }, genericToken);
+        if (ret !== false || !["space", "hr", "heading", "code", "table", "blockquote", "list", "html", "paragraph", "text"].includes(genericToken.type)) {
+          out += ret || "";
+          continue;
+        }
+      }
+      const token2 = anyToken;
+      switch (token2.type) {
+        case "space": {
+          out += this.renderer.space(token2);
+          continue;
+        }
+        case "hr": {
+          out += this.renderer.hr(token2);
+          continue;
+        }
+        case "heading": {
+          out += this.renderer.heading(token2);
+          continue;
+        }
+        case "code": {
+          out += this.renderer.code(token2);
+          continue;
+        }
+        case "table": {
+          out += this.renderer.table(token2);
+          continue;
+        }
+        case "blockquote": {
+          out += this.renderer.blockquote(token2);
+          continue;
+        }
+        case "list": {
+          out += this.renderer.list(token2);
+          continue;
+        }
+        case "html": {
+          out += this.renderer.html(token2);
+          continue;
+        }
+        case "paragraph": {
+          out += this.renderer.paragraph(token2);
+          continue;
+        }
+        case "text": {
+          let textToken = token2;
+          let body = this.renderer.text(textToken);
+          while (i2 + 1 < tokens.length && tokens[i2 + 1].type === "text") {
+            textToken = tokens[++i2];
+            body += "\n" + this.renderer.text(textToken);
+          }
+          if (top) {
+            out += this.renderer.paragraph({
+              type: "paragraph",
+              raw: body,
+              text: body,
+              tokens: [{ type: "text", raw: body, text: body, escaped: true }]
+            });
+          } else {
+            out += body;
+          }
+          continue;
+        }
+        default: {
+          const errMsg = 'Token with "' + token2.type + '" type was not found.';
+          if (this.options.silent) {
+            console.error(errMsg);
+            return "";
+          } else {
+            throw new Error(errMsg);
+          }
+        }
+      }
+    }
+    return out;
+  }
+  /**
+   * Parse Inline Tokens
+   */
+  parseInline(tokens, renderer = this.renderer) {
+    let out = "";
+    for (let i2 = 0; i2 < tokens.length; i2++) {
+      const anyToken = tokens[i2];
+      if (this.options.extensions?.renderers?.[anyToken.type]) {
+        const ret = this.options.extensions.renderers[anyToken.type].call({ parser: this }, anyToken);
+        if (ret !== false || !["escape", "html", "link", "image", "strong", "em", "codespan", "br", "del", "text"].includes(anyToken.type)) {
+          out += ret || "";
+          continue;
+        }
+      }
+      const token2 = anyToken;
+      switch (token2.type) {
+        case "escape": {
+          out += renderer.text(token2);
+          break;
+        }
+        case "html": {
+          out += renderer.html(token2);
+          break;
+        }
+        case "link": {
+          out += renderer.link(token2);
+          break;
+        }
+        case "image": {
+          out += renderer.image(token2);
+          break;
+        }
+        case "strong": {
+          out += renderer.strong(token2);
+          break;
+        }
+        case "em": {
+          out += renderer.em(token2);
+          break;
+        }
+        case "codespan": {
+          out += renderer.codespan(token2);
+          break;
+        }
+        case "br": {
+          out += renderer.br(token2);
+          break;
+        }
+        case "del": {
+          out += renderer.del(token2);
+          break;
+        }
+        case "text": {
+          out += renderer.text(token2);
+          break;
+        }
+        default: {
+          const errMsg = 'Token with "' + token2.type + '" type was not found.';
+          if (this.options.silent) {
+            console.error(errMsg);
+            return "";
+          } else {
+            throw new Error(errMsg);
+          }
+        }
+      }
+    }
+    return out;
+  }
+};
+var _Hooks = class {
+  options;
+  block;
+  constructor(options3) {
+    this.options = options3 || _defaults;
+  }
+  static passThroughHooks = /* @__PURE__ */ new Set([
+    "preprocess",
+    "postprocess",
+    "processAllTokens"
+  ]);
+  /**
+   * Process markdown before marked
+   */
+  preprocess(markdown) {
+    return markdown;
+  }
+  /**
+   * Process HTML after marked is finished
+   */
+  postprocess(html2) {
+    return html2;
+  }
+  /**
+   * Process all tokens before walk tokens
+   */
+  processAllTokens(tokens) {
+    return tokens;
+  }
+  /**
+   * Provide function to tokenize markdown
+   */
+  provideLexer() {
+    return this.block ? _Lexer.lex : _Lexer.lexInline;
+  }
+  /**
+   * Provide function to parse tokens
+   */
+  provideParser() {
+    return this.block ? _Parser.parse : _Parser.parseInline;
+  }
+};
+var Marked = class {
+  defaults = _getDefaults();
+  options = this.setOptions;
+  parse = this.parseMarkdown(true);
+  parseInline = this.parseMarkdown(false);
+  Parser = _Parser;
+  Renderer = _Renderer;
+  TextRenderer = _TextRenderer;
+  Lexer = _Lexer;
+  Tokenizer = _Tokenizer;
+  Hooks = _Hooks;
+  constructor(...args) {
+    this.use(...args);
+  }
+  /**
+   * Run callback for every token
+   */
+  walkTokens(tokens, callback) {
+    let values = [];
+    for (const token2 of tokens) {
+      values = values.concat(callback.call(this, token2));
+      switch (token2.type) {
+        case "table": {
+          const tableToken = token2;
+          for (const cell of tableToken.header) {
+            values = values.concat(this.walkTokens(cell.tokens, callback));
+          }
+          for (const row of tableToken.rows) {
+            for (const cell of row) {
+              values = values.concat(this.walkTokens(cell.tokens, callback));
+            }
+          }
+          break;
+        }
+        case "list": {
+          const listToken = token2;
+          values = values.concat(this.walkTokens(listToken.items, callback));
+          break;
+        }
+        default: {
+          const genericToken = token2;
+          if (this.defaults.extensions?.childTokens?.[genericToken.type]) {
+            this.defaults.extensions.childTokens[genericToken.type].forEach((childTokens) => {
+              const tokens2 = genericToken[childTokens].flat(Infinity);
+              values = values.concat(this.walkTokens(tokens2, callback));
+            });
+          } else if (genericToken.tokens) {
+            values = values.concat(this.walkTokens(genericToken.tokens, callback));
+          }
+        }
+      }
+    }
+    return values;
+  }
+  use(...args) {
+    const extensions = this.defaults.extensions || { renderers: {}, childTokens: {} };
+    args.forEach((pack) => {
+      const opts = { ...pack };
+      opts.async = this.defaults.async || opts.async || false;
+      if (pack.extensions) {
+        pack.extensions.forEach((ext) => {
+          if (!ext.name) {
+            throw new Error("extension name required");
+          }
+          if ("renderer" in ext) {
+            const prevRenderer = extensions.renderers[ext.name];
+            if (prevRenderer) {
+              extensions.renderers[ext.name] = function(...args2) {
+                let ret = ext.renderer.apply(this, args2);
+                if (ret === false) {
+                  ret = prevRenderer.apply(this, args2);
+                }
+                return ret;
+              };
+            } else {
+              extensions.renderers[ext.name] = ext.renderer;
+            }
+          }
+          if ("tokenizer" in ext) {
+            if (!ext.level || ext.level !== "block" && ext.level !== "inline") {
+              throw new Error("extension level must be 'block' or 'inline'");
+            }
+            const extLevel = extensions[ext.level];
+            if (extLevel) {
+              extLevel.unshift(ext.tokenizer);
+            } else {
+              extensions[ext.level] = [ext.tokenizer];
+            }
+            if (ext.start) {
+              if (ext.level === "block") {
+                if (extensions.startBlock) {
+                  extensions.startBlock.push(ext.start);
+                } else {
+                  extensions.startBlock = [ext.start];
+                }
+              } else if (ext.level === "inline") {
+                if (extensions.startInline) {
+                  extensions.startInline.push(ext.start);
+                } else {
+                  extensions.startInline = [ext.start];
+                }
+              }
+            }
+          }
+          if ("childTokens" in ext && ext.childTokens) {
+            extensions.childTokens[ext.name] = ext.childTokens;
+          }
+        });
+        opts.extensions = extensions;
+      }
+      if (pack.renderer) {
+        const renderer = this.defaults.renderer || new _Renderer(this.defaults);
+        for (const prop in pack.renderer) {
+          if (!(prop in renderer)) {
+            throw new Error(`renderer '${prop}' does not exist`);
+          }
+          if (["options", "parser"].includes(prop)) {
+            continue;
+          }
+          const rendererProp = prop;
+          const rendererFunc = pack.renderer[rendererProp];
+          const prevRenderer = renderer[rendererProp];
+          renderer[rendererProp] = (...args2) => {
+            let ret = rendererFunc.apply(renderer, args2);
+            if (ret === false) {
+              ret = prevRenderer.apply(renderer, args2);
+            }
+            return ret || "";
+          };
+        }
+        opts.renderer = renderer;
+      }
+      if (pack.tokenizer) {
+        const tokenizer = this.defaults.tokenizer || new _Tokenizer(this.defaults);
+        for (const prop in pack.tokenizer) {
+          if (!(prop in tokenizer)) {
+            throw new Error(`tokenizer '${prop}' does not exist`);
+          }
+          if (["options", "rules", "lexer"].includes(prop)) {
+            continue;
+          }
+          const tokenizerProp = prop;
+          const tokenizerFunc = pack.tokenizer[tokenizerProp];
+          const prevTokenizer = tokenizer[tokenizerProp];
+          tokenizer[tokenizerProp] = (...args2) => {
+            let ret = tokenizerFunc.apply(tokenizer, args2);
+            if (ret === false) {
+              ret = prevTokenizer.apply(tokenizer, args2);
+            }
+            return ret;
+          };
+        }
+        opts.tokenizer = tokenizer;
+      }
+      if (pack.hooks) {
+        const hooks = this.defaults.hooks || new _Hooks();
+        for (const prop in pack.hooks) {
+          if (!(prop in hooks)) {
+            throw new Error(`hook '${prop}' does not exist`);
+          }
+          if (["options", "block"].includes(prop)) {
+            continue;
+          }
+          const hooksProp = prop;
+          const hooksFunc = pack.hooks[hooksProp];
+          const prevHook = hooks[hooksProp];
+          if (_Hooks.passThroughHooks.has(prop)) {
+            hooks[hooksProp] = (arg) => {
+              if (this.defaults.async) {
+                return Promise.resolve(hooksFunc.call(hooks, arg)).then((ret2) => {
+                  return prevHook.call(hooks, ret2);
+                });
+              }
+              const ret = hooksFunc.call(hooks, arg);
+              return prevHook.call(hooks, ret);
+            };
+          } else {
+            hooks[hooksProp] = (...args2) => {
+              let ret = hooksFunc.apply(hooks, args2);
+              if (ret === false) {
+                ret = prevHook.apply(hooks, args2);
+              }
+              return ret;
+            };
+          }
+        }
+        opts.hooks = hooks;
+      }
+      if (pack.walkTokens) {
+        const walkTokens2 = this.defaults.walkTokens;
+        const packWalktokens = pack.walkTokens;
+        opts.walkTokens = function(token2) {
+          let values = [];
+          values.push(packWalktokens.call(this, token2));
+          if (walkTokens2) {
+            values = values.concat(walkTokens2.call(this, token2));
+          }
+          return values;
+        };
+      }
+      this.defaults = { ...this.defaults, ...opts };
+    });
+    return this;
+  }
+  setOptions(opt) {
+    this.defaults = { ...this.defaults, ...opt };
+    return this;
+  }
+  lexer(src, options3) {
+    return _Lexer.lex(src, options3 ?? this.defaults);
+  }
+  parser(tokens, options3) {
+    return _Parser.parse(tokens, options3 ?? this.defaults);
+  }
+  parseMarkdown(blockType) {
+    const parse = (src, options3) => {
+      const origOpt = { ...options3 };
+      const opt = { ...this.defaults, ...origOpt };
+      const throwError = this.onError(!!opt.silent, !!opt.async);
+      if (this.defaults.async === true && origOpt.async === false) {
+        return throwError(new Error("marked(): The async option was set to true by an extension. Remove async: false from the parse options object to return a Promise."));
+      }
+      if (typeof src === "undefined" || src === null) {
+        return throwError(new Error("marked(): input parameter is undefined or null"));
+      }
+      if (typeof src !== "string") {
+        return throwError(new Error("marked(): input parameter is of type " + Object.prototype.toString.call(src) + ", string expected"));
+      }
+      if (opt.hooks) {
+        opt.hooks.options = opt;
+        opt.hooks.block = blockType;
+      }
+      const lexer2 = opt.hooks ? opt.hooks.provideLexer() : blockType ? _Lexer.lex : _Lexer.lexInline;
+      const parser2 = opt.hooks ? opt.hooks.provideParser() : blockType ? _Parser.parse : _Parser.parseInline;
+      if (opt.async) {
+        return Promise.resolve(opt.hooks ? opt.hooks.preprocess(src) : src).then((src2) => lexer2(src2, opt)).then((tokens) => opt.hooks ? opt.hooks.processAllTokens(tokens) : tokens).then((tokens) => opt.walkTokens ? Promise.all(this.walkTokens(tokens, opt.walkTokens)).then(() => tokens) : tokens).then((tokens) => parser2(tokens, opt)).then((html2) => opt.hooks ? opt.hooks.postprocess(html2) : html2).catch(throwError);
+      }
+      try {
+        if (opt.hooks) {
+          src = opt.hooks.preprocess(src);
+        }
+        let tokens = lexer2(src, opt);
+        if (opt.hooks) {
+          tokens = opt.hooks.processAllTokens(tokens);
+        }
+        if (opt.walkTokens) {
+          this.walkTokens(tokens, opt.walkTokens);
+        }
+        let html2 = parser2(tokens, opt);
+        if (opt.hooks) {
+          html2 = opt.hooks.postprocess(html2);
+        }
+        return html2;
+      } catch (e) {
+        return throwError(e);
+      }
+    };
+    return parse;
+  }
+  onError(silent, async) {
+    return (e) => {
+      e.message += "\nPlease report this to https://github.com/markedjs/marked.";
+      if (silent) {
+        const msg = "<p>An error occurred:</p><pre>" + escape(e.message + "", true) + "</pre>";
+        if (async) {
+          return Promise.resolve(msg);
+        }
+        return msg;
+      }
+      if (async) {
+        return Promise.reject(e);
+      }
+      throw e;
+    };
+  }
+};
+var markedInstance = new Marked();
+function marked(src, opt) {
+  return markedInstance.parse(src, opt);
 }
-function drawItems(canvas, list3, raw, indent, depth, links) {
-  if (list3.items.length === 0 || list3.items.length > MAX_ITEMS) return false;
-  const first = list3.start === "" || list3.start === void 0 ? 1 : Number(list3.start);
-  const last = first + list3.items.length - 1;
-  let at = 0;
-  for (const [u, item] of list3.items.entries()) {
-    if (!raw.text.startsWith(item.raw, at)) return false;
-    const marker = list3.ordered ? markerOf(depth, first + u, first, last) : "-";
-    const blank2 = u > 0 && endsInBlank(list3.items[u - 1]);
-    const itemRaw = { text: item.raw, map: raw.map.slice(at, at + item.raw.length) };
-    if (!drawItem(canvas, item, itemRaw, marker, indent, depth, blank2, links)) {
-      if (canvas.stop === Infinity) canvas.halt(itemRaw.map[0] ?? 0);
-      return false;
-    }
-    at += item.raw.length;
-  }
-  return /^\s*$/.test(raw.text.slice(at));
+marked.options = marked.setOptions = function(options3) {
+  markedInstance.setOptions(options3);
+  marked.defaults = markedInstance.defaults;
+  changeDefaults(marked.defaults);
+  return marked;
+};
+marked.getDefaults = _getDefaults;
+marked.defaults = _defaults;
+marked.use = function(...args) {
+  markedInstance.use(...args);
+  marked.defaults = markedInstance.defaults;
+  changeDefaults(marked.defaults);
+  return marked;
+};
+marked.walkTokens = function(tokens, callback) {
+  return markedInstance.walkTokens(tokens, callback);
+};
+marked.parseInline = markedInstance.parseInline;
+marked.Parser = _Parser;
+marked.parser = _Parser.parse;
+marked.Renderer = _Renderer;
+marked.TextRenderer = _TextRenderer;
+marked.Lexer = _Lexer;
+marked.lexer = _Lexer.lex;
+marked.Tokenizer = _Tokenizer;
+marked.Hooks = _Hooks;
+marked.parse = marked;
+var options = marked.options;
+var setOptions = marked.setOptions;
+var use = marked.use;
+var walkTokens = marked.walkTokens;
+var parseInline = marked.parseInline;
+var parser = _Parser.parse;
+var lexer = _Lexer.lex;
+// core/src/layout/links.ts
+var ISSUE_REF_ALL = /(^|[^\w./-])([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)\b/g;
+var CONTROL = /[\x00-\x1f\x7f-\x9f]/;
+var SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+var PLAIN_RELATIVE = /^(?!.*(?:^|\/)\.\.(?:\/|#|$))[A-Za-z0-9_][A-Za-z0-9._~/=&+@,!*'()$;-]*(?:#[A-Za-z0-9._~/=&+@,!*'()$;:-]*)?$/;
+function linkedAsWritten(href) {
+  if (CONTROL.test(href) || href !== href.trim()) return false;
+  if (/^https:\/\/claude\.ai(?:[/?#]|$)/.test(href)) return false;
+  if (SCHEME.test(href)) return !/^file:/i.test(href);
+  return PLAIN_RELATIVE.test(href);
 }
-function drawItem(canvas, item, raw, marker, indent, depth, blank2, links) {
-  if (item.task) return false;
-  const text = itemText(item, raw);
-  if (!text) return false;
-  const parts = [];
-  let at = 0;
-  let halt;
-  for (const token2 of item.tokens) {
-    if (token2.type === "list") {
-      const list3 = token2;
-      if (list3.ordered && list3.items.every((one) => one.tokens.length === 0)) return false;
-      const start = text.text.indexOf(list3.raw, at);
-      if (start < 0) return false;
-      parts.push({ kind: "list", list: list3, raw: { text: list3.raw, map: text.map.slice(start, start + list3.raw.length) } });
-      at = start + list3.raw.length;
-      continue;
-    }
-    let part = parts.at(-1);
-    if (part?.kind !== "inline") parts.push(part = { kind: "inline", runs: [], newlines: "" });
-    if (token2.type === "space") {
-      part.runs.push({ space: true });
-    } else if (token2.type === "text") {
-      const run2 = token2;
-      const start = text.text.indexOf(run2.text, at);
-      if (start < 0 || !run2.tokens) return false;
-      part.runs.push({ tokens: run2.tokens, text: run2.text, at: start });
-      at = start + run2.text.length;
+function plain(out, text) {
+  out.text += text;
+  for (let i2 = 0; i2 < text.length; i2++) out.source.push(-1);
+}
+function append(out, part) {
+  out.text += part.text;
+  out.source.push(...part.source);
+}
+function drawLink(out, link2, base, links, label) {
+  const { hyperlinks } = links;
+  if (hyperlinks === void 0) return false;
+  const href = link2.href;
+  const title = link2.title ? ` ("${link2.title}")` : "";
+  if (CONTROL.test(href + title) || href.includes(ARTIFACT_MARK)) return false;
+  const at = link2.raw.indexOf(link2.text);
+  if (link2.text !== "" && at < 0) return false;
+  if (href.startsWith("mailto:")) {
+    const address = href.slice("mailto:".length);
+    if (link2.text !== "") {
+      const written = { text: link2.text, source: Array.from(link2.text, (_, k) => base + at + k) };
+      append(out, written);
+      if (link2.text !== address) plain(out, ` (${address})`);
     } else {
-      const start = text.text.indexOf(token2.raw.trimStart(), at);
-      halt = text.map[start < 0 ? at : start] ?? raw.map[0] ?? 0;
+      plain(out, address);
+    }
+    plain(out, title);
+    return true;
+  }
+  const text = { text: "", source: [] };
+  if (!label(text, link2.tokens ?? [], link2.text, base + at)) return false;
+  if (text.text.includes(ARTIFACT_MARK)) return false;
+  const differs = text.text !== "" && text.text !== href;
+  if (hyperlinks) {
+    if (!linkedAsWritten(href)) return false;
+    if (links.linked) links.linked.value = true;
+    if (text.text !== "") append(out, text);
+    else plain(out, href);
+  } else {
+    const same = text.text === href || href === `http://${text.text}` || href === `https://${text.text}`;
+    if (differs && !same) {
+      append(out, text);
+      plain(out, ` (${href})`);
+    } else {
+      plain(out, href);
+    }
+  }
+  plain(out, title);
+  return true;
+}
+function refGlueAgrees(text, glue) {
+  if (!text.includes("#")) return true;
+  const marked4 = text.replace(ISSUE_REF_ALL, (_, before, repo, number) => `${before}\0${repo}#${number}\0`);
+  if (marked4 === text) return true;
+  return marked4.replace(glue, "\u00A0$1").replaceAll("\0", "") === text.replace(glue, "\u00A0$1");
+}
+function hasIssueRef(text) {
+  ISSUE_REF_ALL.lastIndex = 0;
+  return ISSUE_REF_ALL.test(text);
+}
+function engineHyperlinks(env) {
+  const force = env.FORCE_HYPERLINK;
+  if (force !== void 0) return force.length > 0 ? parseInt(force, 10) !== 0 : void 0;
+  const program = env.TERM_PROGRAM;
+  if (program !== void 0 && HYPERLINK_TERMINALS.includes(program)) return true;
+  if (env.TERMINAL_EMULATOR === "JetBrains-JediTerm") return true;
+  if (env.WT_SESSION && program !== "tmux" && !env.TMUX) return true;
+  if (program === "tmux") {
+    const [major, minor] = (env.TERM_PROGRAM_VERSION ?? "").split(".").map((part) => parseInt(part, 10));
+    if (major > 3 || major === 3 && minor >= 4) return true;
+  }
+  if (env.LC_TERMINAL !== void 0 && HYPERLINK_TERMINALS.includes(env.LC_TERMINAL)) return true;
+  if (env.TERM?.includes("kitty")) return true;
+  if (env.NETLIFY) return true;
+  if (env.CI || env.TEAMCITY_VERSION) return false;
+  if (env.WT_SESSION || program === "WezTerm" || program === "vscode" || env.VTE_VERSION || env.TERM === "alacritty") return void 0;
+  return false;
+}
+// core/src/layout/prose.ts
+var marked2 = new Marked({
+  gfm: true,
+  tokenizer: {
+    // The engine strikes through `~~text~~` only (marked's GFM also takes `~text~`).
+    del(src) {
+      const cap2 = /^~~(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))~~(?=[^~]|$)/.exec(src);
+      const text = cap2?.[1];
+      if (!cap2 || text === void 0) return void 0;
+      return { type: "del", raw: cap2[0], text, tokens: this.lexer.inlineTokens(text) };
+    },
+    // Link reference definitions are not read: the line stays text.
+    def() {
+      return void 0;
+    }
+  }
+});
+var MARKDOWN_LIKE = /[#*`|[>\-_~]|\n[\r\n]|\r\r|\r\n[\r\n]|(?:^|[\r\n]) {0,3}(?:\d+[.)]|\+) |(?:^|[\r\n]) {0,3}=+ *(?:[\r\n]|$)|https?:\/\/|www\./;
+var NBSP_ENTITY = /&(?:nbsp|#0{0,4}160|#[xX]0{0,4}[aA]0);/g;
+var AUTOLINK = /^<(?:[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s\x00-\x1f<>]*|[a-zA-Z0-9.!#$%&'*+/=?_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_]))>/;
+var GLUE = / (\d{1,9}[.)])(?!\w)/g;
+function unfollowable(markdown) {
+  return unfollowableFrom(markdown) !== void 0;
+}
+function unfollowableFrom(markdown) {
+  let at = markdown.search(/[\t\r\u0000-\u0008\u000b-\u001f\u007f]/);
+  for (const tag3 of markdown.matchAll(/<[A-Za-z/!?]/g)) {
+    if (at >= 0 && tag3.index >= at) break;
+    if (!AUTOLINK.test(markdown.slice(tag3.index))) {
+      at = tag3.index;
       break;
     }
   }
-  if (parts[0]?.kind !== "inline") return false;
-  const box = Math.max(2, textWidthOf(marker) + 1);
-  const nested = Math.min(indent + box, MAX_INDENT);
-  const left = indent + box;
-  const room = canvas.width - left;
-  let gap2 = blank2;
-  for (const [m, part] of parts.entries()) {
-    if (part.kind === "list") {
-      const top2 = canvas.rows + (gap2 ? 1 : 0);
-      canvas.rows = top2;
-      if (!drawItems(canvas, part.list, part.raw, nested, depth + 1, links)) return false;
-      gap2 = false;
-      continue;
-    }
-    const drawn = textOf(part.runs, text, true, links, canvas.partial);
-    if (!drawn) return false;
-    const opens = drawn.lead;
-    if (drawn.text === "" && m > 0 && drawn.stop === void 0) {
-      gap2 ||= drawn.newline;
-      continue;
-    }
-    if (room < MIN_TEXT) return false;
-    const shown = fits(drawn, room, canvas.partial);
-    if (!shown || shown.text === "" && (m === 0 || shown.stop === void 0)) {
-      if (shown?.stop !== void 0) canvas.halt(shown.stop);
-      return false;
-    }
-    const top = canvas.rows + (gap2 || m > 0 && opens ? 1 : 0);
-    if (m === 0) canvas.put(marker, top, indent);
-    if (!canvas.draw(shown, top, left, room)) return false;
-    gap2 = drawn.blankAfter;
-  }
-  if (halt === void 0) return true;
-  canvas.halt(halt);
-  return false;
+  return at < 0 ? void 0 : markdown.lastIndexOf("\n", at - 1) + 1;
 }
-function textOf(runs, owner, glue, links, partial = false) {
-  const out = { text: "", source: [] };
-  for (const run2 of runs) {
-    if (run2.space) {
-      out.text += "\n";
-      out.source.push(-1);
-      continue;
-    }
-    const drawn = { text: "", source: [] };
-    const followed = inline2(drawn, run2.tokens, run2.text, run2.at, glue, links);
-    if (!followed && (!partial || drawn.stop === void 0)) return null;
-    out.text += drawn.text + (followed ? "\n" : "");
-    for (const offset of drawn.source) out.source.push(offset < 0 ? -1 : owner.map[offset] ?? -1);
-    if (followed) {
-      out.source.push(-1);
-      continue;
-    }
-    out.stop = owner.map[drawn.stop] ?? owner.map.at(-1) ?? 0;
-    break;
-  }
-  const raw = out.text;
-  const lead = /^\n*/.exec(raw)[0].length;
-  const kept = out.stop === void 0 ? raw.slice(lead).trimEnd().length : raw.length - lead;
-  const text = raw.slice(lead, lead + kept);
-  const source = out.source.slice(lead, lead + kept);
-  const shown = out.stop === void 0 ? { text, source } : cutPartial({ text, source }, out.stop);
-  return {
-    ...shown,
-    lead: raw.startsWith("\n"),
-    blankAfter: out.stop === void 0 && /\n\s*\n$/.test(raw) && raw.endsWith("\n"),
-    newline: raw.includes("\n")
-  };
+function linksHold(markdown, links) {
+  if (!markdown.includes(ARTIFACT_MARK)) return true;
+  return !links.linked?.value && !(links.hyperlinks !== false && hasIssueRef(markdown));
 }
-function fits(visible, width, partial) {
-  let at = 0;
-  for (const line of visible.text.split("\n")) {
-    if (LEADING_SPACE.test(line) && !(textWidth(line) >= 0 && textWidth(line) <= width)) {
-      if (!partial) return null;
-      return { ...visible, ...cutPartial(visible, visible.stop ?? Infinity, at === 0 ? 0 : at) };
-    }
-    at += line.length + 1;
-  }
-  return visible;
+var LEADING_SPACE = / {2}|(?:^|\n) /;
+function cutPartial(visible, stop, at = visible.text.length) {
+  let end = at;
+  while (end > 0 && visible.text[end - 1] !== " " && visible.text[end - 1] !== "\n") end--;
+  if (end > 0) end--;
+  for (let i2 = end; i2 < visible.text.length; i2++) if (visible.source[i2] >= 0) stop = Math.min(stop, visible.source[i2]);
+  return { text: visible.text.slice(0, end), source: visible.source.slice(0, end), stop };
 }
-function itemText(item, raw) {
-  const lines2 = item.text.split("\n");
-  const rawLines = raw.text.split("\n");
-  if (lines2.length > rawLines.length) return null;
-  const map = [];
-  let rawAt = 0;
-  for (const [k, line] of lines2.entries()) {
-    const rawLine = rawLines[k];
-    if (!rawLine.endsWith(line)) return null;
-    const start = rawAt + rawLine.length - line.length;
-    for (let i2 = 0; i2 < line.length; i2++) map.push(raw.map[start + i2]);
-    if (k < lines2.length - 1) map.push(raw.map[rawAt + rawLine.length] ?? -1);
-    rawAt += rawLine.length + 1;
-  }
-  return { text: item.text, map };
-}
-function endsInBlank(item) {
-  const last = item.tokens.at(-1);
-  if (last?.type === "space") return true;
-  if (last?.type === "list") {
-    const inner = last.items.at(-1);
-    return inner ? endsInBlank(inner) : false;
-  }
-  return false;
-}
-function markerOf(depth, number, first, last) {
-  if (depth === 1 && first >= 1) return `${letters(number)}.`;
-  if (depth === 2 && first >= 1 && last <= 3999) return `${roman(number)}.`;
-  return `${number}.`;
-}
-function letters(n) {
-  let out = "";
-  while (n > 0) {
-    n -= 1;
-    out = String.fromCharCode(97 + n % 26) + out;
-    n = Math.floor(n / 26);
-  }
-  return out;
-}
-function roman(n) {
-  let out = "";
-  for (const [value, digits2] of ROMAN) while (n >= value) out += digits2, n -= value;
-  return out;
-}
-function textWidthOf(text) {
-  let cells2 = 0;
-  for (const char of text) cells2 += Math.max(0, codeWidth(char.codePointAt(0)));
-  return cells2;
-}
-// core/src/layout/heading.ts
-function drawHeading(markdown, width, mode = {}, partial = false) {
-  const visible = visibleHeading(markdown, mode, partial);
-  if (!visible || !(width >= 1)) return null;
-  const canvas = new Canvas(width, mode.emojiSequences === true, partial);
-  return canvas.draw(visible, 0, 0, width) || canvas.stop < Infinity ? canvas : null;
-}
-function visibleHeading(markdown, mode = {}, partial = false) {
+function visibleProse(markdown, mode = {}, partial = false) {
+  const asWritten = !MARKDOWN_LIKE.test(markdown) && !markdown.includes("&nbsp;");
   const cut = unfollowableFrom(markdown);
-  if (cut !== void 0) {
-    if (!partial || cut === 0) return null;
-    const before = visibleHeading(markdown.slice(0, cut - 1), mode, true);
-    return before && { ...before, stop: Math.min(before.stop ?? Infinity, cut) };
-  }
+  if (cut === void 0) return visibleOf(markdown, mode, partial, asWritten, markdown);
+  if (!partial) return null;
+  const before = visibleOf(markdown.slice(0, cut), mode, true, asWritten, markdown);
+  return before && { ...before, stop: Math.min(before.stop ?? Infinity, cut) };
+}
+function visibleOf(markdown, mode, partial, asWritten, whole) {
   const links = { hyperlinks: mode.hyperlinks, linked: { value: false } };
-  let tokens;
-  try {
-    tokens = marked2.lexer(markdown);
-  } catch {
-    return null;
-  }
-  const heading2 = tokens[0];
-  if (heading2?.type !== "heading") return null;
-  const trailing = tokens.slice(1).some((token2) => token2.type !== "space");
-  if (trailing && !partial) return null;
-  const { text, raw } = heading2;
-  if (!markdown.startsWith(raw) || text === "") return null;
-  const at = /^ {0,3}(?:#{1,6}[ \t]+)?/.exec(raw)[0].length;
-  if (!raw.startsWith(text, at)) return null;
   const out = { text: "", source: [] };
-  const followed = inline2(out, heading2.tokens, text, at, false, links);
-  if (!followed && !(partial && out.stop !== void 0) || !linksHold(markdown, links)) return null;
-  const kept = followed ? out.text.trimEnd().length : out.text.length;
-  let visible = { text: out.text.slice(0, kept), source: out.source.slice(0, kept) };
-  if (!followed) visible = cutPartial(visible, out.stop);
-  if (followed && visible.text === "" || visible.text.startsWith("\n")) return null;
+  if (asWritten) {
+    emit(out, markdown, 0);
+  } else {
+    let tokens;
+    try {
+      tokens = marked2.lexer(markdown);
+    } catch {
+      return null;
+    }
+    let at = 0;
+    for (const token2 of tokens) {
+      const from = markdown.indexOf(token2.raw, at);
+      if (from !== at) return null;
+      if (token2.type === "space") {
+        out.text += "\n";
+        out.source.push(-1);
+      } else if (token2.type === "paragraph") {
+        const paragraph2 = token2;
+        if (!markdown.startsWith(paragraph2.text, at)) return null;
+        if (!inline2(out, paragraph2.tokens, paragraph2.text, at, false, links)) {
+          if (!partial || out.stop === void 0) return null;
+          break;
+        }
+        out.text += "\n";
+        out.source.push(-1);
+      } else {
+        if (!partial) return null;
+        out.stop = at;
+        break;
+      }
+      at += token2.raw.length;
+    }
+    if (out.stop === void 0 && at !== markdown.length) return null;
+  }
+  if (!linksHold(whole, links)) return null;
+  const lead = /^\n*/.exec(out.text)[0].length;
+  const kept = out.text.slice(lead).trimEnd().length;
+  let visible = { text: out.text.slice(lead, lead + kept), source: out.source.slice(lead, lead + kept) };
+  if (out.stop !== void 0) visible = cutPartial(visible, out.stop);
   const space = LEADING_SPACE.exec(visible.text);
   if (space) {
     if (!partial) return null;
     visible = cutPartial(visible, visible.stop ?? Infinity, space.index + 1);
   }
-  return trailing && visible.stop === void 0 ? { ...visible, stop: raw.length } : visible;
+  return visible;
 }
-// core/src/layout/quote.ts
-var INNER_SPACES = /\S {2}/;
-function drawQuote(markdown, width, mode = {}, partial = false) {
-  if (!(width > QUOTE_TEXT)) return null;
-  const upTo = (offset) => {
-    const cut = markdown.lastIndexOf("\n", offset - 1) + 1;
-    if (!partial || cut <= 0 || cut >= markdown.length) return null;
-    const canvas2 = drawQuote(markdown.slice(0, cut - 1), width, mode, true);
-    canvas2?.halt(cut);
-    return canvas2;
-  };
-  const unfollowed = unfollowableFrom(markdown);
-  if (unfollowed !== void 0) return upTo(unfollowed);
-  const lexed = markdown.endsWith("\n") ? markdown : markdown + "\n";
-  let tokens;
-  try {
-    tokens = marked2.lexer(lexed);
-  } catch {
-    return null;
-  }
-  const quote = tokens[0];
-  if (quote?.type !== "blockquote" || !lexed.startsWith(quote.raw)) return null;
-  if (tokens.slice(1).some((token2) => token2.type !== "space")) return upTo(quote.raw.length);
-  const raw = { text: lexed, map: Array.from({ length: lexed.length }, (_, k) => k) };
-  const links = { hyperlinks: mode.hyperlinks, linked: { value: false } };
-  const failed = { at: Infinity };
-  const inner = quoteText(quote, raw, 0, 0, links, failed);
-  if (!inner) return failed.at < Infinity ? upTo(failed.at) : null;
-  if (!linksHold(markdown, links)) return null;
-  const lead = /^\n*/.exec(inner.text)[0].length;
-  const kept = inner.text.slice(lead).trimEnd().length;
-  const visible = { text: inner.text.slice(lead, lead + kept), source: inner.source.slice(lead, lead + kept) };
-  if (visible.text === "") return null;
-  const sequences = mode.emojiSequences === true;
-  let at = 0;
-  for (const line of visible.text.split("\n")) {
-    const cells2 = textWidth(line, sequences);
-    if (INNER_SPACES.test(line) && !(cells2 >= 0 && cells2 <= width - QUOTE_TEXT)) {
-      const from = visible.source.slice(at, at + line.length).find((offset) => offset >= 0);
-      return from === void 0 ? null : upTo(from);
-    }
-    at += line.length + 1;
-  }
-  const canvas = new Canvas(width, sequences, partial);
-  if (!canvas.draw(visible, 0, QUOTE_TEXT, width - QUOTE_TEXT) && canvas.stop === Infinity) return null;
-  for (let row = 0; row < canvas.rows; row++) canvas.put(QUOTE_BAR, row, 0);
-  return canvas;
+function emit(out, text, offset) {
+  out.text += text;
+  for (let i2 = 0; i2 < text.length; i2++) out.source.push(offset + i2);
 }
-var Text = class {
-  text = "";
-  source = [];
-  add(text, source = -1) {
-    this.text += text;
-    for (let i2 = 0; i2 < text.length; i2++) this.source.push(source < 0 ? -1 : source + i2);
-    return this;
-  }
-  append(other2) {
-    this.text += other2.text;
-    this.source.push(...other2.source);
-    return this;
-  }
-  /** Splits at newlines, as the engine's `split("\n")` does. */
-  lines() {
-    const out = [];
-    let at = 0;
-    for (const line of this.text.split("\n")) {
-      out.push({ text: line, source: this.source.slice(at, at + line.length) });
-      at += line.length + 1;
-    }
-    return out;
-  }
-};
-function quoteText(quote, raw, at, depth, links, failed = { at: Infinity }) {
-  if (depth >= MAX_NESTING) return null;
-  const inner = stripQuote(raw, at, quote);
-  if (!inner) {
-    const lines2 = quote.raw.split("\n");
-    const lazy = lines2.findIndex((line, k) => k > 0 && line.trim() !== "" && !/^ {0,3}>/.test(line));
-    if (lazy > 0) failed.at = Math.min(failed.at, raw.map[at + lines2.slice(0, lazy).join("\n").length + 1] ?? Infinity);
-    return null;
-  }
-  const out = new Text();
-  let from = 0;
-  const fail2 = (offset) => {
-    if (failed.at === Infinity) failed.at = inner.map[offset] ?? Infinity;
-    return null;
-  };
-  for (const token2 of quote.tokens) {
-    const start = inner.text.indexOf(token2.raw, from);
-    if (start < 0 || /\S/.test(inner.text.slice(from, start))) return fail2(from);
-    const drawn = blockText2(token2, inner, start, depth, links, failed);
-    if (!drawn) return fail2(start);
-    out.append(drawn);
-    from = start + token2.raw.length;
-  }
-  return /\S/.test(inner.text.slice(from)) ? fail2(from) : out;
-}
-function stripQuote(raw, at, quote) {
-  if (!raw.text.startsWith(quote.raw, at)) return null;
-  let text = "";
-  const map = [];
-  let offset = at;
-  for (const [k, line] of quote.raw.split("\n").entries()) {
-    if (k > 0) {
-      text += "\n";
-      map.push(raw.map[offset - 1] ?? -1);
-    }
-    const marker = /^ {0,3}>[ \t]?/.exec(line)?.[0].length ?? 0;
-    text += line.slice(marker);
-    for (let i2 = marker; i2 < line.length; i2++) map.push(raw.map[offset + i2] ?? -1);
-    offset += line.length + 1;
-  }
-  if (text === quote.text) return { text, map };
-  return text.endsWith("\n") && text.slice(0, -1) === quote.text ? { text: quote.text, map: map.slice(0, -1) } : null;
-}
-function blockText2(token2, owner, at, depth, links, failed) {
-  switch (token2.type) {
-    case "space":
-      return new Text().add("\n");
-    case "paragraph":
-    case "heading": {
-      const block2 = token2;
-      const start = token2.type === "heading" ? at + /^ {0,3}(?:#{1,6}[ \t]+)?/.exec(block2.raw)[0].length : at;
-      if (!owner.text.startsWith(block2.text, start) || block2.text === "") return null;
-      const drawn = inlineText2(block2.tokens, block2.text, start, owner, false, links, failed);
-      return drawn ? drawn.add(token2.type === "heading" ? "\n\n" : "\n") : null;
-    }
-    case "blockquote": {
-      const inner = quoteText(token2, owner, at, depth + 1, links, failed);
-      if (!inner) return null;
-      const out = new Text();
-      for (const [k, line] of inner.lines().entries()) {
-        if (k > 0) out.add("\n");
-        if (line.text.trim() !== "") out.add(QUOTE_BAR + " ");
-        out.append(line);
-      }
-      return out;
-    }
-    case "list":
-      return listText(token2, { text: token2.raw, map: owner.map.slice(at, at + token2.raw.length) }, 0, "", links, failed);
-    default:
-      return null;
-  }
-}
-function inlineText2(tokens, src, at, owner, glue, links, failed) {
-  const drawn = { text: "", source: [] };
-  if (!inline2(drawn, tokens, src, at, glue, links)) {
-    if (failed && failed.at === Infinity && drawn.stop !== void 0) failed.at = owner.map[drawn.stop] ?? Infinity;
-    return null;
-  }
-  const out = new Text();
-  out.text = drawn.text;
-  out.source = drawn.source.map((offset) => offset < 0 ? -1 : owner.map[offset] ?? -1);
-  return out;
-}
-function listText(list3, raw, depth, indent, links, failed) {
-  if (depth >= MAX_NESTING || list3.items.length === 0 || list3.items.length > MAX_ITEMS2) return null;
-  const first = list3.start === "" || list3.start === void 0 ? 1 : Number(list3.start);
-  const last = first + list3.items.length - 1;
-  const out = new Text();
-  let at = 0;
-  for (const [u, item] of list3.items.entries()) {
-    if (!raw.text.startsWith(item.raw, at)) return null;
-    const marker = list3.ordered ? markerOf(depth, first + u, first, last) : "-";
-    const drawn = itemOf(item, { text: item.raw, map: raw.map.slice(at, at + item.raw.length) }, marker, depth, indent, links, failed);
-    if (!drawn) return null;
-    out.append(drawn);
-    at += item.raw.length;
-  }
-  return /^\s*$/.test(raw.text.slice(at)) ? out : null;
-}
-function itemOf(item, raw, marker, depth, indent, links, failed) {
-  if (item.task) return null;
-  const text = itemText(item, raw);
-  if (!text) return null;
-  const hang = indent + " ".repeat(textWidthOf(marker) + 1);
-  const nested = " ".repeat(Math.min(hang.length, MAX_INDENT2));
-  const tokens = item.tokens.slice(Math.max(0, item.tokens.findIndex((token2) => token2.type !== "space")));
-  if (tokens[0]?.type !== "text") return null;
-  const out = new Text();
-  let opened = false;
+function inline2(out, tokens, src, offset, glue = false, links = {}) {
   let at = 0;
   for (const token2 of tokens) {
-    if (token2.type === "space") {
-      out.add("\n");
-    } else if (token2.type === "list") {
-      const list3 = token2;
-      if (list3.ordered && list3.items.every((one) => one.tokens.length === 0)) return null;
-      const start = text.text.indexOf(list3.raw, at);
-      if (start < 0) return null;
-      const drawn = listText(list3, { text: list3.raw, map: text.map.slice(start, start + list3.raw.length) }, depth + 1, nested, links, failed);
-      if (!drawn) return null;
-      out.append(drawn);
-      at = start + list3.raw.length;
-    } else if (token2.type === "text") {
-      const run2 = token2;
-      const start = text.text.indexOf(run2.text, at);
-      if (start < 0 || !run2.tokens) return null;
-      const drawn = inlineText2(run2.tokens, run2.text, start, text, true, links, failed);
-      if (!drawn) return null;
-      for (const [k, line] of drawn.add("\n").lines().entries()) {
-        if (k > 0) out.add("\n");
-        if (k === 0) out.add(opened ? hang : `${indent}${marker} `);
-        else if (line.text !== "") out.add(hang);
-        out.append(line);
+    if (!src.startsWith(token2.raw, at)) return stopAt(out, out.text.length, offset + at);
+    const base = offset + at;
+    const drawn = out.text.length;
+    if (!inlineToken(out, token2, base, glue, links)) return stopAt(out, drawn, base);
+    at += token2.raw.length;
+  }
+  return at === src.length || stopAt(out, out.text.length, offset + at);
+}
+function stopAt(out, drawn, offset) {
+  out.text = out.text.slice(0, drawn);
+  out.source.length = drawn;
+  out.stop = Math.min(out.stop ?? Infinity, offset);
+  return false;
+}
+function inlineToken(out, token2, base, glue, links) {
+  {
+    switch (token2.type) {
+      case "text": {
+        const text = token2;
+        if (text.tokens) return false;
+        if (text.text !== text.raw) return false;
+        if (links.inside) {
+          emit(out, text.raw, base);
+          break;
+        }
+        const run2 = out.text.length;
+        if (text.escaped === false) {
+          let last = 0;
+          for (const match of text.raw.matchAll(NBSP_ENTITY)) {
+            emit(out, text.raw.slice(last, match.index), base + last);
+            out.text += " ";
+            out.source.push(base + match.index);
+            last = match.index + match[0].length;
+          }
+          emit(out, text.raw.slice(last), base + last);
+        } else {
+          emit(out, text.raw, base);
+        }
+        if (glue) {
+          const drawn = out.text.slice(run2);
+          if (links.hyperlinks !== false && !refGlueAgrees(drawn, GLUE)) return false;
+          out.text = out.text.slice(0, run2) + drawn.replace(GLUE, "\u00A0$1");
+        }
+        break;
       }
-      opened = true;
-      at = start + run2.text.length;
-    } else {
-      const start = text.text.indexOf(token2.raw.trimStart(), at);
-      if (failed && failed.at === Infinity) failed.at = text.map[start < 0 ? at : start] ?? Infinity;
-      return null;
+      case "escape": {
+        const escape2 = token2;
+        if (escape2.raw.length !== escape2.text.length + 1 || !escape2.raw.endsWith(escape2.text)) return false;
+        emit(out, escape2.text, base + 1);
+        break;
+      }
+      case "codespan": {
+        const code = token2;
+        out.text += code.text;
+        for (let i2 = 0; i2 < code.text.length; i2++) out.source.push(-1);
+        break;
+      }
+      case "em":
+      case "strong":
+      case "del": {
+        const styled = token2;
+        const lead = styled.raw.indexOf(styled.text);
+        const trail = styled.raw.length - lead - styled.text.length;
+        if (lead < 1 || lead !== trail) return false;
+        if (!inline2(out, styled.tokens, styled.text, base + lead, glue, links)) return false;
+        break;
+      }
+      case "link": {
+        const link2 = token2;
+        const label = (into, inner, text, at) => inline2(into, inner, text, at, false, { ...links, inside: true });
+        if (!drawLink(out, link2, base, links, label)) return false;
+        break;
+      }
+      case "br":
+        out.text += "\n";
+        out.source.push(-1);
+        break;
+      default:
+        return false;
     }
   }
-  return out;
+  return true;
 }
-// core/src/layout/table.ts
-function run(text, source = -1) {
-  return { text, source: Array.from({ length: text.length }, () => source) };
-}
-function concat(...runs) {
-  return { text: runs.map((one) => one.text).join(""), source: runs.flatMap((one) => one.source) };
-}
-function slice(of, start, end = of.text.length) {
-  return { text: of.text.slice(start, end), source: of.source.slice(start, end) };
-}
-function trim(of) {
-  const start = of.text.length - of.text.trimStart().length;
-  return slice(of, start, start + of.text.trim().length);
-}
-function wrapCell(text, width, hard, sequences) {
-  const trimmed2 = slice(text, 0, text.text.trimEnd().length);
-  if (trimmed2.text === "") return [{ units: [], width: 0 }];
-  const wrapped = wrapLine(trimmed2.text, width, hard, sequences);
-  if (!wrapped) return null;
-  const rows = Array.from({ length: wrapped.rows }, () => ({ units: [], width: 0 }));
-  const shifted = new Uint8Array(wrapped.rows);
-  for (let i2 = 0; i2 < trimmed2.text.length; i2++) if (wrapped.hidden[i2]) shifted[wrapped.row[i2]] = 1;
-  for (let i2 = 0; i2 < trimmed2.text.length; i2++) {
-    const row = rows[wrapped.row[i2]];
-    const col = wrapped.hidden[i2] ? 0 : wrapped.col[i2] + shifted[wrapped.row[i2]];
-    const cells2 = wrapped.cells[i2];
-    row.units.push({ unit: trimmed2.text[i2], source: trimmed2.source[i2], col, cells: cells2 });
-    row.width += Math.max(0, cells2);
+function proseBlocks(markdown) {
+  if (!MARKDOWN_LIKE.test(markdown) && !markdown.includes("&nbsp;")) {
+    return markdown.trim() === "" ? [] : [{ start: 0, end: markdown.length, paragraph: true }];
   }
-  const kept = rows.filter((row) => row.units.length > 0);
-  return kept.length > 0 ? kept : [{ units: [], width: 0 }];
-}
-function rowRun(row) {
-  return { text: row.units.map((one) => one.unit).join(""), source: row.units.map((one) => one.source) };
-}
-function drawTable(markdown, columns, proseWidth = columns - REPLY_INDENT, mode = {}) {
-  if (unfollowable(markdown) || !(columns >= 1) || !(proseWidth >= 1)) return null;
   let tokens;
   try {
     tokens = marked2.lexer(markdown);
   } catch {
     return null;
   }
-  const links = { hyperlinks: mode.hyperlinks, linked: { value: false } };
-  const sequences = mode.emojiSequences === true;
-  const canvas = new Canvas(columns, sequences);
+  const blocks = [];
+  let block2;
+  const close = () => {
+    if (!block2) return;
+    const types = block2.types.join(",");
+    blocks.push({
+      start: block2.start,
+      end: block2.end,
+      paragraph: types === "paragraph",
+      .../^(?:paragraph,)?list(?:,list)*$/.test(types) ? { list: true } : {},
+      ...types === "blockquote" ? { quote: true } : {},
+      ...types === "heading" ? { heading: true } : {},
+      .../^(?:paragraph,)?table$/.test(types) ? { table: true } : {}
+    });
+    block2 = void 0;
+  };
   let at = 0;
-  let table2;
-  let top = 0;
-  for (const token2 of tokens) {
+  for (const [k, token2] of tokens.entries()) {
+    if (k === tokens.length - 1 && token2.raw === markdown.slice(at) + "\n") token2.raw = markdown.slice(at);
     if (!markdown.startsWith(token2.raw, at)) return null;
-    if (token2.type === "paragraph" && at === 0) {
-      const visible = visibleProse(token2.raw, mode);
-      if (!visible) return null;
-      const rows = drawProse(canvas, visible, proseWidth);
-      if (rows === null) return null;
-      top = rows + 1;
-    } else if (token2.type === "table" && !table2) {
-      table2 = token2;
-      if (!drawTableToken(canvas, table2, markdown.slice(at, at + token2.raw.length), at, top, columns, links, sequences)) return null;
-    } else if (token2.type !== "space" || !table2) {
-      return null;
+    if (token2.type === "space" && /\n[ \t]*\n/.test(markdown.slice(Math.max(0, at - 1), at + token2.raw.length))) {
+      close();
+    } else if (token2.type !== "space" || block2) {
+      if (!block2) block2 = { start: at, end: at, types: [] };
+      const body = token2.raw.replace(/(?:\r?\n[ \t]*)+$/, "");
+      block2.end = at + (token2.type === "space" ? token2.raw.length : body.length);
+      if (token2.type !== "space") block2.types.push(token2.type);
+      if (token2.type !== "space" && /\n[ \t]*\n[ \t]*$/.test(token2.raw)) close();
     }
     at += token2.raw.length;
   }
-  return table2 && at === markdown.length && linksHold(markdown, links) ? canvas : null;
+  if (at !== markdown.length) return null;
+  close();
+  return blocks;
 }
-function drawProse(canvas, visible, width, top = 0) {
-  return canvas.draw(visible, top, 0, width) ? canvas.rows - top : null;
+// core/src/layout/width.ts
+function within(ranges, code) {
+  let lo = 0;
+  let hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    const [from, to] = ranges[mid];
+    if (code < from) hi = mid - 1;
+    else if (code > to) lo = mid + 1;
+    else return true;
+  }
+  return false;
 }
-function splitCells2(line, base, count) {
-  const segments = [];
-  let start = 0;
-  for (let i2 = 0; i2 < line.length; i2++) {
-    if (line[i2] !== "|") continue;
-    let escaped = false;
-    for (let k = i2 - 1; k >= 0 && line[k] === "\\"; k--) escaped = !escaped;
-    if (escaped) continue;
-    segments.push([start, i2]);
-    start = i2 + 1;
-  }
-  segments.push([start, line.length]);
-  const blank2 = ([from, to]) => line.slice(from, to).trim() === "";
-  if (segments.length > 0 && blank2(segments[0])) segments.shift();
-  if (segments.length > 0 && blank2(segments.at(-1))) segments.pop();
-  if (count !== void 0) {
-    if (segments.length > count) segments.splice(count);
-    while (segments.length < count) segments.push([line.length, line.length]);
-  }
-  return segments.map(([from, to]) => {
-    const raw = line.slice(from, to);
-    const lead = raw.length - raw.trimStart().length;
-    const end = from + lead + raw.trim().length;
-    let text = "";
-    const map = [];
-    for (let k = from + lead; k < end; k++) {
-      if (line[k] === "\\" && line[k + 1] === "|" && k + 1 < end) {
-        text += "|";
-        map.push(base + k + 1);
-        k += 1;
-      } else {
-        text += line[k];
-        map.push(base + k);
-      }
+function codeWidth(code) {
+  if (within(NARROW, code)) return 1;
+  if (within(COMBINING, code)) return 0;
+  if (within(EMOJI, code)) return 2;
+  return -1;
+}
+var isTone = (code) => code >= 127995 && code <= 127999;
+var isRegional = (code) => code >= 127462 && code <= 127487;
+var isKeycapBase = (code) => code === 35 || code === 42 || code >= 48 && code <= 57;
+var unitsOf = (code) => code > 65535 ? 2 : 1;
+function charAt(text, at, sequences = false) {
+  const code = text.codePointAt(at);
+  let end = at + unitsOf(code);
+  let width = codeWidth(code);
+  if (sequences) {
+    const cluster = emojiEnd(text, at);
+    if (cluster > end) {
+      end = cluster;
+      width = 2;
     }
-    return { text, map };
-  });
+  }
+  while (end < text.length && within(COMBINING, text.charCodeAt(end))) {
+    if (width === 2 || code === 32) width = -1;
+    end += 1;
+  }
+  return { start: at, end, width };
 }
-function codePipesAlike(line) {
-  if (!line.includes("`") || !line.includes("|")) return true;
-  const starts = [];
-  const lengths = [];
-  for (let c = 0; c < line.length; ) {
-    if (line[c] !== "`") {
-      c++;
-      continue;
-    }
-    let d = 0;
-    while (line[c + d] === "`") d++;
-    starts.push(c);
-    lengths.push(d);
-    c += d;
+function emojiEnd(text, at) {
+  const code = text.codePointAt(at);
+  const next = at + unitsOf(code);
+  if (isRegional(code)) return isRegional(text.codePointAt(next) ?? 0) ? next + 2 : at;
+  if (isKeycapBase(code)) return text.charCodeAt(next) === VS16 && text.charCodeAt(next + 1) === KEYCAP ? next + 2 : at;
+  let end = emojiElement(text, at, true);
+  while (end > at && text.charCodeAt(end) === ZWJ) {
+    const joined = emojiElement(text, end + 1, false);
+    if (joined < 0) break;
+    end = joined;
   }
-  const closes = new Array(starts.length).fill(-1);
-  const next = /* @__PURE__ */ new Map();
-  for (let c = starts.length - 1; c >= 0; c--) {
-    const found = next.get(lengths[c]);
-    if (found !== void 0) closes[c] = found;
-    next.set(lengths[c], c);
-  }
-  for (let p = 0; p < starts.length; ) {
-    const close = closes[p];
-    if (close === -1) {
-      p++;
-      continue;
-    }
-    const code = line.slice(starts[p] + lengths[p], starts[close]);
-    for (const pipe of code.matchAll(/(\\*)\|/g)) if (pipe[1].length % 2 === 0) return false;
-    p = close + 1;
-  }
-  return true;
+  return Math.max(at, end);
 }
-function engineCells(line) {
-  const cells2 = line.replace(/\|/g, (_match, offset, all) => {
-    let escaped = false;
-    for (let p = offset - 1; p >= 0 && all[p] === "\\"; p--) escaped = !escaped;
-    return escaped ? "|" : " |";
-  }).split(/ \|/);
-  if (!cells2[0]?.trim()) cells2.shift();
-  if (cells2.length > 0 && !cells2.at(-1)?.trim()) cells2.pop();
+function emojiElement(text, at, first) {
+  const code = text.codePointAt(at);
+  if (code === void 0) return -1;
+  const end = at + unitsOf(code);
+  const pictured = within(EMOJI, code);
+  if (!pictured && !within(TEXT_EMOJI, code)) return -1;
+  const next = text.codePointAt(end) ?? 0;
+  if (next === VS16) return end + 1;
+  if (isTone(next) && within(MODIFIER_BASE, code)) return end + 2;
+  return pictured || !first ? end : -1;
+}
+function charsOf(text, sequences = false) {
+  const chars = [];
+  for (let at = 0; at < text.length; ) {
+    const char = charAt(text, at, sequences);
+    chars.push(char);
+    at = char.end;
+  }
+  return chars;
+}
+function textWidth(text, sequences = false) {
+  let cells2 = 0;
+  for (const char of charsOf(text, sequences)) {
+    if (char.width < 0) return -1;
+    cells2 += char.width;
+  }
   return cells2;
 }
-function drawTableToken(canvas, table2, raw, offset, top, columns, links, sequences) {
-  const lines2 = raw.split("\n");
-  if (!lines2.every(codePipesAlike)) return false;
-  for (let n = 2; n < lines2.length; n++) {
-    const cells2 = engineCells(lines2[n]);
-    for (let s = table2.header.length; s < cells2.length; s++) if (cells2[s].trim()) return false;
-  }
-  if (table2.rows.length > MAX_ROWS || table2.header.length === 0) return false;
-  const starts = [];
-  for (let k = 0, p = offset; k < lines2.length; k++) {
-    starts.push(p);
-    p += lines2[k].length + 1;
-  }
-  const rowLines = lines2.slice(2);
-  while (rowLines.length > 0 && rowLines.at(-1).trim() === "") rowLines.pop();
-  if (rowLines.length !== table2.rows.length) return false;
-  const cellRun = (cell, split2) => {
-    if (!split2 || split2.text !== cell.text) return null;
-    const out = { text: "", source: [] };
-    if (!inline2(out, cell.tokens, cell.text, 0, false, links)) return null;
-    if (textWidth(out.text, sequences) < 0 || /^\s|\s$/.test(out.text)) return null;
-    return { text: out.text, source: out.source.map((k) => k < 0 ? -1 : split2.map[k] ?? -1) };
-  };
-  const headerSplit = splitCells2(lines2[0], starts[0]);
-  if (headerSplit.length !== table2.header.length) return false;
-  const header = [];
-  for (const [c, cell] of table2.header.entries()) {
-    const drawn = cellRun(cell, headerSplit[c]);
-    if (!drawn) return false;
-    header.push(drawn);
-  }
-  const body = [];
-  for (const [r, row] of table2.rows.entries()) {
-    const split2 = splitCells2(rowLines[r], starts[r + 2], table2.header.length);
-    const cells2 = [];
-    for (const [c, cell] of row.entries()) {
-      const drawn = cellRun(cell, split2[c]);
-      if (!drawn) return false;
-      cells2.push(drawn);
-    }
-    if (cells2.length !== table2.header.length) return false;
-    body.push(cells2);
-  }
-  const count = header.length;
-  const all = [header, ...body];
-  const widest = (text) => Math.max(MIN_COLUMN, ...text.split(/\s+/).filter((word) => word.length > 0).map((word) => textWidth(word, sequences)));
-  const least = header.map((_, c) => Math.max(...all.map((cells2) => widest(cells2[c].text))));
-  const ideal = header.map((_, c) => Math.max(...all.map((cells2) => Math.max(textWidth(cells2[c].text, sequences), MIN_COLUMN))));
-  const room = Math.max(columns - (1 + count * 3) - TABLE_MARGIN, count * MIN_COLUMN);
-  const sumLeast = least.reduce((a, b) => a + b, 0);
-  const sumIdeal = ideal.reduce((a, b) => a + b, 0);
-  let hard = false;
-  let widths;
-  if (sumIdeal <= room) {
-    widths = ideal;
-  } else if (sumLeast <= room) {
-    const extra = room - sumLeast;
-    const wants = ideal.map((w, c) => w - least[c]);
-    const total = wants.reduce((a, b) => a + b, 0);
-    widths = least.map((w, c) => total === 0 ? w : w + Math.floor(wants[c] / total * extra));
-  } else {
-    hard = true;
-    const scale2 = room / sumLeast;
-    widths = least.map((w) => Math.max(Math.floor(w * scale2), MIN_COLUMN));
-  }
-  const wrapped = [];
-  for (const cells2 of all) {
-    const rows = [];
-    for (const [c, cell] of cells2.entries()) {
-      const cellRows = wrapCell(cell, widths[c], hard, sequences);
-      if (!cellRows) return false;
-      rows.push(cellRows);
-    }
-    wrapped.push(rows);
-  }
-  const tall = Math.max(1, ...wrapped.flatMap((rows) => rows.map((cell) => cell.length)));
-  if (tall > MAX_CELL_ROWS) return drawList2(canvas, header, body, top, columns, sequences);
-  const border = (left, joint, right) => {
-    let text = left;
-    for (const [c, w] of widths.entries()) text += "─".repeat(w + 2) + (c < count - 1 ? joint : right);
-    return { put: [[text, 0]], units: [], width: textWidth(text) };
-  };
-  const rowOfLines = (rows, isHeader) => {
-    const height2 = Math.max(1, ...rows.map((cell) => cell.length));
-    const out = [];
-    for (let g = 0; g < height2; g++) {
-      const line = { put: [["│", 0]], units: [], width: 0 };
-      let x2 = 1;
-      for (const [c, cell] of rows.entries()) {
-        const k = g - Math.floor((height2 - cell.length) / 2);
-        const content = k >= 0 && k < cell.length ? cell[k] : { units: [], width: 0 };
-        const pad2 = Math.max(0, widths[c] - content.width);
-        const align = isHeader ? "center" : table2.align[c] ?? "left";
-        const left = align === "center" ? Math.floor(pad2 / 2) : align === "right" ? pad2 : 0;
-        x2 += 1;
-        for (const one of content.units) line.units.push({ ...one, col: x2 + left + one.col });
-        x2 += content.width + pad2 + 1;
-        line.put.push(["│", x2]);
-        x2 += 1;
-      }
-      line.width = x2;
-      out.push(line);
-    }
-    return out;
-  };
-  const drawnLines = [border("┌", "┬", "┐"), ...rowOfLines(wrapped[0], true), border("├", "┼", "┤")];
-  for (const [r, rows] of wrapped.slice(1).entries()) {
-    drawnLines.push(...rowOfLines(rows, false));
-    if (r < body.length - 1) drawnLines.push(border("├", "┼", "┤"));
-  }
-  drawnLines.push(border("└", "┴", "┘"));
-  if (Math.max(...drawnLines.map((line) => line.width)) > columns - TABLE_MARGIN) return drawList2(canvas, header, body, top, columns, sequences);
-  for (const [k, line] of drawnLines.entries()) {
-    canvas.grow(top + k + 1);
-    for (const [text, col] of line.put) canvas.put(text, top + k, col);
-    for (const one of line.units) canvas.unit(one.unit, one.source, top + k, one.col, true, one.cells);
-  }
-  return true;
-}
-function drawList2(canvas, header, body, top, columns, sequences) {
-  const heads = header.map(trim);
-  const rule = run("─".repeat(Math.max(0, Math.min(columns - 1, RULE_MAX))));
-  const lines2 = [];
-  for (const cells2 of body) {
-    const rowLines = [];
-    for (const [c, cell] of cells2.entries()) {
-      const head = heads[c] ?? EMPTY;
-      if (/\s\s/.test(cell.text)) return false;
-      const text2 = trim({ text: cell.text.replace(/\s/g, " "), source: cell.source });
-      if (head.text === "" && text2.text === "") continue;
-      const first = head.text !== "" ? columns - textWidth(head.text, sequences) - 3 : columns - 1;
-      const rest = columns - 3;
-      const rows2 = wrapCell(text2, Math.max(first, 10), false, sequences);
-      if (!rows2) return false;
-      let parts = rows2.map(rowRun);
-      if (parts.length > 1) {
-        const joined = [];
-        for (const [k, part] of parts.slice(1).entries()) {
-          if (k > 0) joined.push(run(" "));
-          joined.push(trim(part));
-        }
-        const more = wrapCell(concat(...joined), rest, false, sequences);
-        if (!more) return false;
-        parts = [parts[0], ...more.map(rowRun)];
-      }
-      rowLines.push(head.text !== "" ? concat(head, run(": "), parts[0] ?? EMPTY) : parts[0] ?? EMPTY);
-      for (const part of parts.slice(1)) if (part.text.trim() !== "") rowLines.push(part);
-    }
-    if (rowLines.length === 0) continue;
-    if (lines2.length > 0) lines2.push(rule);
-    lines2.push(...rowLines);
-  }
-  const width = columns - REPLY_INDENT;
-  if (width < 1) return false;
-  for (const line of lines2) {
-    if (LEADING_SPACE.test(line.text) && textWidth(line.text.trimEnd(), sequences) > width) return false;
-  }
-  const text = lines2.map((line) => line.text).join("\n");
-  const rows = drawProse(canvas, { text, source: lines2.flatMap((line, k) => k > 0 ? [-1, ...line.source] : line.source) }, width, top);
-  return rows !== null;
-}
-// core/src/layout/blocks.ts
-var BLOCK_ELEMENTS = /* @__PURE__ */ new Set(["table", "blockquote"]);
-var SPLITTABLE = /* @__PURE__ */ new Set(["paragraph", "list", "heading", "code", "table", "blockquote", "hr"]);
-function blockParts(markdown) {
-  const blocks = proseBlocks(markdown);
-  if (!blocks) return null;
-  const parts = [];
-  for (const block2 of blocks) {
-    const gap2 = parts.length > 0;
-    const split2 = block2.paragraph || block2.quote ? null : splitBlock(markdown, block2.start, block2.end);
-    if (split2) {
-      parts.push(...split2.map((part, k) => ({ ...part, ...k === 0 ? { gap: gap2 } : {}, block: block2.start })));
-    } else {
-      const type = block2.paragraph ? "paragraph" : block2.list ? "list" : block2.quote ? "blockquote" : block2.heading ? "heading" : block2.table ? "table" : "block";
-      parts.push({ ...block2, type, gap: gap2, block: block2.start });
-    }
-  }
-  return parts;
-}
-function splitBlock(markdown, start, end) {
-  const source = markdown.slice(start, /^\r?\n/.test(markdown.slice(end)) ? markdown.indexOf("\n", end) + 1 : end);
-  let tokens;
-  try {
-    tokens = marked2.lexer(source);
-  } catch {
-    return null;
-  }
-  const parts = [];
-  let at = 0;
-  for (const token2 of tokens) {
-    if (!source.startsWith(token2.raw, at)) return null;
-    if (!SPLITTABLE.has(token2.type) || token2.type === "code" && token2.text === "") {
-      const last2 = parts.at(-1);
-      if (!last2) return null;
-      last2.end = end;
-      return parts;
-    }
-    const body = token2.raw.replace(/(?:\r?\n[ \t]*)+$/, "");
-    const last = parts.at(-1);
-    if (token2.type === "list" && last?.type === "list") {
-      last.end = start + at + body.length;
-    } else {
-      parts.push({
-        start: start + at,
-        end: start + at + body.length,
-        paragraph: token2.type === "paragraph",
-        ...token2.type === "list" ? { list: true } : {},
-        ...token2.type === "blockquote" ? { quote: true } : {},
-        ...token2.type === "heading" ? { heading: true } : {},
-        ...token2.type === "table" ? { table: true } : {},
-        type: token2.type,
-        gap: last !== void 0 && gapBetween(last.type, token2.type)
-      });
-    }
-    at += token2.raw.length;
-  }
-  if (at !== source.length || parts.length === 0) return null;
-  return parts;
-}
-function gapBetween(before, after) {
-  return before === "heading" || BLOCK_ELEMENTS.has(before) || BLOCK_ELEMENTS.has(after);
-}
-// core/src/layout/index.ts
-function layoutProse(markdown, width, spans = [], mode = {}, partial = false) {
-  const visible = visibleProse(markdown, mode, partial);
-  if (!visible) return null;
-  let { text, source } = visible;
-  let stop = visible.stop ?? Infinity;
-  const rowOf = new Int32Array(text.length);
-  const colOf = new Int32Array(text.length);
-  const lines2 = [];
-  let rows = 0;
-  let lineStart = 0;
-  for (const line of text.split("\n")) {
-    const wrapped = wrapLine(line, width, true, mode.emojiSequences === true, partial);
-    if (!wrapped) return null;
-    const known = wrapped.known ?? line.length;
-    const first = lines2.length;
-    for (let r = 0; r < wrapped.rows; r++) lines2.push("");
-    for (let i2 = 0; i2 < known; i2++) {
-      rowOf[lineStart + i2] = rows + wrapped.row[i2];
-      colOf[lineStart + i2] = wrapped.col[i2];
-      const at = first + wrapped.row[i2];
-      if (!wrapped.hidden[i2]) lines2[at] = lines2[at] + line[i2];
-    }
-    rows += wrapped.rows;
-    if (known < line.length) {
-      for (let i2 = lineStart + known; i2 < text.length; i2++) if (source[i2] >= 0) stop = Math.min(stop, source[i2]);
-      text = text.slice(0, lineStart + known);
-      source = source.slice(0, lineStart + known);
+// core/src/layout/wrap.ts
+function wrapLine(line, columns, hard = true, sequences = false, partial = false) {
+  if (!(columns >= 1)) return null;
+  const row = new Int32Array(line.length);
+  const col = new Int32Array(line.length);
+  const hidden = new Uint8Array(line.length);
+  const cells2 = new Int8Array(line.length).fill(-1);
+  const chars = charsOf(line, sequences);
+  const words2 = [];
+  let first = 0;
+  let width = 0;
+  let known;
+  for (let k = 0; k <= chars.length; k++) {
+    const char = chars[k];
+    if (char === void 0 || char.end - char.start === 1 && line.charCodeAt(char.start) === 32) {
+      words2.push({ first, last: k, width });
+      first = k + 1;
+      width = 0;
+    } else if (char.width < 0) {
+      if (!partial) return null;
+      known = first > 0 ? chars[first - 1].start : 0;
       break;
+    } else {
+      width += char.width;
     }
-    lineStart += line.length + 1;
   }
-  const ends = stop < Infinity ? () => false : (i2) => i2 === text.length - 1;
-  const drawn = drawnRange(source);
-  const places = spans.map((span) => span.end > stop ? null : placeSpan(markdown, span, text, source, rowOf, colOf, width, ends, mode, drawn));
-  return stop < Infinity ? { rows, places, lines: lines2, stop } : { rows, places, lines: lines2 };
-}
-function layoutList(markdown, width, spans = [], mode = {}, partial = false) {
-  return layoutCanvas(markdown, drawList(markdown, width, mode, partial), width, spans, mode);
-}
-function layoutHeading(markdown, width, spans = [], mode = {}, partial = false) {
-  return layoutCanvas(markdown, drawHeading(markdown, width, mode, partial), width, spans, mode);
-}
-function layoutQuote(markdown, width, spans = [], mode = {}, partial = false) {
-  return layoutCanvas(markdown, drawQuote(markdown, width, mode, partial), width, spans, mode);
-}
-function layoutTable(markdown, columns, spans = [], proseWidth = columns - 2, mode = {}) {
-  return layoutCanvas(markdown, drawTable(markdown, columns, proseWidth, mode), columns - 2, spans, mode, () => false);
-}
-function layoutCanvas(markdown, canvas, width, spans, mode, ends = (i2) => canvas?.end[i2] === true) {
-  if (!canvas) return null;
-  const text = canvas.text.join("");
-  const { stop } = canvas;
-  const at = stop < Infinity ? () => false : ends;
-  const drawn = drawnRange(canvas.source);
-  const places = spans.map((span) => span.end > stop ? null : placeSpan(markdown, span, text, canvas.source, canvas.row, canvas.col, width, at, mode, drawn));
-  return stop < Infinity ? { rows: canvas.rows, places, lines: canvas.lines(), stop } : { rows: canvas.rows, places, lines: canvas.lines() };
-}
-function drawnRange(source) {
-  let size = 0;
-  for (const offset of source) if (offset >= size) size = offset + 1;
-  const first = new Int32Array(size).fill(-1);
-  const last = new Int32Array(size).fill(-1);
-  for (let i2 = 0; i2 < source.length; i2++) {
-    const offset = source[i2];
-    if (offset < 0) continue;
-    if (first[offset] < 0) first[offset] = i2;
-    last[offset] = i2;
+  let r = 0;
+  let length4 = 0;
+  let shift = 0;
+  const newRow = () => {
+    r += 1;
+    length4 = 0;
+    shift = 0;
+  };
+  const place = (char) => {
+    for (let i2 = char.start; i2 < char.end; i2++) {
+      row[i2] = r;
+      col[i2] = length4 - shift;
+    }
+    cells2[char.start] = char.width;
+    length4 += char.width;
+  };
+  for (const [index, word] of words2.entries()) {
+    if (index > 0) {
+      const space = chars[word.first - 1].start;
+      row[space] = r;
+      col[space] = length4;
+      cells2[space] = 1;
+      if (length4 >= columns) {
+        newRow();
+        shift = 1;
+        row[space] = r;
+        col[space] = 0;
+        hidden[space] = 1;
+      }
+      length4 += 1;
+    }
+    if (hard && word.width > columns) {
+      const remaining = columns - length4;
+      const breaksHere = 1 + Math.floor((word.width - remaining - 1) / columns);
+      const breaksNext = Math.floor((word.width - 1) / columns);
+      if (breaksNext < breaksHere) newRow();
+      for (let k = word.first; k < word.last; k++) {
+        const char = chars[k];
+        if (char.width > 0 && length4 > 0 && length4 + char.width > columns) newRow();
+        place(char);
+        if (length4 === columns && k + 1 < word.last) newRow();
+      }
+      continue;
+    }
+    if (length4 + word.width > columns && length4 > 0 && word.width > 0) newRow();
+    for (let k = word.first; k < word.last; k++) place(chars[k]);
   }
-  return { first, last };
+  return known === void 0 ? { rows: r + 1, row, col, hidden, cells: cells2 } : { rows: r + 1, row, col, hidden, cells: cells2, known };
 }
-function placeSpan(markdown, span, text, source, rowOf, colOf, width, ends, mode, drawn) {
-  const inside = (i2) => source[i2] >= span.start && source[i2] < span.end;
-  let first = -1;
-  let last = -1;
-  for (let offset = Math.max(0, span.start); offset < Math.min(span.end, drawn.first.length); offset++) {
-    const at = drawn.first[offset];
-    if (at < 0) continue;
-    if (first < 0 || at < first) first = at;
-    if (drawn.last[offset] > last) last = drawn.last[offset];
-  }
-  if (first < 0) return null;
-  for (let i2 = first; i2 <= last; i2++) if (!inside(i2) || rowOf[i2] !== rowOf[first]) return null;
-  let columns = Math.max(0, textWidth(text.slice(first, last + 1), mode.emojiSequences === true));
-  if (span.width !== void 0 && span.width !== columns) {
-    const rest = markdown.slice(source[last] + 1, span.end);
-    if (!ends(last) || span.width < columns || !/^\s*$/.test(rest)) return null;
-    columns = span.width;
-  }
-  if (colOf[first] + columns > width) return null;
-  return { row: rowOf[first], col: colOf[first], columns };
-}
-export{blockParts,layoutHeading,layoutList,layoutProse,layoutQuote,layoutTable,wrapRows};
+export{wrapLine,codeWidth,unfollowableFrom,marked2,linksHold,inline2,cutPartial,LEADING_SPACE,textWidth,unfollowable,visibleProse,proseBlocks,charsOf,engineHyperlinks};

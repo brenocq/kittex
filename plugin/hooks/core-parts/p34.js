@@ -1,2150 +1,1165 @@
-import{NORMAL,DIAGRAM_ENVS2,makeLine,scanInline,restAt,looksLikeFence,findClose,onlySpaceAfter,isListItem,fenceOpen,trimEndLength,displayOpen,standsAlone,startsBlock,endsTable,delimitsTable,closesFence,init_errors,init_engine,__toCommonJS,engine_exports,GlyphError,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES}from'./p33.js';export*from'./p33.js';
-// core/src/scan/scanner.ts
-var Output = class {
-  segments = [];
-  parts = [];
-  textStart = 0;
-  textEnd = 0;
-  text(text, start) {
-    if (text === "") return;
-    if (this.parts.length === 0) this.textStart = start;
-    this.parts.push(text);
-    this.textEnd = start + text.length;
-  }
-  line(line) {
-    this.text(line.raw, line.start);
-  }
-  lines(lines2) {
-    for (const line of lines2) this.line(line);
-  }
-  segment(segment) {
-    if (segment.kind === "text") return this.text(segment.text, segment.start);
-    this.flushText();
-    this.segments.push(segment);
-  }
-  take() {
-    this.flushText();
-    const segments = this.segments;
-    this.segments = [];
-    return segments;
-  }
-  flushText() {
-    if (this.parts.length === 0) return;
-    const text = this.parts.length === 1 ? this.parts[0] : this.parts.join("");
-    this.segments.push({ kind: "text", text, start: this.textStart, end: this.textEnd });
-    this.parts = [];
-  }
+import{u16,shft,wbits,hTree,clim,flt,fdt,hMap,flm,fdm,wbits16,fleb,fdeb,i32,u8,revfl,revfd,slc,err,inflt,SIGNATURE,ImageError,COLOR_TYPES,checkSize,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,imageHeader,decodeJpeg,__kittexLate}from'./p33.js';export*from'./p33.js';
+__kittexLate.et=()=>et;__kittexLate.ln=()=>ln;
+var ln = function(n, l, d) {
+  return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
 };
-function openEnvironment(lines2) {
-  let depth = 0;
-  for (const line of lines2) {
-    depth += line.text.split("\\begin{").length - 1;
-    depth -= line.text.split("\\end{").length - 1;
-  }
-  return depth > 0;
-}
-var Scanner2 = class {
-  constructor(maxHeldLines, diagrams = false, maxDiagramLines = 400) {
-    this.maxHeldLines = maxHeldLines;
-    this.diagrams = diagrams;
-    this.maxDiagramLines = maxDiagramLines;
-  }
-  maxHeldLines;
-  diagrams;
-  maxDiagramLines;
-  state = NORMAL;
-  flags = { prevBlank: true, prevCode: false, inList: false };
-  /** Prose lines of the open paragraph not yet returned. */
-  para = [];
-  /** The paragraph's last line while a paragraph is open (its lines may already be returned). */
-  paraLast = null;
-  /** Display kinds whose openers are ignored on lines starting before the given offset. */
-  ignore = /* @__PURE__ */ new Map();
-  /** Lines waiting to be processed; a display block that gives up pushes its lines back on top. */
-  frames = [];
-  out = new Output();
-  partial = "";
-  offset = 0;
-  /** The start offsets of the lines read as rows of a GFM table (its header included). */
-  rows = /* @__PURE__ */ new Set();
-  /** The table whose rows go on, at its blockquote depth (null outside a table). */
-  table = null;
-  isRow = (line) => this.rows.has(line.start);
-  /** Lines a held block may hold before it is released as text. */
-  holdLimit(st) {
-    const diagram = st.t === "mathfence" ? st.diagram !== void 0 : DIAGRAM_ENVS2.has(st.kind);
-    return diagram ? this.maxDiagramLines : this.maxHeldLines;
-  }
-  push(delta, final) {
-    const text = this.partial + delta;
-    const lines2 = [];
-    let from = 0;
-    for (let nl = text.indexOf("\n"); nl >= 0; nl = text.indexOf("\n", from)) {
-      lines2.push(this.line(text.slice(from, nl + 1)));
-      from = nl + 1;
-    }
-    this.partial = text.slice(from);
-    if (final && this.partial !== "") {
-      lines2.push(this.line(this.partial));
-      this.partial = "";
-    }
-    this.frames.push({ lines: lines2, i: 0 });
-    this.drain();
-    if (final) this.finish();
-    else this.settle();
-    return this.out.take();
-  }
-  line(raw) {
-    const line = makeLine(raw, this.offset);
-    this.offset = line.end;
-    return line;
-  }
-  drain() {
-    while (this.frames.length > 0) {
-      const frame2 = this.frames[this.frames.length - 1];
-      if (frame2.i >= frame2.lines.length) this.frames.pop();
-      else this.process(frame2.lines[frame2.i++]);
-    }
-  }
-  /** End of a streaming batch: return what is settled, release what was held too long. */
-  settle() {
-    const st = this.state;
-    if (st.t === "display" && st.lines.length > this.holdLimit(st)) {
-      this.out.lines(st.lines);
-      this.state = { t: "released", kind: st.kind, depth: st.depth };
-    } else if (st.t === "mathfence" && st.lines.length > this.holdLimit(st)) {
-      this.out.lines(st.lines);
-      this.state = { t: "fence", ch: st.ch, len: st.len, indent: st.indent, depth: st.depth };
-    }
-    if (this.para.length > 0) {
-      const { segments, cut } = scanInline(this.para, true, this.isRow);
-      for (const segment of segments) this.out.segment(segment);
-      let keep = 0;
-      while (keep < this.para.length && this.para[keep].start < cut) keep++;
-      this.para = this.para.slice(keep);
-      if (this.para.length > this.maxHeldLines) this.endParagraph();
-    }
-  }
-  /** End of the input: open display blocks give up, an open math fence is text. */
-  finish() {
-    for (; ; ) {
-      const st = this.state;
-      if (st.t === "display") {
-        this.giveUp(st, Infinity, []);
-        this.drain();
-        continue;
+var lc = function(c) {
+  var s = c.length;
+  while (s && !c[--s])
+    ;
+  var cl = new u16(++s);
+  var cli = 0, cln = c[0], cls = 1;
+  var w = function(v) {
+    cl[cli++] = v;
+  };
+  for (var i2 = 1; i2 <= s; ++i2) {
+    if (c[i2] == cln && i2 != s)
+      ++cls;
+    else {
+      if (!cln && cls > 2) {
+        for (; cls > 138; cls -= 138)
+          w(32754);
+        if (cls > 2) {
+          w(cls > 10 ? cls - 11 << 5 | 28690 : cls - 3 << 5 | 12305);
+          cls = 0;
+        }
+      } else if (cls > 3) {
+        w(cln), --cls;
+        for (; cls > 6; cls -= 6)
+          w(8304);
+        if (cls > 2)
+          w(cls - 3 << 5 | 8208), cls = 0;
       }
-      if (st.t === "mathfence") this.out.lines(st.lines);
-      this.state = NORMAL;
-      break;
+      while (cls--)
+        w(cln);
+      cls = 1;
+      cln = c[i2];
     }
-    this.endParagraph();
   }
-  process(line) {
-    const st = this.state;
-    switch (st.t) {
-      case "fence":
-        if (line.depth < st.depth) break;
-        this.out.line(line);
-        if (this.closesFence(line, st)) this.state = NORMAL;
-        this.after(line);
-        return;
-      case "mathfence":
-        if (line.depth < st.depth) {
-          this.out.lines(st.lines);
-          break;
-        }
-        st.lines.push(line);
-        if (this.closesFence(line, st)) this.closeMathFence(st);
-        this.after(line);
-        return;
-      case "display": {
-        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
-        if (rest !== null && line.blank && !st.lines.at(-1).blank && openEnvironment(st.lines)) {
-          st.lines.push(line);
-          return;
-        }
-        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) return this.giveUp(st, line.start, [line]);
-        const close = findClose(st.kind, rest, 0);
-        if (!close) {
-          st.lines.push(line);
-          return;
-        }
-        if (close.ok && onlySpaceAfter(rest, close.end)) return this.closeDisplay(st, line, close.pos, close.end);
-        return this.giveUp(st, line.end, [line]);
-      }
-      case "released": {
-        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
-        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) break;
-        const close = findClose(st.kind, rest, 0);
-        if (close && !(close.ok && onlySpaceAfter(rest, close.end))) break;
-        this.out.line(line);
-        if (close) this.state = NORMAL;
-        this.after(line);
-        return;
-      }
-      case "normal":
-        break;
-    }
-    this.state = NORMAL;
-    this.normal(line);
-  }
-  normal(line) {
-    const flags = this.flags;
-    const before = { ...flags };
-    this.tableRow(line);
-    if (line.blank) {
-      this.endParagraph();
-      this.out.line(line);
-      this.after(line);
-      return;
-    }
-    const listItem = (line.indent <= 3 || flags.inList) && isListItem(line.body);
-    if (listItem) flags.inList = true;
-    else if (line.indent < 2 && flags.prevBlank) flags.inList = false;
-    if (line.indent >= 4 && !flags.inList && (flags.prevBlank || flags.prevCode)) {
-      this.endParagraph();
-      this.out.line(line);
-      this.after(line, true);
-      return;
-    }
-    if (line.indent <= 3 || flags.inList) {
-      const fence = fenceOpen(line.body.slice(0, trimEndLength(line.body)));
-      if (fence) {
-        this.endParagraph();
-        const common = { ch: fence.ch, len: fence.len, indent: line.indent, depth: line.depth };
-        if (fence.math || this.diagrams && fence.diagram) {
-          this.state = { t: "mathfence", ...common, lines: [line], ...fence.math ? {} : { diagram: fence.diagram } };
-        } else {
-          this.state = { t: "fence", ...common };
-          this.out.line(line);
-        }
-        this.after(line);
-        return;
-      }
-      const open = displayOpen(line.body, this.diagrams);
-      if (open && line.start >= (this.ignore.get(open.kind) ?? -1)) {
-        this.endParagraph();
-        if (open.oneLine) {
-          const start = line.start + line.bodyStart;
-          const end = start + open.oneLine.end;
-          this.out.text(line.raw.slice(0, line.bodyStart), line.start);
-          this.math(open.delimiter, open.oneLine.tex, line.raw.slice(line.bodyStart, line.bodyStart + open.oneLine.end), start, end, this.diagrams && DIAGRAM_ENVS2.has(open.kind) ? "env" : void 0);
-          this.out.text(line.raw.slice(line.bodyStart + open.oneLine.end), end);
-          this.after(line);
-        } else {
-          this.state = { t: "display", kind: open.kind, delimiter: open.delimiter, from: open.from, depth: line.depth, lines: [line], flags: before };
-        }
-        return;
+  return { c: cl.subarray(0, cli), n: s };
+};
+var clen = function(cf, cl) {
+  var l = 0;
+  for (var i2 = 0; i2 < cl.length; ++i2)
+    l += cf[i2] * cl[i2];
+  return l;
+};
+var wfblk = function(out, pos, dat) {
+  var s = dat.length;
+  var o = shft(pos + 2);
+  out[o] = s & 255;
+  out[o + 1] = s >> 8;
+  out[o + 2] = out[o] ^ 255;
+  out[o + 3] = out[o + 1] ^ 255;
+  for (var i2 = 0; i2 < s; ++i2)
+    out[o + i2 + 4] = dat[i2];
+  return (o + 4 + s) * 8;
+};
+var wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
+  wbits(out, p++, final);
+  ++lf[256];
+  var _a2 = hTree(lf, 15), dlt = _a2.t, mlb = _a2.l;
+  var _b2 = hTree(df, 15), ddt = _b2.t, mdb = _b2.l;
+  var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
+  var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
+  var lcfreq = new u16(19);
+  for (var i2 = 0; i2 < lclt.length; ++i2)
+    ++lcfreq[lclt[i2] & 31];
+  for (var i2 = 0; i2 < lcdt.length; ++i2)
+    ++lcfreq[lcdt[i2] & 31];
+  var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
+  var nlcc = 19;
+  for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
+    ;
+  var flen = bl + 5 << 3;
+  var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
+  var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
+  if (bs >= 0 && flen <= ftlen && flen <= dtlen)
+    return wfblk(out, p, dat.subarray(bs, bs + bl));
+  var lm, ll, dm, dl;
+  wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
+  if (dtlen < ftlen) {
+    lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
+    var llm = hMap(lct, mlcb, 0);
+    wbits(out, p, nlc - 257);
+    wbits(out, p + 5, ndc - 1);
+    wbits(out, p + 10, nlcc - 4);
+    p += 14;
+    for (var i2 = 0; i2 < nlcc; ++i2)
+      wbits(out, p + 3 * i2, lct[clim[i2]]);
+    p += 3 * nlcc;
+    var lcts = [lclt, lcdt];
+    for (var it = 0; it < 2; ++it) {
+      var clct = lcts[it];
+      for (var i2 = 0; i2 < clct.length; ++i2) {
+        var len = clct[i2] & 31;
+        wbits(out, p, llm[len]), p += lct[len];
+        if (len > 15)
+          wbits(out, p, clct[i2] >> 5 & 127), p += clct[i2] >> 12;
       }
     }
-    if (!(this.paraLast && this.continues(this.paraLast, line))) this.endParagraph();
-    this.para.push(line);
-    this.paraLast = line;
-    this.after(line);
+  } else {
+    lm = flm, ll = flt, dm = fdm, dl = fdt;
   }
-  continues(prev, line) {
-    if (line.depth !== prev.depth) return false;
-    if (prev.indent <= 3 && standsAlone(prev.body)) return false;
-    return !((line.indent <= 3 || this.flags.inList) && startsBlock(line.body));
-  }
-  /**
-   * Follows GFM tables (marked's reading), before the line joins a paragraph:
-   * a delimiter row right under a prose line makes that line a header and
-   * starts a table; its rows go on until a blank line, a change of quote
-   * depth or a line that starts another block.
-   */
-  tableRow(line) {
-    if (this.table && (line.blank || line.depth !== this.table.depth || endsTable(line.body))) this.table = null;
-    if (this.table) {
-      this.rows.add(line.start);
-      return;
-    }
-    const header = this.paraLast;
-    if (header && header.depth === line.depth && delimitsTable(header.body, line.body)) {
-      this.rows.add(header.start);
-      this.rows.add(line.start);
-      this.table = { depth: line.depth };
-    }
-  }
-  endParagraph() {
-    if (this.para.length > 0) {
-      for (const segment of scanInline(this.para, false, this.isRow).segments) this.out.segment(segment);
-      this.para = [];
-    }
-    this.paraLast = null;
-  }
-  after(line, code = false) {
-    this.flags.prevBlank = line.blank;
-    this.flags.prevCode = code;
-  }
-  closesFence(line, fence) {
-    const rest = restAt(line, fence.depth);
-    let i2 = 0;
-    let cols = 0;
-    for (; i2 < rest.length; i2++) {
-      const c = rest.charCodeAt(i2);
-      if (c === 32) cols++;
-      else if (c === 9) cols += 4 - cols % 4;
-      else break;
-    }
-    return cols <= Math.max(3, fence.indent) && closesFence(rest.slice(i2), fence.ch, fence.len);
-  }
-  closeMathFence(st) {
-    this.state = NORMAL;
-    const lines2 = st.lines;
-    const first = lines2[0];
-    const last = lines2[lines2.length - 1];
-    const tex = lines2.slice(1, -1).map((l) => restAt(l, st.depth)).join("\n").trim();
-    if (tex === "") return this.out.lines(lines2);
-    const start = first.start + first.bodyStart;
-    const lastRest = restAt(last, st.depth);
-    const end = last.start + (last.prefixEnds[st.depth] ?? 0) + trimEndLength(lastRest);
-    this.emitBlock(lines2, start, end, "fence", tex, st.diagram);
-  }
-  closeDisplay(st, line, closePos, closeEnd) {
-    const lines2 = [...st.lines, line];
-    const first = lines2[0];
-    const inner = [first.body.slice(st.from), ...lines2.slice(1, -1).map((l) => restAt(l, st.depth)), restAt(line, st.depth).slice(0, closePos)];
-    if (inner.join("\n").trim() === "") return this.giveUp(st, line.end, [line]);
-    let tex;
-    if (st.delimiter === "env") {
-      inner[0] = first.body;
-      inner[inner.length - 1] = restAt(line, st.depth).slice(0, closeEnd);
-      tex = inner.join("\n").trim();
+  for (var i2 = 0; i2 < li; ++i2) {
+    var sym = syms[i2];
+    if (sym > 255) {
+      var len = sym >> 18 & 31;
+      wbits16(out, p, lm[len + 257]), p += ll[len + 257];
+      if (len > 7)
+        wbits(out, p, sym >> 23 & 31), p += fleb[len];
+      var dst = sym & 31;
+      wbits16(out, p, dm[dst]), p += dl[dst];
+      if (dst > 3)
+        wbits16(out, p, sym >> 5 & 8191), p += fdeb[dst];
     } else {
-      tex = inner.join("\n").trim();
+      wbits16(out, p, lm[sym]), p += ll[sym];
     }
-    this.state = NORMAL;
-    const start = first.start + first.bodyStart;
-    const end = line.start + (line.prefixEnds[st.depth] ?? 0) + closeEnd;
-    this.emitBlock(lines2, start, end, st.delimiter, tex, this.diagrams && DIAGRAM_ENVS2.has(st.kind) ? "env" : void 0);
-    this.after(line);
   }
-  /** Emits a closed block: the text before its opening delimiter, the math, the rest of its last line. */
-  emitBlock(lines2, start, end, delimiter, tex, diagram) {
-    const first = lines2[0];
-    const last = lines2[lines2.length - 1];
-    const source = lines2.map((l) => l.raw).join("");
-    this.out.text(source.slice(0, start - first.start), first.start);
-    this.math(delimiter, tex, source.slice(start - first.start, end - first.start), start, end, diagram);
-    this.out.text(last.raw.slice(end - last.start), end);
-  }
-  math(delimiter, tex, raw, start, end, diagram) {
-    this.out.segment({ kind: "math", display: true, tex, raw, delimiter, start, end, ...diagram ? { diagram } : {} });
-  }
-  /**
-   * A display block that was not one: its lines (and `more`) are processed again
-   * as ordinary lines, its kind of opener ignored on lines starting before `until`.
-   */
-  giveUp(st, until, more) {
-    this.ignore.set(st.kind, Math.max(this.ignore.get(st.kind) ?? -1, until));
-    this.flags = st.flags;
-    this.state = NORMAL;
-    this.frames.push({ lines: [...st.lines, ...more], i: 0 });
-  }
+  wbits16(out, p, lm[256]);
+  return p + ll[256];
 };
-// core/src/scan/index.ts
-function scan(markdown, options3 = {}) {
-  return new Scanner2(Infinity, options3.diagrams === true, Infinity).push(markdown, true);
-}
-function createLineScanner(options3 = {}) {
-  const scanner = new Scanner2(Math.max(1, options3.maxHeldLines ?? 40), options3.diagrams === true, Math.max(1, options3.maxDiagramLines ?? 400));
-  return { push: (delta, final) => scanner.push(delta, final) };
-}
-// core/src/typeset/index.ts
-init_errors();
-// core/src/typeset/load.ts
-var engine2;
-function loadEngine() {
-  return engine2 ??= (init_engine(), __toCommonJS(engine_exports));
-}
-function engineLoaded() {
-  return engine2 !== void 0;
-}
-// core/src/typeset/index.ts
-init_errors();
-var SUPERSCRIPT_TEX = Object.fromEntries(
-  [..."⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ"].map((c, i2) => [c, "0123456789+-=()ni"[i2]])
-);
-var SUBSCRIPT_TEX = Object.fromEntries(
-  [..."₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ"].map((c, i2) => [c, "0123456789+-=()aeoxhklmnpst"[i2]])
-);
-var SCRIPT_RUN = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+|[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ]+/g;
-function texScripts(tex) {
-  return tex.replace(SCRIPT_RUN, (run2) => {
-    const sup = SUPERSCRIPT_TEX[run2[0]] !== void 0;
-    const table2 = sup ? SUPERSCRIPT_TEX : SUBSCRIPT_TEX;
-    return `${sup ? "^" : "_"}{${[...run2].map((c) => table2[c]).join("")}}`;
-  });
-}
-function initTypeset() {
-  try {
-    loadEngine().prepare();
-    return Promise.resolve();
-  } catch (error) {
-    return Promise.reject(error);
-  }
-}
-function typesetLoaded() {
-  return engineLoaded();
-}
-function typeset(tex, options3) {
-  const engine3 = loadEngine();
-  try {
-    return engine3.typesetOnce(tex, options3);
-  } catch (error) {
-    if (!(error instanceof GlyphError)) throw error;
-    const scripted = texScripts(tex);
-    if (scripted === tex) throw error;
-    return engine3.typesetOnce(scripted, options3);
-  }
-}
-function texToMathML2(tex, options3) {
-  return loadEngine().texToMathML(tex, options3);
-}
-// core/src/unicode/box.ts
-var Unsupported = class extends Error {
-  name = "Unsupported";
-};
-function fail(what) {
-  throw new Unsupported(what);
-}
-var ZERO_WIDTH = /^[\p{Mn}\p{Me}\p{Cf}]$/u;
-function charWidth(cp) {
-  if (cp < 768) return cp < 32 || cp >= 127 && cp < 160 ? 0 : 1;
-  if (ZERO_WIDTH.test(String.fromCodePoint(cp)) || cp >= 4448 && cp <= 4607) return 0;
-  if (cp < 4352) return 1;
-  let lo = 0;
-  let hi = WIDE.length - 1;
-  while (lo <= hi) {
-    const mid = lo + hi >> 1;
-    const [start, end] = WIDE[mid];
-    if (cp < start) hi = mid - 1;
-    else if (cp > end) lo = mid + 1;
-    else return 2;
-  }
-  return 1;
-}
-function toCells(text) {
-  const cells2 = [];
-  let last = -1;
-  for (const ch of text) {
-    const width = charWidth(ch.codePointAt(0));
-    if (width === 0) {
-      if (last < 0) {
-        if (/\p{Cf}/u.test(ch)) continue;
-        cells2.push(" ");
-        last = 0;
+var deo = /* @__PURE__ */ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
+var et = /* @__PURE__ */ new u8(0);
+var dflt = function(dat, lvl, plvl, pre, post, st) {
+  var s = st.z || dat.length;
+  var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7e3)) + post);
+  var w = o.subarray(pre, o.length - post);
+  var lst = st.l;
+  var pos = (st.r || 0) & 7;
+  if (lvl) {
+    if (pos)
+      w[0] = st.r >> 3;
+    var opt = deo[lvl - 1];
+    var n = opt >> 13, c = opt & 8191;
+    var msk_1 = (1 << plvl) - 1;
+    var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
+    var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
+    var hsh = function(i3) {
+      return (dat[i3] ^ dat[i3 + 1] << bs1_1 ^ dat[i3 + 2] << bs2_1) & msk_1;
+    };
+    var syms = new i32(25e3);
+    var lf = new u16(288), df = new u16(32);
+    var lc_1 = 0, eb = 0, i2 = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
+    for (; i2 + 2 < s; ++i2) {
+      var hv = hsh(i2);
+      var imod = i2 & 32767, pimod = head[hv];
+      prev[imod] = pimod;
+      head[hv] = imod;
+      if (wi <= i2) {
+        var rem = s - i2;
+        if ((lc_1 > 7e3 || li > 24576) && (rem > 423 || !lst)) {
+          pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i2 - bs, pos);
+          li = lc_1 = eb = 0, bs = i2;
+          for (var j = 0; j < 286; ++j)
+            lf[j] = 0;
+          for (var j = 0; j < 30; ++j)
+            df[j] = 0;
+        }
+        var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+        if (rem > 2 && hv == hsh(i2 - dif)) {
+          var maxn = Math.min(n, rem) - 1;
+          var maxd = Math.min(32767, i2);
+          var ml = Math.min(258, rem);
+          while (dif <= maxd && --ch_1 && imod != pimod) {
+            if (dat[i2 + l] == dat[i2 + l - dif]) {
+              var nl = 0;
+              for (; nl < ml && dat[i2 + nl] == dat[i2 + nl - dif]; ++nl)
+                ;
+              if (nl > l) {
+                l = nl, d = dif;
+                if (nl > maxn)
+                  break;
+                var mmd = Math.min(dif, nl - 2);
+                var md = 0;
+                for (var j = 0; j < mmd; ++j) {
+                  var ti = i2 - dif + j & 32767;
+                  var pti = prev[ti];
+                  var cd = ti - pti & 32767;
+                  if (cd > md)
+                    md = cd, pimod = ti;
+                }
+              }
+            }
+            imod = pimod, pimod = prev[imod];
+            dif += imod - pimod & 32767;
+          }
+        }
+        if (d) {
+          syms[li++] = 268435456 | revfl[l] << 18 | revfd[d];
+          var lin = revfl[l] & 31, din = revfd[d] & 31;
+          eb += fleb[lin] + fdeb[din];
+          ++lf[257 + lin];
+          ++df[din];
+          wi = i2 + l;
+          ++lc_1;
+        } else {
+          syms[li++] = dat[i2];
+          ++lf[dat[i2]];
+        }
       }
-      cells2[last] += ch;
-    } else {
-      last = cells2.length;
-      cells2.push(ch);
-      if (width === 2) cells2.push("");
     }
-  }
-  return cells2;
-}
-function textBox(text) {
-  const cells2 = toCells(text);
-  return { rows: [cells2], width: cells2.length, base: 0 };
-}
-function blank(width, height2 = 1, base = 0) {
-  return { rows: Array.from({ length: height2 }, () => Array(width).fill(" ")), width, base };
-}
-function height(box) {
-  return box.rows.length;
-}
-function above(box) {
-  return box.base;
-}
-function below(box) {
-  return box.rows.length - box.base - 1;
-}
-function hcat(boxes) {
-  if (boxes.length === 1) return boxes[0];
-  const up = Math.max(0, ...boxes.map(above));
-  const down = Math.max(0, ...boxes.map(below));
-  const rows = Array.from({ length: up + down + 1 }, () => []);
-  let width = 0;
-  for (const box of boxes) {
-    const top = up - box.base;
-    for (let r = 0; r < rows.length; r++) {
-      const row = box.rows[r - top];
-      if (row) rows[r].push(...row);
-      else for (let c = 0; c < box.width; c++) rows[r].push(" ");
+    for (i2 = Math.max(i2, wi); i2 < s; ++i2) {
+      syms[li++] = dat[i2];
+      ++lf[dat[i2]];
     }
-    width += box.width;
+    pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i2 - bs, pos);
+    if (!lst) {
+      st.r = pos & 7 | w[pos / 8 | 0] << 3;
+      pos -= 7;
+      st.h = head, st.p = prev, st.i = i2, st.w = wi;
+    }
+  } else {
+    for (var i2 = st.w || 0; i2 < s + lst; i2 += 65535) {
+      var e = i2 + 65535;
+      if (e >= s) {
+        w[pos / 8 | 0] = lst;
+        e = s;
+      }
+      pos = wfblk(w, pos + 1, dat.subarray(i2, e));
+    }
+    st.i = s;
   }
-  return { rows, width, base: up };
-}
-function widen(box, width, align) {
-  if (box.width >= width) return box;
-  const extra = width - box.width;
-  const left = align === "left" ? 0 : align === "right" ? extra : Math.floor(extra / 2);
-  return pad(box, left, extra - left);
-}
-function pad(box, left, right) {
-  if (left === 0 && right === 0) return box;
-  const l = Array(left).fill(" ");
-  const r = Array(right).fill(" ");
-  return { rows: box.rows.map((row) => [...l, ...row, ...r]), width: box.width + left + right, base: box.base };
-}
-function vstack(boxes, align, base) {
-  const width = Math.max(0, ...boxes.map((b) => b.width));
-  const rows = boxes.flatMap((b) => widen(b, width, align).rows);
-  return { rows, width, base };
-}
-function extend(box, up, down) {
-  const addUp = Math.max(0, up - above(box));
-  const addDown = Math.max(0, down - below(box));
-  if (addUp === 0 && addDown === 0) return box;
-  const blankRow = () => Array(box.width).fill(" ");
+  return slc(o, 0, pre + shft(pos) + post);
+};
+var adler = function() {
+  var a = 1, b = 0;
   return {
-    rows: [...Array.from({ length: addUp }, blankRow), ...box.rows, ...Array.from({ length: addDown }, blankRow)],
-    width: box.width,
-    base: box.base + addUp
-  };
-}
-function phantom(box) {
-  return blank(box.width, box.rows.length, box.base);
-}
-function isBlank2(box) {
-  return box.rows.every((row) => row.every((cell) => cell === " " || cell === ""));
-}
-function lines(box) {
-  return box.rows.map((row) => row.join(""));
-}
-// core/src/unicode/chars.ts
-var SUPERSCRIPTS = pairs2(
-  "0⁰1¹2²3³4⁴5⁵6⁶7⁷8⁸9⁹+⁺−⁻-⁻=⁼(⁽)⁾aᵃbᵇcᶜdᵈeᵉfᶠgᵍhʰiⁱjʲkᵏlˡmᵐnⁿoᵒpᵖrʳsˢtᵗuᵘvᵛwʷxˣyʸzᶻAᴬBᴮDᴰEᴱGᴳHᴴIᴵJᴶKᴷLᴸMᴹNᴺOᴼPᴾRᴿTᵀUᵁVⱽWᵂαᵅβᵝγᵞδᵟεᵋϵᵋθᶿιᶥφᵠϕᵠχᵡ′′″″‴‴⁗⁗∗***††‡‡⊤ᵀ⊺ᵀ∘°°°  "
-);
-var SUBSCRIPTS = pairs2(
-  "0₀1₁2₂3₃4₄5₅6₆7₇8₈9₉+₊−₋-₋=₌(₍)₎aₐeₑhₕiᵢjⱼkₖlₗmₘnₙoₒpₚrᵣsₛtₜuᵤvᵥxₓβᵦγᵧρᵨφᵩϕᵩχᵪ  "
-);
-function pairs2(spec) {
-  const chars = [...spec];
-  const map = /* @__PURE__ */ new Map();
-  for (let i2 = 0; i2 + 1 < chars.length; i2 += 2) map.set(chars[i2], chars[i2 + 1]);
-  for (const ch of ",.;:") map.set(ch, ch);
-  return map;
-}
-var SCRIPT_BARS = /* @__PURE__ */ new Map([
-  ["|", "|"],
-  ["∣", "|"]
-]);
-function mapScript(cells2, table2) {
-  const chars = cells2.filter((cell) => cell !== "");
-  let out = "";
-  for (const [i2, cell] of chars.entries()) {
-    const mapped = table2.get(cell) ?? table2.get(plainLetter(cell));
-    if (mapped !== void 0) {
-      out += mapped;
-      continue;
+    p: function(d) {
+      var n = a, m = b;
+      var l = d.length | 0;
+      for (var i2 = 0; i2 != l; ) {
+        var e = Math.min(i2 + 2655, l);
+        for (; i2 < e; ++i2)
+          m += n += d[i2];
+        n = (n & 65535) + 15 * (n >> 16), m = (m & 65535) + 15 * (m >> 16);
+      }
+      a = n, b = m;
+    },
+    d: function() {
+      a %= 65521, b %= 65521;
+      return (a & 255) << 24 | (a & 65280) << 8 | (b & 255) << 8 | b >> 8;
     }
-    const bar = SCRIPT_BARS.get(cell);
-    const next = chars[i2 + 1];
-    if (bar === void 0 || out === "" || next === void 0 || (table2.get(next) ?? table2.get(plainLetter(next))) === void 0) return void 0;
-    out += bar;
-  }
-  return out;
-}
-function plainLetter(ch) {
-  const cp = ch.codePointAt(0);
-  for (const start of [120224, 120432]) {
-    if (cp >= start && cp < start + 52) return String.fromCharCode((cp - start < 26 ? 65 : 97 - 26) + cp - start);
-  }
-  return ch;
-}
-var ALPHABETS = {
-  bold: BOLD,
-  "bold-italic": BOLD,
-  "double-struck": { latin: 120120, digits: 120792, holes: DOUBLE_HOLES },
-  script: { latin: 119964, holes: SCRIPT_HOLES },
-  "bold-script": { latin: 120016 },
-  fraktur: { latin: 120068, holes: FRAKTUR_HOLES },
-  "bold-fraktur": { latin: 120172 },
-  "sans-serif": SANS,
-  "sans-serif-italic": SANS,
-  "bold-sans-serif": SANS_BOLD,
-  "sans-serif-bold-italic": SANS_BOLD,
-  monospace: { latin: 120432, digits: 120822 }
+  };
 };
-var GREEK_INDEX = /* @__PURE__ */ new Map();
-for (let cp = 913; cp <= 937; cp++) if (cp !== 930) GREEK_INDEX.set(cp, cp - 913);
-GREEK_INDEX.set(1012, 17);
-GREEK_INDEX.set(8711, 25);
-for (let cp = 945; cp <= 969; cp++) GREEK_INDEX.set(cp, cp - 945 + 26);
-for (const [i2, cp] of [8706, 1013, 977, 1008, 981, 1009, 982].entries()) GREEK_INDEX.set(cp, 51 + i2);
-function styleChar(ch, variant) {
-  const alphabet = ALPHABETS[variant];
-  if (!alphabet) return ch;
-  const hole = alphabet.holes?.[ch];
-  if (hole) return hole;
-  const cp = ch.codePointAt(0);
-  if (alphabet.latin !== void 0) {
-    if (cp >= 65 && cp <= 90) return String.fromCodePoint(alphabet.latin + cp - 65);
-    if (cp >= 97 && cp <= 122) return String.fromCodePoint(alphabet.latin + 26 + cp - 97);
-  }
-  if (alphabet.digits !== void 0 && cp >= 48 && cp <= 57) return String.fromCodePoint(alphabet.digits + cp - 48);
-  const greek = GREEK_INDEX.get(cp);
-  if (alphabet.greek !== void 0 && greek !== void 0) return String.fromCodePoint(alphabet.greek + greek);
-  return ch;
-}
-function styleText(text, variant) {
-  if (!variant || !ALPHABETS[variant]) return text;
-  let out = "";
-  for (const ch of text) out += styleChar(ch, variant);
-  return out;
-}
-var OVER_ACCENTS = /* @__PURE__ */ new Map(JSON.parse(`[
- ["^",{"mark":"\u0302","glyph":"^"}],
- ["ˆ",{"mark":"\u0302","glyph":"^"}],
- ["ˇ",{"mark":"\u030C","glyph":"ˇ"}],
- ["~",{"mark":"\u0303","glyph":"~"}],
- ["˜",{"mark":"\u0303","glyph":"~"}],
- ["¯",{"mark":"\u0304","glyph":"_","wide":true}],
- ["ˉ",{"mark":"\u0304","glyph":"_","wide":true}],
- ["‾",{"mark":"\u0305","glyph":"_","wide":true}],
- ["―",{"mark":"\u0305","glyph":"_","wide":true}],
- ["─",{"mark":"\u0305","glyph":"_","wide":true}],
- ["_",{"mark":"\u0305","glyph":"_","wide":true}],
- ["˙",{"mark":"\u0307","glyph":"˙"}],
- ["¨",{"mark":"\u0308","glyph":"¨"}],
- ["\u20DB",{"mark":"\u20DB","glyph":"⋯"}],
- ["\u20DC",{"mark":"\u20DC","glyph":"⋯"}],
- ["´",{"mark":"\u0301","glyph":"´"}],
- ["ˊ",{"mark":"\u0301","glyph":"´"}],
- ["\`",{"mark":"\u0300","glyph":"\`"}],
- ["ˋ",{"mark":"\u0300","glyph":"\`"}],
- ["˘",{"mark":"\u0306","glyph":"˘"}],
- ["˚",{"mark":"\u030A","glyph":"°"}],
- ["→",{"mark":"\u20D7","glyph":"→","arrow":"right"}],
- ["\u20D7",{"mark":"\u20D7","glyph":"→","arrow":"right"}],
- ["←",{"mark":"\u20D6","glyph":"←","arrow":"left"}],
- ["↔",{"mark":"\u20E1","glyph":"↔","arrow":"both"}]
-]`));
-var UNDER_ACCENTS = /* @__PURE__ */ new Map(JSON.parse(`[
- ["―",{"mark":"\u0332","glyph":"‾","wide":true}],
- ["_",{"mark":"\u0332","glyph":"‾","wide":true}],
- ["‾",{"mark":"\u0332","glyph":"‾","wide":true}],
- ["¯",{"mark":"\u0332","glyph":"‾","wide":true}],
- ["─",{"mark":"\u0332","glyph":"‾","wide":true}],
- ["~",{"mark":"\u0330","glyph":"~"}],
- ["˜",{"mark":"\u0330","glyph":"~"}],
- ["→",{"mark":"\u20EF","glyph":"→","arrow":"right"}],
- ["←",{"mark":"\u20EE","glyph":"←","arrow":"left"}],
- ["↔",{"mark":"\u034D","glyph":"↔","arrow":"both"}]
-]`));
-function arrowRow(kind, width, double = false) {
-  const line = double ? "═" : "─";
-  const [l, r] = double ? ["⇐", "⇒"] : ["←", "→"];
-  if (width <= 1) return kind === "right" ? r : kind === "left" ? l : double ? "⇔" : "↔";
-  if (kind === "right") return line.repeat(width - 1) + r;
-  if (kind === "left") return l + line.repeat(width - 1);
-  return l + line.repeat(Math.max(0, width - 2)) + r;
-}
-var STRETCHY_ARROWS = /* @__PURE__ */ new Map([
-  ["→", (w) => arrowRow("right", w)],
-  ["⟶", (w) => arrowRow("right", w)],
-  ["←", (w) => arrowRow("left", w)],
-  ["⟵", (w) => arrowRow("left", w)],
-  ["↔", (w) => arrowRow("both", w)],
-  ["⟷", (w) => arrowRow("both", w)],
-  ["⇒", (w) => arrowRow("right", w, true)],
-  ["⟹", (w) => arrowRow("right", w, true)],
-  ["⇐", (w) => arrowRow("left", w, true)],
-  ["⟸", (w) => arrowRow("left", w, true)],
-  ["⇔", (w) => arrowRow("both", w, true)],
-  ["⟺", (w) => arrowRow("both", w, true)],
-  ["↦", (w) => w <= 1 ? "↦" : "├" + "─".repeat(Math.max(0, w - 2)) + "→"],
-  ["⟼", (w) => w <= 1 ? "↦" : "├" + "─".repeat(Math.max(0, w - 2)) + "→"]
-]);
-function braceRow(ch, width) {
-  const w = Math.max(1, width);
-  const span = (l, mid, r, tip) => {
-    if (w === 1) return tip;
-    if (w === 2) return l + r;
-    if (!mid) return l + "─".repeat(w - 2) + r;
-    const left = Math.floor((w - 3) / 2);
-    return l + "─".repeat(left) + mid + "─".repeat(w - 3 - left) + r;
-  };
-  switch (ch) {
-    case "⏞":
-      return span("╭", "┴", "╮", "┴");
-    case "⏟":
-      return span("╰", "┬", "╯", "┬");
-    case "⏜":
-      return span("╭", "", "╮", "⌒");
-    case "⏝":
-      return span("╰", "", "╯", "‿");
-    case "⎴":
-      return span("┌", "", "┐", "┬");
-    case "⎵":
-      return span("└", "", "┘", "┴");
-  }
-  return void 0;
-}
-var FENCES = /* @__PURE__ */ new Set(["(", ")", "[", "]", "{", "}", "|", "‖", "∥", "⌊", "⌋", "⌈", "⌉", "⟨", "⟩", "⟦", "⟧", "/", "\\", ""]);
-function tallDelimiter(ch, rows, base) {
-  if (rows <= 1) return [ch === "∥" ? "‖" : ch];
-  const column = (top, mid, bottom) => [top, ...Array(rows - 2).fill(mid), bottom];
-  switch (ch) {
-    case "(":
-      return column("⎛", "⎜", "⎝");
-    case ")":
-      return column("⎞", "⎟", "⎠");
-    case "[":
-      return column("⎡", "⎢", "⎣");
-    case "]":
-      return column("⎤", "⎥", "⎦");
-    case "⌈":
-      return column("⎡", "⎢", "⎢");
-    case "⌉":
-      return column("⎤", "⎥", "⎥");
-    case "⌊":
-      return column("⎢", "⎢", "⎣");
-    case "⌋":
-      return column("⎥", "⎥", "⎦");
-    case "⟦":
-      return column("╓", "║", "╙");
-    case "⟧":
-      return column("╖", "║", "╜");
-    case "|":
-      return Array(rows).fill("│");
-    case "‖":
-    case "∥":
-      return Array(rows).fill("║");
-    case "{":
-    case "}": {
-      const [top, mid, bottom, ext] = ch === "{" ? ["⎧", "⎨", "⎩", "⎪"] : ["⎫", "⎬", "⎭", "⎪"];
-      if (rows === 2) return ch === "{" ? ["⎰", "⎱"] : ["⎱", "⎰"];
-      const middle = base > 0 && base < rows - 1 ? base : Math.floor(rows / 2);
-      return Array.from({ length: rows }, (_, r) => r === 0 ? top : r === rows - 1 ? bottom : r === middle ? mid : ext);
+var dopt = function(dat, opt, pre, post, st) {
+  if (!st) {
+    st = { l: 1 };
+    if (opt.dictionary) {
+      var dict = opt.dictionary.subarray(-32768);
+      var newDat = new u8(dict.length + dat.length);
+      newDat.set(dict);
+      newDat.set(dat, dict.length);
+      dat = newDat;
+      st.w = dict.length;
     }
-    case "⟨":
-    case "⟩": {
-      const [up, down] = ch === "⟨" ? ["╱", "╲"] : ["╲", "╱"];
-      const half = rows / 2;
-      return Array.from({ length: rows }, (_, r) => r < Math.floor(half) ? up : r >= Math.ceil(half) ? down : ch);
+  }
+  return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
+};
+var wbytes = function(d, b, v) {
+  for (; v; ++b)
+    d[b] = v, v >>>= 8;
+};
+var zlh = function(c, o) {
+  var lv = o.level, fl2 = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
+  c[0] = 120, c[1] = fl2 << 6 | (o.dictionary && 32);
+  c[1] |= 31 - (c[0] << 8 | c[1]) % 31;
+  if (o.dictionary) {
+    var h = adler();
+    h.p(o.dictionary);
+    wbytes(c, 2, h.d());
+  }
+};
+var zls = function(d, dict) {
+  if ((d[0] & 15) != 8 || d[0] >> 4 > 7 || (d[0] << 8 | d[1]) % 31)
+    err(6, "invalid zlib data");
+  if ((d[1] >> 5 & 1) == +!dict)
+    err(6, "invalid zlib data: " + (d[1] & 32 ? "need" : "unexpected") + " dictionary");
+  return (d[1] >> 3 & 4) + 2;
+};
+var Inflate = /* @__PURE__ */ (function() {
+  function Inflate2(opts, cb) {
+    if (typeof opts == "function")
+      cb = opts, opts = {};
+    this.ondata = cb;
+    var dict = opts && opts.dictionary && opts.dictionary.subarray(-32768);
+    this.s = { i: 0, b: dict ? dict.length : 0 };
+    this.o = new u8(32768);
+    this.p = new u8(0);
+    if (dict)
+      this.o.set(dict);
+  }
+  Inflate2.prototype.e = function(c) {
+    if (!this.ondata)
+      err(5);
+    if (this.d)
+      err(4);
+    if (!this.p.length)
+      this.p = c;
+    else if (c.length) {
+      var n = new u8(this.p.length + c.length);
+      n.set(this.p), n.set(c, this.p.length), this.p = n;
     }
-    case "/":
-      return Array(rows).fill("╱");
-    case "\\":
-      return Array(rows).fill("╲");
-    case "":
-      return Array(rows).fill("");
-  }
-  return Array.from({ length: rows }, (_, r) => r === base ? ch : " ");
-}
-function tallIntegral(rows) {
-  if (rows <= 1) return ["∫"];
-  return ["⌠", ...Array(rows - 2).fill("⎮"), "⌡"];
-}
-var VULGAR = /* @__PURE__ */ new Map([
-  ["1/2", "½"],
-  ["1/3", "⅓"],
-  ["2/3", "⅔"],
-  ["1/4", "¼"],
-  ["3/4", "¾"],
-  ["1/5", "⅕"],
-  ["2/5", "⅖"],
-  ["3/5", "⅗"],
-  ["4/5", "⅘"],
-  ["1/6", "⅙"],
-  ["5/6", "⅚"],
-  ["1/7", "⅐"],
-  ["1/8", "⅛"],
-  ["3/8", "⅜"],
-  ["5/8", "⅝"],
-  ["7/8", "⅞"],
-  ["1/9", "⅑"],
-  ["1/10", "⅒"]
-]);
-// core/src/unicode/opclass.ts
-// core/src/unicode/classes.ts
-var CLASS_NAMES = /* @__PURE__ */ new Set(["ORD", "OP", "BIN", "REL", "OPEN", "CLOSE", "PUNCT", "INNER", "NONE"]);
-function parseClass(name) {
-  return name !== void 0 && CLASS_NAMES.has(name) ? name : void 0;
-}
-var TABLES = Object.fromEntries(
-  Object.keys(OPERATORS).map((form) => {
-    const map = /* @__PURE__ */ new Map();
-    for (const [cls, chars] of Object.entries(OPERATORS[form])) for (const ch of chars) map.set(ch, cls);
-    return [form, map];
-  })
-);
-function operatorClass(text, form) {
-  for (const f of ORDERS[form]) {
-    const cls = TABLES[f].get(text);
-    if (cls) return cls;
-  }
-  if (/^[a-zA-Z]{2,}$/.test(text)) return "OP";
-  const cp = text.codePointAt(0);
-  if (cp === void 0) return "ORD";
-  for (const [start, end, cls] of RANGES2) {
-    if (cp <= end) return cp >= start ? cls : "REL";
-  }
-  return "REL";
-}
-function inForm(text, form) {
-  return TABLES[form].has(text);
-}
-function texSpace(left, right, script2) {
-  const l = ORDER.indexOf(left);
-  const r = ORDER.indexOf(right);
-  if (l < 0 || r < 0) return 0;
-  const space = TEXSPACE2[l][r];
-  if (space < 0) return -space;
-  return script2 ? 0 : space;
-}
-// core/src/unicode/xml.ts
-var NAME2 = /[A-Za-z_][-A-Za-z0-9_.:]*/y;
-var SPACE4 = /\s*/y;
-function parseXml2(source) {
-  let pos = 0;
-  const skipSpace = () => {
-    SPACE4.lastIndex = pos;
-    SPACE4.exec(source);
-    pos = SPACE4.lastIndex;
   };
-  const readName = () => {
-    NAME2.lastIndex = pos;
-    const match = NAME2.exec(source);
-    if (!match) fail(`XML: name expected at ${pos}`);
-    pos = NAME2.lastIndex;
-    const colon = match[0].lastIndexOf(":");
-    return colon >= 0 ? match[0].slice(colon + 1) : match[0];
+  Inflate2.prototype.c = function(final) {
+    this.s.i = +(this.d = final || false);
+    var bts = this.s.b;
+    var dt = inflt(this.p, this.s, this.o);
+    this.ondata(slc(dt, bts, this.s.b), this.d);
+    this.o = slc(dt, this.s.b - 32768), this.s.b = this.o.length;
+    this.p = slc(this.p, this.s.p / 8 | 0), this.s.p &= 7;
   };
-  const decode2 = (raw) => raw.indexOf("&") < 0 ? raw : raw.replace(/&([#\w]*)(;?)/g, (_whole, ref, semi) => {
-    if (!semi) fail("XML: unterminated reference");
-    if (ref.startsWith("#")) {
-      const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
-      if (!/^#(x[0-9a-fA-F]+|X[0-9a-fA-F]+|[0-9]+)$/.test(ref) || !(code >= 0 && code <= 1114111)) fail(`XML: bad reference &${ref};`);
-      return String.fromCodePoint(code);
+  Inflate2.prototype.push = function(chunk2, final) {
+    this.e(chunk2), this.c(final);
+  };
+  return Inflate2;
+})();
+function zlibSync(data, opts) {
+  if (!opts)
+    opts = {};
+  var a = adler();
+  a.p(data);
+  var d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
+  return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
+}
+var Unzlib = /* @__PURE__ */ (function() {
+  function Unzlib2(opts, cb) {
+    Inflate.call(this, opts, cb);
+    this.v = opts && opts.dictionary ? 2 : 1;
+  }
+  Unzlib2.prototype.push = function(chunk2, final) {
+    Inflate.prototype.e.call(this, chunk2);
+    if (this.v) {
+      if (this.p.length < 6 && !final)
+        return;
+      this.p = this.p.subarray(zls(this.p, this.v - 1)), this.v = 0;
     }
-    const value = ENTITIES2[ref];
-    return value ?? fail(`XML: unknown entity &${ref};`);
+    if (final) {
+      if (this.p.length < 4)
+        err(6, "invalid zlib data");
+      this.p = this.p.subarray(0, -4);
+    }
+    Inflate.prototype.c.call(this, final);
+  };
+  return Unzlib2;
+})();
+var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
+var tds = 0;
+try {
+  td.decode(et, { stream: true });
+  tds = 1;
+} catch (e) {
+}
+// core/src/image/png.ts
+function decodePng(bytes, maxPixels) {
+  if (!SIGNATURE.every((b, i2) => bytes[i2] === b)) throw new ImageError("not a PNG");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let header;
+  let palette2;
+  let trns;
+  const idat = [];
+  let at = 8;
+  for (; ; ) {
+    if (at + 8 > bytes.length) {
+      if (header && idat.length > 0) break;
+      throw new ImageError("PNG is truncated");
+    }
+    const length4 = view.getUint32(at);
+    const type = String.fromCharCode(bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]);
+    if (header && type === "IEND") break;
+    if (at + 12 + length4 > bytes.length) throw new ImageError(`PNG ${type} chunk is truncated`);
+    const data = bytes.subarray(at + 8, at + 8 + length4);
+    at += 12 + length4;
+    if (!header) {
+      if (type !== "IHDR") throw new ImageError("PNG does not start with IHDR");
+      header = parseHeader(data, maxPixels);
+      continue;
+    }
+    if (type === "PLTE") palette2 = data;
+    else if (type === "tRNS") trns = data;
+    else if (type === "IDAT") idat.push(data);
+  }
+  if (idat.length === 0) throw new ImageError("PNG has no IDAT");
+  if (header.colorType === 3 && !palette2) throw new ImageError("palette PNG has no PLTE");
+  const raw = inflate(idat, header);
+  return toRgba(raw, header, palette2, trns);
+}
+function parseHeader(data, maxPixels) {
+  if (data.length < 13) throw new ImageError("PNG IHDR is short");
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const width = view.getUint32(0);
+  const height2 = view.getUint32(4);
+  const depth = data[8];
+  const colorType = data[9];
+  const kind = COLOR_TYPES[colorType];
+  if (!kind || !kind.depths.includes(depth)) throw new ImageError(`PNG colour type ${colorType} at ${depth} bits is not valid`);
+  if (data[10] !== 0 || data[11] !== 0 || data[12] !== 0 && data[12] !== 1) throw new ImageError("PNG uses an unknown compression, filter or interlace method");
+  checkSize(width, height2, maxPixels);
+  return { width, height: height2, depth, colorType, channels: kind.channels, interlaced: data[12] === 1 };
+}
+function stride(width, h) {
+  return Math.ceil(width * h.channels * h.depth / 8);
+}
+function passes(h) {
+  if (!h.interlaced) return [[0, 0, 1, 1, h.width, h.height]];
+  return ADAM7.map(([x0, y0, dx, dy]) => [x0, y0, dx, dy, Math.ceil((h.width - x0) / dx), Math.ceil((h.height - y0) / dy)]).filter(
+    ([, , , , w, rows]) => w > 0 && rows > 0
+  );
+}
+function inflate(idat, h) {
+  const expected = passes(h).reduce((n, [, , , , w, rows]) => n + rows * (1 + stride(w, h)), 0);
+  const out = new Uint8Array(expected);
+  let length4 = 0;
+  const stream = new Unzlib((chunk2) => {
+    if (length4 + chunk2.length > expected) throw new ImageError(`PNG image data inflates to more than the ${expected} bytes its header allows`);
+    out.set(chunk2, length4);
+    length4 += chunk2.length;
   });
-  const skipMisc = () => {
-    for (; ; ) {
-      skipSpace();
-      if (source.startsWith("<?", pos)) {
-        const end = source.indexOf("?>", pos);
-        if (end < 0) fail("XML: unterminated processing instruction");
-        pos = end + 2;
-      } else if (source.startsWith("<!--", pos)) {
-        const end = source.indexOf("-->", pos);
-        if (end < 0) fail("XML: unterminated comment");
-        pos = end + 3;
-      } else if (source.startsWith("<!DOCTYPE", pos)) {
-        const end = source.indexOf(">", pos);
-        if (end < 0) fail("XML: unterminated doctype");
-        pos = end + 1;
-      } else return;
-    }
-  };
-  const readElement = (depth) => {
-    if (depth > MAX_DEPTH2) fail("XML: too deep");
-    if (source[pos] !== "<") fail(`XML: element expected at ${pos}`);
-    pos++;
-    const name = readName();
-    const attrs = {};
-    for (; ; ) {
-      skipSpace();
-      const ch = source[pos];
-      if (ch === "/" && source[pos + 1] === ">") {
-        pos += 2;
-        return { name, attrs, children: [] };
-      }
-      if (ch === ">") {
-        pos++;
-        break;
-      }
-      const key = readName();
-      skipSpace();
-      if (source[pos] !== "=") fail("XML: = expected");
-      pos++;
-      skipSpace();
-      const quote = source[pos];
-      if (quote !== '"' && quote !== "'") fail("XML: quoted value expected");
-      const end = source.indexOf(quote, pos + 1);
-      if (end < 0) fail("XML: unterminated attribute");
-      const raw = source.slice(pos + 1, end);
-      if (raw.includes("<")) fail("XML: < in attribute");
-      if (key in attrs) fail(`XML: duplicate attribute ${key}`);
-      attrs[key] = decode2(raw);
-      pos = end + 1;
-    }
-    const children = [];
-    for (; ; ) {
-      if (pos >= source.length) fail(`XML: unclosed <${name}>`);
-      if (source.startsWith("</", pos)) {
-        pos += 2;
-        const close = readName();
-        if (close !== name) fail(`XML: </${close}> closes <${name}>`);
-        skipSpace();
-        if (source[pos] !== ">") fail("XML: > expected");
-        pos++;
-        return { name, attrs, children };
-      }
-      if (source.startsWith("<!--", pos)) {
-        const end = source.indexOf("-->", pos);
-        if (end < 0) fail("XML: unterminated comment");
-        pos = end + 3;
-      } else if (source.startsWith("<![CDATA[", pos)) {
-        const end = source.indexOf("]]>", pos);
-        if (end < 0) fail("XML: unterminated CDATA");
-        pushText(children, source.slice(pos + 9, end));
-        pos = end + 3;
-      } else if (source[pos] === "<") {
-        children.push(readElement(depth + 1));
-      } else {
-        let end = source.indexOf("<", pos);
-        if (end < 0) end = source.length;
-        pushText(children, decode2(source.slice(pos, end)));
-        pos = end;
-      }
-    }
-  };
-  skipMisc();
-  const root2 = readElement(0);
-  skipMisc();
-  if (pos !== source.length) fail("XML: content after the root element");
-  return root2;
-}
-function pushText(children, text) {
-  if (text === "") return;
-  const last = children.length - 1;
-  if (typeof children[last] === "string") children[last] += text;
-  else children.push(text);
-}
-function elements(el) {
-  const out = [];
-  for (const child of el.children) {
-    if (typeof child !== "string") out.push(child);
-    else if (/[^ \t\r\n]/.test(child)) fail(`text inside <${el.name}>`);
-  }
-  return out;
-}
-function tokenText(el) {
-  let text = "";
-  for (const child of el.children) {
-    if (typeof child === "string") text += child;
-    else if (child.name === "mglyph" || child.name === "malignmark") fail(`<${child.name}>`);
-    else fail(`<${child.name}> inside <${el.name}>`);
-  }
-  return text.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
-}
-// core/src/unicode/layout.ts
-var tight = false;
-var tableWidth;
-function layoutMath(root2, display, compact = false) {
-  if (root2.name !== "math") fail(`root <${root2.name}>`);
-  const options3 = typeof compact === "boolean" ? { compact } : compact;
-  const ctx = options3.compact ? { twoD: false, display: false, level: 0, compact: true } : { twoD: display, display, level: 0 };
-  tight = options3.tight === true;
   try {
-    const row = layoutRow(elements(root2), ctx);
-    const width = options3.breakWidth;
-    if (width === void 0 || row.box.width <= width) return row.box;
-    let inner = row;
-    for (let solid = inner.items.filter((item) => item.box.width > 0); solid.length === 1 && solid[0].row && solid[0].kind !== "fence"; ) {
-      inner = solid[0].row;
-      solid = inner.items.filter((item) => item.box.width > 0);
-    }
-    const broken = breakRow(inner, width);
-    if (broken || !options3.breakTables) return broken ?? row.box;
-    let room = width;
-    for (let attempt = 0; attempt < 3 && room > 0; attempt++) {
-      tableWidth = room;
-      const box = layoutRow(elements(root2), ctx).box;
-      if (box.width <= width) return box;
-      room -= box.width - width;
-    }
-    return row.box;
-  } finally {
-    tight = false;
-    tableWidth = void 0;
+    for (const data of idat) for (let at = 0; at < data.length; at += INFLATE_STEP) stream.push(data.subarray(at, at + INFLATE_STEP));
+    stream.push(new Uint8Array(0), true);
+  } catch (error) {
+    if (error instanceof ImageError) throw error;
+    throw new ImageError(`PNG image data is corrupt or truncated (${error instanceof Error ? error.message : String(error)})`);
   }
-}
-function breakRow(row, width, indent = 0, sums = false) {
-  const { parts, breaks } = row;
-  if (!parts || !breaks || breaks.length === 0) return void 0;
-  const lines2 = [];
-  const stops = [...breaks.filter((b) => b > 0 && b < parts.length && (!sums || !multiplies(parts, b))), parts.length];
-  let start = 0;
-  while (start < parts.length) {
-    let end = -1;
-    const room = lines2.length === 0 ? width : width - indent;
-    for (const stop of stops) {
-      if (stop <= start) continue;
-      if (trimmed(parts.slice(start, stop), lines2.length === 0).width <= room) end = stop;
-      else break;
-    }
-    if (end < 0) return void 0;
-    const line = lines2.length === 0 ? trimmed(parts.slice(start, end), true) : trimmed(parts.slice(start, end));
-    lines2.push(lines2.length === 0 || indent === 0 ? line : hcat([blank(indent, height(line), line.base), line]));
-    start = end;
-  }
-  if (lines2.length < 2) return void 0;
-  return vstack(lines2, "left", lines2[0].base);
-}
-function multiplies(parts, at) {
-  let i2 = at;
-  while (i2 < parts.length && isBlank2(parts[i2])) i2++;
-  const part = parts[i2];
-  return part !== void 0 && PRODUCT.test(part.rows[part.base].join("").trimStart());
-}
-function trimmed(parts, keepStart = false) {
-  let from = 0;
-  let to = parts.length;
-  while (!keepStart && from < to && isBlank2(parts[from])) from++;
-  while (to > from && isBlank2(parts[to - 1])) to--;
-  return from < to ? hcat(parts.slice(from, to)) : blank(0);
-}
-var SCRIPTED = /* @__PURE__ */ new Set(["msub", "msup", "msubsup", "munder", "mover", "munderover"]);
-function flatten2(children, ctx, out = []) {
-  for (const el of children) {
-    if (el.name === "mrow" && el.attrs["data-mjx-texclass"] === void 0) flatten2(elements(el), ctx, out);
-    else if (el.name === "mstyle") flatten2(elements(el), styleCtx(el, ctx), out);
-    else if (el.name === "semantics") {
-      const first = elements(el)[0];
-      if (first) flatten2([first], ctx, out);
-    } else out.push({ el, ctx });
-  }
+  if (length4 !== expected) throw new ImageError(`PNG image data inflates to ${length4} bytes, not ${expected}`);
   return out;
 }
-function styleCtx(el, ctx) {
-  const next = { twoD: ctx.twoD, display: ctx.display, level: ctx.level, compact: ctx.compact };
-  const display = el.attrs.displaystyle;
-  if (display === "true") next.display = true;
-  if (display === "false") next.display = false;
-  const level = el.attrs.scriptlevel;
-  if (level !== void 0) {
-    const n = parseInt(level, 10);
-    if (Number.isNaN(n)) fail("scriptlevel");
-    next.level = /^[+-]/.test(level) ? Math.max(0, ctx.level + n) : Math.max(0, n);
-  }
-  return next;
-}
-function isNewline(el) {
-  return el.name === "mspace" && el.attrs.linebreak === "newline";
-}
-function layoutRow(children, ctx) {
-  const flat = flatten2(children, ctx);
-  if (!flat.some((f) => isNewline(f.el))) return buildRow(flat, ctx);
-  if (!ctx.twoD && !ctx.compact) fail("line break in inline math");
-  const parts = [[]];
-  for (const f of flat) {
-    if (isNewline(f.el)) parts.push([]);
-    else parts.at(-1).push(f);
-  }
-  const rows = parts.map((part) => buildRow(part, ctx));
-  const box = vstack(rows.map((r) => r.box), "center", rows[0].box.base);
-  return { box, items: rows.flatMap((r) => r.items), spaced: true };
-}
-function buildRow(flat, rowCtx) {
-  const solid = flat.map((f, i2) => f.el.name === "mspace" ? -1 : i2).filter((i2) => i2 >= 0);
-  const first = solid[0];
-  const last = solid.at(-1);
-  const formOf = (i2) => solid.length > 1 && i2 === first ? "prefix" : solid.length > 1 && i2 === last ? "postfix" : "infix";
-  const items = flat.map(() => void 0);
-  const stretchy = flat.map((f) => stretches(f.el, f.ctx));
-  flat.forEach((f, i2) => {
-    if (!stretchy[i2]) items[i2] = makeItem(f.el, strip(f.ctx), formOf(i2));
-  });
-  const extentOf = (from, to) => {
-    const extent2 = { up: rowCtx.stretch?.up ?? 0, down: rowCtx.stretch?.down ?? 0 };
-    for (let i2 = from; i2 < to; i2++) {
-      const box2 = items[i2]?.box;
-      if (!box2 || stretchy[i2]) continue;
-      extent2.up = Math.max(extent2.up, above(box2));
-      extent2.down = Math.max(extent2.down, below(box2));
-    }
-    return extent2;
-  };
-  const whole = extentOf(0, flat.length);
-  flat.forEach((f, i2) => {
-    if (!stretchy[i2]) return;
-    let extent2 = whole;
-    const core = coreMo(f.el);
-    if (isIntegral(tokenText(core))) {
-      let end = i2 + 1;
-      while (end < flat.length && !["REL", "PUNCT"].includes(items[end] ? items[end].cls : "ORD")) end++;
-      extent2 = extentOf(i2 + 1, end);
-    } else if (core.attrs.minsize !== void 0 || core.attrs.maxsize !== void 0) {
-      const text = tokenText(core);
-      const given = classOf(f.el, formOf(i2));
-      const opens = inForm(text, "prefix") && !inForm(text, "postfix");
-      const closes = inForm(text, "postfix") && !inForm(text, "prefix");
-      const cls = given === "OPEN" || given === "CLOSE" ? given : opens ? "OPEN" : closes ? "CLOSE" : given;
-      const next = stretchy.indexOf(true, i2 + 1);
-      const prevIndex = stretchy.lastIndexOf(true, i2 - 1);
-      if (cls === "OPEN") extent2 = extentOf(i2 + 1, next < 0 ? flat.length : next);
-      else if (cls === "CLOSE") extent2 = extentOf(prevIndex + 1, i2);
-    }
-    items[i2] = makeItem(f.el, { ...strip(f.ctx), stretch: extent2 }, formOf(i2));
-  });
-  const list3 = items;
-  overlays(list3);
-  adjustClasses(list3);
-  middleBars(list3);
-  const solidItems = list3.filter((item) => item.cls !== "NONE");
-  solidItems.forEach((item, k) => {
-    if (!item.wrapped) return;
-    const prev2 = solidItems[k - 1];
-    const next = solidItems[k + 1];
-    const touches = prev2 !== void 0 && !prev2.unary && (prev2.cls === "ORD" || prev2.cls === "INNER" || prev2.cls === "CLOSE" || prev2.cls === "OP" && (functionName(prev2.el) || tight && functionName(prev2.el, true))) || next !== void 0 && (next.cls === "ORD" || next.cls === "INNER" || next.cls === "OPEN" || next.cls === "OP" || postfixMark(next));
-    if (touches) {
-      item.box = item.wrapped;
-      item.kind = "fence";
-    }
-  });
-  const script2 = rowCtx.level > 0;
-  list3.forEach((item, i2) => {
-    const joined = JOINED.get(item.box);
-    if (!joined) return;
-    let j = i2 + 1;
-    while (j < list3.length && list3[j].box.width === 0) j++;
-    const next = list3[j];
-    if (!next || next.cls === "NONE" || gap(item, next, script2) > 0) return;
-    const cell = next.box.rows[next.box.base]?.find((c) => c !== "") ?? "";
-    item.box = joined(cell) ?? item.box;
-  });
-  const boxes = [];
-  const breaks = [];
-  let prev;
-  let spaced = false;
-  let depth = 0;
-  let pending = 0;
-  const flush = (space) => {
-    if (space > 0) {
-      boxes.push(blank(space));
-      if (depth === 0) spaced = true;
-    }
-    pending = 0;
-  };
-  for (const item of list3) {
-    if (item.cls === "NONE") {
-      if (item.el.name === "mspace") {
-        pending += item.box.width;
-        continue;
+function toRgba(raw, h, palette2, trns) {
+  const rgba = new Uint8Array(h.width * h.height * 4);
+  const bpp = Math.max(1, h.channels * h.depth >> 3);
+  const convert = converter(h, palette2, trns);
+  let at = 0;
+  for (const [x0, y0, dx, dy, w, rows] of passes(h)) {
+    const n = stride(w, h);
+    let previous = new Uint8Array(n);
+    let line = new Uint8Array(n);
+    const pixels = new Uint8Array(w * 4);
+    for (let row = 0; row < rows; row++) {
+      unfilter(raw[at], raw.subarray(at + 1, at + 1 + n), previous, line, bpp);
+      at += 1 + n;
+      const y = y0 + row * dy;
+      if (dx === 1) convert(line, w, rgba.subarray(y * h.width * 4, (y + 1) * h.width * 4));
+      else {
+        convert(line, w, pixels);
+        for (let i2 = 0; i2 < w; i2++) rgba.set(pixels.subarray(i2 * 4, i2 * 4 + 4), (y * h.width + x0 + i2 * dx) * 4);
       }
-      if (item.box.width > 0 || item.lspace) flush(pending + (item.lspace ?? 0));
-      boxes.push(item.box);
-      pending += item.rspace ?? 0;
-      continue;
+      ;
+      [previous, line] = [line, previous];
     }
-    if (item.cls === "CLOSE") depth = Math.max(0, depth - 1);
-    if (prev && depth === 0 && (item.cls === "REL" || item.cls === "BIN" && !item.unary || pending >= 2)) breaks.push(boxes.length);
-    flush(Math.max(prev ? gap(prev, item, script2) : 0, pending));
-    if (item.cls === "OPEN") depth++;
-    if (depth === 0 && item.el.name === "mtext" && height(item.box) === 1 && item.box.rows[0].includes(" ")) {
-      for (const [k, word] of words(item.box.rows[0]).entries()) {
-        if (k > 0 && word[0] !== " ") breaks.push(boxes.length);
-        boxes.push({ rows: [word], width: word.length, base: 0 });
+  }
+  return { width: h.width, height: h.height, rgba };
+}
+function unfilter(type, src, up, out, bpp) {
+  const n = src.length;
+  switch (type) {
+    case 0:
+      out.set(src);
+      return;
+    case 1:
+      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + (i2 >= bpp ? out[i2 - bpp] : 0);
+      return;
+    case 2:
+      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + up[i2];
+      return;
+    case 3:
+      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + ((i2 >= bpp ? out[i2 - bpp] : 0) + up[i2] >> 1);
+      return;
+    case 4:
+      for (let i2 = 0; i2 < n; i2++) {
+        const a = i2 >= bpp ? out[i2 - bpp] : 0;
+        const b = up[i2];
+        const c = i2 >= bpp ? up[i2 - bpp] : 0;
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        out[i2] = src[i2] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
       }
-    } else {
-      boxes.push(item.box);
-    }
-    prev = item;
-  }
-  flush(pending);
-  const box = boxes.length ? hcat(boxes) : blank(0);
-  const tail = list3.findLast((item) => item.box.width > 0);
-  const tailJoined = tail && boxes.at(-1) === tail.box ? JOINED.get(tail.box) : void 0;
-  if (tailJoined) {
-    JOINED.set(box, (cell) => {
-      const last2 = tailJoined(cell);
-      return last2 && hcat([...boxes.slice(0, -1), last2]);
-    });
-  }
-  return { box, items: list3, spaced, parts: boxes, breaks };
-}
-function postfixMark(item) {
-  return item.el.name === "mo" && /^[!′″‴']+$/u.test(tokenText(item.el));
-}
-function functionName(el, words2 = false) {
-  if (el.name === "mi") return true;
-  if (words2 && el.name === "mo" && /^\p{L}{2,}$/u.test(tokenText(el))) return true;
-  const base = SCRIPTED.has(el.name) ? elements(el)[0] : void 0;
-  return base !== void 0 && functionName(base, words2);
-}
-function overlays(items) {
-  items.forEach((item, i2) => {
-    const el = item.el;
-    if (el.name !== "mpadded" || el.attrs.width !== "0" || !el.attrs.lspace?.startsWith("-")) return;
-    const [over, ghost] = elements(el);
-    if (!over || ghost?.name !== "mphantom" || over.name !== "mpadded") return;
-    const mark = elements(over);
-    const text = mark.length === 1 ? tokenText(mark[0]) : "";
-    const prev = items.slice(0, i2).reverse().find((other2) => other2.box.width > 0);
-    if (!prev || !["/", "⧸", "∕"].includes(text)) return;
-    prev.box = { ...prev.box, rows: prev.box.rows.map((row) => row.map((c) => c === " " || c === "" ? c : c + "\u0338")) };
-    item.box = blank(0);
-    item.cls = "NONE";
-  });
-}
-function words(cells2) {
-  const runs = [];
-  for (const cell of cells2) {
-    const space = cell === " ";
-    const last = runs.at(-1);
-    if (last && last[0] === " " === space) last.push(cell);
-    else runs.push([cell]);
-  }
-  return runs;
-}
-function adjustClasses(items) {
-  let prev;
-  for (const item of items) {
-    if (item.cls === "NONE") continue;
-    if (prev?.autoOP && (item.cls === "BIN" || item.cls === "REL")) prev.cls = "ORD";
-    const before = prev?.cls;
-    if (item.cls === "BIN" && (!before || before === "BIN" || before === "OP" || before === "REL" || before === "OPEN" || before === "PUNCT")) {
-      item.cls = "ORD";
-      item.unary = true;
-    } else if (before === "BIN" && (item.cls === "REL" || item.cls === "CLOSE" || item.cls === "PUNCT")) {
-      prev.cls = "ORD";
-    }
-    prev = item;
-  }
-  if (prev?.cls === "BIN") prev.cls = "ORD";
-}
-function middleBars(items) {
-  for (let i2 = 1; i2 + 1 < items.length; i2++) {
-    const [l, m, r] = [items[i2 - 1], items[i2], items[i2 + 1]];
-    if (l.cls === "CLOSE" && l.box.width === 0 && r.cls === "OPEN" && r.box.width === 0 && m.el.name === "mo") {
-      l.cls = "NONE";
-      r.cls = "NONE";
-      m.cls = "REL";
-    }
-  }
-}
-function gap(left, right, script2) {
-  if (tight) return 0;
-  const space = texSpace(left.cls, right.cls, script2);
-  if (space === 0) return 0;
-  if (space >= 2) return 1;
-  if (left.unary || right.cls === "PUNCT") return 0;
-  if (left.cls === "PUNCT") return 1;
-  if (left.cls === "OP" && right.kind === "fence") return functionName(left.el) ? 0 : 1;
-  if (left.cls === "OP" || right.cls === "OP") return 1;
-  if (left.kind === "frac" || right.kind === "frac") return 1;
-  return 0;
-}
-function makeItem(el, ctx, form) {
-  if (el.name === "mfrac") {
-    const frac = layoutFraction(el, ctx);
-    return { el, box: frac.box, cls: frac.plain ? "ORD" : "INNER", kind: frac.plain ? void 0 : "frac", wrapped: frac.wrapped };
-  }
-  if (el.name === "mrow") {
-    const binom = ctx.twoD && ctx.level === 0 ? void 0 : binomial(el, ctx);
-    if (binom) return { el, box: binom, cls: "ORD" };
-    const row = layoutRow(elements(el), ctx);
-    const cls = parseClass(el.attrs["data-mjx-texclass"]) ?? "ORD";
-    return { el, box: row.box, cls, kind: cls === "INNER" ? "fence" : void 0, row };
-  }
-  const box = layoutNode(el, ctx);
-  const item = { el, box, cls: classOf(el, form) };
-  if (el.name === "mi" && item.cls === "OP" && el.attrs["data-mjx-texclass"] === void 0) item.autoOP = true;
-  if (el.name === "mo" && el.attrs["data-mjx-texclass"] === void 0 && (el.attrs.lspace !== void 0 || el.attrs.rspace !== void 0)) {
-    item.cls = "NONE";
-    item.lspace = spaceCells(length3(el.attrs.lspace ?? "0"));
-    item.rspace = spaceCells(length3(el.attrs.rspace ?? "0"));
-  }
-  return item;
-}
-function classOf(el, form) {
-  const explicit = parseClass(el.attrs["data-mjx-texclass"]);
-  if (explicit) return explicit;
-  switch (el.name) {
-    case "mo": {
-      const text = tokenText(el);
-      const given = el.attrs.form;
-      let cls = operatorClass(text, given === "prefix" || given === "infix" || given === "postfix" ? given : form);
-      if (el.attrs.fence === "true" && cls === "REL") {
-        if (form === "prefix") cls = "OPEN";
-        if (form === "postfix") cls = "CLOSE";
-      }
-      return cls;
-    }
-    case "mi": {
-      const text = tokenText(el);
-      const variant = el.attrs.mathvariant ?? ([...text].length > 1 ? "normal" : "italic");
-      const auto = el.attrs["data-mjx-auto-op"] !== "false";
-      return auto && [...text].length > 1 && /^[a-z][a-z0-9]*$/i.test(text) && variant === "normal" ? "OP" : "ORD";
-    }
-    case "mspace":
-      return "NONE";
+      return;
     default:
-      if (SCRIPTED.has(el.name)) {
-        const base = elements(el)[0];
-        if (base && (base.name === "mo" || base.name === "mi" || SCRIPTED.has(base.name) || base.name === "mrow" && base.attrs["data-mjx-texclass"] !== void 0)) {
-          return classOf(base, form);
-        }
-      }
-      return "ORD";
+      throw new ImageError(`PNG row has unknown filter type ${type}`);
   }
 }
-function coreMo(el) {
-  if (el.name === "mo") return el;
-  if (el.name === "mrow" || el.name === "mstyle") {
-    const kids = elements(el);
-    return kids.length === 1 ? coreMo(kids[0]) : void 0;
-  }
-  if (SCRIPTED.has(el.name)) {
-    const base = elements(el)[0];
-    return base && coreMo(base);
-  }
-  return void 0;
-}
-var INTEGRAL_SIGNS = /* @__PURE__ */ new Map([
-  ["∫", 1],
-  ["∬", 2],
-  ["∭", 3]
-]);
-function isIntegral(text) {
-  return INTEGRAL_SIGNS.has(text);
-}
-function stretches(el, ctx) {
-  if (!ctx.twoD && !ctx.compact) return false;
-  const mo = coreMo(el);
-  if (!mo) return false;
-  const text = tokenText(mo);
-  if (isIntegral(text)) return ctx.display && !el.name.startsWith("munder") && el.name !== "mover";
-  if (!FENCES.has(text)) return false;
-  const stretchy = mo.attrs.stretchy;
-  if (stretchy === "true") return true;
-  if (stretchy === "false") return false;
-  if (mo.attrs.minsize !== void 0 || mo.attrs.maxsize !== void 0) return true;
-  return text !== "/" && text !== "\\" && (inForm(text, "prefix") || inForm(text, "postfix"));
-}
-function layoutNode(el, ctx) {
-  switch (el.name) {
-    case "mi":
-    case "mn":
-    case "mtext":
-      return token(el);
-    case "ms": {
-      const text = token(el);
-      return hcat([textBox(el.attrs.lquote ?? '"'), text, textBox(el.attrs.rquote ?? '"')]);
-    }
-    case "mo":
-      return operator(el, ctx);
-    case "mspace":
-      return blank(spaceCells(length3(el.attrs.width ?? "0")));
-    case "mrow":
-    case "mstyle":
-      return layoutRow([el], ctx).box;
-    case "semantics": {
-      const first = elements(el)[0];
-      return first ? layoutNode(first, ctx) : blank(0);
-    }
-    case "maction": {
-      const kids = elements(el);
-      const chosen = kids[parseInt(el.attrs.selection ?? "1", 10) - 1];
-      return chosen ? layoutNode(chosen, ctx) : fail("maction");
-    }
-    case "mphantom":
-      return phantom(layoutRow(elements(el), strip(ctx)).box);
-    case "mpadded":
-      return padded(el, ctx);
-    case "mfrac":
-      return layoutFraction(el, ctx).box;
-    case "msqrt":
-      return root(layoutRow(elements(el), strip(ctx)), void 0, ctx);
-    case "mroot": {
-      const kids = elements(el);
-      if (kids.length !== 2) fail("mroot");
-      return root(layoutRow([kids[0]], strip(ctx)), kids[1], ctx);
-    }
-    case "msub":
-    case "msup":
-    case "msubsup":
-      return scripts(el, ctx);
-    case "mmultiscripts":
-      return multiscripts(el, ctx);
-    case "munder":
-    case "mover":
-    case "munderover":
-      return underOver(el, ctx);
-    case "menclose":
-      return enclose(el, ctx);
-    case "mtable":
-      return table(el, ctx);
-  }
-  return fail(`<${el.name}>`);
-}
-function strip(ctx) {
-  return ctx.stretch ? { twoD: ctx.twoD, display: ctx.display, level: ctx.level, compact: ctx.compact } : ctx;
-}
-function scriptCtx(ctx) {
-  return { twoD: ctx.twoD, display: false, level: ctx.level + 1, compact: ctx.compact };
-}
-function normalize(text) {
-  return text.replace(/[\u00a0\u2000-\u200a\u202f\u205f]/g, " ");
-}
-function token(el) {
-  const text = normalize(tokenText(el));
-  if (el.name === "mtext" && el.attrs.mathcolor === "red" && text.startsWith("\\")) fail("undefined macro");
-  const variant = el.attrs.mathvariant;
-  return textBox(styleText(text, variant));
-}
-function operator(el, ctx) {
-  const text = normalize(tokenText(el));
-  const stretch = ctx.stretch;
-  if (stretch && (stretch.up > 0 || stretch.down > 0)) {
-    const rows = stretch.up + stretch.down + 1;
-    const count = INTEGRAL_SIGNS.get(text);
-    const column = count ? tallIntegral(rows).map((c) => c.repeat(count)) : tallDelimiter(text, rows, stretch.up);
-    const cellRows = column.map((c) => toCells(c));
-    return { rows: cellRows, width: cellRows[0].length, base: stretch.up };
-  }
-  return textBox(styleText(text, el.attrs.mathvariant));
-}
-function length3(value) {
-  const named = {
-    veryverythinmathspace: 1,
-    verythinmathspace: 2,
-    thinmathspace: 3,
-    mediummathspace: 4,
-    thickmathspace: 5,
-    verythickmathspace: 6,
-    veryverythickmathspace: 7
-  };
-  const v = value.trim();
-  const negative = v.startsWith("negative");
-  const name = negative ? v.slice(8) : v;
-  if (named[name] !== void 0) return (negative ? -1 : 1) * named[name] / 18;
-  const m = /^([+-]?(?:\d+\.?\d*|\.\d+))\s*(em|ex|pt|px|mu|in|cm|mm|pc)?$/.exec(v);
-  if (!m) return fail(`length ${value}`);
-  const n = parseFloat(m[1]);
-  const unit = m[2] ?? "em";
-  const per = { em: 1, ex: 0.43, pt: 0.1, px: 1 / 16, mu: 1 / 18, in: 7.2, cm: 2.835, mm: 0.2835, pc: 1.2 };
-  return n * per[unit];
-}
-function cells(em2) {
-  return em2 <= 0.05 ? 0 : Math.max(1, Math.round(em2 * 2));
-}
-function spaceCells(em2) {
-  if (!tight) return cells(em2);
-  return em2 < 0.25 ? 0 : 1;
-}
-function padded(el, ctx) {
-  const inner = layoutRow(elements(el), ctx).box;
-  if (!isBlank2(inner)) return inner;
-  let box = inner;
-  if (el.attrs.width === "0") box = { rows: box.rows.map(() => []), width: 0, base: box.base };
-  if (el.attrs.height === "0" && el.attrs.depth === "0") box = blank(box.width);
-  return box;
-}
-function layoutFraction(el, ctx) {
-  const kids = elements(el);
-  if (kids.length !== 2) fail("mfrac");
-  const [num3, den] = kids;
-  const noBar = /^0+(\.0*)?([a-z]+)?$/.test(el.attrs.linethickness ?? "");
-  const inner = strip(ctx);
-  const vulgar = noBar ? void 0 : VULGAR.get(`${numeral(num3)}/${numeral(den)}`);
-  if (vulgar && (!ctx.twoD || !ctx.display)) return { box: textBox(vulgar), plain: true };
-  if (ctx.twoD && ctx.level === 0 && el.attrs.bevelled !== "true") {
-    const partCtx = { twoD: true, display: false, level: ctx.display ? ctx.level : ctx.level + 1 };
-    const top2 = layoutRow([num3], partCtx).box;
-    const bottom2 = layoutRow([den], partCtx).box;
-    const overhang = height(top2) > 1 || height(bottom2) > 1 ? 1 : 0;
-    const width = Math.max(top2.width, bottom2.width) + 2 * overhang;
-    const bar = noBar ? blank(width) : textBox("─".repeat(width));
-    return { box: vstack([top2, bar, bottom2], "center", height(top2)) };
-  }
-  if (vulgar) return { box: textBox(vulgar), plain: true };
-  const top = layoutRow([num3], inner);
-  const bottom = layoutRow([den], inner);
-  if (noBar) {
-    return { box: hcat([top.box, blank(1), bottom.box]), plain: true };
-  }
-  const box = hcat([parens(top.box, needsParens(top, "num")), textBox("/"), parens(bottom.box, needsParens(bottom, "den"))]);
-  return { box, wrapped: parens(box, true) };
-}
-function binomial(el, ctx) {
-  const kids = elements(el);
-  if (kids.length !== 3) return void 0;
-  const [open, frac, close] = kids;
-  const fence = (e, ch) => {
-    const mo = coreMo(e);
-    return mo !== void 0 && tokenText(mo) === ch;
-  };
-  if (!fence(open, "(") || !fence(close, ")") || frac.name !== "mfrac") return void 0;
-  if (!/^0+(\.0*)?([a-z]+)?$/.test(frac.attrs.linethickness ?? "")) return void 0;
-  const [n, k] = elements(frac);
-  if (!n || !k) return void 0;
-  return hcat([textBox("C("), layoutRow([n], ctx).box, textBox(", "), layoutRow([k], ctx).box, textBox(")")]);
-}
-function numeral(el) {
-  if (el.name === "mn") return tokenText(el);
-  if (el.name === "mrow" || el.name === "mstyle") {
-    const kids = elements(el);
-    return kids.length === 1 ? numeral(kids[0]) : "";
-  }
-  return "";
-}
-function parens(box, wrap) {
-  if (!wrap) return box;
-  if (height(box) === 1) return hcat([textBox("("), box, textBox(")")]);
-  const delim = (ch) => ({ rows: tallDelimiter(ch, height(box), box.base).map((c) => toCells(c)), width: 1, base: box.base });
-  return hcat([delim("("), box, delim(")")]);
-}
-function atoms(row) {
-  let items = row.items.filter((item) => item.box.width > 0);
-  let spaced = row.spaced;
-  while (items.length === 1 && items[0].row && items[0].kind !== "fence") {
-    const inner = items[0].row;
-    items = inner.items.filter((item) => item.box.width > 0);
-    spaced = inner.spaced;
-  }
-  return { items, spaced };
-}
-var DIFFERENTIALS = /* @__PURE__ */ new Set(["d", "∂", "δ", "Δ", "∇", "D"]);
-function needsParens(row, side) {
-  const { items, spaced } = atoms(row);
-  if (items.length === 0) return false;
-  if (items.some((item) => item.wrapped && item.kind === "frac")) return true;
-  if (items.length === 1) {
-    const only = items[0];
-    return only.el.name === "mtext" && tokenText(only.el).includes(" ");
-  }
-  if (spaced) return true;
-  if (side === "num") return looseAtTop(items);
-  const [head, second] = items;
-  const lastItem = items.at(-1);
-  const single2 = (item) => ["mi", "mn", "msub", "msup", "msubsup"].includes(item.el.name);
-  if (items.length === 2 && DIFFERENTIALS.has(plainText(head)) && single2(second)) return false;
-  const args = items.slice(2, -1);
-  const plainArgs = args.every((item) => single2(item) || item.cls === "PUNCT");
-  if (single2(head) && second.cls === "OPEN" && lastItem.cls === "CLOSE" && plainArgs) return false;
-  if (items.length === 2 && single2(head) && plainText(second) === "!") return false;
-  return true;
-}
-function looser(item, first, next) {
-  if (item.unary) return !first;
-  if (item.cls === "NONE") return item.box.width > 0 && (item.lspace !== void 0 || item.rspace !== void 0);
-  if (item.el.name === "mtext") return plainText(item).includes(" ");
-  if (item.cls === "OP" && functionName(item.el) && next?.cls === "OPEN") return false;
-  return item.cls === "BIN" || item.cls === "REL" || item.cls === "PUNCT" || item.cls === "OP";
-}
-function looseAtTop(items) {
-  let depth = 0;
-  const bars = [];
-  for (const [i2, item] of items.entries()) {
-    const text = item.el.name === "mo" ? tokenText(item.el) : "";
-    if (BARS.has(text)) {
-      const prev = items[i2 - 1];
-      if (bars.at(-1) === depth && (!prev || !["BIN", "REL", "OPEN", "PUNCT"].includes(prev.cls))) {
-        bars.pop();
-        depth--;
-      } else if (!prev || prev.unary || ["BIN", "REL", "OPEN", "PUNCT", "OP"].includes(prev.cls)) {
-        depth++;
-        bars.push(depth);
-      } else if (depth === 0) {
-        return true;
-      }
-      continue;
-    }
-    if (item.cls === "CLOSE") depth = Math.max(0, depth - 1);
-    else if (item.cls === "OPEN") depth++;
-    else if (depth === 0 && looser(item, i2 === 0, items[i2 + 1])) return true;
-  }
-  return false;
-}
-var BARS = /* @__PURE__ */ new Set(["|", "‖", "∥", "∣"]);
-function plainText(item) {
-  return item.box.rows.length === 1 ? item.box.rows[0].join("") : "";
-}
-function isAtom(row) {
-  const { items } = atoms(row);
-  if (items.length === 0) return true;
-  if (items.length !== 1) return false;
-  const only = items[0];
-  if (only.kind === "fence") return true;
-  const scripted = only.el.name === "msub" && ["mi", "mn", "mover", "munder"].includes(elements(only.el)[0]?.name ?? "") && /^[^\s_^()]+$/u.test(plainText(only));
-  return scripted || (only.el.name === "mi" || only.el.name === "mn" || only.el.name === "mtext") && !plainText(only).includes(" ");
-}
-function root(radicand, indexEl, ctx) {
-  let index;
-  let mapped;
-  if (indexEl) {
-    index = layoutRow([indexEl], { twoD: ctx.twoD, display: false, level: ctx.level + 2, compact: ctx.compact }).box;
-    mapped = height(index) === 1 ? mapScript(index.rows[0], SUPERSCRIPTS) : void 0;
-  }
-  const sign = mapped === "³" ? "∛" : mapped === "⁴" ? "∜" : "√";
-  const prefix = sign === "√" && mapped !== void 0 ? mapped : "";
-  if (index && sign === "√" && mapped === void 0 && !ctx.twoD) fail("root index");
-  const r = radicand.box;
-  if (height(r) === 1 && (isAtom(radicand) || !ctx.twoD)) {
-    const atom = isAtom(radicand);
-    const body2 = atom ? r : parens(r, true);
-    const box2 = hcat([textBox(prefix + sign), body2]);
-    if (index && mapped === void 0) return hangIndex(box2, index, 0);
-    const bare = atom && !atoms(radicand).items.some((item) => item.kind === "fence") && r.width > 0;
-    if (bare) JOINED.set(box2, (cell) => JOINS_RADICAND.test(cell) ? hcat([box2, blank(1)]) : void 0);
-    return box2;
-  }
-  if (height(r) === 1) {
-    const bar = textBox(" ".repeat(toCells(prefix).length + 1) + "_".repeat(r.width));
-    const box2 = vstack([bar, hcat([textBox(prefix + sign), r])], "left", 1);
-    return index && mapped === void 0 ? hangIndex(box2, index, 1) : box2;
-  }
-  const rows = height(r) + 1;
-  const leadCells = toCells(prefix);
-  const left = Array.from({ length: rows }, (_, i2) => [
-    ...i2 === rows - 2 ? leadCells : Array(leadCells.length).fill(" "),
-    i2 === rows - 1 ? "╲" : " ",
-    i2 === 0 ? "┌" : "│"
-  ]);
-  const leftBox = { rows: left, width: left[0].length, base: r.base + 1 };
-  const body = { rows: [Array(r.width + 1).fill("─"), ...r.rows.map((row) => [" ", ...row])], width: r.width + 1, base: r.base + 1 };
-  const box = hcat([leftBox, body]);
-  return index && mapped === void 0 ? hangIndex(box, index, box.rows.length - 1) : box;
-}
-function hangIndex(box, index, signRow) {
-  const indent = index.width;
-  const shifted = pad(box, indent, 0);
-  return compose2([
-    { box: shifted, row: -shifted.base, col: 0 },
-    { box: index, row: signRow - shifted.base - height(index), col: 0 }
-  ]);
-}
-function compose2(parts) {
-  const top = Math.min(...parts.map((p) => p.row));
-  const bottom = Math.max(...parts.map((p) => p.row + height(p.box) - 1));
-  const left = Math.min(0, ...parts.map((p) => p.col));
-  const width = Math.max(0, ...parts.map((p) => p.col + p.box.width)) - left;
-  const out = blank(width, bottom - top + 1, -top);
-  for (const p of parts) {
-    p.box.rows.forEach((row, r) => {
-      row.forEach((cell, c) => {
-        out.rows[p.row - top + r][p.col - left + c] = cell;
-      });
-    });
-  }
-  return out;
-}
-function group(box, word = false) {
-  const text = box.rows[0].join("");
-  const cellsCount = box.rows[0].filter((c) => c !== "").length;
-  if (cellsCount <= 1) return text;
-  if (/^\(.*\)$/.test(text) && balanced(text.slice(1, -1))) return text;
-  if (word && WORD.test(text)) return text;
-  return `(${text})`;
-}
-var WORD = /^(?:(?![\u00b2\u00b3\u00b9\u02b0-\u02ff\u1d2c-\u1dbf\u2070-\u209f\u2c7c\u2c7d])[\p{L}\p{N}]\p{M}*)+$/u;
-var JOINED = /* @__PURE__ */ new WeakMap();
-var JOINS_SCRIPT = /^[\p{L}\p{N}\p{M}]/u;
-var JOINS_RADICAND = /^[\p{L}\p{N}\p{M}(]/u;
-function balanced(text) {
-  let depth = 0;
-  for (const ch of text) {
-    if (ch === "(") depth++;
-    if (ch === ")" && --depth < 0) return false;
-  }
-  return depth === 0;
-}
-function scripts(el, ctx) {
-  const kids = elements(el);
-  const expected = el.name === "msubsup" ? 3 : 2;
-  if (kids.length !== expected) fail(el.name);
-  const base = kids[0];
-  const sub = el.name === "msup" ? void 0 : kids[1];
-  const sup = el.name === "msub" ? void 0 : el.name === "msup" ? kids[1] : kids[2];
-  return attach(base, sub, sup, ctx);
-}
-function attach(baseEl, subEl, supEl, ctx) {
-  const sctx = scriptCtx(ctx);
-  const scripts2 = makeScripts(subEl && layoutRow([subEl], sctx).box, supEl && layoutRow([supEl], sctx).box);
-  const core = coreMo(baseEl);
-  const integral = core !== void 0 && isIntegral(tokenText(core)) && ctx.twoD && ctx.display;
-  let baseCtx = ctx;
-  if (integral) {
-    const { sub, sup, subMapped, supMapped } = scripts2;
-    const target = ctx.stretch ?? { up: 0, down: 0 };
-    const unmappedSup = sup !== void 0 && supMapped === void 0;
-    const unmappedSub = sub !== void 0 && subMapped === void 0;
-    if (unmappedSup || unmappedSub && sup !== void 0 || target.up + target.down > 0) {
-      baseCtx = {
-        ...ctx,
-        stretch: {
-          up: Math.max(target.up, sup ? supMapped !== void 0 ? 1 : height(sup) : 0, 1),
-          down: Math.max(target.down, sub ? subMapped !== void 0 ? 1 : height(sub) : 0, sub ? 1 : 0)
+function converter(h, palette2, trns) {
+  const { depth, colorType } = h;
+  const sample = sampleReader(depth);
+  const to8 = depth === 16 ? (v) => (v * 255 + 32767) / 65535 | 0 : depth === 8 ? (v) => v : (v) => v * 255 / ((1 << depth) - 1);
+  const key = (i2) => trns && trns.length >= i2 * 2 + 2 ? trns[i2 * 2] << 8 | trns[i2 * 2 + 1] : -1;
+  switch (colorType) {
+    case 0: {
+      const gray = key(0);
+      return (line, width, out) => {
+        for (let x2 = 0; x2 < width; x2++) {
+          const v = sample(line, x2);
+          const g = to8(v);
+          out[x2 * 4] = out[x2 * 4 + 1] = out[x2 * 4 + 2] = g;
+          out[x2 * 4 + 3] = v === gray ? 0 : 255;
         }
       };
     }
+    case 2: {
+      const [kr, kg, kb] = [key(0), key(1), key(2)];
+      return (line, width, out) => {
+        for (let x2 = 0; x2 < width; x2++) {
+          const r = sample(line, x2 * 3);
+          const g = sample(line, x2 * 3 + 1);
+          const b = sample(line, x2 * 3 + 2);
+          out[x2 * 4] = to8(r);
+          out[x2 * 4 + 1] = to8(g);
+          out[x2 * 4 + 2] = to8(b);
+          out[x2 * 4 + 3] = r === kr && g === kg && b === kb ? 0 : 255;
+        }
+      };
+    }
+    case 3: {
+      const plte = palette2 ?? new Uint8Array(0);
+      const table2 = new Uint8Array(256 * 4);
+      for (let i2 = 0; i2 < 256; i2++) {
+        if (i2 * 3 + 2 < plte.length) table2.set(plte.subarray(i2 * 3, i2 * 3 + 3), i2 * 4);
+        table2[i2 * 4 + 3] = trns && i2 < trns.length ? trns[i2] : 255;
+      }
+      return (line, width, out) => {
+        for (let x2 = 0; x2 < width; x2++) {
+          const at = sample(line, x2) * 4;
+          out[x2 * 4] = table2[at];
+          out[x2 * 4 + 1] = table2[at + 1];
+          out[x2 * 4 + 2] = table2[at + 2];
+          out[x2 * 4 + 3] = table2[at + 3];
+        }
+      };
+    }
+    case 4:
+      return (line, width, out) => {
+        for (let x2 = 0; x2 < width; x2++) {
+          out[x2 * 4] = out[x2 * 4 + 1] = out[x2 * 4 + 2] = to8(sample(line, x2 * 2));
+          out[x2 * 4 + 3] = to8(sample(line, x2 * 2 + 1));
+        }
+      };
+    default:
+      return (line, width, out) => {
+        if (depth === 8) out.set(line.subarray(0, width * 4));
+        else for (let i2 = 0; i2 < width * 4; i2++) out[i2] = to8(sample(line, i2));
+      };
   }
-  const base = groupedBase(baseEl, baseScriptBox(baseEl, baseCtx), scripts2);
-  if (!ctx.twoD) return oneLineScripts(base, scripts2);
-  return compose2([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, scripts2, "right", integral)]);
 }
-function makeScripts(sub, sup) {
-  return {
-    sub,
-    sup,
-    subMapped: sub && height(sub) === 1 ? mapScript(sub.rows[0], SUBSCRIPTS) : void 0,
-    supMapped: sup && height(sup) === 1 ? mapScript(sup.rows[0], SUPERSCRIPTS) : void 0
+function sampleReader(depth) {
+  if (depth === 8) return (line, i2) => line[i2];
+  if (depth === 16) return (line, i2) => line[i2 * 2] << 8 | line[i2 * 2 + 1];
+  const mask = (1 << depth) - 1;
+  return (line, i2) => {
+    const bit = i2 * depth;
+    return line[bit >> 3] >> 8 - depth - (bit & 7) & mask;
   };
 }
-function scriptText({ sub, sup, subMapped, supMapped }) {
-  let text = "";
-  if (sub) text += subMapped ?? "_" + group(sub, tight && (!sup || supMapped === void 0));
-  const head = text;
-  if (sup) text += supMapped ?? "^" + group(sup, tight);
-  const last = sup ? supMapped === void 0 ? sup : void 0 : subMapped === void 0 ? sub : void 0;
-  if (!last) return { text, bare: false };
-  const written = group(last, tight);
-  if (written.startsWith("(") || !JOINS_SCRIPT.test([...written].at(-1) ?? "")) return { text, bare: false };
-  return { text, bare: true, word: last.rows[0].filter((c) => c !== "").length > 1 };
+// core/src/raster/png.ts
+var SIGNATURE2 = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+var TRNS_AT = PLTE_AT + 12 + 768;
+function encodeAlphaPng(alpha, width, height2, ink, over, curve) {
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height2);
+  ihdr.set([8, 3, 0, 0, 0], 8);
+  return concat2([
+    SIGNATURE2,
+    chunk("IHDR", ihdr),
+    chunk("PLTE", palette(ink)),
+    chunk("tRNS", alphaTable(ink, over, curve)),
+    chunk("IDAT", zlibSync(filter(alpha, width, height2), { level: 6 })),
+    chunk("IEND", new Uint8Array(0))
+  ]);
 }
-function placeScripts(base, { sub, sup, subMapped, supMapped }, side, integral = false) {
-  const tall = height(base) > 1;
-  const top = -above(base);
-  const bottom = below(base);
-  const subBox = subMapped !== void 0 ? textBox(subMapped) : sub;
-  const supBox = supMapped !== void 0 ? textBox(supMapped) : sup;
-  const at = (box, row, width2) => ({
-    box: side === "right" ? box : widen(box, width2, "right"),
-    row,
-    col: side === "right" ? base.width : -width2
-  });
-  if (!tall && subMapped !== void 0 && supMapped !== void 0) {
-    const both = textBox(subMapped + supMapped);
-    return [at(both, 0, both.width)];
+function encodeQuantizedPng(rgba, width, height2) {
+  const n = width * height2;
+  const pairs3 = /* @__PURE__ */ new Map();
+  const weight = /* @__PURE__ */ new Map();
+  for (let i2 = 0; i2 < n; i2++) {
+    const a = rgba[4 * i2 + 3];
+    if (a === 0) continue;
+    const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
+    if (pairs3.size <= 256) pairs3.set(rgb * 256 + a, 0);
+    weight.set(rgb, (weight.get(rgb) ?? 0) + a);
   }
-  const width = Math.max(subBox?.width ?? 0, supBox?.width ?? 0);
-  const parts = [];
-  if (supBox) {
-    const row = integral && tall ? top : supMapped !== void 0 ? top : tall ? top - height(supBox) + 1 : top - height(supBox);
-    parts.push(at(supBox, row, width));
-  }
-  if (subBox) {
-    const row = integral && tall ? bottom - height(subBox) + 1 : subMapped !== void 0 ? bottom : tall ? bottom : bottom + 1;
-    parts.push(at(subBox, row, width));
-  }
-  return parts;
-}
-function multiscripts(el, ctx) {
-  const kids = elements(el);
-  if (kids.length === 0) fail("mmultiscripts");
-  const sctx = scriptCtx(ctx);
-  const sides2 = [
-    { sub: [], sup: [] },
-    { sub: [], sup: [] }
-  ];
-  let side = 0;
-  for (let i2 = 1; i2 < kids.length; ) {
-    if (kids[i2].name === "mprescripts") {
-      side = 1;
-      i2++;
-      continue;
+  const index = new Uint8Array(n);
+  let plte = [0, 0, 0];
+  let trns = [0];
+  if (pairs3.size <= 255) {
+    const slot = /* @__PURE__ */ new Map();
+    for (const key of pairs3.keys()) {
+      slot.set(key, slot.size + 1);
+      const rgb = Math.floor(key / 256);
+      plte.push(rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255);
+      trns.push(key % 256);
     }
-    const pair = [kids[i2], kids[i2 + 1]];
-    if (!pair[1]) fail("mmultiscripts pair");
-    const [subEl, supEl] = pair;
-    if (subEl.name !== "none") sides2[side].sub.push(layoutRow([subEl], sctx).box);
-    if (supEl.name !== "none") sides2[side].sup.push(layoutRow([supEl], sctx).box);
-    i2 += 2;
-  }
-  const join2 = (boxes) => boxes.length ? hcat(boxes) : void 0;
-  const [post, pre] = sides2.map((s) => makeScripts(join2(s.sub), join2(s.sup)));
-  const base = layoutNode(kids[0], strip(ctx));
-  if (!ctx.twoD) return oneLineScripts(hcat([textBox(scriptText(pre).text), base]), post);
-  return compose2([{ box: base, row: -base.base, col: 0 }, ...placeScripts(base, post, "right"), ...placeScripts(base, pre, "left")]);
-}
-function oneLineScripts(base, scripts2) {
-  const { text, bare, word } = scriptText(scripts2);
-  const box = hcat([base, textBox(text)]);
-  if (bare) {
-    JOINED.set(box, (cell) => JOINS_SCRIPT.test(cell) || cell === "(" && word ? hcat([box, blank(1)]) : void 0);
-  }
-  return box;
-}
-function groupedBase(el, base, { sub, sup }) {
-  let core = el;
-  while (core.name === "mrow" && elements(core).length === 1) core = elements(core)[0];
-  const radical = core.name === "msqrt" || core.name === "mroot";
-  const above2 = sup !== void 0 && (core.name === "msup" || core.name === "msubsup" || core.name === "mover" || core.name === "munderover");
-  const beneath = sub !== void 0 && sup === void 0 && (core.name === "msub" || core.name === "msubsup" || core.name === "munder" || core.name === "munderover");
-  if (!radical && !above2 && !beneath) return base;
-  if (above2 && (core.name === "mover" || core.name === "munderover") && !scriptedLimits(core)) return base;
-  return height(base) === 1 ? parens(base, true) : base;
-}
-function scriptedLimits(el) {
-  const kids = elements(el);
-  const mark = el.name === "munder" ? kids[1] : kids.at(-1);
-  return !(mark?.name === "mo" && (OVER_ACCENTS.has(tokenText(mark)) || UNDER_ACCENTS.has(tokenText(mark)) || braceRow(tokenText(mark), 1) !== void 0));
-}
-function baseScriptBox(el, ctx) {
-  if (el.name === "mfrac") {
-    const frac = layoutFraction(el, ctx);
-    return frac.wrapped ?? frac.box;
-  }
-  return layoutNode(el, ctx);
-}
-var INTEGRALS = /^[\u222b-\u2233\u2a0b-\u2a1c]$/;
-function movable(base) {
-  const mo = coreMo(base);
-  if (mo) {
-    if (mo.attrs.movablelimits === "true") return true;
-    if (mo.attrs.movablelimits === "false") return false;
-    const text = tokenText(mo);
-    return operatorClass(text, "prefix") === "OP" && !INTEGRALS.test(text);
-  }
-  return base.name === "mi" && [...tokenText(base)].length > 1;
-}
-function underOver(el, ctx) {
-  const kids = elements(el);
-  const expected = el.name === "munderover" ? 3 : 2;
-  if (kids.length !== expected) fail(el.name);
-  const baseEl = kids[0];
-  const underEl = el.name === "mover" ? void 0 : kids[1];
-  const overEl = el.name === "munder" ? void 0 : el.name === "mover" ? kids[1] : kids[2];
-  const overText = overEl?.name === "mo" ? tokenText(overEl) : void 0;
-  const underText = underEl?.name === "mo" ? tokenText(underEl) : void 0;
-  if (el.name !== "munderover") {
-    const mark = overText ?? underText;
-    const isOver = overText !== void 0;
-    if (mark !== void 0) {
-      const brace = braceRow(mark, 1);
-      if (brace !== void 0) {
-        if (!ctx.twoD) fail("brace in inline math");
-        const base2 = layoutNode(baseEl, strip(ctx));
-        const row = textBox(braceRow(mark, base2.width));
-        return isOver ? vstack([row, base2], "center", base2.base + 1) : vstack([base2, row], "center", base2.base);
+    for (let i2 = 0; i2 < n; i2++) {
+      const a = rgba[4 * i2 + 3];
+      if (a === 0) continue;
+      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
+      index[i2] = slot.get(rgb * 256 + a);
+    }
+  } else {
+    const solidWeight = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < n; i2++) {
+      if (rgba[4 * i2 + 3] < SOLID) continue;
+      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
+      solidWeight.set(rgb, (solidWeight.get(rgb) ?? 0) + 1);
+    }
+    const pick2 = (weights, most, apart) => {
+      const chosen = [];
+      for (const [rgb] of [...weights].sort((a, b) => b[1] - a[1])) {
+        const c = [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255];
+        if (chosen.every((one) => distance(one, c) > apart)) chosen.push(c);
+        if (chosen.length >= most) break;
       }
-      const accent = (isOver ? OVER_ACCENTS : UNDER_ACCENTS).get(mark);
-      const markEl = isOver ? overEl : underEl;
-      if (accent && el.attrs[isOver ? "accent" : "accentunder"] !== "false" && markEl.attrs.accent !== "false") {
-        return applyAccent(layoutNode(baseEl, strip(ctx)), accent, isOver, ctx);
+      return chosen;
+    };
+    const cover = (weights, most, apart) => {
+      const sorted = [...weights].sort((a, b) => b[1] - a[1]).slice(0, CANDIDATES);
+      const chosen = pick2(new Map(sorted), most - FARTHEST_SLOTS, apart);
+      const total = sorted.reduce((sum3, [, w]) => sum3 + w, 0);
+      let kept = 0;
+      let sum2 = 0;
+      while (kept < sorted.length && sum2 < total * (1 - COVER_TAIL)) sum2 += sorted[kept++][1];
+      const candidates = sorted.slice(0, kept).map(([rgb]) => [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255]);
+      const gap2 = candidates.map((c) => Math.min(Infinity, ...chosen.map((one) => distance(one, c))));
+      while (chosen.length < most) {
+        let far = -1;
+        for (let k = 0; k < candidates.length; k++) if (gap2[k] > apart && (far < 0 || gap2[k] > gap2[far])) far = k;
+        if (far < 0) break;
+        const c = candidates[far];
+        chosen.push(c);
+        for (let k = 0; k < candidates.length; k++) gap2[k] = Math.min(gap2[k], distance(c, candidates[k]));
+      }
+      return chosen;
+    };
+    const inks = pick2(weight, MAX_INKS, INK_DISTANCE);
+    const solids = cover(solidWeight, SOLID_COLOURS, SOLID_DISTANCE);
+    const levels = Math.min(MAX_LEVELS, Math.floor((255 - solids.length) / inks.length));
+    plte = [0, 0, 0];
+    trns = [0];
+    for (const ink of inks) {
+      for (let l = 1; l <= levels; l++) {
+        plte.push(...ink);
+        trns.push(Math.round(255 * l / levels));
       }
     }
-  }
-  const draw = baseEl.name === "mo" && baseEl.attrs.stretchy !== "false" ? STRETCHY_ARROWS.get(tokenText(baseEl)) : void 0;
-  if (draw && ctx.twoD) {
-    const sctx2 = scriptCtx(ctx);
-    const over2 = overEl && layoutRow([overEl], sctx2).box;
-    const under2 = underEl && layoutRow([underEl], sctx2).box;
-    const width = Math.max(over2?.width ?? 0, under2?.width ?? 0) + 2;
-    const arrow = textBox(draw(width));
-    return stack(arrow, over2, under2);
-  }
-  if (!ctx.twoD || !ctx.display && movable(baseEl)) return attach(baseEl, underEl, overEl, ctx);
-  const sctx = scriptCtx(ctx);
-  const base = layoutNode(baseEl, strip(ctx));
-  const over = overEl && layoutRow([overEl], sctx).box;
-  const under = underEl && layoutRow([underEl], sctx).box;
-  return stack(base, over, under);
-}
-function stack(base, over, under) {
-  const parts = [over, base, under].filter((b) => b !== void 0);
-  return vstack(parts, "center", (over ? height(over) : 0) + base.base);
-}
-function marked3(cell, mark) {
-  return cell === "" ? cell : cell + mark;
-}
-function applyAccent(base, accent, over, ctx) {
-  if (height(base) === 1) {
-    const row2 = base.rows[0];
-    const filled = row2.filter((c) => c !== "");
-    if (filled.length === 1 && row2.length === 1) {
-      const prime = DOT_PRIMES[accent.mark];
-      const cell = row2[0];
-      if (over && prime && [...(cell + accent.mark).normalize("NFC")].length > 1) return textBox(cell + prime);
-      return { ...base, rows: [[marked3(cell, accent.mark)]] };
+    const solidAt = plte.length / 3;
+    for (const solid of solids) {
+      plte.push(...solid);
+      trns.push(255);
     }
-    if (accent.wide) return { ...base, rows: [row2.map((c) => marked3(c, accent.mark))] };
-    if (!ctx.twoD) {
-      if (accent.arrow) {
-        const lastIndex = row2.reduce((at, c, i2) => c !== "" && c !== " " ? i2 : at, -1);
-        return { ...base, rows: [row2.map((c, i2) => i2 === lastIndex ? marked3(c, accent.mark) : c)] };
+    const nearest = (set, memo, rgb) => {
+      let k = memo.get(rgb);
+      if (k === void 0) {
+        const c = [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255];
+        k = 0;
+        for (let j = 1; j < set.length; j++) if (distance(set[j], c) < distance(set[k], c)) k = j;
+        memo.set(rgb, k);
       }
-      return { ...base, rows: [row2.map((c) => c === " " ? c : marked3(c, accent.mark))] };
+      return k;
+    };
+    const inkMemo = /* @__PURE__ */ new Map();
+    const solidMemo = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < n; i2++) {
+      const a = rgba[4 * i2 + 3];
+      if (a === 0) continue;
+      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
+      if (a >= SOLID && solids.length > 0) {
+        index[i2] = solidAt + nearest(solids, solidMemo, rgb);
+        continue;
+      }
+      const level = Math.max(1, Math.round(a * levels / 255));
+      index[i2] = 1 + nearest(inks, inkMemo, rgb) * levels + level - 1;
     }
   }
-  if (!ctx.twoD) fail("accent over a tall base");
-  const width = Math.max(1, base.width);
-  const glyph = accent.arrow ? arrowRow(accent.arrow, width) : accent.wide ? accent.glyph.repeat(width) : accent.glyph;
-  const row = widen(textBox(glyph), width, "center");
-  return over ? vstack([row, base], "center", base.base + 1) : vstack([base, row], "center", base.base);
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height2);
+  ihdr.set([8, 3, 0, 0, 0], 8);
+  return concat2([
+    SIGNATURE2,
+    chunk("IHDR", ihdr),
+    chunk("PLTE", Uint8Array.from(plte)),
+    chunk("tRNS", Uint8Array.from(trns)),
+    chunk("IDAT", zlibSync(filterBytes(index, width, height2, 1), { level: 9 })),
+    chunk("IEND", new Uint8Array(0))
+  ]);
 }
-function enclose(el, ctx) {
-  const inner = layoutRow(elements(el), strip(ctx)).box;
-  const notations = (el.attrs.notation ?? "longdiv").trim().split(/\s+/);
-  let box = inner;
-  for (const notation of notations) {
-    switch (notation) {
-      case "updiagonalstrike":
-      case "downdiagonalstrike":
-      case "updiagonalarrow":
-      // \cancelto: the value it goes to is a superscript
-      case "northeastarrow":
-      case "horizontalstrike": {
-        const mark = notation === "horizontalstrike" ? "\u0336" : "\u0338";
-        if (box.rows.some((row) => row.some((c) => c.includes(mark)))) break;
-        box = { ...box, rows: box.rows.map((row) => row.map((c) => c === " " || c === "" ? c : c + mark)) };
-        break;
-      }
-      case "box":
-      case "roundedbox": {
-        if (!ctx.twoD) break;
-        const [tl, tr, bl, br2] = notation === "box" ? ["┌", "┐", "└", "┘"] : ["╭", "╮", "╰", "╯"];
-        const w = box.width + 2;
-        const side = (ch) => ({ rows: box.rows.map(() => [ch]), width: 1, base: box.base });
-        const middle = hcat([side("│"), pad(box, 1, 1), side("│")]);
-        box = vstack([textBox(tl + "─".repeat(w) + tr), middle, textBox(bl + "─".repeat(w) + br2)], "left", box.base + 1);
-        break;
-      }
-      case "left":
-      case "right":
-      case "top":
-      case "bottom":
-        break;
-      default:
-        fail(`menclose ${notation}`);
+var INK_DISTANCE = 40 * 40;
+var SOLID_DISTANCE = 6 * 6;
+function distance(a, b) {
+  return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+}
+function filterBytes(rgba, w, h, bpp) {
+  const stride2 = w * bpp;
+  const out = new Uint8Array(h * (stride2 + 1));
+  const trial = [new Uint8Array(stride2), new Uint8Array(stride2), new Uint8Array(stride2), new Uint8Array(stride2)];
+  const cost = (row) => {
+    let sum2 = 0;
+    for (let i2 = 0; i2 < row.length; i2++) sum2 += row[i2] < 128 ? row[i2] : 256 - row[i2];
+    return sum2;
+  };
+  for (let y = 0; y < h; y++) {
+    const at = y * stride2;
+    const up = y > 0 ? at - stride2 : -1;
+    const [none, sub, upRow, paeth] = trial;
+    for (let i2 = 0; i2 < stride2; i2++) {
+      const x2 = rgba[at + i2];
+      const a = i2 >= bpp ? rgba[at + i2 - bpp] : 0;
+      const b = up >= 0 ? rgba[up + i2] : 0;
+      const c = up >= 0 && i2 >= bpp ? rgba[up + i2 - bpp] : 0;
+      none[i2] = x2;
+      sub[i2] = x2 - a & 255;
+      upRow[i2] = x2 - b & 255;
+      const p = a + b - c;
+      const pa = p > a ? p - a : a - p;
+      const pb = p > b ? p - b : b - p;
+      const pc = p > c ? p - c : c - p;
+      paeth[i2] = x2 - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c) & 255;
     }
+    let best = 0;
+    let bestCost = Infinity;
+    for (let f = 0; f < 4; f++) {
+      const c = cost(trial[f]);
+      if (c < bestCost) {
+        bestCost = c;
+        best = f;
+      }
+    }
+    const filterType = [0, 1, 2, 4][best];
+    out[y * (stride2 + 1)] = filterType;
+    out.set(trial[best], y * (stride2 + 1) + 1);
   }
-  return sides(box, new Set(notations), ctx);
-}
-function sides(box, notations, ctx) {
-  const [left, right, top, bottom] = ["left", "right", "top", "bottom"].map((n) => notations.has(n));
-  if (!left && !right && !top && !bottom) return box;
-  if (height(box) === 1) {
-    let row = box.rows[0];
-    if (top) row = row.map((c) => marked3(c, "\u0305"));
-    if (bottom) row = row.map((c) => marked3(c, "\u0332"));
-    const bar = ctx.twoD ? "│" : "|";
-    const cellsRow = [...left ? [bar] : [], ...row, ...right ? [bar] : []];
-    return { rows: [cellsRow], width: cellsRow.length, base: 0 };
-  }
-  const rule = (ch) => ({ rows: box.rows.map(() => [ch]), width: 1, base: box.base });
-  let out = hcat([...left ? [rule("│"), blank(1, height(box), box.base)] : [], box, ...right ? [blank(1, height(box), box.base), rule("│")] : []]);
-  const line = (l, r) => textBox((left ? l : "") + "─".repeat(out.width - (left ? 1 : 0) - (right ? 1 : 0)) + (right ? r : ""));
-  if (top) out = vstack([line("┌", "┐"), out], "left", out.base + 1);
-  if (bottom) out = vstack([out, line("└", "┘")], "left", out.base);
   return out;
 }
-function list2(value, fallback) {
-  const parts = (value ?? fallback).trim().split(/\s+/);
-  return parts.length ? parts : [fallback];
+function recolorPng(png, ink, over, curve) {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  const isPlte = png.length > TRNS_AT + 12 + 256 && view.getUint32(PLTE_AT) === 768 && png[PLTE_AT + 4] === 80 && png[PLTE_AT + 5] === 76 && png[PLTE_AT + 6] === 84 && png[PLTE_AT + 7] === 69 && view.getUint32(TRNS_AT) === 256 && png[TRNS_AT + 4] === 116 && png[TRNS_AT + 5] === 82 && png[TRNS_AT + 6] === 78 && png[TRNS_AT + 7] === 83;
+  if (!isPlte) throw new Error("recolorPng: not a kittex palette PNG");
+  const out = png.slice();
+  out.set(chunk("PLTE", palette(ink)), PLTE_AT);
+  out.set(chunk("tRNS", alphaTable(ink, over, curve)), TRNS_AT);
+  return out;
 }
-function pick(values, i2) {
-  return values[Math.min(i2, values.length - 1)];
+function inkAlpha(alpha, ink, over) {
+  const fg = linearLuminance(ink);
+  const bg = linearLuminance(over);
+  if (!(Math.abs(fg - bg) > 1e-3)) return alpha;
+  const blend = linearize(unlinearize(fg) * alpha + unlinearize(bg) * (1 - alpha));
+  return Math.min(1, Math.max(0, (blend - bg) / (fg - bg)));
 }
-function alignOf(value) {
-  if (value === "left" || value === "right" || value === "center") return value;
-  if (value === "decimalpoint") return "center";
-  return fail(`columnalign ${value}`);
+function curvedAlpha(alpha, ink, over, curve) {
+  const gamma = curve.gamma < 0.01 ? 1 : 1 / curve.gamma;
+  const t = (1 - linearLuminance(ink) + linearLuminance(over)) * 0.5;
+  const moved = alpha + (alpha ** gamma - alpha) * t;
+  return Math.min(1, Math.max(0, moved * (1 + curve.contrast * 0.01)));
 }
-function oneLineTable(el, rowEls, ctx) {
-  const cellCtx = { twoD: false, display: false, level: ctx.level };
-  const spacing = list2(el.attrs.columnspacing, "0.8em").map((v) => v.endsWith("%") ? 0 : cells(length3(v)));
-  const rows = [];
-  for (const rowEl of rowEls) {
-    if (rowEl.name !== "mtr" && rowEl.name !== "mlabeledtr") fail(`<${rowEl.name}> in mtable`);
-    const cellEls = elements(rowEl);
-    if (rowEl.name === "mlabeledtr") cellEls.shift();
-    let row = "";
-    for (const [c, cellEl] of cellEls.entries()) {
-      if (cellEl.name !== "mtd") fail(`<${cellEl.name}> in mtr`);
-      const box = layoutRow(elements(cellEl), cellCtx).box;
-      if (height(box) !== 1) fail("tall cell in a one-line table");
-      const text = lines(box)[0].trim();
-      if (c > 0 && text !== "" && row !== "") {
-        row += pick(spacing, c - 1) > 0 ? /[,;:]$/.test(row) ? " " : ", " : /^[\p{L}\p{N}]/u.test(text) ? "" : " ";
-      }
-      row += text;
-    }
-    if (row !== "") rows.push(row);
+function alphaTable(ink, over, curve) {
+  const trns = new Uint8Array(256);
+  for (let i2 = 0; i2 < 256; i2++) {
+    if (!over || i2 === 0 || i2 === 255 && !curve) trns[i2] = i2;
+    else trns[i2] = Math.round(255 * (curve ? curvedAlpha(i2 / 255, ink, over, curve) : inkAlpha(i2 / 255, ink, over)));
   }
-  return textBox(rows.map((row, r) => r < rows.length - 1 ? row.replace(/[,;]$/, "") : row).join("; "));
+  return trns;
 }
-function breakCells(rows, widths, gaps, room) {
-  const total = () => widths.reduce((n, w) => n + w, 0) + gaps.reduce((n, g) => n + g.space, 0);
-  const order = widths.map((_, c) => c).sort((a, b) => widths[b] - widths[a]);
-  for (const c of order) {
-    const over = total() - room;
-    if (over <= 0) return;
-    for (let target = Math.max(1, widths[c] - over); target < widths[c]; target++) {
-      const broken = rows.map((r) => {
-        const cell = r[c];
-        return !cell || cell.box.width <= target ? cell?.box : breakCell(cell, target);
-      });
-      if (broken.some((box, r) => rows[r][c] && !box)) continue;
-      broken.forEach((box, r) => {
-        if (box) rows[r][c].box = box;
-      });
-      widths[c] = Math.max(0, ...rows.map((r) => r[c]?.box.width ?? 0));
+var linearize = (v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+var unlinearize = (v) => v <= 31308e-7 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+var linearLuminance = (c) => 0.2126 * linearize(clampByte(c.r) / 255) + 0.7152 * linearize(clampByte(c.g) / 255) + 0.0722 * linearize(clampByte(c.b) / 255);
+function palette(ink) {
+  const plte = new Uint8Array(768);
+  const r = clampByte(ink.r), g = clampByte(ink.g), b = clampByte(ink.b);
+  for (let i2 = 0; i2 < 768; i2 += 3) {
+    plte[i2] = r;
+    plte[i2 + 1] = g;
+    plte[i2 + 2] = b;
+  }
+  return plte;
+}
+var clampByte = (v) => Math.min(255, Math.max(0, Math.round(v))) || 0;
+function filter(alpha, w, h) {
+  const out = new Uint8Array(h * (w + 1));
+  for (let y = 0; y < h; y++) out.set(alpha.subarray(y * w, y * w + w), y * (w + 1) + 1);
+  return out;
+}
+function chunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  for (let i2 = 0; i2 < 4; i2++) out[4 + i2] = type.charCodeAt(i2);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out, 4, 8 + data.length));
+  return out;
+}
+var crcTable;
+function crc32(bytes, from, to) {
+  const table2 = crcTable ??= Uint32Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+    return c >>> 0;
+  });
+  let crc = 4294967295;
+  for (let i2 = from; i2 < to; i2++) crc = table2[(crc ^ bytes[i2]) & 255] ^ crc >>> 8;
+  return (crc ^ 4294967295) >>> 0;
+}
+function concat2(parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+// core/src/image/encode.ts
+var SIGNATURE3 = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+function encodeRgbaPng(bitmap) {
+  const { width, height: height2, rgba } = bitmap;
+  if (rgba.length !== width * height2 * 4 || width < 1 || height2 < 1) throw new RangeError(`encodeRgbaPng: ${rgba.length} bytes is not a ${width}×${height2} RGBA bitmap`);
+  let opaque = true;
+  for (let i2 = 3; i2 < rgba.length; i2 += 4) {
+    if (rgba[i2] !== 255) {
+      opaque = false;
       break;
     }
   }
-  if (total() > room) fail("table too wide to break");
-}
-function breakCell(cell, width) {
-  const first = cell.row?.items.find((item) => item.box.width > 0);
-  const parts = cell.row?.parts ?? [];
-  let lead = 0;
-  for (let i2 = 0; i2 < parts.length && isBlank2(parts[i2]); i2++) lead += parts[i2].width;
-  const indent = first?.cls === "REL" ? lead + first.box.width + 1 : 0;
-  const row = cell.row;
-  return row && (breakRow(row, width, indent, true) ?? breakRow(row, width, indent)) || (height(cell.box) === 1 ? breakText(cell.box, width, indent, true) ?? breakText(cell.box, width, indent) : void 0);
-}
-var PRODUCT = /^[⋅×÷∘∗·]/u;
-var CONTINUES = /^[-+−±∓=<>≤≥≠≈≡∼≃≅∝→←↔⇒⇐⇔↦⋅×÷∘∪∩∧∨⊂⊃⊆⊇∈∉≺≻⪯⪰≼≽∣]/u;
-function breakText(box, width, indent, sums = false) {
-  const words2 = [[]];
-  for (const cell of box.rows[0]) {
-    if (cell === " " && words2.at(-1).some((c) => c !== " ")) words2.push([]);
-    else words2.at(-1).push(cell);
-  }
-  const lines2 = [];
-  let line = [];
-  const size = (ws) => ws.reduce((n, w2) => n + w2.length, 0) + Math.max(0, ws.length - 1);
-  const room = () => lines2.length === 0 ? width : width - indent;
-  for (const word of words2.filter((w2) => w2.length > 0)) {
-    line.push(word);
-    while (size(line) > room()) {
-      let at = line.length - 1;
-      while (at > 0 && !(CONTINUES.test(line[at].join("")) && !(sums && PRODUCT.test(line[at].join(""))))) at--;
-      if (at === 0) return void 0;
-      lines2.push(line.slice(0, at));
-      line = line.slice(at);
+  let pixels = rgba;
+  if (opaque) {
+    pixels = new Uint8Array(width * height2 * 3);
+    for (let i2 = 0, j = 0; i2 < rgba.length; i2 += 4, j += 3) {
+      pixels[j] = rgba[i2];
+      pixels[j + 1] = rgba[i2 + 1];
+      pixels[j + 2] = rgba[i2 + 2];
     }
   }
-  lines2.push(line);
-  if (lines2.length < 2) return void 0;
-  const rows = lines2.map((ws, i2) => [...Array(i2 === 0 ? 0 : indent).fill(" "), ...ws.flatMap((w2, k) => k === 0 ? w2 : [" ", ...w2])]);
-  const w = Math.max(...rows.map((r) => r.length));
-  return { rows: rows.map((r) => [...r, ...Array(w - r.length).fill(" ")]), width: w, base: 0 };
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height2);
+  ihdr.set([8, opaque ? 2 : 6, 0, 0, 0], 8);
+  const filtered = filterBytes(pixels, width, height2, opaque ? 3 : 4);
+  return concat2([SIGNATURE3, chunk("IHDR", ihdr), chunk("IDAT", zlibSync(filtered, { level: 6 })), chunk("IEND", new Uint8Array(0))]);
 }
-function table(el, ctx) {
-  const cellCtx = ctx.compact ? { twoD: false, display: false, level: ctx.level, compact: true } : { twoD: ctx.twoD, display: el.attrs.displaystyle === "true", level: ctx.level };
-  const rowEls = elements(el);
-  if (!ctx.twoD && !ctx.compact && rowEls.length > 1) return oneLineTable(el, rowEls, ctx);
-  const tableAligns = list2(el.attrs.columnalign, "center");
-  const spacing = list2(el.attrs.columnspacing, "0.8em").map((v) => v.endsWith("%") ? 0 : cells(length3(v)));
-  const columnLines = list2(el.attrs.columnlines, "none");
-  const rowLines = list2(el.attrs.rowlines, "none");
-  const rows = [];
-  const labels = [];
-  for (const rowEl of rowEls) {
-    if (rowEl.name !== "mtr" && rowEl.name !== "mlabeledtr") fail(`<${rowEl.name}> in mtable`);
-    const cellEls = elements(rowEl);
-    let label;
-    if (rowEl.name === "mlabeledtr") {
-      const labelEl = cellEls.shift();
-      if (!labelEl) fail("mlabeledtr");
-      label = layoutRow(elements(labelEl), { ...cellCtx, display: false }).box;
+// core/src/image/scale.ts
+function spans(from, to) {
+  const scale2 = from / to;
+  const first = new Int32Array(to);
+  const offsets = new Int32Array(to + 1);
+  const weights = [];
+  for (let o = 0; o < to; o++) {
+    const start = o * scale2;
+    const end = Math.min(from, (o + 1) * scale2);
+    const lo = Math.min(from - 1, Math.floor(start));
+    first[o] = lo;
+    for (let i2 = lo; i2 < end && i2 < from; i2++) {
+      const w = Math.min(i2 + 1, end) - Math.max(i2, start);
+      if (w > 1e-9 || i2 === lo) weights.push(Math.max(w, 0) / (end - start));
+      else break;
     }
-    const rowAligns = rowEl.attrs.columnalign ? list2(rowEl.attrs.columnalign, "center") : void 0;
-    rows.push(
-      cellEls.map((cellEl, c) => {
-        if (cellEl.name !== "mtd") fail(`<${cellEl.name}> in mtr`);
-        if ((cellEl.attrs.rowspan ?? "1") !== "1" || (cellEl.attrs.columnspan ?? "1") !== "1") fail("spanning cell");
-        const align = alignOf(cellEl.attrs.columnalign ?? pick(rowAligns ?? tableAligns, c));
-        const row = layoutRow(elements(cellEl), cellCtx);
-        return { box: row.box, align, row };
-      })
-    );
-    labels.push(label);
+    offsets[o + 1] = weights.length;
   }
-  if (rows.length === 0) return blank(0);
-  const columns = Math.max(...rows.map((r) => r.length));
-  const widths = Array.from({ length: columns }, (_, c) => Math.max(0, ...rows.map((r) => r[c]?.box.width ?? 0)));
-  const gaps = Array.from({ length: Math.max(0, columns - 1) }, (_, c) => {
-    const line = pick(columnLines, c);
-    const space = pick(spacing, c);
-    return line === "none" ? { space, line: "" } : { space: Math.max(3, space | 1), line: line === "dashed" ? "┆" : "│" };
-  });
-  const tall = rows.some((r) => r.some((cell) => height(cell.box) > 1));
-  if (tableWidth !== void 0 && ctx.level === 0) breakCells(rows, widths, gaps, tableWidth);
-  const rowBoxes = rows.map((r) => {
-    const up = Math.max(0, ...r.map((cell) => above(cell.box)));
-    const down = Math.max(0, ...r.map((cell) => below(cell.box)));
-    const parts = [];
-    for (let c = 0; c < columns; c++) {
-      const cell = r[c] ?? { box: blank(0), align: "center" };
-      parts.push(widen(extend(cell.box, up, down), widths[c], cell.align));
-      const g = gaps[c];
-      if (g && c < columns - 1) {
-        const left = g.line ? (g.space - 1) / 2 : g.space;
-        const right = g.line ? g.space - 1 - left : 0;
-        parts.push(blank(left, up + down + 1, up));
-        if (g.line) parts.push({ rows: Array.from({ length: up + down + 1 }, () => [g.line]), width: 1, base: up });
-        if (right) parts.push(blank(right, up + down + 1, up));
+  return { first, offsets, weights: Float64Array.from(weights) };
+}
+function scaleBitmap(bitmap, widthPx, heightPx) {
+  const { width: w, height: h, rgba } = bitmap;
+  if (!Number.isInteger(widthPx) || !Number.isInteger(heightPx) || widthPx < 1 || heightPx < 1) {
+    throw new RangeError(`scaleBitmap: target size ${widthPx}×${heightPx} is not a positive whole size`);
+  }
+  if (rgba.length !== w * h * 4 || w < 1 || h < 1) throw new RangeError(`scaleBitmap: ${rgba.length} bytes is not a ${w}×${h} RGBA bitmap`);
+  if (widthPx === w && heightPx === h) return { width: w, height: h, rgba: rgba.slice() };
+  const xs = spans(w, widthPx);
+  const ys = spans(h, heightPx);
+  const out = new Uint8Array(widthPx * heightPx * 4);
+  const row = new Float64Array(w * 4);
+  for (let oy = 0; oy < heightPx; oy++) {
+    row.fill(0);
+    for (let k = ys.offsets[oy], sy = ys.first[oy]; k < ys.offsets[oy + 1]; k++, sy++) {
+      const wy = ys.weights[k];
+      const base = sy * w * 4;
+      for (let x2 = 0, i2 = base; x2 < w * 4; x2 += 4, i2 += 4) {
+        const a = rgba[i2 + 3] * wy;
+        row[x2] = row[x2] + rgba[i2] * a;
+        row[x2 + 1] = row[x2 + 1] + rgba[i2 + 1] * a;
+        row[x2 + 2] = row[x2 + 2] + rgba[i2 + 2] * a;
+        row[x2 + 3] = row[x2 + 3] + a;
       }
     }
-    return extend(hcat(parts), up, down);
-  });
-  const width = Math.max(...rowBoxes.map((b) => b.width));
-  const lineCols = [];
-  let col = 0;
-  for (let c = 0; c < columns - 1; c++) {
-    col += widths[c];
-    const g = gaps[c];
-    if (g.line) lineCols.push(col + (g.space - 1) / 2);
-    col += g.space;
-  }
-  const separator = (r) => {
-    const line = pick(rowLines, r);
-    if (line !== "none") {
-      const cellsRow = Array(width).fill(line === "dashed" ? "┄" : "─");
-      for (const x2 of lineCols) cellsRow[x2] = "┼";
-      return { rows: [cellsRow], width, base: 0 };
-    }
-    return tall ? blank(width) : void 0;
-  };
-  const stacked = [];
-  const ruled = /* @__PURE__ */ new Set();
-  let at = 0;
-  rowBoxes.forEach((box, r) => {
-    if (r > 0) {
-      const sep = separator(r - 1);
-      if (sep) {
-        if (pick(rowLines, r - 1) !== "none") ruled.add(at);
-        stacked.push(sep);
-        at += height(sep);
+    for (let ox = 0; ox < widthPx; ox++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      for (let k = xs.offsets[ox], sx = xs.first[ox] * 4; k < xs.offsets[ox + 1]; k++, sx += 4) {
+        const wx = xs.weights[k];
+        r += row[sx] * wx;
+        g += row[sx + 1] * wx;
+        b += row[sx + 2] * wx;
+        a += row[sx + 3] * wx;
+      }
+      const at = (oy * widthPx + ox) * 4;
+      if (a > 0) {
+        out[at] = Math.round(r / a);
+        out[at + 1] = Math.round(g / a);
+        out[at + 2] = Math.round(b / a);
+        out[at + 3] = Math.round(a);
       }
     }
-    stacked.push(widen(box, width, "left"));
-    at += height(box);
-  });
-  let body = vstack(stacked, "left", Math.floor((at - 1) / 2));
-  const frame2 = el.attrs.frame;
-  if (frame2 !== void 0 && frame2 !== "none") {
-    const [h, v] = frame2 === "dashed" ? ["┄", "┆"] : ["─", "│"];
-    const edge = (l, r, tee) => {
-      const row = [l, ...Array(body.width + 2).fill(h), r];
-      for (const x2 of lineCols) row[x2 + 2] = tee;
-      return row;
-    };
-    const middle = body.rows.map((row, y) => ruled.has(y) ? ["├", h, ...row, h, "┤"] : [v, " ", ...row, " ", v]);
-    body = { rows: [edge("┌", "┐", "┬"), ...middle, edge("└", "┘", "┴")], width: body.width + 4, base: body.base + 1 };
   }
-  if (labels.some((l) => l !== void 0)) {
-    const labelWidth = Math.max(...labels.map((l) => l?.width ?? 0));
-    const column = [];
-    rowBoxes.forEach((box, r) => {
-      if (r > 0) {
-        const sep = separator(r - 1);
-        if (sep) column.push(blank(labelWidth, height(sep)));
-      }
-      const label = labels[r];
-      column.push(label ? widen(extend(label, box.base, below(box)), labelWidth, "right") : blank(labelWidth, height(box)));
-    });
-    if (frame2 !== void 0 && frame2 !== "none") {
-      column.unshift(blank(labelWidth));
-      column.push(blank(labelWidth));
-    }
-    const labelBox = vstack(column, "left", body.base);
-    body = hcat([body, blank(2, height(body), body.base), labelBox]);
-  }
-  return body;
+  return { width: widthPx, height: heightPx, rgba: out };
 }
-export{layoutMath,parseXml2,lines,initTypeset,typeset,texToMathML2,createLineScanner,scan,typesetLoaded};
+// core/src/image/index.ts
+function decodeImage(bytes, limits) {
+  const maxPixels = limits?.maxPixels ?? MAX_IMAGE_PIXELS;
+  const format = imageHeader(bytes)?.format;
+  if (format === "png") return decodePng(bytes, maxPixels);
+  if (format === "jpeg") return decodeJpeg(bytes, maxPixels);
+  throw new ImageError(format ? `decodeImage does not decode ${format}` : "not an image kittex knows");
+}
+// core/src/raster/fill.ts
+var Coverage = class {
+  width;
+  height;
+  /** Row stride of `acc`: two spare cells right of the image take the deltas of edges at x = width. */
+  stride;
+  acc;
+  constructor(width, height2) {
+    this.width = width;
+    this.height = height2;
+    this.stride = width + 2;
+    this.acc = new Float32Array(this.stride * height2);
+  }
+  /** Adds a closed contour. `sign` is +1 or -1: the winding that counts as ink for this contour's shape. */
+  fill(contour, sign) {
+    const n = contour.length;
+    let x0 = contour[n - 2];
+    let y0 = contour[n - 1];
+    for (let i2 = 0; i2 < n; i2 += 2) {
+      const x1 = contour[i2];
+      const y1 = contour[i2 + 1];
+      this.line(x0, y0, x1, y1, sign);
+      x0 = x1;
+      y0 = y1;
+    }
+  }
+  /** Adds one edge, clipped to the image: the parts left of x = 0 or right of x = width run along that side. */
+  line(x0, y0, x1, y1, sign) {
+    if (y0 === y1) return;
+    const w = this.width;
+    if (x0 >= 0 && x1 >= 0 && x0 <= w && x1 <= w) {
+      this.edge(x0, y0, x1, y1, sign);
+      return;
+    }
+    const ts = [0, 1];
+    for (const bound of [0, w]) {
+      if ((x0 - bound) * (x1 - bound) < 0) ts.push((bound - x0) / (x1 - x0));
+    }
+    ts.sort((a, b) => a - b);
+    for (let i2 = 1; i2 < ts.length; i2++) {
+      const ta = ts[i2 - 1];
+      const tb = ts[i2];
+      const ax = x0 + (x1 - x0) * ta;
+      const bx = x0 + (x1 - x0) * tb;
+      const ay = y0 + (y1 - y0) * ta;
+      const by = y0 + (y1 - y0) * tb;
+      this.edge(Math.min(w, Math.max(0, ax)), ay, Math.min(w, Math.max(0, bx)), by, sign);
+    }
+  }
+  /** Adds one edge with 0 ≤ x ≤ width; rows outside the image are skipped. */
+  edge(px0, py0, px1, py1, sign) {
+    if (py0 === py1) return;
+    let dir = sign;
+    let x0 = px0, y0 = py0, x1 = px1, y1 = py1;
+    if (y0 > y1) {
+      dir = -sign;
+      x0 = px1;
+      y0 = py1;
+      x1 = px0;
+      y1 = py0;
+    }
+    const h = this.height;
+    if (y1 <= 0 || y0 >= h) return;
+    const acc = this.acc;
+    const stride2 = this.stride;
+    const dxdy = (x1 - x0) / (y1 - y0);
+    let x2 = x0;
+    if (y0 < 0) x2 -= y0 * dxdy;
+    const rowFrom = Math.max(0, Math.floor(y0));
+    const rowTo = Math.min(h, Math.ceil(y1));
+    for (let row = rowFrom; row < rowTo; row++) {
+      const base = row * stride2;
+      const dy = Math.min(row + 1, y1) - Math.max(row, y0);
+      const xnext = x2 + dxdy * dy;
+      const d = dy * dir;
+      const xa = x2 < xnext ? x2 : xnext;
+      const xb = x2 < xnext ? xnext : x2;
+      const xaFloor = Math.floor(xa);
+      const xai = xaFloor;
+      const xbCeil = Math.ceil(xb);
+      const xbi = xbCeil;
+      if (xbi <= xai + 1) {
+        const xmf = 0.5 * (x2 + xnext) - xaFloor;
+        acc[base + xai] += d - d * xmf;
+        acc[base + xai + 1] += d * xmf;
+      } else {
+        const s = 1 / (xb - xa);
+        const xaf = xa - xaFloor;
+        const a0 = 0.5 * s * (1 - xaf) * (1 - xaf);
+        const xbf = xb - xbCeil + 1;
+        const am = 0.5 * s * xbf * xbf;
+        acc[base + xai] += d * a0;
+        if (xbi === xai + 2) {
+          acc[base + xai + 1] += d * (1 - a0 - am);
+        } else {
+          const a1 = s * (1.5 - xaf);
+          acc[base + xai + 1] += d * (a1 - a0);
+          for (let xi = xai + 2; xi < xbi - 1; xi++) acc[base + xi] += d * s;
+          const a2 = a1 + (xbi - xai - 3) * s;
+          acc[base + xbi - 1] += d * (1 - a2 - am);
+        }
+        acc[base + xbi] += d * am;
+      }
+      x2 = xnext;
+    }
+  }
+  /**
+   * The coverage under the even-odd rule, as bytes: a winding of 2 is a hole,
+   * and the accumulated area w covers |w| folded into [0, 1] (the distance to
+   * the nearest even number), which is exact for areas no two edges of a
+   * pixel overlap in.
+   */
+  toAlphaEvenOdd() {
+    const { width: w, height: h, stride: stride2, acc } = this;
+    const out = new Uint8Array(w * h);
+    for (let row = 0; row < h; row++) {
+      let sum2 = 0;
+      const from = row * stride2;
+      const to = row * w;
+      for (let x2 = 0; x2 < w; x2++) {
+        sum2 += acc[from + x2];
+        let c = (sum2 < 0 ? -sum2 : sum2) % 2;
+        if (c > 1) c = 2 - c;
+        out[to + x2] = c * 255 + 0.5 | 0;
+      }
+    }
+    return out;
+  }
+  /** The coverage as bytes (0 to 255), row-major, through `curve` (256 entries) when given. */
+  toAlpha(curve) {
+    const { width: w, height: h, stride: stride2, acc } = this;
+    const out = new Uint8Array(w * h);
+    for (let row = 0; row < h; row++) {
+      let sum2 = 0;
+      const from = row * stride2;
+      const to = row * w;
+      for (let x2 = 0; x2 < w; x2++) {
+        sum2 += acc[from + x2];
+        const c = sum2 < 0 ? -sum2 : sum2;
+        const byte = c >= 1 ? 255 : c * 255 + 0.5 | 0;
+        out[to + x2] = curve ? curve[byte] : byte;
+      }
+    }
+    return out;
+  }
+};
+// core/src/raster/paint.ts
+var Canvas2 = class {
+  constructor(width, height2) {
+    this.width = width;
+    this.height = height2;
+    this.pixels = new Uint8Array(width * height2 * 4);
+  }
+  width;
+  height;
+  /** Premultiplied RGBA, row-major. */
+  pixels;
+  /**
+   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
+   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
+   */
+  paint(coverage, x0, y0, w, h, color, opacity, mask) {
+    const px2 = this.pixels;
+    const W = this.width;
+    const erase = color === "erase";
+    const r = erase ? 0 : color.r;
+    const g = erase ? 0 : color.g;
+    const b = erase ? 0 : color.b;
+    const k = Math.min(1, Math.max(0, opacity)) / 255;
+    for (let y = 0; y < h; y++) {
+      const cy = y0 + y;
+      if (cy < 0 || cy >= this.height) continue;
+      for (let x2 = 0; x2 < w; x2++) {
+        const c = coverage[y * w + x2];
+        if (c === 0) continue;
+        const cx = x0 + x2;
+        if (cx < 0 || cx >= W) continue;
+        const at = cy * W + cx;
+        let a = c * k;
+        if (mask) {
+          const m = mask[at];
+          if (m === 0) continue;
+          a = a * m / 255;
+        }
+        const keep = 1 - a;
+        const i2 = at * 4;
+        if (erase) {
+          px2[i2] = px2[i2] * keep + 0.5;
+          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
+        } else {
+          px2[i2] = r * a + px2[i2] * keep + 0.5;
+          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
+        }
+      }
+    }
+  }
+  /**
+   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
+   * alpha corrected for its colour as the terminal corrects text blended over
+   * that background (inkAlpha: Ghostty's linear-corrected blending).
+   */
+  straight(over) {
+    const px2 = this.pixels;
+    const out = new Uint8Array(px2.length);
+    const tables = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < px2.length; i2 += 4) {
+      const a = px2[i2 + 3];
+      if (a === 0) continue;
+      const half = a >> 1;
+      const r0 = (px2[i2] * 255 + half) / a | 0;
+      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
+      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
+      const r = r0 > 255 ? 255 : r0;
+      const g = g0 > 255 ? 255 : g0;
+      const b = b0 > 255 ? 255 : b0;
+      out[i2] = r;
+      out[i2 + 1] = g;
+      out[i2 + 2] = b;
+      if (!over || a === 255) {
+        out[i2 + 3] = a;
+        continue;
+      }
+      const key = r << 16 | g << 8 | b;
+      let table2 = tables.get(key);
+      if (!table2) {
+        if (tables.size >= 4096) {
+          out[i2 + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over));
+          continue;
+        }
+        table2 = correctionTable({ r, g, b }, over);
+        tables.set(key, table2);
+      }
+      out[i2 + 3] = table2[a];
+    }
+    return out;
+  }
+};
+function correctionTable(color, over) {
+  const table2 = new Uint8Array(256);
+  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over));
+  return table2;
+}
+export{Coverage,encodeAlphaPng,Canvas2,encodeQuantizedPng,recolorPng,decodeImage,scaleBitmap,encodeRgbaPng,inkAlpha};

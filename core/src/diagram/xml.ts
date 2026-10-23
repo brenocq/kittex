@@ -1,5 +1,5 @@
 // A small XML reader for the SVG dvisvgm writes: elements, attributes, text
-// (dropped: an SVG drawn with --no-fonts holds none that draws), comments,
+// (kept only inside `<text>` and `<style>`, the only places it draws), comments,
 // processing instructions, a doctype, CDATA, character references and the
 // predefined entities. Bounded in depth and size, and malformed input throws:
 // the SVG comes from a TeX run over the model's source, so it is read as
@@ -9,7 +9,18 @@ export interface XmlElement {
   name: string
   attrs: Record<string, string>
   children: XmlElement[]
+  /** A `<style>` element's character data (CDATA included). */
+  text?: string
+  /**
+   * A `<text>` element's content, and that of every element inside one: its
+   * character data (CDATA included) and child elements, in document order.
+   * Absent elsewhere: everything else drawn is in attributes.
+   */
+  content?: (string | XmlElement)[]
 }
+
+/** Characters of style sheet text one document may hold, at most (more is refused). */
+const MAX_STYLE_TEXT = 256 * 1024
 
 /** Elements nested deeper than this are refused (dvisvgm nests a group per TikZ scope, and per pgfplots patch). */
 const MAX_DEPTH = 20_000
@@ -27,6 +38,12 @@ export class XmlError extends Error {}
 export function parseXml(source: string): XmlElement {
   let pos = 0
   let count = 0
+  let styleText = 0
+  const keep = (el: XmlElement, text: string) => {
+    styleText += text.length
+    if (styleText > MAX_STYLE_TEXT) fail('style sheet too long')
+    el.text = (el.text ?? '') + text
+  }
 
   const fail = (what: string): never => {
     throw new XmlError(`XML: ${what} at ${pos}`)
@@ -99,6 +116,20 @@ export function parseXml(source: string): XmlElement {
       const lt = source.indexOf('<', pos)
       const top = open[open.length - 1]!
       if (lt < 0) fail(`unclosed <${top.name}>`)
+      if (top.name === 'style') {
+        keep(top, decode(source.slice(pos, lt)))
+        if (source.startsWith('<![CDATA[', lt)) {
+          const end = source.indexOf(']]>', lt)
+          if (end >= 0) keep(top, source.slice(lt + 9, end))
+        }
+      } else if (top.content !== undefined) {
+        const data = decode(source.slice(pos, lt))
+        if (data !== '') top.content.push(data)
+        if (source.startsWith('<![CDATA[', lt)) {
+          const end = source.indexOf(']]>', lt)
+          if (end >= 0 && end > lt + 9) top.content.push(source.slice(lt + 9, end))
+        }
+      }
       pos = lt
       if (skipMarkup()) continue
       if (source[pos + 1] === '/') {
@@ -114,6 +145,8 @@ export function parseXml(source: string): XmlElement {
       }
       const child = openTag()
       top.children.push(child.el)
+      if (top.content !== undefined) top.content.push(child.el)
+      if (top.content !== undefined || child.el.name === 'text') child.el.content = []
       if (child.closed) continue
       if (open.length >= MAX_DEPTH) fail('nested too deep')
       open.push(child.el)

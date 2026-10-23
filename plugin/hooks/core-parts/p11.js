@@ -501,6 +501,59 @@ var RULE_MAX = 40;
 var REPLY_INDENT = 2;
 var EMPTY = { text: "", source: [] };
 var FLATNESS = 0.05;
+var MAX_RULES = 4e3;
+var MAX_COMPOUND = 16;
+var MAX_CHAIN = 8;
+var MAX_MATCH_STEPS = 4e6;
+var NAMES = "aliceblue:f0f8ff antiquewhite:faebd7 aqua:00ffff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000000 blanchedalmond:ffebcd blue:0000ff blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:00ffff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:ff00ff gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:778899 lightslategrey:778899 lightsteelblue:b0c4de lightyellow:ffffe0 lime:00ff00 limegreen:32cd32 linen:faf0e6 magenta:ff00ff maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:663399 red:ff0000 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:ffffff whitesmoke:f5f5f5 yellow:ffff00 yellowgreen:9acd32";
+var INITIAL_FONT = {
+  size: 16,
+  bold: false,
+  italic: false,
+  anchor: "start",
+  baselineShift: 0,
+  preserve: false,
+  underline: false,
+  lineThrough: false
+};
+var MAX_TEXT_CHARS = 2e4;
+var MAX_RUN_CHARS = 200;
+var MAX_TEXT_DEPTH = 32;
+var MISSING_ADVANCE = 0.5;
+var SIZE_KEYWORDS = { "xx-small": 9, "x-small": 10, small: 13, medium: 16, large: 18, "x-large": 24, "xx-large": 32, "xxx-large": 48 };
+var BASELINES = {
+  auto: 0,
+  alphabetic: 0,
+  baseline: 0,
+  middle: 0.215,
+  central: 0.3,
+  mathematical: 0.25,
+  hanging: 0.8,
+  "text-before-edge": 0.8,
+  "text-top": 0.8,
+  "before-edge": 0.8,
+  "text-after-edge": -0.2,
+  "text-bottom": -0.2,
+  "after-edge": -0.2,
+  ideographic: -0.2
+};
+var FONT_PROPERTIES = ["font", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline", "alignment-baseline", "xml:space", "white-space", "text-decoration"];
+var TEX_ESCAPES = {
+  "\\": "\\textbackslash{}",
+  "{": "\\{",
+  "}": "\\}",
+  $: "\\$",
+  "%": "\\%",
+  "&": "\\&",
+  "#": "\\#",
+  _: "\\_",
+  "^": "\\textasciicircum{}",
+  "~": "\\textasciitilde{}",
+  " ": "\\ ",
+  "\u00A0": "\\ ",
+  "`": "`{}",
+  "'": "'{}"
+};
 var MAX_DEPTH = 2e4;
 var MAX_ELEMENTS = 2e5;
 var ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
@@ -515,14 +568,7 @@ var MAX_PATTERN_OPS = 6e3;
 var MAX_SERVER_CLIPS = 64;
 var BLACK = { r: 0, g: 0, b: 0 };
 var IDENTITY = [1, 0, 0, 1, 0, 0];
-var NAMED = JSON.parse(`{
- "black":{"r":0,"g":0,"b":0},"white":{"r":255,"g":255,"b":255},"red":{"r":255,"g":0,"b":0},"lime":{"r":0,"g":255,"b":0},"green":{"r":0,"g":128,"b":0},"blue":{"r":0,"g":0,"b":255},
- "yellow":{"r":255,"g":255,"b":0},"cyan":{"r":0,"g":255,"b":255},"aqua":{"r":0,"g":255,"b":255},"magenta":{"r":255,"g":0,"b":255},"fuchsia":{"r":255,"g":0,"b":255},"gray":{"r":128,"g":128,"b":128},
- "grey":{"r":128,"g":128,"b":128},"silver":{"r":192,"g":192,"b":192},"maroon":{"r":128,"g":0,"b":0},"olive":{"r":128,"g":128,"b":0},"navy":{"r":0,"g":0,"b":128},"purple":{"r":128,"g":0,"b":128},
- "teal":{"r":0,"g":128,"b":128},"orange":{"r":255,"g":165,"b":0},"brown":{"r":165,"g":42,"b":42},"pink":{"r":255,"g":192,"b":203},"violet":{"r":238,"g":130,"b":238},"darkgray":{"r":169,"g":169,"b":169},
- "lightgray":{"r":211,"g":211,"b":211}
-}`);
-var PREAMBLE_VERSION = 5;
+var PREAMBLE_VERSION = 6;
 var JOB_NAME = "kittex";
 var MAX_TEX_SOURCE = 24e3;
 var DIAGRAM_ENVS = ["tikzpicture", "tikzcd", "circuitikz"];
@@ -538,11 +584,36 @@ var REFUSED_COMMANDS = JSON.parse(`[
  "cslet","letcs","csletcs","ifcsdef","ifcsundef","ifcsmacro","cspreto","csappto","csgappto","csepreto","pgfutilifcsname","lowercase","uppercase","uccode","lccode","endcsname"
 ]`);
 var MAX_CPU_SECONDS = 20;
+var PDF_NAME = "kittex-image.pdf";
 var NEAR = 2;
 var SATURATED = 0.12;
 var KEEP_CENTER = 0.55;
 var KEEP_BAND = 0.4;
 var MIN_CONTRAST = 0.3;
+var LINE_WIDTH_PT = 345;
+var TEXT_HEIGHT_PT = 550;
+var MAX_IMAGE_PIXELS = 24e6;
+var PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+var MAX_JPEG_SCANS = 100;
+var VISITS_PER_COEFFICIENT = 5;
+var SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+var COLOR_TYPES = {
+  0: { channels: 1, depths: [1, 2, 4, 8, 16] },
+  2: { channels: 3, depths: [8, 16] },
+  3: { channels: 1, depths: [1, 2, 4, 8] },
+  4: { channels: 2, depths: [8, 16] },
+  6: { channels: 4, depths: [8, 16] }
+};
+var ADAM7 = [
+  [0, 0, 8, 8],
+  [4, 0, 8, 8],
+  [0, 4, 4, 8],
+  [2, 0, 4, 4],
+  [0, 2, 2, 4],
+  [1, 0, 2, 2],
+  [0, 1, 1, 2]
+];
+var INFLATE_STEP = 4096;
 var PLTE_AT = 33;
 var MAX_INKS = 6;
 var MAX_LEVELS = 24;
@@ -629,7 +700,7 @@ var TEXSPACE2 = JSON.parse(`[[0,-1,2,3,0,0,0,1],[-1,-1,0,3,0,0,0,1],[2,2,0,0,2,0
 var MAX_DEPTH2 = 200;
 var ENTITIES2 = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: "\u00A0" };
 var DOT_PRIMES = { "\u0307": "′", "\u0308": "″" };
-var NAMED2 = JSON.parse(`{
+var NAMED = JSON.parse(`{
  "black":{"r":0,"g":0,"b":0},"white":{"r":255,"g":255,"b":255},"red":{"r":255,"g":0,"b":0},"green":{"r":0,"g":255,"b":0},"blue":{"r":0,"g":0,"b":255},"yellow":{"r":255,"g":255,"b":0},
  "cyan":{"r":0,"g":255,"b":255},"magenta":{"r":255,"g":0,"b":255},"gray":{"r":190,"g":190,"b":190},"grey":{"r":190,"g":190,"b":190},"lightgray":{"r":211,"g":211,"b":211},
  "lightgrey":{"r":211,"g":211,"b":211},"darkgray":{"r":169,"g":169,"b":169},"darkgrey":{"r":169,"g":169,"b":169}
@@ -670,7 +741,7 @@ var CLAUDE_THEME_TEXT = {
 var ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
 var MIN_INLINE_SCALE = 0.85;
 var INLINE_OVERFLOW = 0.06;
-var BUILD_ID = "kittex-build:c8a8888e1ca2b4b3";
+var BUILD_ID = "kittex-build:cca1b6d836c9cc04";
 var MAX_TEX_LENGTH = 4096;
 var MAX_PIXELS = 16e6;
 var MAX_IMAGE_SIDE = 4096;
@@ -680,16 +751,27 @@ var TOO_LARGE = "formula too large to draw";
 var CLIPPED_RUN_PX = 2.5;
 var MAX_PICTURE_ROWS = 30;
 var MIN_PICTURE_SCALE = 0.3;
+var KEPT_IMAGE_PIXELS = 6e6;
+var MIN_IMAGE_DENSITY = 0.1;
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
+var __esm = (fn, res, err2) => function __init() {
+  if (err2) throw err2[0];
   try {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
   } catch (e) {
-    throw err = [e], e;
+    throw err2 = [e], e;
+  }
+};
+var __commonJS = (cb, mod) => function __require() {
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
   }
 };
 var __export = (target, all) => {
@@ -704,909 +786,13 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-// core/src/typeset/errors.ts
-var TexError;
-var GlyphError;
-var init_errors = __esm({
-  "core/src/typeset/errors.ts"() {
-    "use strict";
-    TexError = class extends Error {
-      name = "TexError";
-    };
-    GlyphError = class extends TexError {
-      name = "GlyphError";
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/DOMAdaptor.js
-var AbstractDOMAdaptor;
-var init_DOMAdaptor = __esm({
-  "node_modules/@mathjax/src/mjs/core/DOMAdaptor.js"() {
-    AbstractDOMAdaptor = class {
-      constructor(document = null) {
-        this.canMeasureNodes = true;
-        this.document = document;
-      }
-      node(kind, def2 = {}, children = [], ns) {
-        const node = this.create(kind, ns);
-        this.setAttributes(node, def2);
-        for (const child of children) {
-          this.append(node, child);
-        }
-        return node;
-      }
-      setProperty(node, name, value) {
-        node[name] = value;
-      }
-      getProperty(node, name) {
-        return node[name];
-      }
-      setAttributes(node, def2) {
-        if (def2.style && typeof def2.style !== "string") {
-          for (const key of Object.keys(def2.style)) {
-            this.setStyle(node, key.replace(/-([a-z])/g, (_m, c) => c.toUpperCase()), def2.style[key]);
-          }
-        }
-        if (def2.properties) {
-          for (const key of Object.keys(def2.properties)) {
-            node[key] = def2.properties[key];
-          }
-        }
-        for (const key of Object.keys(def2)) {
-          if ((key !== "style" || typeof def2.style === "string") && key !== "properties") {
-            this.setAttribute(node, key, def2[key]);
-          }
-        }
-      }
-      replace(nnode, onode) {
-        this.insert(nnode, onode);
-        this.remove(onode);
-        return onode;
-      }
-      childNode(node, i2) {
-        return this.childNodes(node)[i2];
-      }
-      allClasses(node) {
-        const classes = this.getAttribute(node, "class");
-        return !classes ? [] : classes.replace(/  +/g, " ").replace(/^ /, "").replace(/ $/, "").split(/ /);
-      }
-      cssText(node) {
-        return this.kind(node) === "style" ? this.textContent(node) : "";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Options.js
-function isObject(obj) {
-  return typeof obj === "object" && obj !== null && (obj.constructor === OBJECT || obj.constructor === Expandable);
-}
-function expandable(def2) {
-  return Object.assign(Object.create(Expandable.prototype), def2);
-}
-function makeArray(x2) {
-  return Array.isArray(x2) ? x2 : [x2];
-}
-function keys(def2) {
-  if (!def2) {
-    return [];
-  }
-  return Object.keys(def2).concat(Object.getOwnPropertySymbols(def2));
-}
-function copy(def2) {
-  const props = {};
-  for (const key of keys(def2)) {
-    const prop = Object.getOwnPropertyDescriptor(def2, key);
-    const value = prop.value;
-    if (Array.isArray(value)) {
-      prop.value = insert([], value, false);
-    } else if (isObject(value)) {
-      prop.value = copy(value);
-    }
-    if (prop.enumerable) {
-      props[key] = prop;
-    }
-  }
-  return Object.defineProperties(def2.constructor === Expandable ? expandable({}) : {}, props);
-}
-function insert(dst, src, warn = true) {
-  for (let key of keys(src)) {
-    if (warn && dst[key] === void 0 && dst.constructor !== Expandable) {
-      if (typeof key === "symbol") {
-        key = key.toString();
-      }
-      OPTIONS.optionError(`Invalid option "${key}" (no default value).`, key);
-      continue;
-    }
-    const sval = src[key];
-    let dval = dst[key];
-    if (isObject(sval) && dval !== null && (typeof dval === "object" || typeof dval === "function")) {
-      const ids = keys(sval);
-      if (Array.isArray(dval) && (ids.length === 1 && (ids[0] === APPEND || ids[0] === REMOVE) && Array.isArray(sval[ids[0]]) || ids.length === 2 && ids.sort().join(",") === APPEND + "," + REMOVE && Array.isArray(sval[APPEND]) && Array.isArray(sval[REMOVE]))) {
-        if (sval[REMOVE]) {
-          dval = dst[key] = dval.filter((x2) => sval[REMOVE].indexOf(x2) < 0);
-        }
-        if (sval[APPEND]) {
-          dst[key] = [...dval, ...sval[APPEND]];
-        }
-      } else {
-        insert(dval, sval, warn);
-      }
-    } else if (Array.isArray(sval)) {
-      dst[key] = [];
-      insert(dst[key], sval, false);
-    } else if (isObject(sval)) {
-      dst[key] = copy(sval);
-    } else {
-      dst[key] = sval;
-    }
-  }
-  return dst;
-}
-function defaultOptions(options3, ...defs) {
-  defs.forEach((def2) => insert(options3, def2, false));
-  return options3;
-}
-function userOptions(options3, ...defs) {
-  defs.forEach((def2) => insert(options3, def2, true));
-  return options3;
-}
-function separateOptions(options3, ...objects) {
-  const results = [];
-  for (const object of objects) {
-    const exists = {}, missing = {};
-    for (const key of Object.keys(options3 || {})) {
-      (object[key] === void 0 ? missing : exists)[key] = options3[key];
-    }
-    results.push(exists);
-    options3 = missing;
-  }
-  results.unshift(options3);
-  return results;
-}
-function lookup(name, lookup2, def2 = null) {
-  return Object.hasOwn(lookup2, name) ? lookup2[name] : def2;
-}
-var OBJECT;
-var APPEND;
-var REMOVE;
-var OPTIONS;
-var Expandable;
-var init_Options = __esm({
-  "node_modules/@mathjax/src/mjs/util/Options.js"() {
-    OBJECT = {}.constructor;
-    APPEND = "[+]";
-    REMOVE = "[-]";
-    OPTIONS = {
-      invalidOption: "warn",
-      optionError: (message, _key) => {
-        if (OPTIONS.invalidOption === "fatal") {
-          throw new Error(message);
-        }
-        console.warn("MathJax: " + message);
-      }
-    };
-    Expandable = class {
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/components/version.js
-var VERSION;
-var init_version = __esm({
-  "node_modules/@mathjax/src/mjs/components/version.js"() {
-    VERSION = "4.1.3";
-  }
-});
-// node_modules/@mathjax/src/mjs/util/PrioritizedList.js
-var PrioritizedList;
-var init_PrioritizedList = __esm({
-  "node_modules/@mathjax/src/mjs/util/PrioritizedList.js"() {
-    PrioritizedList = class _PrioritizedList {
-      constructor() {
-        this.items = [];
-        this.items = [];
-      }
-      [Symbol.iterator]() {
-        let i2 = 0;
-        const items = this.items;
-        return {
-          next() {
-            return { value: items[i2++], done: i2 > items.length };
-          }
-        };
-      }
-      add(item, priority = _PrioritizedList.DEFAULTPRIORITY) {
-        let i2 = this.items.length;
-        do {
-          i2--;
-        } while (i2 >= 0 && priority < this.items[i2].priority);
-        this.items.splice(i2 + 1, 0, { item, priority });
-        return item;
-      }
-      remove(item) {
-        let i2 = this.items.length;
-        do {
-          i2--;
-        } while (i2 >= 0 && this.items[i2].item !== item);
-        if (i2 >= 0) {
-          this.items.splice(i2, 1);
-        }
-        return this;
-      }
-    };
-    PrioritizedList.DEFAULTPRIORITY = 5;
-  }
-});
-// node_modules/@mathjax/src/mjs/core/HandlerList.js
-var HandlerList;
-var init_HandlerList = __esm({
-  "node_modules/@mathjax/src/mjs/core/HandlerList.js"() {
-    init_PrioritizedList();
-    HandlerList = class extends PrioritizedList {
-      register(handler) {
-        return this.add(handler, handler.priority);
-      }
-      unregister(handler) {
-        this.remove(handler);
-      }
-      handlesDocument(document) {
-        for (const item of this) {
-          const handler = item.item;
-          if (handler.handlesDocument(document)) {
-            return handler;
-          }
-        }
-        throw new Error(`Can't find handler for document`);
-      }
-      document(document, options3 = null) {
-        return this.handlesDocument(document).create(document, options3);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Retries.js
-function handleRetriesFor(code) {
-  return new Promise(function run2(ok, fail2) {
-    const handleRetry = (err) => {
-      var _a2;
-      if (err.retry instanceof Promise) {
-        err.retry.then(() => run2(ok, fail2)).catch((e) => fail2(e));
-      } else if ((_a2 = err.restart) === null || _a2 === void 0 ? void 0 : _a2.isCallback) {
-        MathJax.Callback.After(() => run2(ok, fail2), err.restart);
-      } else {
-        fail2(err);
-      }
-    };
-    try {
-      const result = code();
-      if (result instanceof Promise) {
-        result.then((value) => ok(value)).catch((err) => handleRetry(err));
-      } else {
-        ok(result);
-      }
-    } catch (err) {
-      handleRetry(err);
-    }
-  });
-}
-function retryAfter(promise) {
-  const err = new Error("MathJax retry -- an asynchronous action is required; try using one of the promise-based functions and await its resolution.");
-  err.retry = promise;
-  throw err;
-}
-var init_Retries = __esm({
-  "node_modules/@mathjax/src/mjs/util/Retries.js"() {
-  }
-});
-// node_modules/@mathjax/src/mjs/util/context.js
-var hasWindow;
-var isCJS;
-var context;
-var init_context = __esm({
-  "node_modules/@mathjax/src/mjs/util/context.js"() {
-    hasWindow = false;
-    isCJS = false;
-    context = {
-      window: hasWindow ? void 0 : null,
-      document: hasWindow ? (void 0).document : null,
-      os: (() => {
-        if (hasWindow && (void 0).navigator) {
-          const app = (void 0).navigator.appVersion;
-          const osNames = [
-            ["Win", "Windows"],
-            ["Mac", "MacOS"],
-            ["X11", "Unix"],
-            ["Linux", "Unix"]
-          ];
-          for (const [key, os] of osNames) {
-            if (app.includes(key)) {
-              return os;
-            }
-          }
-          if ((void 0).navigator.userAgent.includes("Android")) {
-            return "Unix";
-          }
-        } else if (false) {
-          return {
-            linux: "Unix",
-            android: "Unix",
-            aix: "Unix",
-            freebsd: "Unix",
-            netbsd: "Unix",
-            openbsd: "Unix",
-            sunos: "Unix",
-            darwin: "MacOS",
-            win32: "Windows",
-            cygwin: "Windows"
-          }[(void 0).platform] || (void 0).platform;
-        }
-        return "unknown";
-      })(),
-      path: (file) => file
-    };
-    if (context.os === "Windows") {
-      context.path = (file) => file.match(/^[/\\]?[a-zA-Z]:[/\\]/) ? (isCJS ? "" : "file://") + file.replace(/\\/g, "/").replace(/^\//, "") : file.replace(/^\//, "file:///");
-    }
-  }
-});
-// node_modules/@mathjax/src/mjs/mathjax.js
-var mathjax;
-var init_mathjax = __esm({
-  "node_modules/@mathjax/src/mjs/mathjax.js"() {
-    init_version();
-    init_HandlerList();
-    init_Retries();
-    init_context();
-    mathjax = {
-      version: VERSION,
-      context,
-      handlers: new HandlerList(),
-      document: function(document, options3) {
-        return mathjax.handlers.document(document, options3);
-      },
-      handleRetriesFor,
-      retryAfter,
-      asyncLoad: null,
-      asyncIsSynchronous: false
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/AsyncLoad.js
-function asyncLoad(name) {
-  if (!mathjax.asyncLoad) {
-    return Promise.reject(`Can't load '${name}': No mathjax.asyncLoad method specified`);
-  }
-  return new Promise((ok, fail2) => {
-    const result = mathjax.asyncLoad(name);
-    if (result instanceof Promise) {
-      result.then((value) => ok(value)).catch((err) => fail2(err));
-    } else {
-      ok(result);
-    }
-  });
-}
-var init_AsyncLoad = __esm({
-  "node_modules/@mathjax/src/mjs/util/AsyncLoad.js"() {
-    init_mathjax();
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js
-function NodeMixin(Base2, options3 = {}) {
-  var _a2;
-  options3 = userOptions(defaultOptions({}, NodeMixinOptions), options3);
-  return _a2 = class NodeAdaptor extends Base2 {
-    constructor(...args) {
-      super(args[0]);
-      this.canMeasureNodes = false;
-      const CLASS = this.constructor;
-      this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), args[1]);
-    }
-    fontSize(node) {
-      return options3.badCSS ? this.options.fontSize : super.fontSize(node);
-    }
-    fontFamily(node) {
-      return options3.badCSS ? this.options.fontFamily : super.fontFamily(node);
-    }
-    nodeSize(node, em2 = 1, local = null) {
-      if (!options3.badSizes) {
-        return super.nodeSize(node, em2, local);
-      }
-      const text = this.textContent(node);
-      const non = Array.from(text.replace(_a2.cjkPattern, "")).length;
-      const CJK = Array.from(text).length - non;
-      return [
-        CJK * this.options.cjkCharWidth + non * this.options.unknownCharWidth,
-        this.options.unknownCharHeight
-      ];
-    }
-    nodeBBox(node) {
-      return options3.badSizes ? { left: 0, right: 0, top: 0, bottom: 0 } : super.nodeBBox(node);
-    }
-    createWorker(listener, options4) {
-      return __awaiter(this, void 0, void 0, function* () {
-        const { Worker: Worker2 } = yield asyncLoad("node:worker_threads");
-        class LiteWorker {
-          constructor(url2, options5 = {}) {
-            this.worker = new Worker2(url2, options5);
-          }
-          addEventListener(kind, listener2) {
-            this.worker.on(kind, listener2);
-          }
-          postMessage(msg) {
-            this.worker.postMessage({ data: msg });
-          }
-          terminate() {
-            this.worker.terminate();
-          }
-        }
-        const { path, maps: maps3 } = options4;
-        const url = `${path}/${options4.worker}`;
-        const worker = new LiteWorker(url, {
-          type: "module",
-          workerData: { maps: maps3 }
-        });
-        worker.addEventListener("message", listener);
-        return worker;
-      });
-    }
-  }, _a2.OPTIONS = Object.assign(Object.assign({}, options3.badCSS ? {
-    fontSize: 16,
-    fontFamily: "Times"
-  } : {}), options3.badSizes ? {
-    cjkCharWidth: 1,
-    unknownCharWidth: 0.6,
-    unknownCharHeight: 0.8
-  } : {}), _a2.cjkPattern = new RegExp([
-    "[",
-    "ᄀ-\u115F",
-    "〈〉",
-    "⺀-〾",
-    "\u3040-㉇",
-    "㉐-䶿",
-    "一-꓆",
-    "ꥠ-ꥼ",
-    "가-힣",
-    "豈-\uFAFF",
-    "︐-︙",
-    "︰-﹫",
-    "！-｠￠-￦",
-    "𛀀-𛀁",
-    "🈀-🉑",
-    "𠀀-\uD8BF\uDFFD",
-    "]"
-  ].join(""), "gu"), _a2;
-}
-var __awaiter;
-var NodeMixinOptions;
-var init_NodeMixin = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js"() {
-    init_Options();
-    init_AsyncLoad();
-    __awaiter = function(thisArg, _arguments, P, generator) {
-      function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve) {
-          resolve(value);
-        });
-      }
-      return new (P || (P = Promise))(function(resolve, reject) {
-        function fulfilled(value) {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function rejected(value) {
-          try {
-            step(generator["throw"](value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function step(result) {
-          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
-        }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
-    };
-    NodeMixinOptions = {
-      badCSS: true,
-      badSizes: true
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Element.js
-var LiteElement;
-var init_Element = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Element.js"() {
-    LiteElement = class {
-      constructor(kind, attributes = {}, children = []) {
-        this.kind = kind;
-        this.attributes = Object.assign({}, attributes);
-        this.children = [...children];
-        for (const child of this.children) {
-          child.parent = this;
-        }
-        this.styles = null;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Document.js
-var LiteDocument;
-var init_Document = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Document.js"() {
-    init_Element();
-    LiteDocument = class {
-      get kind() {
-        return "#document";
-      }
-      constructor(window2 = null) {
-        this.defaultView = null;
-        this.root = new LiteElement("html", {}, [
-          this.head = new LiteElement("head"),
-          this.body = new LiteElement("body")
-        ]);
-        this.type = "";
-        this.defaultView = window2;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Text.js
-var LiteText;
-var LiteComment;
-var init_Text = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Text.js"() {
-    LiteText = class {
-      get kind() {
-        return "#text";
-      }
-      constructor(text = "") {
-        this.value = text;
-      }
-    };
-    LiteComment = class extends LiteText {
-      get kind() {
-        return "#comment";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/List.js
-var LiteList;
-var init_List = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/List.js"() {
-    LiteList = class {
-      constructor(children) {
-        this.nodes = [];
-        this.nodes = [...children];
-      }
-      append(node) {
-        this.nodes.push(node);
-      }
-      [Symbol.iterator]() {
-        let i2 = 0;
-        return {
-          next() {
-            return i2 === this.nodes.length ? { value: null, done: true } : { value: this.nodes[i2++], done: false };
-          }
-        };
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Entities.js
-function translate(text) {
-  return text.replace(/&([a-z][a-z0-9]*|#(?:[0-9]+|x[0-9a-f]+));/gi, replace);
-}
-function replace(match, entity) {
-  if (entity.charAt(0) === "#") {
-    return numeric(entity.slice(1));
-  }
-  if (entities[entity]) {
-    return entities[entity];
-  }
-  if (options2["loadMissingEntities"]) {
-    const file = entity.match(/^[a-zA-Z](fr|scr|opf)$/) ? RegExp.$1 : entity.charAt(0).toLowerCase();
-    if (!loaded[file]) {
-      loaded[file] = true;
-      retryAfter(asyncLoad("./util/entities/" + file + ".js"));
-    }
-  }
-  return match;
-}
-function numeric(entity) {
-  const n = entity.charAt(0) === "x" ? parseInt(entity.slice(1), 16) : parseInt(entity);
-  return String.fromCodePoint(n);
-}
-var options2;
-var entities;
-var loaded;
-var init_Entities = __esm({
-  "node_modules/@mathjax/src/mjs/util/Entities.js"() {
-    init_Retries();
-    init_AsyncLoad();
-    options2 = {
-      loadMissingEntities: true
-    };
-    entities = JSON.parse(`{
- "ApplyFunction":"\u2061","Backslash":"∖","Because":"∵","Breve":"˘","Cap":"⋒","CenterDot":"·","CircleDot":"⊙","CircleMinus":"⊖","CirclePlus":"⊕","CircleTimes":"⊗","Congruent":"≡","ContourIntegral":"∮",
- "Coproduct":"∐","Cross":"⨯","Cup":"⋓","CupCap":"≍","Dagger":"‡","Del":"∇","Delta":"Δ","Diamond":"⋄","DifferentialD":"ⅆ","DotEqual":"≐","DoubleDot":"¨","DoubleRightTee":"⊨","DoubleVerticalBar":"∥",
- "DownArrow":"↓","DownLeftVector":"↽","DownRightVector":"⇁","DownTee":"⊤","Downarrow":"⇓","Element":"∈","EqualTilde":"≂","Equilibrium":"⇌","Exists":"∃","ExponentialE":"ⅇ","FilledVerySmallSquare":"▪",
- "ForAll":"∀","Gamma":"Γ","Gg":"⋙","GreaterEqual":"≥","GreaterEqualLess":"⋛","GreaterFullEqual":"≧","GreaterLess":"≷","GreaterSlantEqual":"⩾","GreaterTilde":"≳","Hacek":"ˇ","Hat":"^","HumpDownHump":"≎",
- "HumpEqual":"≏","Im":"ℑ","ImaginaryI":"ⅈ","Integral":"∫","Intersection":"⋂","InvisibleComma":"\u2063","InvisibleTimes":"\u2062","Lambda":"Λ","Larr":"↞","LeftAngleBracket":"⟨","LeftArrow":"←",
- "LeftArrowRightArrow":"⇆","LeftCeiling":"⌈","LeftDownVector":"⇃","LeftFloor":"⌊","LeftRightArrow":"↔","LeftTee":"⊣","LeftTriangle":"⊲","LeftTriangleEqual":"⊴","LeftUpVector":"↿","LeftVector":"↼",
- "Leftarrow":"⇐","Leftrightarrow":"⇔","LessEqualGreater":"⋚","LessFullEqual":"≦","LessGreater":"≶","LessSlantEqual":"⩽","LessTilde":"≲","Ll":"⋘","Lleftarrow":"⇚","LongLeftArrow":"⟵",
- "LongLeftRightArrow":"⟷","LongRightArrow":"⟶","Longleftarrow":"⟸","Longleftrightarrow":"⟺","Longrightarrow":"⟹","Lsh":"↰","MinusPlus":"∓","NestedGreaterGreater":"≫","NestedLessLess":"≪",
- "NotDoubleVerticalBar":"∦","NotElement":"∉","NotEqual":"≠","NotExists":"∄","NotGreater":"≯","NotGreaterEqual":"≱","NotLeftTriangle":"⋪","NotLeftTriangleEqual":"⋬","NotLess":"≮","NotLessEqual":"≰",
- "NotPrecedes":"⊀","NotPrecedesSlantEqual":"⋠","NotRightTriangle":"⋫","NotRightTriangleEqual":"⋭","NotSubsetEqual":"⊈","NotSucceeds":"⊁","NotSucceedsSlantEqual":"⋡","NotSupersetEqual":"⊉",
- "NotTilde":"≁","NotVerticalBar":"∤","Omega":"Ω","OverBar":"‾","OverBrace":"⏞","PartialD":"∂","Phi":"Φ","Pi":"Π","PlusMinus":"±","Precedes":"≺","PrecedesEqual":"⪯","PrecedesSlantEqual":"≼",
- "PrecedesTilde":"≾","Product":"∏","Proportional":"∝","Psi":"Ψ","Rarr":"↠","Re":"ℜ","ReverseEquilibrium":"⇋","RightAngleBracket":"⟩","RightArrow":"→","RightArrowLeftArrow":"⇄","RightCeiling":"⌉",
- "RightDownVector":"⇂","RightFloor":"⌋","RightTee":"⊢","RightTeeArrow":"↦","RightTriangle":"⊳","RightTriangleEqual":"⊵","RightUpVector":"↾","RightVector":"⇀","Rightarrow":"⇒","Rrightarrow":"⇛",
- "Rsh":"↱","Sigma":"Σ","SmallCircle":"∘","Sqrt":"√","Square":"□","SquareIntersection":"⊓","SquareSubset":"⊏","SquareSubsetEqual":"⊑","SquareSuperset":"⊐","SquareSupersetEqual":"⊒","SquareUnion":"⊔",
- "Star":"⋆","Subset":"⋐","SubsetEqual":"⊆","Succeeds":"≻","SucceedsEqual":"⪰","SucceedsSlantEqual":"≽","SucceedsTilde":"≿","SuchThat":"∋","Sum":"∑","Superset":"⊃","SupersetEqual":"⊇","Supset":"⋑",
- "Therefore":"∴","Theta":"Θ","Tilde":"∼","TildeEqual":"≃","TildeFullEqual":"≅","TildeTilde":"≈","UnderBar":"_","UnderBrace":"⏟","Union":"⋃","UnionPlus":"⊎","UpArrow":"↑","UpDownArrow":"↕","UpTee":"⊥",
- "Uparrow":"⇑","Updownarrow":"⇕","Upsilon":"Υ","Vdash":"⊩","Vee":"⋁","VerticalBar":"∣","VerticalTilde":"≀","Vvdash":"⊪","Wedge":"⋀","Xi":"Ξ","amp":"&","acute":"´","aleph":"ℵ","alpha":"α","amalg":"⨿",
- "and":"∧","ang":"∠","angmsd":"∡","angsph":"∢","ape":"≊","backprime":"‵","backsim":"∽","backsimeq":"⋍","beta":"β","beth":"ℶ","between":"≬","bigcirc":"◯","bigodot":"⨀","bigoplus":"⨁","bigotimes":"⨂",
- "bigsqcup":"⨆","bigstar":"★","bigtriangledown":"▽","bigtriangleup":"△","biguplus":"⨄","blacklozenge":"⧫","blacktriangle":"▴","blacktriangledown":"▾","blacktriangleleft":"◂","bowtie":"⋈","boxdl":"┐",
- "boxdr":"┌","boxminus":"⊟","boxplus":"⊞","boxtimes":"⊠","boxul":"┘","boxur":"└","bsol":"\\\\","bull":"•","cap":"∩","check":"✓","chi":"χ","circ":"ˆ","circeq":"≗","circlearrowleft":"↺",
- "circlearrowright":"↻","circledR":"®","circledS":"Ⓢ","circledast":"⊛","circledcirc":"⊚","circleddash":"⊝","clubs":"♣","colon":":","comp":"∁","ctdot":"⋯","cuepr":"⋞","cuesc":"⋟","cularr":"↶","cup":"∪",
- "curarr":"↷","curlyvee":"⋎","curlywedge":"⋏","dagger":"†","daleth":"ℸ","ddarr":"⇊","deg":"°","delta":"δ","digamma":"ϝ","div":"÷","divideontimes":"⋇","dot":"˙","doteqdot":"≑","dotplus":"∔",
- "dotsquare":"⊡","dtdot":"⋱","ecir":"≖","efDot":"≒","egs":"⪖","ell":"ℓ","els":"⪕","empty":"∅","epsi":"ε","epsiv":"ϵ","erDot":"≓","eta":"η","eth":"ð","flat":"♭","fork":"⋔","frown":"⌢","gEl":"⪌",
- "gamma":"γ","gap":"⪆","gimel":"ℷ","gnE":"≩","gnap":"⪊","gne":"⪈","gnsim":"⋧","gt":">","gtdot":"⋗","harrw":"↭","hbar":"ℏ","hellip":"…","hookleftarrow":"↩","hookrightarrow":"↪","imath":"ı","infin":"∞",
- "intcal":"⊺","iota":"ι","jmath":"ȷ","kappa":"κ","kappav":"ϰ","lEg":"⪋","lambda":"λ","lap":"⪅","larrlp":"↫","larrtl":"↢","lbrace":"{","lbrack":"[","le":"≤","leftleftarrows":"⇇","leftthreetimes":"⋋",
- "lessdot":"⋖","lmoust":"⎰","lnE":"≨","lnap":"⪉","lne":"⪇","lnsim":"⋦","longmapsto":"⟼","looparrowright":"↬","lowast":"∗","loz":"◊","lt":"<","ltimes":"⋉","ltri":"◃","macr":"¯","malt":"✠","mho":"℧",
- "mu":"μ","multimap":"⊸","nLeftarrow":"⇍","nLeftrightarrow":"⇎","nRightarrow":"⇏","nVDash":"⊯","nVdash":"⊮","natur":"♮","nearr":"↗","nharr":"↮","nlarr":"↚","not":"¬","nrarr":"↛","nu":"ν","nvDash":"⊭",
- "nvdash":"⊬","nwarr":"↖","omega":"ω","omicron":"ο","or":"∨","osol":"⊘","period":".","phi":"φ","phiv":"ϕ","pi":"π","piv":"ϖ","prap":"⪷","precnapprox":"⪹","precneqq":"⪵","precnsim":"⋨","prime":"′",
- "psi":"ψ","quot":"\\"","rarrtl":"↣","rbrace":"}","rbrack":"]","rho":"ρ","rhov":"ϱ","rightrightarrows":"⇉","rightthreetimes":"⋌","ring":"˚","rmoust":"⎱","rtimes":"⋊","rtri":"▹","scap":"⪸","scnE":"⪶",
- "scnap":"⪺","scnsim":"⋩","sdot":"⋅","searr":"↘","sect":"§","sharp":"♯","sigma":"σ","sigmav":"ς","simne":"≆","smile":"⌣","spades":"♠","sub":"⊂","subE":"⫅","subnE":"⫋","subne":"⊊","supE":"⫆","supnE":"⫌",
- "supne":"⊋","swarr":"↙","tau":"τ","theta":"θ","thetav":"ϑ","tilde":"˜","times":"×","triangle":"▵","triangleq":"≜","upsi":"υ","upuparrows":"⇈","veebar":"⊻","vellip":"⋮","weierp":"℘","xi":"ξ","yen":"¥",
- "zeta":"ζ","zigrarr":"⇝","nbsp":"\u00A0","rsquo":"’","lsquo":"‘"
-}`);
-    loaded = {};
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js
-var SPACE2;
-var OPTIONALSPACE;
-var TAGNAME;
-var ATTNAME;
-var VALUE;
-var VALUESPLIT;
-var ATTRIBUTE;
-var ATTRIBUTESPLIT;
-var TAG;
-var PATTERNS;
-var LiteParser;
-var init_Parser = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js"() {
-    init_Entities();
-    init_Element();
-    init_Text();
-    SPACE2 = "[ \\n]+";
-    OPTIONALSPACE = "[ \\n]*";
-    TAGNAME = `[A-Za-z][^\0-\u001F "'>/=\u007F-\u009F]*`;
-    ATTNAME = `[^\0-\u001F "'>/=\u007F-\u009F]+`;
-    VALUE = `(?:'[^']*'|"[^"]*"|${SPACE2})`;
-    VALUESPLIT = `(?:'([^']*)'|"([^"]*)"|(${SPACE2}))`;
-    ATTRIBUTE = `${ATTNAME}(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUE})?`;
-    ATTRIBUTESPLIT = `(${ATTNAME})(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUESPLIT})?`;
-    TAG = `(<(?:${TAGNAME}(?:${SPACE2}${ATTRIBUTE})*${OPTIONALSPACE}/?|/${TAGNAME}|!--[^]*?--|![^]*?)(?:>|$))`;
-    PATTERNS = {
-      tag: new RegExp(TAG, "u"),
-      attr: new RegExp(ATTRIBUTE, "u"),
-      attrsplit: new RegExp(ATTRIBUTESPLIT, "u")
-    };
-    LiteParser = class {
-      parseFromString(text, _format = "text/html", adaptor = null) {
-        const root2 = adaptor.createDocument();
-        let node = adaptor.body(root2);
-        const parts = text.replace(/<\?.*?\?>/g, "").split(PATTERNS.tag);
-        while (parts.length) {
-          const text2 = parts.shift();
-          const tag3 = parts.shift();
-          if (text2) {
-            this.addText(adaptor, node, text2);
-          }
-          if (tag3 && tag3.charAt(tag3.length - 1) === ">") {
-            if (tag3.charAt(1) === "!") {
-              this.addComment(adaptor, node, tag3);
-            } else if (tag3.charAt(1) === "/") {
-              node = this.closeTag(adaptor, node, tag3);
-            } else {
-              node = this.openTag(adaptor, node, tag3, parts);
-            }
-          }
-        }
-        this.checkDocument(adaptor, root2);
-        return root2;
-      }
-      addText(adaptor, node, text) {
-        text = translate(text);
-        return adaptor.append(node, adaptor.text(text));
-      }
-      addComment(adaptor, node, comment) {
-        return adaptor.append(node, new LiteComment(comment));
-      }
-      closeTag(adaptor, node, tag3) {
-        const kind = tag3.slice(2, tag3.length - 1).toLowerCase();
-        while (adaptor.parent(node) && adaptor.kind(node) !== kind) {
-          node = adaptor.parent(node);
-        }
-        return adaptor.parent(node);
-      }
-      openTag(adaptor, node, tag3, parts) {
-        const PCDATA = this.constructor.PCDATA;
-        const SELF_CLOSING = this.constructor.SELF_CLOSING;
-        const kind = tag3.match(/<(.*?)[\s\n>/]/)[1].toLowerCase();
-        const child = adaptor.node(kind);
-        const attributes = tag3.replace(/^<.*?[\s\n>]/, "").split(PATTERNS.attrsplit);
-        if (attributes.pop().match(/>$/) || attributes.length < 5) {
-          this.addAttributes(adaptor, child, attributes);
-          adaptor.append(node, child);
-          if (!SELF_CLOSING[kind] && !tag3.match(/\/>$/)) {
-            if (PCDATA[kind]) {
-              this.handlePCDATA(adaptor, child, kind, parts);
-            } else {
-              node = child;
-            }
-          }
-        }
-        return node;
-      }
-      addAttributes(adaptor, node, attributes) {
-        while (attributes.length) {
-          const [, name, v1, v2, v3] = attributes.splice(0, 5);
-          const value = translate(v1 || v2 || v3 || "");
-          adaptor.setAttribute(node, name, value);
-        }
-      }
-      handlePCDATA(adaptor, node, kind, parts) {
-        const pcdata = [];
-        const etag = "</" + kind + ">";
-        let ptag = "";
-        while (parts.length && ptag !== etag) {
-          pcdata.push(ptag);
-          pcdata.push(parts.shift());
-          ptag = parts.shift();
-        }
-        adaptor.append(node, adaptor.text(pcdata.join("")));
-      }
-      checkDocument(adaptor, root2) {
-        const node = this.getOnlyChild(adaptor, adaptor.body(root2));
-        if (!node)
-          return;
-        for (const child of adaptor.childNodes(adaptor.body(root2))) {
-          if (child === node) {
-            break;
-          }
-          if (child instanceof LiteComment && child.value.match(/^<!DOCTYPE/)) {
-            root2.type = child.value;
-          }
-        }
-        switch (adaptor.kind(node)) {
-          case "html":
-            for (const child of node.children) {
-              switch (adaptor.kind(child)) {
-                case "head":
-                  root2.head = child;
-                  break;
-                case "body":
-                  root2.body = child;
-                  break;
-              }
-            }
-            root2.root = node;
-            adaptor.remove(node);
-            if (adaptor.parent(root2.body) !== node) {
-              adaptor.append(node, root2.body);
-            }
-            if (adaptor.parent(root2.head) !== node) {
-              adaptor.insert(root2.head, root2.body);
-            }
-            break;
-          case "head":
-            root2.head = adaptor.replace(node, root2.head);
-            break;
-          case "body":
-            root2.body = adaptor.replace(node, root2.body);
-            break;
-        }
-      }
-      getOnlyChild(adaptor, body) {
-        let node = null;
-        for (const child of adaptor.childNodes(body)) {
-          if (child instanceof LiteElement) {
-            if (node)
-              return null;
-            node = child;
-          }
-        }
-        return node;
-      }
-      serialize(adaptor, node, xml = false) {
-        const SELF_CLOSING = this.constructor.SELF_CLOSING;
-        const tag3 = adaptor.kind(node);
-        const attributes = this.allAttributes(adaptor, node, xml).map((x2) => x2.name + '="' + this.protectAttribute(x2.value, xml) + '"').join(" ");
-        const content = this.serializeInner(adaptor, node, xml);
-        const html2 = `<${tag3}` + (attributes ? " " + attributes : "") + ((!xml || content) && !SELF_CLOSING[tag3] ? `>${content}</${tag3}>` : xml ? "/>" : ">");
-        return html2;
-      }
-      serializeInner(adaptor, node, xml = false) {
-        const PCDATA = this.constructor.PCDATA;
-        if (Object.hasOwn(PCDATA, node.kind)) {
-          return adaptor.childNodes(node).map((x2) => adaptor.value(x2)).join("");
-        }
-        return adaptor.childNodes(node).map((x2) => {
-          const kind = adaptor.kind(x2);
-          return kind === "#text" ? this.protectHTML(adaptor.value(x2)) : kind === "#comment" ? x2.value : this.serialize(adaptor, x2, xml);
-        }).join("");
-      }
-      allAttributes(adaptor, node, xml) {
-        const attributes = adaptor.allAttributes(node);
-        if (!xml) {
-          return attributes;
-        }
-        const kind = adaptor.kind(node);
-        const xmlns = this.constructor.XMLNS;
-        if (!Object.hasOwn(xmlns, kind)) {
-          return attributes;
-        }
-        for (const { name } of attributes) {
-          if (name === "xmlns") {
-            return attributes;
-          }
-        }
-        attributes.push({ name: "xmlns", value: xmlns[kind] });
-        return attributes;
-      }
-      protectAttribute(text, xml) {
-        if (typeof text !== "string") {
-          text = String(text);
-        }
-        text = text.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        if (xml) {
-          text = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-        return text;
-      }
-      protectHTML(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      }
-    };
-    LiteParser.SELF_CLOSING = {
-      area: true,
-      base: true,
-      br: true,
-      col: true,
-      command: true,
-      embed: true,
-      hr: true,
-      img: true,
-      input: true,
-      keygen: true,
-      link: true,
-      menuitem: true,
-      meta: true,
-      param: true,
-      source: true,
-      track: true,
-      wbr: true
-    };
-    LiteParser.PCDATA = {
-      option: true,
-      textarea: true,
-      fieldset: true,
-      title: true,
-      style: true,
-      script: true
-    };
-    LiteParser.XMLNS = {
-      svg: "http://www.w3.org/2000/svg",
-      math: "http://www.w3.org/1998/Math/MathML",
-      html: "http://www.w3.org/1999/xhtml"
-    };
-  }
-});
-export{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,TexError,GlyphError,init_errors,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,PATTERN_OPACITY,GRADIENT_BANDS,NAMED,STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED2,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};
+export{__commonJS,__esm,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_RULES,MAX_COMPOUND,MAX_CHAIN,MAX_MATCH_STEPS,NAMES,MAX_TEXT_CHARS,INITIAL_FONT,SIZE_KEYWORDS,BASELINES,TEX_ESCAPES,MAX_TEXT_DEPTH,MISSING_ADVANCE,MAX_RUN_CHARS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,FONT_PROPERTIES,PATTERN_OPACITY,GRADIENT_BANDS,STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,LINE_WIDTH_PT,TEXT_HEIGHT_PT,PNG_SIGNATURE,__toESM,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,SIGNATURE,COLOR_TYPES,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,KEPT_IMAGE_PIXELS,MIN_IMAGE_DENSITY,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};

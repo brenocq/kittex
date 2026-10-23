@@ -11,7 +11,8 @@
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
 import { diagramDocument, formatName, ulimitProbe } from './core.js'
-import { compileTrial, onPath, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
+import type { PdfConverter } from './core.js'
+import { compileTrial, onPath, PDF_CONVERTER_NAMES, probePdf, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
 import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
 
@@ -351,6 +352,8 @@ export interface DiagramFacts {
   /** dvisvgm runs PostScript specials through a Ghostscript it links, whatever kittex asks (3.5 to 3.6.1). */
   postscript?: boolean
   trial: TrialFacts
+  /** The trial PDF conversion (tex.ts probePdf), where the trial picture ran. */
+  pdf?: { ok: true; converter: PdfConverter } | { ok: false; error: string }
 }
 
 export interface CacheFacts {
@@ -491,6 +494,7 @@ export async function probeDiagrams(given: DoctorHost, input: ProbeInput): Promi
     const outcome = await compileTrial(host, setup, diagramDocument(TRIAL_PICTURE, 'tikz'), DOCTOR_TRIAL_MS)
     const ms = Date.now() - started
     facts.trial = outcome.ok ? { ok: true, ms, format: format !== undefined } : { ok: false, ms, error: outcome.error }
+    facts.pdf = await probePdf(host, setup)
   }
   return facts
 }
@@ -763,6 +767,8 @@ export function formatDoctor(facts: DoctorFacts): string {
   if ('skipped' in trial) line(INFO, `trial picture: skipped${trial.skipped ? ` (${plain(trial.skipped)})` : ''}`)
   else if (trial.ok) line(OK, `trial picture: drawn in ${seconds(trial.ms)}${trial.format ? '' : ' (without the format)'}`)
   else line(NO, `trial picture: failed after ${seconds(trial.ms)}: ${plain(trial.error)}`)
+  if (d.pdf?.ok) line(OK, `PDF images: drawn from their first page by ${PDF_CONVERTER_NAMES[d.pdf.converter]}${d.bwrap?.usable ? ', inside bubblewrap' : ', with Ghostscript kept off (no sandbox to confine it)'}`)
+  else if (d.pdf) line(INFO, `PDF images: not drawn (${plain(d.pdf.error)})${d.bwrap?.usable ? '' : ': without bubblewrap kittex converts them only with mutool (MuPDF), never Ghostscript'}`)
   const ready = d.latex.version !== undefined && d.dvisvgm.version !== undefined
   if (ready && !d.found && d.option === 'auto' && d.drawn) line(INFO, 'this session started before TeX was there: restart Claude Code to draw diagrams')
 

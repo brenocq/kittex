@@ -106,6 +106,8 @@ export type KittexBlock = {
   records: KittexPreview[]
   /** Where the stream gave up: from this offset of the shown text on, the model's text passed as written. */
   raw?: number
+  /** The session's working directory when it streamed: its image blocks' relative paths resolve against it, not the session's later one. */
+  cwd?: string
 }
 
 declare module 'claude-code' {
