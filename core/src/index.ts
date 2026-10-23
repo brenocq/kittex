@@ -70,6 +70,8 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
+export { fitImage, imageBlock, LINE_WIDTH_PT, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
+export type { ImageBox, ImageFit, ImageLength, ImageSpec } from './image/block.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset, typesetLoaded }
 export { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows }
 export type { BlockPart, Char, LinkMode, ProseBlock, ProseLayout, SourceSpan, SpanPlace, VisibleText, WrappedLine } from './layout/index.js'

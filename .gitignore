@@ -4,3 +4,6 @@ node_modules/
 plugin/.claude-plugin/types/
 # README media: published to the `assets` branch by .github/scripts/publish-assets.sh, never committed here
 .github/assets/
+
+# Branch worktrees (<repo>/.worktrees/<branch>/)
+.worktrees/
