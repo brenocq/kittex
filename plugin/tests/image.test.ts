@@ -373,6 +373,8 @@ describe('image blocks in a session', () => {
     expect(imageInstructions(true)).toContain('PDF')
     // Asked to show an image, a model otherwise reads it with the Read tool, which shows it to the model alone.
     expect(imageInstructions(false)).toContain('the Read tool shows it to you alone')
+    // The block draws local files only: an image URL is fetched to one first.
+    expect(imageInstructions(false)).toContain('downloaded to a temporary file first')
   })
 
   test('where the local TeX converts PDF: the instructions offer PDFs, and a PDF block is drawn from its first page', async ($, on) => {
