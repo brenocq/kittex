@@ -1,5 +1,83 @@
-import{u16,shft,wbits,hTree,clim,flt,fdt,hMap,flm,fdm,wbits16,fleb,fdeb,i32,u8,revfl,revfd,slc,err,inflt,SIGNATURE,ImageError,COLOR_TYPES,checkSize,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,imageHeader,decodeJpeg,__kittexLate}from'./p33.js';export*from'./p33.js';
-__kittexLate.et=()=>et;__kittexLate.ln=()=>ln;
+import{u8,u16,shft,clim,flt,fdt,hMap,flm,fdm,fleb,fdeb,i32,revfl,revfd,slc,err,inflt,SIGNATURE,ImageError,COLOR_TYPES,checkSize,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,imageHeader,decodeJpeg}from'./p33.js';export*from'./p33.js';
+var wbits = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+};
+var wbits16 = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+  d[o + 2] |= v >> 16;
+};
+var hTree = function(d, mb) {
+  var t = [];
+  for (var i2 = 0; i2 < d.length; ++i2) {
+    if (d[i2])
+      t.push({ s: i2, f: d[i2] });
+  }
+  var s = t.length;
+  var t2 = t.slice();
+  if (!s)
+    return { t: et, l: 0 };
+  if (s == 1) {
+    var v = new u8(t[0].s + 1);
+    v[t[0].s] = 1;
+    return { t: v, l: 1 };
+  }
+  t.sort(function(a, b) {
+    return a.f - b.f;
+  });
+  t.push({ s: -1, f: 25001 });
+  var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
+  t[0] = { s: -1, f: l.f + r.f, l, r };
+  while (i1 != s - 1) {
+    l = t[t[i0].f < t[i22].f ? i0++ : i22++];
+    r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
+    t[i1++] = { s: -1, f: l.f + r.f, l, r };
+  }
+  var maxSym = t2[0].s;
+  for (var i2 = 1; i2 < s; ++i2) {
+    if (t2[i2].s > maxSym)
+      maxSym = t2[i2].s;
+  }
+  var tr = new u16(maxSym + 1);
+  var mbt = ln(t[i1 - 1], tr, 0);
+  if (mbt > mb) {
+    var i2 = 0, dt = 0;
+    var lft = mbt - mb, cst = 1 << lft;
+    t2.sort(function(a, b) {
+      return tr[b.s] - tr[a.s] || a.f - b.f;
+    });
+    for (; i2 < s; ++i2) {
+      var i2_1 = t2[i2].s;
+      if (tr[i2_1] > mb) {
+        dt += cst - (1 << mbt - tr[i2_1]);
+        tr[i2_1] = mb;
+      } else
+        break;
+    }
+    dt >>= lft;
+    while (dt > 0) {
+      var i2_2 = t2[i2].s;
+      if (tr[i2_2] < mb)
+        dt -= 1 << mb - tr[i2_2]++ - 1;
+      else
+        ++i2;
+    }
+    for (; i2 >= 0 && dt; --i2) {
+      var i2_3 = t2[i2].s;
+      if (tr[i2_3] == mb) {
+        --tr[i2_3];
+        ++dt;
+      }
+    }
+    mbt = mb;
+  }
+  return { t: new u8(tr), l: mbt };
+};
 var ln = function(n, l, d) {
   return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
 };
@@ -1062,104 +1140,4 @@ var Coverage = class {
     return out;
   }
 };
-// core/src/raster/paint.ts
-var Canvas2 = class {
-  constructor(width, height2) {
-    this.width = width;
-    this.height = height2;
-    this.pixels = new Uint8Array(width * height2 * 4);
-  }
-  width;
-  height;
-  /** Premultiplied RGBA, row-major. */
-  pixels;
-  /**
-   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
-   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
-   */
-  paint(coverage, x0, y0, w, h, color, opacity, mask) {
-    const px2 = this.pixels;
-    const W = this.width;
-    const erase = color === "erase";
-    const r = erase ? 0 : color.r;
-    const g = erase ? 0 : color.g;
-    const b = erase ? 0 : color.b;
-    const k = Math.min(1, Math.max(0, opacity)) / 255;
-    for (let y = 0; y < h; y++) {
-      const cy = y0 + y;
-      if (cy < 0 || cy >= this.height) continue;
-      for (let x2 = 0; x2 < w; x2++) {
-        const c = coverage[y * w + x2];
-        if (c === 0) continue;
-        const cx = x0 + x2;
-        if (cx < 0 || cx >= W) continue;
-        const at = cy * W + cx;
-        let a = c * k;
-        if (mask) {
-          const m = mask[at];
-          if (m === 0) continue;
-          a = a * m / 255;
-        }
-        const keep = 1 - a;
-        const i2 = at * 4;
-        if (erase) {
-          px2[i2] = px2[i2] * keep + 0.5;
-          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
-        } else {
-          px2[i2] = r * a + px2[i2] * keep + 0.5;
-          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
-        }
-      }
-    }
-  }
-  /**
-   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
-   * alpha corrected for its colour as the terminal corrects text blended over
-   * that background (inkAlpha: Ghostty's linear-corrected blending).
-   */
-  straight(over) {
-    const px2 = this.pixels;
-    const out = new Uint8Array(px2.length);
-    const tables = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < px2.length; i2 += 4) {
-      const a = px2[i2 + 3];
-      if (a === 0) continue;
-      const half = a >> 1;
-      const r0 = (px2[i2] * 255 + half) / a | 0;
-      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
-      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
-      const r = r0 > 255 ? 255 : r0;
-      const g = g0 > 255 ? 255 : g0;
-      const b = b0 > 255 ? 255 : b0;
-      out[i2] = r;
-      out[i2 + 1] = g;
-      out[i2 + 2] = b;
-      if (!over || a === 255) {
-        out[i2 + 3] = a;
-        continue;
-      }
-      const key = r << 16 | g << 8 | b;
-      let table2 = tables.get(key);
-      if (!table2) {
-        if (tables.size >= 4096) {
-          out[i2 + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over));
-          continue;
-        }
-        table2 = correctionTable({ r, g, b }, over);
-        tables.set(key, table2);
-      }
-      out[i2 + 3] = table2[a];
-    }
-    return out;
-  }
-};
-function correctionTable(color, over) {
-  const table2 = new Uint8Array(256);
-  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over));
-  return table2;
-}
-export{Coverage,encodeAlphaPng,Canvas2,encodeQuantizedPng,recolorPng,decodeImage,scaleBitmap,encodeRgbaPng,inkAlpha};
+export{inkAlpha,Coverage,encodeAlphaPng,encodeQuantizedPng,recolorPng,decodeImage,scaleBitmap,encodeRgbaPng};

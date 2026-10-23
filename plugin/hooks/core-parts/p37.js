@@ -1,4 +1,4 @@
-import{layoutMath,parseXml2,lines,NAMED,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,initTypeset,GlyphError,measure,MIN_DISPLAY_SCALE,TexError,TOO_LARGE,MAX_PIXELS,rasterize,encodePng,recolorPng,MIN_INLINE_SCALE,INK_EDGE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,typeset,texToMathML2,INLINE_OVERFLOW,CACHE_LIMIT,assumedBackground,MAX_PICTURE_ROWS,adaptColor,measurePicture,MIN_PICTURE_SCALE,rasterizePicture,encodePicturePng,pictureOutlines,ImageError,imageHeader,readSvg,MAX_IMAGE_PIXELS,decodeImage,KEPT_IMAGE_PIXELS,scaleBitmap,svgTextTex,texPicture,fitImage,MIN_IMAGE_DENSITY,encodeRgbaPng}from'./p36.js';export*from'./p36.js';
+import{layoutMath,parseXml2,lines,NAMED,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,initTypeset,GlyphError,measure,MIN_DISPLAY_SCALE,TexError,TOO_LARGE,MAX_PIXELS,rasterize,encodePng,recolorPng,MIN_INLINE_SCALE,INK_EDGE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,typeset,texToMathML2,INLINE_OVERFLOW,CACHE_LIMIT,assumedBackground,MAX_PICTURE_ROWS,adaptColor,measurePicture,MIN_PICTURE_SCALE,rasterizePicture,encodePicturePng,pictureOutlines,ImageError,imageHeader,readSvg,MAX_IMAGE_PIXELS,decodeImage,KEPT_IMAGE_PIXELS,scaleBitmap,svgTextTex,texPicture,fitImage,MIN_IMAGE_DENSITY,encodeRgbaPng,blockImages,fitImageBlock}from'./p36.js';export*from'./p36.js';
 // core/src/unicode/index.ts
 function toUnicode(mathml, options3) {
   try {
@@ -1550,6 +1550,82 @@ function drawBitmap(bitmap, width, height2, boxWidth, boxHeight) {
   for (let y = 0; y < h; y++) rgba.set(scaled.rgba.subarray(y * w * 4, (y + 1) * w * 4), ((y0 + y) * W + x0) * 4);
   return encodeRgbaPng({ width: W, height: H2, rgba });
 }
+function soleImage(block2) {
+  const [row, ...more] = block2.rows;
+  const image = row?.length === 1 && more.length === 0 ? row[0] : void 0;
+  return image?.box === void 0 ? image : void 0;
+}
+function checkSources(sources, block2) {
+  const count = blockImages(block2).length;
+  if (sources.length !== count) throw new RangeError(`image block: ${sources.length} sources for ${count} images`);
+}
+function measureImageBlock(sources, block2, env) {
+  checkSources(sources, block2);
+  const sole = soleImage(block2);
+  if (sole) return measureImage(sources[0], sole, env);
+  const fit = fitImageBlock(sources, block2, imageBox(env));
+  return { columns: fit.columns, rows: fit.rows, scale: 1 };
+}
+function renderImageBlock(sources, block2, env, minRows, density = 1) {
+  checkSources(sources, block2);
+  const sole = soleImage(block2);
+  if (sole) return renderImage(sources[0], sole, env, minRows, density);
+  const fit = fitImageBlock(sources, block2, imageBox(env));
+  const rows = Math.max(fit.rows, minRows ?? 0);
+  const fullWidth = fit.columns * env.cellWidth;
+  const fullHeight = rows * env.cellHeight;
+  const photo = sources.some((source) => source.kind === "bitmap");
+  let d = Math.min(1, Math.max(MIN_IMAGE_DENSITY, density), photo ? Math.sqrt(IMAGE_FILE_BYTES / (fullWidth * fullHeight)) : 1);
+  for (; ; ) {
+    const png = encodeRgbaPng(composeBlock(sources, fit, env, fullWidth, fullHeight, d));
+    if (png.length <= IMAGE_FILE_BYTES) return { columns: fit.columns, rows, scale: 1, png, density: d };
+    if (d <= MIN_IMAGE_DENSITY) throw new TexError("images too large to send to the terminal");
+    d = Math.max(MIN_IMAGE_DENSITY, d * 0.7);
+  }
+}
+function composeBlock(sources, fit, env, fullWidth, fullHeight, density) {
+  const width = Math.max(1, Math.round(fullWidth * density));
+  const height2 = Math.max(1, Math.round(fullHeight * density));
+  const canvas = { width, height: height2, rgba: new Uint8Array(width * height2 * 4) };
+  const left = (fullWidth - fit.widthPx) / 2;
+  const top = (fullHeight - fit.heightPx) / 2;
+  for (const [i2, place] of fit.images.entries()) {
+    const source = sources[i2];
+    const w = Math.max(1, Math.round(place.widthPx * density));
+    const h = Math.max(1, Math.round(place.heightPx * density));
+    const drawn = source.kind === "bitmap" ? scaleBitmap(source.bitmap, w, h) : pictureBitmap(source.picture, w, h, env);
+    paintOver(canvas, drawn, Math.round((left + place.x) * density) + Math.floor((w - drawn.width) / 2), Math.round((top + place.y) * density) + Math.floor((h - drawn.height) / 2));
+  }
+  return canvas;
+}
+function pictureBitmap(picture, width, height2, env) {
+  const raster = rasterizePicture(picture, { ...pictureOptions(env), emPx: width / picture.width, cellWidth: width, cellHeight: height2, maxColumns: 1, maxRows: 1 });
+  return { width: raster.widthPx, height: raster.heightPx, rgba: raster.rgba };
+}
+function paintOver(dst, src, x0, y0) {
+  const to = dst.rgba;
+  const from = src.rgba;
+  for (let y = Math.max(0, -y0); y < src.height && y0 + y < dst.height; y++) {
+    for (let x2 = Math.max(0, -x0); x2 < src.width && x0 + x2 < dst.width; x2++) {
+      const s = (y * src.width + x2) * 4;
+      const t = ((y0 + y) * dst.width + x0 + x2) * 4;
+      const a = from[s + 3];
+      if (a === 0) continue;
+      const b = to[t + 3];
+      if (a === 255 || b === 0) {
+        to[t] = from[s];
+        to[t + 1] = from[s + 1];
+        to[t + 2] = from[s + 2];
+        to[t + 3] = a;
+        continue;
+      }
+      const under = b * (255 - a) / 255;
+      const out = a + under;
+      for (let c = 0; c < 3; c++) to[t + c] = Math.round((from[s + c] * a + to[t + c] * under) / out);
+      to[t + 3] = Math.round(out);
+    }
+  }
+}
 function renderDisplayResult(result, env, minRows) {
   const options3 = rasterOptions(env, minRows);
   const box2 = measure(result, options3);
@@ -1560,4 +1636,4 @@ function renderDisplayResult(result, env, minRows) {
   if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE);
   return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png };
 }
-export{IMAGE_FILE_BYTES,MAX_IMAGE_BYTES,MAX_IMAGE_FILE_BYTES,VECTOR_PX_PER_EM,cellProbe,cellProbeRan,cellProbes,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,coreTextFontArgv,detectTerminal,drawsEmojiSequences,emPxForCell,faceIndexOf,fontCell,fontFileArgv,imageColumns,imageInkBackground,imageInkCurve,init,matchesFamily,mathEmPx,measureDisplay,measureDisplayResult,measureImage,measureInline,measureInlineResult,measurePicture2,odArgv,parseCoreTextFont,parseFontFile,parseOd,pictureSource,previewDisplay,previewInline,previewWidth,readFontMetrics,readImageFile,readTerminalColors,renderDisplay,renderDisplayResult,renderImage,renderInline,renderInlineResult,renderPicture,texFormula,texPicture2,textBaseline,textLayout,toBase64,toHex,toUnicode};
+export{IMAGE_FILE_BYTES,MAX_IMAGE_BYTES,MAX_IMAGE_FILE_BYTES,VECTOR_PX_PER_EM,cellProbe,cellProbeRan,cellProbes,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,coreTextFontArgv,detectTerminal,drawsEmojiSequences,emPxForCell,faceIndexOf,fontCell,fontFileArgv,imageColumns,imageInkBackground,imageInkCurve,init,matchesFamily,mathEmPx,measureDisplay,measureDisplayResult,measureImage,measureImageBlock,measureInline,measureInlineResult,measurePicture2,odArgv,parseCoreTextFont,parseFontFile,parseOd,pictureSource,previewDisplay,previewInline,previewWidth,readFontMetrics,readImageFile,readTerminalColors,renderDisplay,renderDisplayResult,renderImage,renderImageBlock,renderInline,renderInlineResult,renderPicture,texFormula,texPicture2,textBaseline,textLayout,toBase64,toHex,toUnicode};
