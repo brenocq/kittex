@@ -208,9 +208,15 @@ describe('shadings and patterns', () => {
     expect(last.clip).toBeUndefined()
   })
 
-  test('what can not be drawn refuses the picture', () => {
-    for (const body of [`<text>hi</text>`, `<image href='x.png' width='1' height='1'/>`, `<g mask='url(#m)'><path d='M0 0H1V1Z'/></g>`, `<svg/>`]) {
+  test('what can not be drawn refuses the picture, saying what it was', () => {
+    const refusals: [string, RegExp][] = [
+      [`<image href='x.png' width='1' height='1'/>`, /embedded bitmaps/],
+      [`<g mask='url(#m)'><path d='M0 0H1V1Z'/></g>`, /masks/],
+      [`<svg/>`, /nested <svg>/],
+    ]
+    for (const [body, why] of refusals) {
       expect(() => read(body), body).toThrow(SvgError)
+      expect(() => read(body), body).toThrow(why)
     }
     expect(() => readSvg('<svg/>', { baseline: 'bottom', emPerUnit: 1 })).toThrow(SvgError)
     expect(() => read(`<path transform='rotate(oops)' d='M0 0H1V1Z'/>`)).toThrow(SvgError)

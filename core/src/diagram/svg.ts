@@ -1,24 +1,33 @@
 import type { Matrix, Paint, Picture, PictureClip, PictureOp, RGB, StrokeStyle } from '../types.js'
 import { flattenSubpaths } from '../raster/path.js'
+import { NAMED_COLORS, parseStylesheet, RuleIndex, type CssRule } from './css.js'
 import { parseXml, type XmlElement } from './xml.js'
 
 /*
- * dvisvgm's SVG (`--no-fonts`: every glyph a path) read into a Picture: each
- * shape it paints, in order, as a fill or a stroke in em with its colour, and
- * the clip regions they are drawn inside. What kittex's rasterizer draws.
+ * An SVG read into a Picture: each shape it paints, in order, as a fill or a
+ * stroke in em with its colour, and the clip regions they are drawn inside.
+ * What kittex's rasterizer draws. Two writers matter: dvisvgm (`--no-fonts`:
+ * every glyph a path), for TeX's pictures and PDF pages, and the ordinary SVG
+ * files a reply points at (matplotlib, Inkscape, graphviz, draw.io).
  *
- * Read: svg, g (and a), path, use (of a glyph or any element), rect, circle,
- * ellipse, line, polyline, polygon, clipPath; the presentation attributes and
- * a `style` attribute's declarations of the same names; transforms. A group's
+ * Read: svg, g (and a), path, use (of a glyph or any element), symbol, rect,
+ * circle, ellipse, line, polyline, polygon, clipPath, switch (its first child
+ * that can be drawn); the presentation attributes, a `<style>` sheet's simple
+ * rules (css.ts) and a `style` attribute's declarations, in CSS's order;
+ * transforms; named, hex (alpha too), rgb(a) and hsl(a) colors. A group's
  * opacity multiplies into its shapes'. A shape filled with a gradient is
  * painted in bands of its colours (linear and radial, focus included), and one
  * filled with a pattern in copies of its tile, both clipped to the shape: TikZ
  * shadings and patterns as they print. A gradient stroke paints its stops'
  * mean colour, and a pattern that can't be tiled within MAX_PATTERN_OPS its
- * first colour at PATTERN_OPACITY (a flat tint). Text, images, masks and nested
- * documents refuse the picture (SvgError), so nothing is drawn half: dvisvgm
- * writes none of them for TikZ, pgfplots, chemfig or circuitikz with
- * --no-fonts, and a picture that needs them stays its source.
+ * first colour at PATTERN_OPACITY (a flat tint).
+ *
+ * Degraded, the rest still drawn: text that isn't outlines (`<text>`, and
+ * draw.io's HTML labels in `<foreignObject>`) is skipped, as are markers;
+ * filters are ignored (the shape is drawn unfiltered: a drop shadow's own
+ * shape, without the shadow). Refused (SvgError), so nothing is drawn half
+ * wrong: embedded bitmaps (`<image>`, a matplotlib imshow), masks (they hide
+ * what would otherwise show) and nested documents (`<svg>` inside one).
  */
 
 export class SvgError extends Error {}
@@ -28,8 +37,19 @@ export type BaselineAt = 'origin' | 'bottom'
 
 export interface SvgReadOptions {
   baseline: BaselineAt
-  /** Em per SVG user unit (a big point): 72.27 / 72 / the font size in TeX points. */
+  /** Em per big point (1/72 in): 72.27 / 72 / the font size in TeX points. */
   emPerUnit: number
+  /**
+   * What one user unit (a viewBox unit) measures. `bp`, the default: a big
+   * point, as dvisvgm writes, the root's width and height not read. `document`:
+   * what the root's width and height make it, an ordinary SVG's natural size.
+   * Their units are CSS's (px is 1/96 in, pt 1/72, also pc, mm, cm, in);
+   * the viewBox is scaled uniformly to fit inside them (preserveAspectRatio's
+   * `meet`), the letterbox dropped, so the picture keeps the viewBox's aspect
+   * ratio. A missing or percentage width or height leaves a user unit a CSS
+   * pixel (0.75 bp), as a browser draws a lone SVG.
+   */
+  userUnit?: 'bp' | 'document'
 }
 
 /** Shapes one picture may paint, at most. */
@@ -78,7 +98,12 @@ interface Style {
   clip: number | undefined
 }
 
-type PaintSource = RGB | { ref: string }
+/** A color with its own alpha (`rgba(…)`, `#rrggbbaa`), which multiplies into the paint's opacity. */
+interface Tint extends RGB {
+  alpha?: number
+}
+
+type PaintSource = Tint | { ref: string }
 
 const BLACK: RGB = { r: 0, g: 0, b: 0 }
 
@@ -101,29 +126,44 @@ const INITIAL: Style = {
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0]
 
-/** Elements that draw nothing themselves and hold only definitions or metadata. */
-const SKIPPED = new Set(['defs', 'clipPath', 'linearGradient', 'radialGradient', 'pattern', 'symbol', 'marker', 'title', 'desc', 'metadata', 'style', 'script'])
-/** Elements a picture can't be drawn without. */
-const REFUSED = new Set(['text', 'image', 'foreignObject', 'mask', 'svg', 'video', 'iframe'])
+/**
+ * Elements not drawn, the rest of the picture drawn without them: those that
+ * hold only definitions or metadata, and text that isn't outlines (see the
+ * note at the top).
+ */
+const SKIPPED = new Set(['defs', 'clipPath', 'linearGradient', 'radialGradient', 'pattern', 'symbol', 'marker', 'mask', 'filter', 'title', 'desc', 'metadata', 'style', 'script', 'text', 'foreignObject'])
+/** Elements a picture can't be drawn without, and why. */
+const REFUSED = new Map([
+  ['image', 'embedded bitmaps (<image>) are not drawn'],
+  ['svg', 'nested <svg> documents are not drawn'],
+  ['video', '<video> is not drawn'],
+  ['iframe', '<iframe> is not drawn'],
+])
 
 /** Reads dvisvgm's SVG into a Picture. Throws SvgError (or XmlError) for what it can't draw. */
 export function readSvg(source: string, options: SvgReadOptions): Picture {
   const root = parseXml(source)
   if (root.name !== 'svg') throw new SvgError('not an SVG document')
-  const box = viewBox(root)
+  const box = viewBox(root, options.userUnit === 'document')
   // Every id, the first in document order winning; with a stack of its own, as the walk below, since a faceted
   // pgfplots surface nests one group per facet thousands deep.
   const ids = new Map<string, XmlElement>()
+  const all: XmlElement[] = []
   const pending: XmlElement[] = [root]
   for (let el = pending.pop(); el; el = pending.pop()) {
+    all.push(el)
     const id = el.attrs.id
     if (id !== undefined && !ids.has(id)) ids.set(id, el)
     for (let i = el.children.length - 1; i >= 0; i--) pending.push(el.children[i]!)
   }
+  applyStyleSheets(all)
 
-  const s = options.emPerUnit
+  const [sx, sy] = options.userUnit === 'document' ? documentScale(root, box) : [1, 1]
+  const ex = options.emPerUnit * sx
+  const ey = options.emPerUnit * sy
+  // Stroke widths and dashes stay in user units (mapped by the transform); only a non-uniform scale makes them uneven.
   const baselineY = options.baseline === 'origin' ? 0 : box.y + box.height
-  const toEm: Matrix = [s, 0, 0, s, -box.x * s, -baselineY * s]
+  const toEm: Matrix = [ex, 0, 0, ey, -box.x * ex, -baselineY * ey]
   const ops: PictureOp[] = []
   const clips: PictureClip[] = []
   const clipIds = new Map<string, number>()
@@ -155,7 +195,9 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
       if (!resolved) return null
       return { color: resolved.color, opacity: opacity * resolved.opacity }
     }
-    return { color: source, opacity }
+    const alpha = source.alpha ?? 1
+    if (!(alpha > 0)) return null
+    return { color: { r: source.r, g: source.g, b: source.b }, opacity: opacity * alpha }
   }
 
   const draw = (d: string, ctm: Matrix, style: Style, glyph: boolean, canFill = true) => {
@@ -396,7 +438,8 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
       const { el, ctm, inherited, root: isRoot, glyph, uses } = stack.pop()!
       if (++visits > MAX_VISITS) throw new SvgError('picture too complex')
       if (SKIPPED.has(el.name)) continue
-      if (REFUSED.has(el.name) && !isRoot) throw new SvgError(`<${el.name}> is not drawn`)
+      const refused = isRoot ? undefined : REFUSED.get(el.name)
+      if (refused !== undefined) throw new SvgError(refused)
       if (declared(el, 'display') === 'none') continue
       const m = el.name === 'svg' ? ctm : multiply(ctm, transformOf(el.attrs.transform))
       const style = styleOf(el, inherited)
@@ -408,10 +451,15 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
         case 'svg':
         case 'g':
         case 'a':
-        case 'switch':
           // Pushed last child first: the first is drawn first.
           for (let k = el.children.length - 1; k >= 0; k--) stack.push({ el: el.children[k]!, ctm: m, inherited: style, root: false, glyph, uses })
           continue
+        case 'switch': {
+          // Its first child a reader without extensions draws: draw.io's fallback after its HTML label.
+          const chosen = el.children.find(child => child.name !== 'foreignObject' && (child.attrs.requiredExtensions ?? '').trim() === '')
+          if (chosen) stack.push({ el: chosen, ctm: m, inherited: style, root: false, glyph, uses })
+          continue
+        }
         case 'use': {
           const id = hrefOf(el)
           const target = id === undefined ? undefined : ids.get(id)
@@ -433,9 +481,66 @@ export function readSvg(source: string, options: SvgReadOptions): Picture {
   }
   walk([{ el: root, ctm: IDENTITY, inherited: { ...INITIAL }, root: true, glyph: false, uses: 0 }])
 
-  const height = (baselineY - box.y) * s
-  const depth = (box.y + box.height - baselineY) * s
-  return { width: box.width * s, height: Math.max(0, height), depth: Math.max(0, depth), ops, clips }
+  const height = (baselineY - box.y) * ey
+  const depth = (box.y + box.height - baselineY) * ey
+  return { width: box.width * ex, height: Math.max(0, height), depth: Math.max(0, depth), ops, clips }
+}
+
+/** Each element's matching `<style>` rules folded into its `style` attribute, before its own declarations (which win, as declared() reads the last). */
+function applyStyleSheets(elements: readonly XmlElement[]): void {
+  const rules: CssRule[] = []
+  for (const el of elements) {
+    if (el.name !== 'style' || el.text === undefined) continue
+    const type = el.attrs.type?.trim().toLowerCase()
+    if (type === undefined || type === '' || type === 'text/css') rules.push(...parseStylesheet(el.text, rules.length))
+  }
+  if (rules.length === 0) return
+  const index = new RuleIndex(rules)
+  // A rule is copied onto every element it matches, so a sheet within its cap can still multiply past any (a long `*` rule over thousands of elements).
+  let folded = 0
+  for (const el of elements) {
+    const declarations = index.declarationsFor(el)
+    if (declarations === '') continue
+    folded += declarations.length
+    if (folded > MAX_FOLDED_STYLE) throw new SvgError('picture too complex (its style sheet)')
+    el.attrs.style = el.attrs.style === undefined ? declarations : `${declarations};${el.attrs.style}`
+  }
+}
+
+/** Characters of style sheet declarations the elements of one picture may take in all (applyStyleSheets). */
+const MAX_FOLDED_STYLE = 8 * 1024 * 1024
+
+/** Big points per CSS unit. */
+const BP_PER: Record<string, number> = { px: 0.75, pt: 1, pc: 12, mm: 72 / 25.4, cm: 72 / 2.54, in: 72, q: 72 / 101.6 }
+
+/** An absolute CSS length in big points (no unit: px), or undefined for a percentage, a relative unit or nonsense. */
+function bigPoints(value: string | undefined): number | undefined {
+  const match = value === undefined ? null : /^\s*(\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|q)?\s*$/i.exec(value)
+  if (!match) return undefined
+  const n = Number(match[1]) * BP_PER[(match[2] ?? 'px').toLowerCase()]!
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+/** Big points per user unit across and down, from the root's width and height (SvgReadOptions.userUnit's `document`). */
+function documentScale(root: XmlElement, box: { width: number; height: number }): [number, number] {
+  const width = bigPoints(root.attrs.width)
+  const height = bigPoints(root.attrs.height)
+  const sx = width === undefined ? undefined : width / box.width
+  const sy = height === undefined ? undefined : height / box.height
+  let scale: [number, number]
+  if (sx === undefined || sy === undefined) {
+    const s = sx ?? sy ?? BP_PER.px!
+    scale = [s, s]
+  } else if (/^\s*none\b/.test(root.attrs.preserveAspectRatio ?? '')) {
+    // preserveAspectRatio="none" stretches the viewBox to the width and height.
+    scale = [sx, sy]
+  } else {
+    const s = Math.min(sx, sy)
+    scale = [s, s]
+  }
+  // A viewBox of 1e-300 inside a width of 100pt: no size a picture can be drawn at.
+  if (!scale.every(s => Number.isFinite(s) && s > 0 && Number.isFinite(s * Math.max(box.width, box.height)))) throw new SvgError('the picture has no drawable size')
+  return scale
 }
 
 /** How many numbers path data holds, as SVG reads them (`0.5.5` is two, `1e-5` one). */
@@ -472,14 +577,19 @@ export function countNumbers(d: string): number {
   return n
 }
 
-function viewBox(root: XmlElement): { x: number; y: number; width: number; height: number } {
+/** The root's viewBox, else its width and height as user units: numbers as written (`bp`), or in CSS pixels (`document`). */
+function viewBox(root: XmlElement, document: boolean): { x: number; y: number; width: number; height: number } {
   const numbers = (root.attrs.viewBox ?? '').trim().split(/[\s,]+/).map(Number)
   if (numbers.length === 4 && numbers.every(Number.isFinite) && numbers[2]! > 0 && numbers[3]! > 0) {
     const [x, y, width, height] = numbers as [number, number, number, number]
     return { x, y, width, height }
   }
-  const width = length(root.attrs.width)
-  const height = length(root.attrs.height)
+  const pixels = (value: string | undefined) => {
+    const bp = bigPoints(value)
+    return bp === undefined ? undefined : bp / BP_PER.px!
+  }
+  const width = document ? pixels(root.attrs.width) : length(root.attrs.width)
+  const height = document ? pixels(root.attrs.height) : length(root.attrs.height)
   if (width && height && width > 0 && height > 0) return { x: 0, y: 0, width, height }
   throw new SvgError('the picture is empty')
 }
@@ -515,14 +625,16 @@ function translation(el: XmlElement): Matrix {
   return [1, 0, 0, 1, length(el.attrs.x) ?? 0, length(el.attrs.y) ?? 0]
 }
 
-/** A presentation attribute, or the same property in the element's `style` attribute (which wins). */
+/** A presentation attribute, or the same property in the element's `style` attribute (which wins, its last declaration of it the one that counts). */
 function declared(el: XmlElement, name: string): string | undefined {
   const style = el.attrs.style
   if (style !== undefined) {
+    let found: string | undefined
     for (const declaration of style.split(';')) {
       const colon = declaration.indexOf(':')
-      if (colon > 0 && declaration.slice(0, colon).trim() === name) return declaration.slice(colon + 1).trim()
+      if (colon > 0 && declaration.slice(0, colon).trim() === name) found = declaration.slice(colon + 1).trim()
     }
+    if (found !== undefined) return found
   }
   const value = el.attrs[name]
   return value === undefined ? undefined : value.trim()
@@ -538,7 +650,7 @@ function styleOf(el: XmlElement, inherited: Style): Style {
     const ref = urlOf(value)
     if (ref !== undefined) return { ref }
     if (value === 'currentColor') return style.color
-    return parseColor(value, style.color) ?? current
+    return parseTint(value, style.color) ?? current
   }
   style.fill = paint(declared(el, 'fill'), inherited.fill)
   style.stroke = paint(declared(el, 'stroke'), inherited.stroke)
@@ -612,9 +724,9 @@ function gradientStops(el: XmlElement, ids: ReadonlyMap<string, XmlElement>, dep
     .map(stop => {
       const raw = declared(stop, 'offset') ?? '0'
       const offset = clamp01(raw.endsWith('%') ? parseFloat(raw) / 100 : parseFloat(raw) || 0)
-      const color = parseColor(declared(stop, 'stop-color') ?? 'black', BLACK) ?? BLACK
-      const opacity = clamp01(parseFloat(declared(stop, 'stop-opacity') ?? '1'))
-      return { offset, paint: { color, opacity: Number.isFinite(opacity) ? opacity : 1 } }
+      const tint: Tint = parseTint(declared(stop, 'stop-color') ?? 'black', BLACK) ?? BLACK
+      const opacity = clamp01(parseFloat(declared(stop, 'stop-opacity') ?? '1')) * (tint.alpha ?? 1)
+      return { offset, paint: { color: { r: tint.r, g: tint.g, b: tint.b }, opacity } }
     })
   if (stops.length > 0 || depth > MAX_USE_DEPTH) return stops
   const parent = ids.get(hrefOf(el) ?? '')
@@ -848,55 +960,58 @@ function apply(m: Matrix, x: number, y: number): [number, number] {
 
 // ─── Colours ─────────────────────────────────────────────────────────────────
 
-/** An SVG colour: `#rgb`, `#rrggbb`, `rgb(…)` (numbers or percentages) or a name; undefined otherwise. */
+/** An SVG color without its alpha (see parseTint); undefined when it isn't one. */
 export function parseColor(value: string, current: RGB): RGB | undefined {
-  const v = value.trim().toLowerCase()
-  if (v === 'currentcolor') return current
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(v)
-  if (hex) {
-    const digits = hex[1]!
-    const full = digits.length === 3 ? [...digits].map(d => d + d).join('') : digits
-    return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) }
-  }
-  const rgb = /^rgba?\(([^)]*)\)$/.exec(v)
-  if (rgb) {
-    const parts = rgb[1]!.split(/[\s,/]+/).filter(Boolean)
-    if (parts.length < 3) return undefined
-    const channel = (p: string) => (p.endsWith('%') ? (parseFloat(p) / 100) * 255 : parseFloat(p))
-    const [r, g, b] = parts.slice(0, 3).map(channel) as [number, number, number]
-    if (![r, g, b].every(Number.isFinite)) return undefined
-    const byte = (x: number) => Math.min(255, Math.max(0, Math.round(x)))
-    return { r: byte(r), g: byte(g), b: byte(b) }
-  }
-  return NAMED[v]
+  const tint = parseTint(value, current)
+  return tint && { r: tint.r, g: tint.g, b: tint.b }
 }
 
-const NAMED: Record<string, RGB> = {
-  black: { r: 0, g: 0, b: 0 },
-  white: { r: 255, g: 255, b: 255 },
-  red: { r: 255, g: 0, b: 0 },
-  lime: { r: 0, g: 255, b: 0 },
-  green: { r: 0, g: 128, b: 0 },
-  blue: { r: 0, g: 0, b: 255 },
-  yellow: { r: 255, g: 255, b: 0 },
-  cyan: { r: 0, g: 255, b: 255 },
-  aqua: { r: 0, g: 255, b: 255 },
-  magenta: { r: 255, g: 0, b: 255 },
-  fuchsia: { r: 255, g: 0, b: 255 },
-  gray: { r: 128, g: 128, b: 128 },
-  grey: { r: 128, g: 128, b: 128 },
-  silver: { r: 192, g: 192, b: 192 },
-  maroon: { r: 128, g: 0, b: 0 },
-  olive: { r: 128, g: 128, b: 0 },
-  navy: { r: 0, g: 0, b: 128 },
-  purple: { r: 128, g: 0, b: 128 },
-  teal: { r: 0, g: 128, b: 128 },
-  orange: { r: 255, g: 165, b: 0 },
-  brown: { r: 165, g: 42, b: 42 },
-  pink: { r: 255, g: 192, b: 203 },
-  violet: { r: 238, g: 130, b: 238 },
-  darkgray: { r: 169, g: 169, b: 169 },
-  lightgray: { r: 211, g: 211, b: 211 },
+/**
+ * An SVG color and its alpha: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`,
+ * `rgb(…)`, `rgba(…)`, `hsl(…)`, `hsla(…)` (commas or spaces, `/ alpha`,
+ * numbers or percentages), `transparent`, or one of CSS's names; undefined
+ * otherwise. `alpha` is absent for an opaque color.
+ */
+function parseTint(value: string, current: RGB): Tint | undefined {
+  const v = value.trim().toLowerCase()
+  if (v === 'currentcolor') return current
+  if (v === 'transparent') return { r: 0, g: 0, b: 0, alpha: 0 }
+  const byte = (x: number) => Math.min(255, Math.max(0, Math.round(x)))
+  const withAlpha = (rgb: RGB, alpha: number | undefined): Tint | undefined => {
+    if (alpha === undefined || alpha >= 1) return rgb
+    return Number.isFinite(alpha) ? { ...rgb, alpha: Math.max(0, alpha) } : undefined
+  }
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(v)
+  if (hex) {
+    const digits = hex[1]!
+    const full = digits.length <= 4 ? [...digits].map(d => d + d).join('') : digits
+    const channel = (at: number) => parseInt(full.slice(at, at + 2), 16)
+    return withAlpha({ r: channel(0), g: channel(2), b: channel(4) }, full.length === 8 ? channel(6) / 255 : undefined)
+  }
+  const fn = /^(rgba?|hsla?)\(([^)]*)\)$/.exec(v)
+  if (fn) {
+    const parts = fn[2]!.split(/[\s,/]+/).filter(Boolean)
+    if (parts.length < 3 || parts.length > 4) return undefined
+    const fraction = (p: string) => (p.endsWith('%') ? parseFloat(p) / 100 : parseFloat(p))
+    const alpha = parts[3] === undefined ? undefined : fraction(parts[3])
+    if (fn[1]!.startsWith('rgb')) {
+      const [r, g, b] = parts.slice(0, 3).map(p => (p.endsWith('%') ? fraction(p) * 255 : parseFloat(p))) as [number, number, number]
+      if (![r, g, b].every(Number.isFinite)) return undefined
+      return withAlpha({ r: byte(r), g: byte(g), b: byte(b) }, alpha)
+    }
+    const h = parseFloat(parts[0]!.replace(/deg$/, ''))
+    const s = Math.min(1, Math.max(0, fraction(parts[1]!)))
+    const l = Math.min(1, Math.max(0, fraction(parts[2]!)))
+    if (![h, s, l].every(Number.isFinite)) return undefined
+    // CSS Color 4's hsl-to-rgb.
+    const at = (n: number) => {
+      const k = (((n + h / 30) % 12) + 12) % 12
+      return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1))
+    }
+    return withAlpha({ r: byte(at(0) * 255), g: byte(at(8) * 255), b: byte(at(4) * 255) }, alpha)
+  }
+  return NAMED_COLORS.get(v)
 }
+
 
 const clamp01 = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1)

@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { bwrapProbe, confined, MAX_OUTPUT_BYTES, ulimitProbe, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
+import { bwrapProbe, confined, pdfArgv, pdfCopyArgv, TRIAL_PDF, MAX_OUTPUT_BYTES, ulimitProbe, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
 import type { Confinement, DiagramLang, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture } from '../../src/index.ts'
 
@@ -198,5 +198,36 @@ describe.skipIf(!TEX)('the local TeX', () => {
       expect(Math.max(...picture.ops.map(op => op.d.length)), name).toBeLessThan(MAX_PATH_DATA / 10)
       expect(picture.ops.reduce((sum, op) => sum + countNumbers(op.d), 0), name).toBeLessThan(MAX_PICTURE_NUMBERS / 10)
     }
+  })
+})
+
+/** The trial PDF, copied into a job and converted as plugin/hooks/tex.ts's pdfPicture does (Ghostscript only in bubblewrap); its stdout and status. */
+function convertTrialPdf(): { status: number | null; svg: string; stderr: string } {
+  const source = mkdtempSync(join(tmpdir(), 'kittex-pdf-source.'))
+  const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
+  try {
+    writeFileSync(join(source, 'figure.pdf'), TRIAL_PDF)
+    const [cp, ...cpArgs] = pdfCopyArgv(join(source, 'figure.pdf'), dir, confinement)
+    if (spawnSync(cp!, cpArgs, { cwd: dir }).status !== 0) return { status: -1, svg: '', stderr: 'copy failed' }
+    const [cmd, ...args] = confined(pdfArgv(dir, confinement.bwrap !== undefined), dir, confinement)
+    const run = spawnSync(cmd!, args, { cwd: dir, env: { ...process.env, ...texEnvironment(dir) }, timeout: 20_000, encoding: 'utf8' })
+    return { status: run.status, svg: run.stdout ?? '', stderr: run.stderr ?? '' }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(source, { recursive: true, force: true })
+  }
+}
+
+// Where dvisvgm has a PDF converter (mutool, or Ghostscript inside bubblewrap); skipped elsewhere, as on a Mac with neither.
+const PDF = TEX && convertTrialPdf().status === 0
+
+describe.skipIf(!PDF)('PDF images through the local dvisvgm', () => {
+  test('the trial PDF comes back as its page: 50 × 40 pt, a blue rectangle 30 × 20 pt', () => {
+    const { svg } = convertTrialPdf()
+    const picture = texPicture(svg, { baseline: 'bottom', fontSize: 10 })
+    const em = 72.27 / 72 / 10
+    expect(picture.width).toBeCloseTo(50 * em, 2)
+    expect(picture.height).toBeCloseTo(40 * em, 2)
+    expect(picture.ops.some(op => op.type === 'fill' && op.paint.color.b === 255 && op.paint.color.r === 0)).toBe(true)
   })
 })
