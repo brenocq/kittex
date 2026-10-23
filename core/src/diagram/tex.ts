@@ -579,6 +579,61 @@ export function dvisvgmArgv(dir: string): string[] {
   return ['dvisvgm', '--no-fonts', '--exact-bbox', '--no-specials=ps,pdf,html', `--libgs=${dir}/no-ghostscript`, '--no-mktexmf', '--cache=none', `--tmpdir=${dir}`, '--page=1', '--stdout', '--verbosity=1', `${JOB_NAME}.dvi`]
 }
 
+// ─── PDF images ──────────────────────────────────────────────────────────────
+
+/*
+ * A PDF a reply includes (\includegraphics{figure.pdf}) is drawn from its
+ * first page: dvisvgm --pdf turns it into SVG (glyphs as paths), read like a
+ * TeX picture. The PDF is untrusted input, so it is copied into a job
+ * directory of its own and converted there under the job's confinement.
+ * dvisvgm hands a PDF to Ghostscript when it can load one, and starts it with
+ * -dDELAYSAFER and never makes it safe (PSInterpreter.cpp), so a PDF can reach
+ * everything Ghostscript's interpreter can (files, pipes). Without
+ * bubblewrap's namespace, Ghostscript is turned off (`--libgs` naming no
+ * library, as dvisvgmArgv does) and dvisvgm converts with mutool, which runs
+ * nothing a document asks for.
+ */
+
+/** The job's copy of the PDF being converted. */
+export const PDF_NAME = 'kittex-image.pdf'
+
+/**
+ * dvisvgm on the job's PDF: its first page, glyphs as paths, SVG on stdout,
+ * nothing cached; without `ghostscript`, Ghostscript never loaded (mutool
+ * converts, or nothing does).
+ */
+export function pdfArgv(dir: string, ghostscript: boolean): string[] {
+  return ['dvisvgm', '--pdf', '--page=1', '--no-fonts', '--cache=none', `--tmpdir=${dir}`, ...(ghostscript ? [] : [`--libgs=${dir}/no-ghostscript`]), '--stdout', '--verbosity=1', PDF_NAME]
+}
+
+/** Copying the PDF at `path` (absolute) into the job's directory, under the job's limits but outside its namespace, which hides the PDF. */
+export function pdfCopyArgv(path: string, dir: string, confinement: Confinement): string[] {
+  return confined(['cp', '--', path, `${dir}/${PDF_NAME}`], dir, { prlimit: confinement.prlimit, ...(confinement.ulimit ? { ulimit: true as const } : {}) })
+}
+
+/**
+ * A one-page PDF filling a 30 × 20 pt blue rectangle on a 50 × 40 pt page:
+ * what a host's trial conversion draws (probePdf), offsets and all.
+ */
+export const TRIAL_PDF: string = (() => {
+  const content = '0 0 1 rg 10 10 30 20 re f\n'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 50 40] /Contents 4 0 R /Resources << >> >>',
+    `<< /Length ${content.length} >>\nstream\n${content}endstream`,
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length)
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}`
+  return `${pdf}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+})()
+
 /** The variables TeX and dvisvgm run with, over the host's: the restrictions above, and no wrapped log lines. */
 export function texEnvironment(dir: string): Record<string, string> {
   return {

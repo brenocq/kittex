@@ -18,7 +18,7 @@ import {
   TRIAL_PICTURE,
 } from '../hooks/doctor.ts'
 import type { DiagramFacts, DoctorFacts, DoctorHost, OsFacts } from '../hooks/doctor.ts'
-import { formatName } from '../hooks/core.js'
+import { formatName, TRIAL_PDF } from '../hooks/core.js'
 import { startSession, test } from './support.ts'
 import { TIKZ_DVI } from './fixtures/dvi.ts'
 
@@ -116,9 +116,13 @@ interface FakeOptions {
   texRoot?: string
   /** dvisvgm -V1 names a Ghostscript it links. */
   linkedGs?: boolean
+  /** dvisvgm finds neither Ghostscript nor mutool: --pdf fails as it does then. */
+  noPdf?: boolean
 }
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20pt" height="10pt" viewBox="0 0 20 10"><path d="M0 0L20 10" stroke="#000" stroke-width="1"/></svg>'
+/** dvisvgm --pdf's page for TRIAL_PDF: its blue square. */
+const PDF_PAGE = '<svg xmlns="http://www.w3.org/2000/svg" width="50pt" height="40pt" viewBox="0 0 50 40"><path d="M10 10H40V30H10Z" fill="#00f"/></svg>'
 const LATEX_VERSION = 'pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)'
 const DVISVGM_VERSION = 'dvisvgm 3.6'
 const ENV = { PATH: '/usr/local/bin:/usr/bin', HOME: '/home/u', TMPDIR: undefined, XDG_CACHE_HOME: undefined }
@@ -158,6 +162,7 @@ function fakeHost(options: FakeOptions = {}) {
           if (args[0] === '--version') return result(0, `${DVISVGM_VERSION}\n`)
           if (args[0] === '--help') return result(0, `  -S, --no-specials[=prefixes]  don't process specials\n${options.libgs ? '      --libgs=filename  set name of Ghostscript shared library\n' : ''}`)
           if (args[0] === '-V1') return result(0, `${DVISVGM_VERSION}\n${options.linkedGs ? 'Ghostscript: 10.08.0\n' : ''}`)
+          if (args[0] === '--pdf') return options.noPdf ? result(252, '', "ERROR: can't retrieve number of pages from file kittex-image.pdf\n") : result(0, PDF_PAGE)
           return args.includes('--libgs=/tmp/kittex-tex.ABCDEFGHIJ/no-ghostscript') && !options.libgs ? result(1, '', 'ERROR: unknown option --libgs') : result(0, SVG)
         case 'kpsewhich':
           if (args[0] === '--version') return result(0, 'kpathsea version 6.4.2\n')
@@ -212,8 +217,24 @@ describe('the probes', () => {
     expect(latex.slice(0, 2)).toEqual(['prlimit', expect.stringMatching(/^--fsize=/)])
     expect(latex).toContain('bwrap')
     expect(latex).toContain(`-fmt=${name}`)
-    expect([...writes.values()]).toHaveLength(1)
-    expect([...writes.values()][0]).toContain(TRIAL_PICTURE)
+    // The only files written: the trial picture's document and the trial PDF, each fixed.
+    expect([...writes.keys()].toSorted()).toEqual(['/tmp/kittex-tex.ABCDEFGHIJ/kittex-image.pdf', '/tmp/kittex-tex.ABCDEFGHIJ/kittex.tex'])
+    expect(writes.get('/tmp/kittex-tex.ABCDEFGHIJ/kittex.tex')).toContain(TRIAL_PICTURE)
+    expect(writes.get('/tmp/kittex-tex.ABCDEFGHIJ/kittex-image.pdf')).toBe(TRIAL_PDF)
+    // The trial PDF converts inside bubblewrap, Ghostscript allowed there.
+    expect(facts.pdf).toEqual({ ok: true })
+    const pdf = runs.find(argv => argv.includes('--pdf'))!
+    expect(pdf).toContain('bwrap')
+    expect(pdf.some(arg => arg.startsWith('--libgs='))).toBe(false)
+  })
+
+  test('PDF images: no trial where Ghostscript is built in and there is no bubblewrap; a failing trial says why', async () => {
+    const linked = fakeHost({ bwrapError: 'setting up uid map: Permission denied', linkedGs: true })
+    expect((await probe(linked.host)).pdf).toEqual({ ok: false, error: "this dvisvgm has Ghostscript built in, which reads a PDF unsafely, and there is no bubblewrap to confine it" })
+    expect(linked.runs.some(argv => argv.includes('--pdf'))).toBe(false)
+    const mac = fakeHost({ libgs: true, noPdf: true })
+    expect((await probe(mac.host, MACOS)).pdf).toEqual({ ok: false, error: "can't retrieve number of pages from file kittex-image.pdf" })
+    expect(mac.runs.find(argv => argv.includes('--pdf'))).toContain(`--libgs=/tmp/kittex-tex.ABCDEFGHIJ/no-ghostscript`)
   })
 
   test('no TeX: nothing compiles and nothing is looked up', async () => {
@@ -354,6 +375,18 @@ function facts(diagrams: DiagramFacts, overrides: Partial<DoctorFacts> = {}): Do
 
 const allThere = async (os: OsFacts = ARCH) => probe(fakeHost({ libgs: true, format: true }).host, os)
 const noTex = async (os: OsFacts = ARCH) => probe(fakeHost({ missing: ['latex', 'dvisvgm', 'kpsewhich'] }).host, os)
+
+describe('the report on PDF images', () => {
+  test('one line: drawn inside bubblewrap, drawn by mutool alone, or not drawn and why', async () => {
+    const linux = await allThere()
+    expect(formatDoctor(facts(linux))).toContain('✓ PDF images: drawn from their first page, inside bubblewrap')
+    const mac = await probe(fakeHost({ libgs: true }).host, MACOS)
+    expect(formatDoctor(facts(mac, { os: MACOS }))).toContain('✓ PDF images: drawn from their first page by mutool, with Ghostscript kept off (no sandbox to confine it)')
+    const none = formatDoctor(facts(await probe(fakeHost({ libgs: true, noPdf: true }).host, MACOS), { os: MACOS }))
+    expect(none).toContain("PDF images: not drawn (can't retrieve number of pages from file kittex-image.pdf): without bubblewrap kittex converts them only with mutool (MuPDF), never Ghostscript")
+    expect(none.split('\n').filter(line => line.includes('PDF images'))).toHaveLength(1)
+  })
+})
 
 describe('the report', () => {
   test('all good: a mark per line, no install section, no markdown or math surprises', async () => {
