@@ -373,6 +373,34 @@ describe('image blocks in a session', () => {
     expect(imageInstructions(true)).toContain('PDF')
   })
 
+  test('where the local TeX converts PDF: the instructions offer PDFs, and a PDF block is drawn from its first page', async ($, on) => {
+    // dvisvgm --pdf's page: 50 × 40 pt, a blue square.
+    const page = '<svg xmlns="http://www.w3.org/2000/svg" width="50pt" height="40pt" viewBox="0 0 50 40"><path d="M10 10H40V30H10Z" fill="#00f"/></svg>'
+    serveFiles(on, { '/w/fig.pdf': btoa('%PDF-1.7\n%...\n') })
+    const converted: string[][] = []
+    // The probe writes its trial PDF into the job directory.
+    on('fs.write', () => ({ value: undefined }))
+    await startSession($, on, KITTY, 'dark', undefined, argv => {
+      if ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version') return { exitCode: 0, stdout: `${argv[0]} 1.0\n` }
+      if (argv.includes('mktemp')) return { exitCode: 0, stdout: '/tmp/kittex-tex.PdFpDfPdFp\n' }
+      if (argv.includes('head')) return { exitCode: 0, stdout: '%PDF-1.7\n%...\n' }
+      if (argv.includes('dvisvgm') && argv.includes('--pdf')) {
+        converted.push([...argv])
+        return { exitCode: 0, stdout: page }
+      }
+      return argv.includes('cp') || argv.includes('rm') ? { exitCode: 0, stdout: '' } : undefined
+    })
+    const { sections } = await $.prompt.compose(COMPOSE)
+    const text = sections.find(one => one.id === SECTION_ID)?.text
+    expect(text).toContain(imageInstructions(true))
+    const trials = converted.length
+    expect(trials).toBeGreaterThan(0)
+    await init()
+    const images = sources(await (await mount($, 'Here:\n\n```latex\n\\includegraphics{fig.pdf}\n```\n')).drawn())
+    expect(images).toHaveLength(1)
+    expect(converted.length).toBe(trials + 1)
+  })
+
   test('a terminal kittex draws no images in: no image instructions', async ($, on) => {
     await startSession($, on, { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal' })
     const { sections } = await $.prompt.compose(COMPOSE)

@@ -595,7 +595,7 @@ export const MIN_IMAGE_DENSITY = 0.1
 /** A vector image's own pixels per em of its picture (10 TeX points): two per big point, as on a 2× screen. */
 export const VECTOR_PX_PER_EM = 2 * (72 / 72.27) * 10
 
-/** Em per SVG user unit for an SVG file: a unit is a big point, an em 10 TeX points (as TeX's pictures). */
+/** Em per big point for an SVG file, an em being 10 TeX points (as TeX's pictures); readSvg's `document` user unit turns the file's own width and height into big points. */
 const SVG_EM_PER_UNIT = 72.27 / 72 / 10
 
 /**
@@ -618,7 +618,7 @@ export function readImageFile(bytes: Uint8Array): ImageSource | 'pdf' {
   const header = imageHeader(bytes)
   if (!header) throw new ImageError('not a PNG, JPEG, SVG or PDF file')
   if (header.format === 'pdf') return 'pdf'
-  if (header.format === 'svg') return pictureSource(readSvg(byteString(bytes), { baseline: 'bottom', emPerUnit: SVG_EM_PER_UNIT }))
+  if (header.format === 'svg') return pictureSource(readSvg(byteString(bytes), { baseline: 'bottom', emPerUnit: SVG_EM_PER_UNIT, userUnit: 'document' }))
   if (header.width !== undefined && header.height !== undefined && header.width * header.height > MAX_IMAGE_PIXELS) {
     throw new ImageError(`image too large to draw (${header.width} × ${header.height} pixels)`)
   }

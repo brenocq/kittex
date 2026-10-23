@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
+import { texPicture } from '../../src/diagram/index.ts'
 import { decodeImage } from '../../src/image/index.ts'
-import { IMAGE_FILE_BYTES, measureImage, pictureSource, renderImage, type ImageSource, type PictureEnv } from '../../src/index.ts'
+import { IMAGE_FILE_BYTES, measureImage, pictureSource, readImageFile, renderImage, type ImageSource, type PictureEnv } from '../../src/index.ts'
 import type { Picture } from '../../src/types.ts'
 
 // 100 columns of 10 × 20 px cells (1000 px), 30 rows (600 px).
@@ -77,6 +78,33 @@ describe('an image file as a picture (SVG, a PDF page)', () => {
     expect(wide.columns).toBeLessThanOrEqual(51)
     const image = renderImage(pictureSource({ ...box, width: 200, height: 50 }), { width: { kind: 'line', fraction: 0.5 } }, ENV)
     expect([image.columns, image.rows]).toEqual([wide.columns, wide.rows])
+  })
+
+  test('an SVG file is its own width and height in CSS pixels, at two pixels per big point, its viewBox kept in proportion', () => {
+    // 300 × 150 CSS px around a 3:1 viewBox: fitted inside (meet), 300 × 100 px, which is 225 × 75 bp.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="150" viewBox="0 0 30 10"><rect width="30" height="10"/></svg>'
+    const source = readImageFile(new TextEncoder().encode(svg))
+    if (source === 'pdf') throw new Error('read as a PDF')
+    expect(source.kind).toBe('picture')
+    expect(source.width).toBeCloseTo(450, 6)
+    expect(source.height).toBeCloseTo(150, 6)
+    // A 1000 px column leaves it at its own size (45 × 7.5 cells, renderPicture's layout adding at most a column), never upscaled.
+    const cells = measureImage(source, {}, ENV)
+    expect(cells.columns).toBeGreaterThanOrEqual(45)
+    expect(cells.columns).toBeLessThanOrEqual(46)
+    expect(cells.rows).toBe(8)
+  })
+
+  test("a PDF page (dvisvgm's SVG at a 10 pt em, as the plugin reads it) is sized as the same page read as an SVG file", () => {
+    const page = '<svg xmlns="http://www.w3.org/2000/svg" width="50pt" height="40pt" viewBox="0 0 50 40"><path d="M10 10H40V30H10Z" fill="#00f"/></svg>'
+    const pdf = pictureSource(texPicture(page, { baseline: 'bottom', fontSize: 10 }))
+    const file = readImageFile(new TextEncoder().encode(page))
+    if (file === 'pdf') throw new Error('read as a PDF')
+    // 50 × 40 bp at two pixels per big point.
+    expect(pdf.width).toBeCloseTo(100, 6)
+    expect(pdf.height).toBeCloseTo(80, 6)
+    expect([file.width, file.height].map(n => n.toFixed(6))).toEqual([pdf.width, pdf.height].map(n => n.toFixed(6)))
+    expect(measureImage(pdf, {}, ENV)).toEqual(measureImage(file, {}, ENV))
   })
 
   test('an empty picture is refused', () => {

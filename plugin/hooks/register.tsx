@@ -51,7 +51,7 @@ import {
   BUILD_ID,
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
-import { imageBook, imageSpecOf } from './image.ts'
+import { imageBook, imageSpecOf, NO_PDF } from './image.ts'
 import type { ImageHost } from './image.ts'
 import {
   BLANK_ALT,
@@ -107,7 +107,7 @@ import { altText, fallbackLines, fitPictures, overBudget } from './budget.ts'
 import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
-import { diagramJob, hiddenDirs, mathJob, onPath, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
+import { diagramJob, hiddenDirs, mathJob, onPath, pdfPicture, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
@@ -1845,8 +1845,8 @@ async function instructions(env: KittexEnv | null, math: MathOptions): Promise<s
   const parts = [MATH_INSTRUCTIONS]
   // Only where TeX itself is there (an earlier session's cache alone draws what it holds, nothing new).
   if (env && texBook.ready && texUse(env, math).tex?.block) parts.push(DIAGRAM_INSTRUCTIONS)
-  // Image files wherever kittex draws them.
-  if (env && imageUse(env, math).imageFiles) parts.push(imageInstructions(false))
+  // Image files wherever kittex draws them; PDFs where the local TeX converts them (the probe's trial PDF drew).
+  if (env && imageUse(env, math).imageFiles) parts.push(imageInstructions(texBook.ready && texBook.setup?.pdf === true))
   return parts.join(' ')
 }
 
@@ -1855,9 +1855,17 @@ function imageUse(env: KittexEnv, math: MathOptions): { imageFiles?: true } {
   return env.images && math.block === 'image' && imageBook.ready ? { imageFiles: true } : {}
 }
 
-/** Files read with session.start's `$`. */
+/**
+ * Files read with session.start's `$`; a PDF converted by the local TeX once
+ * its probe has settled, since a refusal is lasting and one given while the
+ * probe still runs would stay after it finds a converter.
+ */
 function imageHost($: Engine): ImageHost {
   return {
+    pdf: async (path, timeoutMs) => {
+      await texProbe
+      return texBook.host && texBook.setup?.pdf ? pdfPicture(texBook.host, texBook.setup, path, timeoutMs) : { ok: false, error: NO_PDF, lasting: true }
+    },
     stat: path =>
       $.fs.stat(path, { resolve: true }).then(
         stat => ({ kind: stat.kind, size: stat.size, mtimeMs: stat.mtimeMs, ...(stat.realPath !== undefined ? { realPath: stat.realPath } : {}) }),
