@@ -1,18 +1,18 @@
-// Image blocks: a ```latex block holding one \includegraphics is drawn as the
-// file it names (image.ts, core's image/). The stream holds the block while
-// the file is read, writes a placeholder of exactly the image's rows, and the
-// landing draws the image there. The files are fakes here (the kit has no
+// Image blocks: a ```latex block holding \includegraphics commands is drawn as
+// the files it names (image.ts, core's image/). The stream holds the block
+// while the files are read, writes a placeholder of exactly the image's rows,
+// and the landing draws the image there. The files are fakes here (the kit has no
 // disk); core/test/image covers detection and sizing, and the decoders theirs.
 
 import { describe, expect } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { createLineScanner, imageBlock, init, measureImage, readImageFile, renderImage } from '../hooks/core.js'
+import { blockImages, createLineScanner, imageBlock, init, measureImageBlock, readImageFile, renderImageBlock } from '../hooks/core.js'
 import type { ImageSource, ImageSpec } from '../hooks/core.js'
 import { DIAGRAM_INSTRUCTIONS, IMAGE_LABEL, imageInstructions, MATH_INSTRUCTIONS, MessageStream, NOT_RENDERED, pictureEnvFor, planLanded, renderEnvFor, SECTION_ID, STREAMED_PATTERN } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
-import { ImageBook, imageBook, imageSpecOf } from '../hooks/image.ts'
+import { ImageBook, imageBlockOf, imageBook } from '../hooks/image.ts'
 import type { ImageHost } from '../hooks/image.ts'
 import { texBook } from '../hooks/tex.ts'
 import type { TexHost } from '../hooks/tex.ts'
@@ -81,12 +81,12 @@ async function streamed(flushes: readonly string[], env: StreamEnv = filesEnv())
   return { landed, records, waited }
 }
 
-/** The landing's drawing of an image block, as register.tsx's fileImage does it. */
+/** The landing's drawing of an image block, as drawing.ts's filesImage does it. */
 function drawFile(source: string, kind: 'latex' | 'tikz' | 'env', rows?: number) {
-  const spec = imageSpecOf(source, kind)
-  const outcome = spec ? imageBook.known(spec) : undefined
-  if (!spec || !outcome) return null
-  return outcome.ok ? renderImage(outcome.source, spec, pictureEnvFor(kittyEnv()), rows) : { error: outcome.error }
+  const block = imageBlockOf(source, kind)
+  const outcome = block ? imageBook.knownBlock(block) : undefined
+  if (!block || !outcome) return null
+  return outcome.ok ? renderImageBlock(outcome.sources, block, pictureEnvFor(kittyEnv()), rows) : { error: outcome.error }
 }
 
 const source = (bytes: Uint8Array): ImageSource => {
@@ -107,8 +107,7 @@ describe('image blocks while streaming', () => {
     expect(waited).toBe(1)
     // Relative to the session's working directory, read once.
     expect(fake.reads).toEqual(['/w/out/plot.png'])
-    const spec = imageBlock(PLOT)!
-    const box = measureImage(source(GRADIENT), spec, pictureEnvFor(kittyEnv()))
+    const box = measureImageBlock([source(GRADIENT)], imageBlock(PLOT)!, pictureEnvFor(kittyEnv()))
     // Its own 60 pixels: half the column is wider, and an image is never drawn past its own pixels.
     expect(box.columns).toBe(Math.ceil(60 / kittyEnv().cellWidth))
     expect(records).toEqual([expect.objectContaining({ tex: PLOT, rows: box.rows, diagram: 'latex' })])
@@ -140,8 +139,29 @@ describe('image blocks while streaming', () => {
     expect(landed).toContain(missing)
     expect(landed).toContain(text)
     expect(landed).toContain('no file at /w/missing.png')
-    expect(landed).toContain('not a PNG, JPEG, SVG or PDF file')
-    expect(records.map(record => record.error)).toEqual(['no file at /w/missing.png', 'not a PNG, JPEG, SVG or PDF file'])
+    expect(landed).toContain('/w/notes.txt: not a PNG, JPEG, SVG or PDF file')
+    expect(records.map(record => record.error)).toEqual(['no file at /w/missing.png', '/w/notes.txt: not a PNG, JPEG, SVG or PDF file'])
+  })
+
+  test('a block of two images waits for both files, and one that fails leaves the block as written, the note naming that file', async () => {
+    await init()
+    texBook.reset()
+    const fake = fakeFiles({ '/w/a.png': GRADIENT, '/w/b.png': GREEN, '/w/notes.txt': new TextEncoder().encode('hello, world\n') })
+    imageBook.reset(fake.host, { cwd: '/w' })
+    const pair = '```latex\n\\includegraphics{a.png}\\hfill\\includegraphics{b.png}\n```'
+    const { records, waited } = await streamed([`${pair}\n`])
+    expect(waited).toBe(1)
+    expect(fake.reads).toEqual(['/w/a.png', '/w/b.png'])
+    const block = imageBlock(pair.split('\n')[1]!)!
+    const box = measureImageBlock([source(GRADIENT), source(GREEN)], block, pictureEnvFor(kittyEnv()))
+    // Both at their own 60 pixels, a gap between: wider than either alone.
+    expect(box.columns).toBeGreaterThan(Math.ceil(120 / kittyEnv().cellWidth))
+    expect(records).toEqual([expect.objectContaining({ rows: box.rows, diagram: 'latex' })])
+    expect(records[0]!.error).toBeUndefined()
+    const broken = '```latex\n\\includegraphics{a.png}\\hfill\\includegraphics{notes.txt}\n```'
+    const failed = await streamed([`${broken}\n`])
+    expect(failed.landed).toContain(broken)
+    expect(failed.records.map(record => record.error)).toEqual(['/w/notes.txt: not a PNG, JPEG, SVG or PDF file'])
   })
 
   test('with TeX there too, an image block goes to its file and never to TeX', async () => {
@@ -226,14 +246,13 @@ describe('image blocks landing', () => {
     const env = kittyEnv()
     const text = `Look:\n\n${FENCE}\n`
     const options = { maxColumns: renderEnvFor(env).maxColumns, draw: () => ({ columns: 1, rows: 1, scale: 1, png: new Uint8Array() }), diagram: (src: string, kind: 'latex' | 'tikz' | 'env', rows?: number) => {
-      const spec = imageSpecOf(src, kind)
-      if (spec && !imageBook.known(spec)) imageBook.ask(spec)
+      for (const spec of blockImages(imageBlockOf(src, kind) ?? { rows: [] })) if (!imageBook.known(spec)) imageBook.ask(spec)
       return drawFile(src, kind, rows)
     } }
     imageBook.takeAsked()
     expect(planLanded(text, [], options).changed).toBe(false)
     const asked = imageBook.takeAsked()
-    expect(asked).toEqual([imageBlock(PLOT)])
+    expect(asked).toEqual(blockImages(imageBlock(PLOT)!))
     for (const spec of asked) await imageBook.load(spec, 3000)
     const plan = planLanded(text, [], options)
     expect(plan.changed).toBe(true)
@@ -392,6 +411,35 @@ describe('image blocks in a session', () => {
     expect(drawn.kind).toBe('bitmap')
   })
 
+  test('a block of two images lands as one Image of both side by side, streamed or read back after --resume', async ($, on) => {
+    serveFiles(on, { '/w/out/plot.png': GRADIENT_B64, '/w/out/green.png': GREEN_B64 })
+    await startSession($, on)
+    await init()
+    const block = '```latex\n\\begin{figure}\n\\centering\n\\includegraphics{out/plot.png}\\hfill\n\\includegraphics{out/green.png}\n\\caption{Both}\n\\end{figure}\n```'
+    const shown = await streamReply($, 'm', `Here:\n\n${block}\n\nDone.\n`)
+    expect(shown).not.toContain('```')
+    for (const text of [shown, `Here:\n\n${block}\n`]) {
+      const images = sources(await (await mount($, text)).drawn())
+      expect(images).toHaveLength(1)
+      // Its middle row: the gradient's 60 pixels, a transparent gap, then the green plot's 60.
+      const drawn = source(fromBase64(images[0]!))
+      if (drawn.kind !== 'bitmap') throw new Error('not a bitmap')
+      const { width, height, rgba } = drawn.bitmap
+      const row = Math.floor(height / 2) * width * 4
+      const runs: { from: number; to: number }[] = []
+      for (let x = 0; x < width; x++) {
+        if (rgba[row + x * 4 + 3] !== 255) continue
+        if (runs.at(-1)?.to === x) runs.at(-1)!.to = x + 1
+        else runs.push({ from: x, to: x + 1 })
+      }
+      expect(runs.map(run => run.to - run.from)).toEqual([60, 60])
+      expect(runs[1]!.from - runs[0]!.to).toBeGreaterThan(0)
+      const at = (x: number) => [...rgba.subarray(row + x * 4, row + x * 4 + 4)]
+      expect(at(runs[0]!.from + 30)).not.toEqual([0, 200, 0, 255])
+      expect(at(runs[1]!.from + 30)).toEqual([0, 200, 0, 255])
+    }
+  })
+
   test('a reply read back after --resume draws its image block', async ($, on) => {
     serveFiles(on, { '/w/out/plot.png': GRADIENT_B64 })
     await startSession($, on)
@@ -448,6 +496,8 @@ describe('image blocks in a session', () => {
     expect(imageInstructions(false)).toContain('downloaded to a temporary file first')
     // Told that a hook was skipped, a model hedges under the image though it draws; kittex notes a failure itself.
     expect(imageInstructions(false)).toContain('add no fallback advice after the block')
+    // Several images in one block are drawn side by side.
+    expect(imageInstructions(false)).toContain('several images go side by side as several `\\includegraphics` in one block')
   })
 
   test('where the local TeX converts PDF: the instructions offer PDFs, and a PDF block is drawn from its first page', async ($, on) => {

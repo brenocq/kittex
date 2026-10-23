@@ -1,4 +1,104 @@
-import{MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,Coverage,RULE_MIN_SNAP,encodeAlphaPng,flattenPath,RULE_MIN_FILL,Canvas2,flattenSubpaths,MIN_STROKE_PX,OUTLINE_EM_PX,encodeQuantizedPng,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL}from'./p34.js';export*from'./p34.js';
+import{inkAlpha,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,Coverage,RULE_MIN_SNAP,encodeAlphaPng,flattenPath,RULE_MIN_FILL,flattenSubpaths,MIN_STROKE_PX,OUTLINE_EM_PX,encodeQuantizedPng,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN}from'./p34.js';export*from'./p34.js';
+// core/src/raster/paint.ts
+var Canvas2 = class {
+  constructor(width, height2) {
+    this.width = width;
+    this.height = height2;
+    this.pixels = new Uint8Array(width * height2 * 4);
+  }
+  width;
+  height;
+  /** Premultiplied RGBA, row-major. */
+  pixels;
+  /**
+   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
+   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
+   */
+  paint(coverage, x0, y0, w, h, color, opacity, mask) {
+    const px2 = this.pixels;
+    const W = this.width;
+    const erase = color === "erase";
+    const r = erase ? 0 : color.r;
+    const g = erase ? 0 : color.g;
+    const b = erase ? 0 : color.b;
+    const k = Math.min(1, Math.max(0, opacity)) / 255;
+    for (let y = 0; y < h; y++) {
+      const cy = y0 + y;
+      if (cy < 0 || cy >= this.height) continue;
+      for (let x2 = 0; x2 < w; x2++) {
+        const c = coverage[y * w + x2];
+        if (c === 0) continue;
+        const cx = x0 + x2;
+        if (cx < 0 || cx >= W) continue;
+        const at = cy * W + cx;
+        let a = c * k;
+        if (mask) {
+          const m = mask[at];
+          if (m === 0) continue;
+          a = a * m / 255;
+        }
+        const keep = 1 - a;
+        const i2 = at * 4;
+        if (erase) {
+          px2[i2] = px2[i2] * keep + 0.5;
+          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
+        } else {
+          px2[i2] = r * a + px2[i2] * keep + 0.5;
+          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
+        }
+      }
+    }
+  }
+  /**
+   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
+   * alpha corrected for its colour as the terminal corrects text blended over
+   * that background (inkAlpha: Ghostty's linear-corrected blending).
+   */
+  straight(over) {
+    const px2 = this.pixels;
+    const out = new Uint8Array(px2.length);
+    const tables = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < px2.length; i2 += 4) {
+      const a = px2[i2 + 3];
+      if (a === 0) continue;
+      const half = a >> 1;
+      const r0 = (px2[i2] * 255 + half) / a | 0;
+      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
+      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
+      const r = r0 > 255 ? 255 : r0;
+      const g = g0 > 255 ? 255 : g0;
+      const b = b0 > 255 ? 255 : b0;
+      out[i2] = r;
+      out[i2 + 1] = g;
+      out[i2 + 2] = b;
+      if (!over || a === 255) {
+        out[i2 + 3] = a;
+        continue;
+      }
+      const key = r << 16 | g << 8 | b;
+      let table2 = tables.get(key);
+      if (!table2) {
+        if (tables.size >= 4096) {
+          out[i2 + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over));
+          continue;
+        }
+        table2 = correctionTable({ r, g, b }, over);
+        tables.set(key, table2);
+      }
+      out[i2 + 3] = table2[a];
+    }
+    return out;
+  }
+};
+function correctionTable(color, over) {
+  const table2 = new Uint8Array(256);
+  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over));
+  return table2;
+}
 // core/src/raster/stroke.ts
 function strokeOutlines(subpaths, g) {
   const hw = g.width / 2;
@@ -988,349 +1088,4 @@ function lineIndexAt(starts, pos) {
   }
   return lo;
 }
-// core/src/scan/scanner.ts
-var Output = class {
-  segments = [];
-  parts = [];
-  textStart = 0;
-  textEnd = 0;
-  text(text, start) {
-    if (text === "") return;
-    if (this.parts.length === 0) this.textStart = start;
-    this.parts.push(text);
-    this.textEnd = start + text.length;
-  }
-  line(line) {
-    this.text(line.raw, line.start);
-  }
-  lines(lines2) {
-    for (const line of lines2) this.line(line);
-  }
-  segment(segment) {
-    if (segment.kind === "text") return this.text(segment.text, segment.start);
-    this.flushText();
-    this.segments.push(segment);
-  }
-  take() {
-    this.flushText();
-    const segments = this.segments;
-    this.segments = [];
-    return segments;
-  }
-  flushText() {
-    if (this.parts.length === 0) return;
-    const text = this.parts.length === 1 ? this.parts[0] : this.parts.join("");
-    this.segments.push({ kind: "text", text, start: this.textStart, end: this.textEnd });
-    this.parts = [];
-  }
-};
-function openEnvironment(lines2) {
-  let depth = 0;
-  for (const line of lines2) {
-    depth += line.text.split("\\begin{").length - 1;
-    depth -= line.text.split("\\end{").length - 1;
-  }
-  return depth > 0;
-}
-var Scanner2 = class {
-  constructor(maxHeldLines, diagrams = false, maxDiagramLines = 400) {
-    this.maxHeldLines = maxHeldLines;
-    this.diagrams = diagrams;
-    this.maxDiagramLines = maxDiagramLines;
-  }
-  maxHeldLines;
-  diagrams;
-  maxDiagramLines;
-  state = NORMAL;
-  flags = { prevBlank: true, prevCode: false, inList: false };
-  /** Prose lines of the open paragraph not yet returned. */
-  para = [];
-  /** The paragraph's last line while a paragraph is open (its lines may already be returned). */
-  paraLast = null;
-  /** Display kinds whose openers are ignored on lines starting before the given offset. */
-  ignore = /* @__PURE__ */ new Map();
-  /** Lines waiting to be processed; a display block that gives up pushes its lines back on top. */
-  frames = [];
-  out = new Output();
-  partial = "";
-  offset = 0;
-  /** The start offsets of the lines read as rows of a GFM table (its header included). */
-  rows = /* @__PURE__ */ new Set();
-  /** The table whose rows go on, at its blockquote depth (null outside a table). */
-  table = null;
-  isRow = (line) => this.rows.has(line.start);
-  /** Lines a held block may hold before it is released as text. */
-  holdLimit(st) {
-    const diagram = st.t === "mathfence" ? st.diagram !== void 0 : DIAGRAM_ENVS2.has(st.kind);
-    return diagram ? this.maxDiagramLines : this.maxHeldLines;
-  }
-  push(delta, final) {
-    const text = this.partial + delta;
-    const lines2 = [];
-    let from = 0;
-    for (let nl = text.indexOf("\n"); nl >= 0; nl = text.indexOf("\n", from)) {
-      lines2.push(this.line(text.slice(from, nl + 1)));
-      from = nl + 1;
-    }
-    this.partial = text.slice(from);
-    if (final && this.partial !== "") {
-      lines2.push(this.line(this.partial));
-      this.partial = "";
-    }
-    this.frames.push({ lines: lines2, i: 0 });
-    this.drain();
-    if (final) this.finish();
-    else this.settle();
-    return this.out.take();
-  }
-  line(raw) {
-    const line = makeLine(raw, this.offset);
-    this.offset = line.end;
-    return line;
-  }
-  drain() {
-    while (this.frames.length > 0) {
-      const frame2 = this.frames[this.frames.length - 1];
-      if (frame2.i >= frame2.lines.length) this.frames.pop();
-      else this.process(frame2.lines[frame2.i++]);
-    }
-  }
-  /** End of a streaming batch: return what is settled, release what was held too long. */
-  settle() {
-    const st = this.state;
-    if (st.t === "display" && st.lines.length > this.holdLimit(st)) {
-      this.out.lines(st.lines);
-      this.state = { t: "released", kind: st.kind, depth: st.depth };
-    } else if (st.t === "mathfence" && st.lines.length > this.holdLimit(st)) {
-      this.out.lines(st.lines);
-      this.state = { t: "fence", ch: st.ch, len: st.len, indent: st.indent, depth: st.depth };
-    }
-    if (this.para.length > 0) {
-      const { segments, cut } = scanInline(this.para, true, this.isRow);
-      for (const segment of segments) this.out.segment(segment);
-      let keep = 0;
-      while (keep < this.para.length && this.para[keep].start < cut) keep++;
-      this.para = this.para.slice(keep);
-      if (this.para.length > this.maxHeldLines) this.endParagraph();
-    }
-  }
-  /** End of the input: open display blocks give up, an open math fence is text. */
-  finish() {
-    for (; ; ) {
-      const st = this.state;
-      if (st.t === "display") {
-        this.giveUp(st, Infinity, []);
-        this.drain();
-        continue;
-      }
-      if (st.t === "mathfence") this.out.lines(st.lines);
-      this.state = NORMAL;
-      break;
-    }
-    this.endParagraph();
-  }
-  process(line) {
-    const st = this.state;
-    switch (st.t) {
-      case "fence":
-        if (line.depth < st.depth) break;
-        this.out.line(line);
-        if (this.closesFence(line, st)) this.state = NORMAL;
-        this.after(line);
-        return;
-      case "mathfence":
-        if (line.depth < st.depth) {
-          this.out.lines(st.lines);
-          break;
-        }
-        st.lines.push(line);
-        if (this.closesFence(line, st)) this.closeMathFence(st);
-        this.after(line);
-        return;
-      case "display": {
-        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
-        if (rest !== null && line.blank && !st.lines.at(-1).blank && openEnvironment(st.lines)) {
-          st.lines.push(line);
-          return;
-        }
-        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) return this.giveUp(st, line.start, [line]);
-        const close = findClose(st.kind, rest, 0);
-        if (!close) {
-          st.lines.push(line);
-          return;
-        }
-        if (close.ok && onlySpaceAfter(rest, close.end)) return this.closeDisplay(st, line, close.pos, close.end);
-        return this.giveUp(st, line.end, [line]);
-      }
-      case "released": {
-        const rest = line.depth === st.depth ? restAt(line, st.depth) : null;
-        if (rest === null || line.blank || looksLikeFence(rest.trimStart())) break;
-        const close = findClose(st.kind, rest, 0);
-        if (close && !(close.ok && onlySpaceAfter(rest, close.end))) break;
-        this.out.line(line);
-        if (close) this.state = NORMAL;
-        this.after(line);
-        return;
-      }
-      case "normal":
-        break;
-    }
-    this.state = NORMAL;
-    this.normal(line);
-  }
-  normal(line) {
-    const flags = this.flags;
-    const before = { ...flags };
-    this.tableRow(line);
-    if (line.blank) {
-      this.endParagraph();
-      this.out.line(line);
-      this.after(line);
-      return;
-    }
-    const listItem = (line.indent <= 3 || flags.inList) && isListItem(line.body);
-    if (listItem) flags.inList = true;
-    else if (line.indent < 2 && flags.prevBlank) flags.inList = false;
-    if (line.indent >= 4 && !flags.inList && (flags.prevBlank || flags.prevCode)) {
-      this.endParagraph();
-      this.out.line(line);
-      this.after(line, true);
-      return;
-    }
-    if (line.indent <= 3 || flags.inList) {
-      const fence = fenceOpen(line.body.slice(0, trimEndLength(line.body)));
-      if (fence) {
-        this.endParagraph();
-        const common = { ch: fence.ch, len: fence.len, indent: line.indent, depth: line.depth };
-        if (fence.math || this.diagrams && fence.diagram) {
-          this.state = { t: "mathfence", ...common, lines: [line], ...fence.math ? {} : { diagram: fence.diagram } };
-        } else {
-          this.state = { t: "fence", ...common };
-          this.out.line(line);
-        }
-        this.after(line);
-        return;
-      }
-      const open = displayOpen(line.body, this.diagrams);
-      if (open && line.start >= (this.ignore.get(open.kind) ?? -1)) {
-        this.endParagraph();
-        if (open.oneLine) {
-          const start = line.start + line.bodyStart;
-          const end = start + open.oneLine.end;
-          this.out.text(line.raw.slice(0, line.bodyStart), line.start);
-          this.math(open.delimiter, open.oneLine.tex, line.raw.slice(line.bodyStart, line.bodyStart + open.oneLine.end), start, end, this.diagrams && DIAGRAM_ENVS2.has(open.kind) ? "env" : void 0);
-          this.out.text(line.raw.slice(line.bodyStart + open.oneLine.end), end);
-          this.after(line);
-        } else {
-          this.state = { t: "display", kind: open.kind, delimiter: open.delimiter, from: open.from, depth: line.depth, lines: [line], flags: before };
-        }
-        return;
-      }
-    }
-    if (!(this.paraLast && this.continues(this.paraLast, line))) this.endParagraph();
-    this.para.push(line);
-    this.paraLast = line;
-    this.after(line);
-  }
-  continues(prev, line) {
-    if (line.depth !== prev.depth) return false;
-    if (prev.indent <= 3 && standsAlone(prev.body)) return false;
-    return !((line.indent <= 3 || this.flags.inList) && startsBlock(line.body));
-  }
-  /**
-   * Follows GFM tables (marked's reading), before the line joins a paragraph:
-   * a delimiter row right under a prose line makes that line a header and
-   * starts a table; its rows go on until a blank line, a change of quote
-   * depth or a line that starts another block.
-   */
-  tableRow(line) {
-    if (this.table && (line.blank || line.depth !== this.table.depth || endsTable(line.body))) this.table = null;
-    if (this.table) {
-      this.rows.add(line.start);
-      return;
-    }
-    const header = this.paraLast;
-    if (header && header.depth === line.depth && delimitsTable(header.body, line.body)) {
-      this.rows.add(header.start);
-      this.rows.add(line.start);
-      this.table = { depth: line.depth };
-    }
-  }
-  endParagraph() {
-    if (this.para.length > 0) {
-      for (const segment of scanInline(this.para, false, this.isRow).segments) this.out.segment(segment);
-      this.para = [];
-    }
-    this.paraLast = null;
-  }
-  after(line, code = false) {
-    this.flags.prevBlank = line.blank;
-    this.flags.prevCode = code;
-  }
-  closesFence(line, fence) {
-    const rest = restAt(line, fence.depth);
-    let i2 = 0;
-    let cols = 0;
-    for (; i2 < rest.length; i2++) {
-      const c = rest.charCodeAt(i2);
-      if (c === 32) cols++;
-      else if (c === 9) cols += 4 - cols % 4;
-      else break;
-    }
-    return cols <= Math.max(3, fence.indent) && closesFence(rest.slice(i2), fence.ch, fence.len);
-  }
-  closeMathFence(st) {
-    this.state = NORMAL;
-    const lines2 = st.lines;
-    const first = lines2[0];
-    const last = lines2[lines2.length - 1];
-    const tex = lines2.slice(1, -1).map((l) => restAt(l, st.depth)).join("\n").trim();
-    if (tex === "") return this.out.lines(lines2);
-    const start = first.start + first.bodyStart;
-    const lastRest = restAt(last, st.depth);
-    const end = last.start + (last.prefixEnds[st.depth] ?? 0) + trimEndLength(lastRest);
-    this.emitBlock(lines2, start, end, "fence", tex, st.diagram);
-  }
-  closeDisplay(st, line, closePos, closeEnd) {
-    const lines2 = [...st.lines, line];
-    const first = lines2[0];
-    const inner = [first.body.slice(st.from), ...lines2.slice(1, -1).map((l) => restAt(l, st.depth)), restAt(line, st.depth).slice(0, closePos)];
-    if (inner.join("\n").trim() === "") return this.giveUp(st, line.end, [line]);
-    let tex;
-    if (st.delimiter === "env") {
-      inner[0] = first.body;
-      inner[inner.length - 1] = restAt(line, st.depth).slice(0, closeEnd);
-      tex = inner.join("\n").trim();
-    } else {
-      tex = inner.join("\n").trim();
-    }
-    this.state = NORMAL;
-    const start = first.start + first.bodyStart;
-    const end = line.start + (line.prefixEnds[st.depth] ?? 0) + closeEnd;
-    this.emitBlock(lines2, start, end, st.delimiter, tex, this.diagrams && DIAGRAM_ENVS2.has(st.kind) ? "env" : void 0);
-    this.after(line);
-  }
-  /** Emits a closed block: the text before its opening delimiter, the math, the rest of its last line. */
-  emitBlock(lines2, start, end, delimiter, tex, diagram) {
-    const first = lines2[0];
-    const last = lines2[lines2.length - 1];
-    const source = lines2.map((l) => l.raw).join("");
-    this.out.text(source.slice(0, start - first.start), first.start);
-    this.math(delimiter, tex, source.slice(start - first.start, end - first.start), start, end, diagram);
-    this.out.text(last.raw.slice(end - last.start), end);
-  }
-  math(delimiter, tex, raw, start, end, diagram) {
-    this.out.segment({ kind: "math", display: true, tex, raw, delimiter, start, end, ...diagram ? { diagram } : {} });
-  }
-  /**
-   * A display block that was not one: its lines (and `more`) are processed again
-   * as ordinary lines, its kind of opener ignored on lines starting before `until`.
-   */
-  giveUp(st, until, more) {
-    this.ignore.set(st.kind, Math.max(this.ignore.get(st.kind) ?? -1, until));
-    this.flags = st.flags;
-    this.state = NORMAL;
-    this.frames.push({ lines: [...st.lines, ...more], i: 0 });
-  }
-};
-export{Scanner2,measure,rasterize,encodePng,measurePicture,rasterizePicture,encodePicturePng,pictureOutlines,strokeWeight};
+export{DIAGRAM_ENVS2,makeLine,scanInline,restAt,looksLikeFence,findClose,onlySpaceAfter,isListItem,fenceOpen,trimEndLength,displayOpen,standsAlone,startsBlock,endsTable,delimitsTable,closesFence,measure,rasterize,encodePng,measurePicture,rasterizePicture,encodePicturePng,pictureOutlines,strokeWeight};

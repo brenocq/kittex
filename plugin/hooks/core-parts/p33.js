@@ -1,4 +1,4 @@
-import{STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,LINE_WIDTH_PT,TEXT_HEIGHT_PT,PNG_SIGNATURE,__toESM,require_decoder,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,__kittexLate}from'./p32.js';export*from'./p32.js';
+import{STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,MAX_BLOCK_IMAGES,LINE_WIDTH_PT,TEXT_HEIGHT_PT,IMAGE_GAP,PNG_SIGNATURE,__toESM,require_decoder,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,__kittexLate}from'./p32.js';export*from'./p32.js';
 __kittexLate.clamp01=()=>clamp01;
 var clamp01 = (v) => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
 // core/src/diagram/tex.ts
@@ -509,6 +509,9 @@ function texPicture(svg, document, text) {
   return readSvg(svg, { baseline: document.baseline, emPerUnit: emPerUnit(document), ...text ? { text } : {} });
 }
 // core/src/image/block.ts
+function blockImages(block2) {
+  return block2.rows.flat();
+}
 var UNIT_PT = {
   pt: 1,
   bp: 72.27 / 72,
@@ -565,38 +568,55 @@ function groupEnd(text, open) {
   }
   return -1;
 }
-var SPACING = /^\\(?:centering|noindent|par|smallskip|medskip|bigskip)(?![A-Za-z])/;
+var SPACING = /^\\(?:centering|noindent|smallskip|medskip|bigskip)(?![A-Za-z])/;
+var GAP = /^(?:~|\\(?:hfill|hfil|quad|qquad)(?![A-Za-z])|\\[,;: ]|\\hspace\*?\s*\{[^{}\n]*\})/;
+var ROW_BREAK = /^(?:\\\\\*?(?:\s*\[[^\]\n]*\])?|\\par(?![A-Za-z]))/;
 function imageBlock(source) {
-  let rest = source.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, "$1$2");
+  let rest = source.replace(/(?<=(?:^|[^\\])(?:\\\\)*)%[^\n]*(?:\n[ \t]*)?/g, "");
   const open = [];
-  let spec;
+  const rows = [[]];
+  let count = 0;
+  const inBox = () => open.some((one) => one.box !== void 0);
+  const breakRow2 = () => {
+    if (!inBox() && rows.at(-1).length > 0) rows.push([]);
+  };
   for (; ; ) {
-    rest = rest.replace(/^\s+/, "");
+    const space = /^\s*/.exec(rest)[0];
+    if (/\n[ \t]*\n/.test(space)) breakRow2();
+    rest = rest.slice(space.length);
     if (rest === "") break;
     let m;
     if (m = /^\\begin\s*\{(figure\*?|center)\}\s*(?:\[[^\]\n]*\])?/.exec(rest)) {
-      open.push(m[1]);
-      rest = rest.slice(m[0].length);
-    } else if (m = /^\\end\s*\{(figure\*?|center)\}/.exec(rest)) {
-      if (open.pop() !== m[1]) return void 0;
-      rest = rest.slice(m[0].length);
-    } else if (m = SPACING.exec(rest)) {
-      rest = rest.slice(m[0].length);
-    } else if (m = /^\\(?:caption|label)\s*(?:\[[^\]\n]*\]\s*)?(?=\{)/.exec(rest)) {
+      if (inBox()) return void 0;
+      open.push({ name: m[1] });
+    } else if (m = /^\\begin\s*\{(subfigure|minipage)\}\s*(?:\[[^\]\n]*\]\s*){0,3}\{([^{}\n]*)\}/.exec(rest)) {
+      const box2 = parseLength(m[2]);
+      if (inBox() || !box2 || box2.kind === "page") return void 0;
+      open.push({ name: m[1], box: box2 });
+    } else if (m = /^\\end\s*\{(figure\*?|center|subfigure|minipage)\}/.exec(rest)) {
+      const closed = open.pop();
+      if (!closed || closed.name !== m[1] || closed.box !== void 0 && !closed.filled) return void 0;
+    } else if ((m = SPACING.exec(rest)) || (m = GAP.exec(rest))) {
+    } else if (m = ROW_BREAK.exec(rest)) {
+      breakRow2();
+    } else if (m = /^\\(?:caption|subcaption|label)\s*(?:\[[^\]\n]*\]\s*)?(?=\{)/.exec(rest)) {
       const end = groupEnd(rest, m[0].length);
       if (end < 0) return void 0;
       rest = rest.slice(end);
+      continue;
     } else if (m = /^\\includegraphics\*?\s*(?:\[([^\]]*)\]\s*)?\{([^{}\n]*)\}/.exec(rest)) {
-      if (spec) return void 0;
       const path = m[2].trim().replace(/^"(.*)"$/, "$1");
-      if (path === "") return void 0;
-      spec = { path, ...parseOptions(m[1] ?? "") };
-      rest = rest.slice(m[0].length);
+      const box2 = open.findLast((one) => one.box !== void 0);
+      if (path === "" || box2?.filled || ++count > MAX_BLOCK_IMAGES) return void 0;
+      if (box2) box2.filled = true;
+      rows.at(-1).push({ path, ...parseOptions(m[1] ?? ""), ...box2?.box ? { box: box2.box } : {} });
     } else {
       return void 0;
     }
+    rest = rest.slice(m[0].length);
   }
-  return open.length === 0 ? spec : void 0;
+  if (rows.at(-1).length === 0) rows.pop();
+  return open.length === 0 && rows.length > 0 ? { rows } : void 0;
 }
 function resolveImagePath(path, cwd, home) {
   let full;
@@ -618,29 +638,69 @@ function resolveImagePath(path, cwd, home) {
   return `/${parts.join("/")}`;
 }
 function fitImage(own, spec, box2) {
+  const { columnPx, rowsPx } = boxPixels(box2);
+  const { width, height: height2 } = imageSize(own, spec, columnPx, columnPx, rowsPx);
+  const widthPx = Math.max(1, Math.round(width));
+  const heightPx = Math.max(1, Math.min(Math.round(rowsPx), Math.round(height2)));
+  return { ...cellsFor(widthPx, heightPx, box2), widthPx, heightPx };
+}
+function boxPixels(box2) {
+  return { columnPx: Math.max(1, Math.floor(box2.maxColumns)) * box2.cellWidth, rowsPx: Math.max(1, Math.floor(box2.maxRows)) * box2.cellHeight };
+}
+function cellsFor(widthPx, heightPx, box2) {
+  return {
+    columns: Math.min(Math.max(1, Math.floor(box2.maxColumns)), Math.max(1, Math.ceil(widthPx / box2.cellWidth - 1e-9))),
+    rows: Math.min(Math.max(1, Math.floor(box2.maxRows)), Math.max(1, Math.ceil(heightPx / box2.cellHeight - 1e-9)))
+  };
+}
+function imageSize(own, spec, linePx, columnPx, rowsPx) {
   const ownWidth = Math.max(1, own.width);
-  const ownHeight = Math.max(1, own.height);
-  const aspect = ownHeight / ownWidth;
-  const columnPx = Math.max(1, Math.floor(box2.maxColumns)) * box2.cellWidth;
-  const rowsPx = Math.max(1, Math.floor(box2.maxRows)) * box2.cellHeight;
+  const aspect = Math.max(1, own.height) / ownWidth;
   const along = (length4, axis) => {
-    const full = axis === "width" ? columnPx : rowsPx;
-    if (length4.kind === "line") return length4.fraction * columnPx;
+    if (length4.kind === "line") return length4.fraction * linePx;
     if (length4.kind === "page") return length4.fraction * rowsPx;
-    return length4.pt / (axis === "width" ? LINE_WIDTH_PT : TEXT_HEIGHT_PT) * full;
+    return axis === "width" ? length4.pt / LINE_WIDTH_PT * columnPx : length4.pt / TEXT_HEIGHT_PT * rowsPx;
   };
   let width;
   if (spec.width && spec.height) width = Math.min(along(spec.width, "width"), along(spec.height, "height") / aspect);
   else if (spec.width) width = along(spec.width, "width");
   else if (spec.height) width = along(spec.height, "height") / aspect;
   else if (spec.scale !== void 0) width = ownWidth * spec.scale;
-  else width = columnPx;
-  width = Math.min(width, columnPx, rowsPx / aspect, ownWidth);
-  const widthPx = Math.max(1, Math.round(width));
-  const heightPx = Math.max(1, Math.min(Math.round(rowsPx), Math.round(width * aspect)));
-  const columns = Math.min(Math.max(1, Math.floor(box2.maxColumns)), Math.max(1, Math.ceil(widthPx / box2.cellWidth - 1e-9)));
-  const rows = Math.min(Math.max(1, Math.floor(box2.maxRows)), Math.max(1, Math.ceil(heightPx / box2.cellHeight - 1e-9)));
-  return { columns, rows, widthPx, heightPx };
+  else width = linePx;
+  width = Math.min(width, linePx, rowsPx / aspect, ownWidth);
+  return { width, height: width * aspect };
+}
+function fitImageBlock(own, block2, box2) {
+  const { columnPx, rowsPx } = boxPixels(box2);
+  const gap2 = IMAGE_GAP * columnPx;
+  let next = 0;
+  const rows = block2.rows.map((row) => {
+    const items = row.map((image) => {
+      const boxPx = image.box && Math.min(columnPx, image.box.kind === "absolute" ? image.box.pt / LINE_WIDTH_PT * columnPx : image.box.fraction * columnPx);
+      const size = imageSize(own[next++] ?? { width: 1, height: 1 }, image, boxPx ?? columnPx, columnPx, rowsPx);
+      return { ...size, slot: Math.max(boxPx ?? 0, size.width) };
+    });
+    const width2 = items.reduce((sum2, item) => sum2 + item.slot, 0) + gap2 * (items.length - 1);
+    return { items, width: width2, height: Math.max(...items.map((item) => item.height)) };
+  });
+  const width = Math.max(...rows.map((row) => row.width));
+  const height2 = rows.reduce((sum2, row) => sum2 + row.height, 0) + gap2 * (rows.length - 1);
+  const k = Math.min(1, columnPx / width, rowsPx / height2);
+  const images = [];
+  let y = 0;
+  for (const row of rows) {
+    let x2 = (width - row.width) / 2;
+    for (const item of row.items) {
+      const left = x2 + (item.slot - item.width) / 2;
+      const top = y + (row.height - item.height) / 2;
+      images.push({ x: Math.round(left * k), y: Math.round(top * k), widthPx: Math.max(1, Math.round(item.width * k)), heightPx: Math.max(1, Math.round(item.height * k)) });
+      x2 += item.slot + gap2;
+    }
+    y += row.height + gap2;
+  }
+  const widthPx = Math.max(1, Math.round(width * k));
+  const heightPx = Math.max(1, Math.round(height2 * k));
+  return { ...cellsFor(widthPx, heightPx, box2), widthPx, heightPx, images };
 }
 // core/src/image/bitmap.ts
 var ImageError = class extends Error {
@@ -1263,83 +1323,4 @@ var inflt = function(dat, st, buf, dict) {
   } while (!final);
   return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
 };
-var wbits = function(d, p, v) {
-  v <<= p & 7;
-  var o = p / 8 | 0;
-  d[o] |= v;
-  d[o + 1] |= v >> 8;
-};
-var wbits16 = function(d, p, v) {
-  v <<= p & 7;
-  var o = p / 8 | 0;
-  d[o] |= v;
-  d[o + 1] |= v >> 8;
-  d[o + 2] |= v >> 16;
-};
-var hTree = function(d, mb) {
-  var t = [];
-  for (var i2 = 0; i2 < d.length; ++i2) {
-    if (d[i2])
-      t.push({ s: i2, f: d[i2] });
-  }
-  var s = t.length;
-  var t2 = t.slice();
-  if (!s)
-    return { t: (__kittexLate.et?.()), l: 0 };
-  if (s == 1) {
-    var v = new u8(t[0].s + 1);
-    v[t[0].s] = 1;
-    return { t: v, l: 1 };
-  }
-  t.sort(function(a, b) {
-    return a.f - b.f;
-  });
-  t.push({ s: -1, f: 25001 });
-  var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
-  t[0] = { s: -1, f: l.f + r.f, l, r };
-  while (i1 != s - 1) {
-    l = t[t[i0].f < t[i22].f ? i0++ : i22++];
-    r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
-    t[i1++] = { s: -1, f: l.f + r.f, l, r };
-  }
-  var maxSym = t2[0].s;
-  for (var i2 = 1; i2 < s; ++i2) {
-    if (t2[i2].s > maxSym)
-      maxSym = t2[i2].s;
-  }
-  var tr = new u16(maxSym + 1);
-  var mbt = (__kittexLate.ln?.())(t[i1 - 1], tr, 0);
-  if (mbt > mb) {
-    var i2 = 0, dt = 0;
-    var lft = mbt - mb, cst = 1 << lft;
-    t2.sort(function(a, b) {
-      return tr[b.s] - tr[a.s] || a.f - b.f;
-    });
-    for (; i2 < s; ++i2) {
-      var i2_1 = t2[i2].s;
-      if (tr[i2_1] > mb) {
-        dt += cst - (1 << mbt - tr[i2_1]);
-        tr[i2_1] = mb;
-      } else
-        break;
-    }
-    dt >>= lft;
-    while (dt > 0) {
-      var i2_2 = t2[i2].s;
-      if (tr[i2_2] < mb)
-        dt -= 1 << mb - tr[i2_2]++ - 1;
-      else
-        ++i2;
-    }
-    for (; i2 >= 0 && dt; --i2) {
-      var i2_3 = t2[i2].s;
-      if (tr[i2_3] == mb) {
-        --tr[i2_3];
-        ++dt;
-      }
-    }
-    mbt = mb;
-  }
-  return { t: new u8(tr), l: mbt };
-};
-export{u16,shft,wbits,hTree,clim,flt,fdt,hMap,flm,fdm,wbits16,fleb,fdeb,i32,u8,revfl,revfd,slc,err,inflt,ImageError,checkSize,imageHeader,decodeJpeg,assumedBackground,adaptColor,texPicture,fitImage,FORMAT_SOURCE,LATEX_ARGV,TRIAL_PDF,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,imageBlock,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,parseLength,pdfArgv,pdfCopyArgv,resolveImagePath,texEnvironment,texError,ulimitProbe,unsafeTex};
+export{u8,u16,shft,clim,flt,fdt,hMap,flm,fdm,fleb,fdeb,i32,revfl,revfd,slc,err,inflt,ImageError,checkSize,imageHeader,decodeJpeg,assumedBackground,adaptColor,texPicture,fitImage,blockImages,fitImageBlock,FORMAT_SOURCE,LATEX_ARGV,TRIAL_PDF,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,imageBlock,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,parseLength,pdfArgv,pdfCopyArgv,resolveImagePath,texEnvironment,texError,ulimitProbe,unsafeTex};

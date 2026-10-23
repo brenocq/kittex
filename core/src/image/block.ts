@@ -1,21 +1,46 @@
 /*
- * Which ```latex blocks are an image file to show, and how big it is drawn:
- * a block whose whole content is one `\includegraphics[options]{path}`,
+ * Which ```latex blocks are image files to show, and how big each is drawn: a
+ * block whose whole content is `\includegraphics[options]{path}` commands,
+ * one to MAX_BLOCK_IMAGES of them, each alone or in a subfigure or minipage
+ * of its own, side by side in rows (`\\` or a blank line starts the next),
  * optionally inside a figure or center environment with `\centering`,
- * `\caption` and `\label`. Anything else (a second image, text, a picture
- * drawn in TikZ) is not an image block and takes the diagram path (TeX, or
- * code) as before. Pure: the file itself is read and decoded elsewhere.
+ * `\caption` and `\label`. Anything else (text, a picture drawn in TikZ) is
+ * not an image block and takes the diagram path (TeX, or code) as before.
+ * Pure: the files themselves are read and decoded elsewhere.
  */
 
 /** A length from `\includegraphics`' options: a fraction of the line's width or of the text's height, or an absolute length in TeX points. */
 export type ImageLength = { kind: 'line'; fraction: number } | { kind: 'page'; fraction: number } | { kind: 'absolute'; pt: number }
 
-/** An image block: the file it names, as written, and the size its options ask for. */
+/** One image file to show: its path, as written, and the size its options ask for. */
 export interface ImageSpec {
   path: string
   width?: ImageLength
   height?: ImageLength
   scale?: number
+}
+
+/** An image of an image block: its file, and the subfigure or minipage it sits in, by that box's width. */
+export interface BlockImage extends ImageSpec {
+  /** The box's width (a fraction of the line, or absolute): `\linewidth` in the image's options is this, and so is its width without one. */
+  box?: ImageLength
+}
+
+/** An image block: its images in rows, top to bottom, each row left to right; no row is empty. */
+export interface ImageBlock {
+  rows: BlockImage[][]
+}
+
+/**
+ * The most images one block shows. Each file stays decoded while its block
+ * is drawn (the plugin's ImageBook keeps four at the most pixels a file
+ * keeps), and a row of more is a contact sheet, not a figure.
+ */
+export const MAX_BLOCK_IMAGES = 4
+
+/** A block's images in reading order: rows top to bottom, each left to right. */
+export function blockImages(block: ImageBlock): BlockImage[] {
+  return block.rows.flat()
 }
 
 /** TeX points per unit. `px` is pdfTeX's default (a big point); `em` and `ex` at a 10 pt font. */
@@ -84,46 +109,80 @@ function groupEnd(text: string, open: number): number {
   return -1
 }
 
-/** Commands that may stand around the image and draw nothing of their own here. */
-const SPACING = /^\\(?:centering|noindent|par|smallskip|medskip|bigskip)(?![A-Za-z])/
+/** Commands that may stand around the images and draw nothing of their own here. */
+const SPACING = /^\\(?:centering|noindent|smallskip|medskip|bigskip)(?![A-Za-z])/
+
+/** What may stand between two images of a row: each leaves the same gap here (IMAGE_GAP), whatever its own width. */
+const GAP = /^(?:~|\\(?:hfill|hfil|quad|qquad)(?![A-Za-z])|\\[,;: ]|\\hspace\*?\s*\{[^{}\n]*\})/
+
+/** What ends a row: `\\` (with its optional `*` and `[length]`) or `\par`; a blank line does too. */
+const ROW_BREAK = /^(?:\\\\\*?(?:\s*\[[^\]\n]*\])?|\\par(?![A-Za-z]))/
+
+/** An open environment: figure or center, or a subfigure or minipage (`box`: its width) and whether its image came. */
+interface Open {
+  name: string
+  box?: ImageLength
+  filled?: boolean
+}
 
 /**
- * The image a ```latex block shows, or undefined when the block is anything
- * but one `\includegraphics` (with figure or center around it, `\centering`,
- * a `\caption` and a `\label`, comments and blank lines).
+ * The images a ```latex block shows, or undefined when the block is anything
+ * but `\includegraphics` commands (one to MAX_BLOCK_IMAGES, each alone or as
+ * the one image of a subfigure or minipage, with figure or center around
+ * them, `\centering`, captions, labels, the spacing between images, comments
+ * and blank lines). `\\`, `\par` or a blank line between images starts a new
+ * row.
  */
-export function imageBlock(source: string): ImageSpec | undefined {
-  // Comments out: a % not escaped as \% (an even run of backslashes before it) to the end of its line.
-  let rest = source.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, '$1$2')
-  const open: string[] = []
-  let spec: ImageSpec | undefined
+export function imageBlock(source: string): ImageBlock | undefined {
+  // Comments out as TeX reads them: a % not escaped as \% (an even run of backslashes before it) to the
+  // end of its line, the line break and the next line's indent with it (so a comment line is no blank line).
+  let rest = source.replace(/(?<=(?:^|[^\\])(?:\\\\)*)%[^\n]*(?:\n[ \t]*)?/g, '')
+  const open: Open[] = []
+  const rows: BlockImage[][] = [[]]
+  let count = 0
+  const inBox = () => open.some(one => one.box !== undefined)
+  // Inside a box a break ends the box's own lines, not the row it stands in.
+  const breakRow = () => {
+    if (!inBox() && rows.at(-1)!.length > 0) rows.push([])
+  }
   for (;;) {
-    rest = rest.replace(/^\s+/, '')
+    const space = /^\s*/.exec(rest)![0]
+    if (/\n[ \t]*\n/.test(space)) breakRow()
+    rest = rest.slice(space.length)
     if (rest === '') break
     let m: RegExpExecArray | null
     if ((m = /^\\begin\s*\{(figure\*?|center)\}\s*(?:\[[^\]\n]*\])?/.exec(rest))) {
-      open.push(m[1]!)
-      rest = rest.slice(m[0].length)
-    } else if ((m = /^\\end\s*\{(figure\*?|center)\}/.exec(rest))) {
-      if (open.pop() !== m[1]) return undefined
-      rest = rest.slice(m[0].length)
-    } else if ((m = SPACING.exec(rest))) {
-      rest = rest.slice(m[0].length)
-    } else if ((m = /^\\(?:caption|label)\s*(?:\[[^\]\n]*\]\s*)?(?=\{)/.exec(rest))) {
+      if (inBox()) return undefined
+      open.push({ name: m[1]! })
+    } else if ((m = /^\\begin\s*\{(subfigure|minipage)\}\s*(?:\[[^\]\n]*\]\s*){0,3}\{([^{}\n]*)\}/.exec(rest))) {
+      const box = parseLength(m[2]!)
+      if (inBox() || !box || box.kind === 'page') return undefined
+      open.push({ name: m[1]!, box })
+    } else if ((m = /^\\end\s*\{(figure\*?|center|subfigure|minipage)\}/.exec(rest))) {
+      const closed = open.pop()
+      if (!closed || closed.name !== m[1] || (closed.box !== undefined && !closed.filled)) return undefined
+    } else if ((m = SPACING.exec(rest)) || (m = GAP.exec(rest))) {
+      // Nothing drawn: the row's gaps are the layout's.
+    } else if ((m = ROW_BREAK.exec(rest))) {
+      breakRow()
+    } else if ((m = /^\\(?:caption|subcaption|label)\s*(?:\[[^\]\n]*\]\s*)?(?=\{)/.exec(rest))) {
       const end = groupEnd(rest, m[0].length)
       if (end < 0) return undefined
       rest = rest.slice(end)
+      continue
     } else if ((m = /^\\includegraphics\*?\s*(?:\[([^\]]*)\]\s*)?\{([^{}\n]*)\}/.exec(rest))) {
-      if (spec) return undefined
       const path = m[2]!.trim().replace(/^"(.*)"$/, '$1')
-      if (path === '') return undefined
-      spec = { path, ...parseOptions(m[1] ?? '') }
-      rest = rest.slice(m[0].length)
+      const box = open.findLast(one => one.box !== undefined)
+      if (path === '' || box?.filled || ++count > MAX_BLOCK_IMAGES) return undefined
+      if (box) box.filled = true
+      rows.at(-1)!.push({ path, ...parseOptions(m[1] ?? ''), ...(box?.box ? { box: box.box } : {}) })
     } else {
       return undefined
     }
+    rest = rest.slice(m[0].length)
   }
-  return open.length === 0 ? spec : undefined
+  if (rows.at(-1)!.length === 0) rows.pop()
+  return open.length === 0 && rows.length > 0 ? { rows } : undefined
 }
 
 /**
@@ -191,27 +250,100 @@ export interface ImageFit {
  * `maxRows`, and never more pixels than the image has.
  */
 export function fitImage(own: { width: number; height: number }, spec: Pick<ImageSpec, 'width' | 'height' | 'scale'>, box: ImageBox): ImageFit {
+  const { columnPx, rowsPx } = boxPixels(box)
+  const { width, height } = imageSize(own, spec, columnPx, columnPx, rowsPx)
+  const widthPx = Math.max(1, Math.round(width))
+  const heightPx = Math.max(1, Math.min(Math.round(rowsPx), Math.round(height)))
+  return { ...cellsFor(widthPx, heightPx, box), widthPx, heightPx }
+}
+
+/** The pixels of the column and of the rows a picture may take. */
+function boxPixels(box: ImageBox): { columnPx: number; rowsPx: number } {
+  return { columnPx: Math.max(1, Math.floor(box.maxColumns)) * box.cellWidth, rowsPx: Math.max(1, Math.floor(box.maxRows)) * box.cellHeight }
+}
+
+/** The whole cells `widthPx` × `heightPx` pixels take, within the box. */
+function cellsFor(widthPx: number, heightPx: number, box: ImageBox): { columns: number; rows: number } {
+  return {
+    columns: Math.min(Math.max(1, Math.floor(box.maxColumns)), Math.max(1, Math.ceil(widthPx / box.cellWidth - 1e-9))),
+    rows: Math.min(Math.max(1, Math.floor(box.maxRows)), Math.max(1, Math.ceil(heightPx / box.cellHeight - 1e-9))),
+  }
+}
+
+/**
+ * fitImage's size in pixels, unrounded, where `\linewidth` is `linePx` (the
+ * column, or the subfigure the image sits in) and absolute lengths are
+ * measured against the whole column.
+ */
+function imageSize(own: { width: number; height: number }, spec: Pick<ImageSpec, 'width' | 'height' | 'scale'>, linePx: number, columnPx: number, rowsPx: number): { width: number; height: number } {
   const ownWidth = Math.max(1, own.width)
-  const ownHeight = Math.max(1, own.height)
-  const aspect = ownHeight / ownWidth
-  const columnPx = Math.max(1, Math.floor(box.maxColumns)) * box.cellWidth
-  const rowsPx = Math.max(1, Math.floor(box.maxRows)) * box.cellHeight
+  const aspect = Math.max(1, own.height) / ownWidth
   const along = (length: ImageLength, axis: 'width' | 'height') => {
-    const full = axis === 'width' ? columnPx : rowsPx
-    if (length.kind === 'line') return length.fraction * columnPx
+    if (length.kind === 'line') return length.fraction * linePx
     if (length.kind === 'page') return length.fraction * rowsPx
-    return (length.pt / (axis === 'width' ? LINE_WIDTH_PT : TEXT_HEIGHT_PT)) * full
+    return axis === 'width' ? (length.pt / LINE_WIDTH_PT) * columnPx : (length.pt / TEXT_HEIGHT_PT) * rowsPx
   }
   let width: number
   if (spec.width && spec.height) width = Math.min(along(spec.width, 'width'), along(spec.height, 'height') / aspect)
   else if (spec.width) width = along(spec.width, 'width')
   else if (spec.height) width = along(spec.height, 'height') / aspect
   else if (spec.scale !== undefined) width = ownWidth * spec.scale
-  else width = columnPx
-  width = Math.min(width, columnPx, rowsPx / aspect, ownWidth)
-  const widthPx = Math.max(1, Math.round(width))
-  const heightPx = Math.max(1, Math.min(Math.round(rowsPx), Math.round(width * aspect)))
-  const columns = Math.min(Math.max(1, Math.floor(box.maxColumns)), Math.max(1, Math.ceil(widthPx / box.cellWidth - 1e-9)))
-  const rows = Math.min(Math.max(1, Math.floor(box.maxRows)), Math.max(1, Math.ceil(heightPx / box.cellHeight - 1e-9)))
-  return { columns, rows, widthPx, heightPx }
+  else width = linePx
+  width = Math.min(width, linePx, rowsPx / aspect, ownWidth)
+  return { width, height: width * aspect }
+}
+
+/** The gap between two images of a block, across and down: a share of the column, about LaTeX's `\hfill` between two 0.48\linewidth subfigures. */
+export const IMAGE_GAP = 0.03
+
+/** Where a block's images are drawn: the cells it takes, and each image's pixels in them. */
+export interface BlockFit {
+  columns: number
+  rows: number
+  /** The pixels the images and their gaps cover together, centred in the cells. */
+  widthPx: number
+  heightPx: number
+  /** Each image's place in that area, in reading order (blockImages), from its top left. */
+  images: { x: number; y: number; widthPx: number; heightPx: number }[]
+}
+
+/**
+ * The size a block's images are drawn at, `own` their own sizes in reading
+ * order. Each is sized as fitImage sizes one, its `\linewidth` the width of
+ * the subfigure or minipage it sits in, which it is centred in. A row's
+ * images stand IMAGE_GAP apart, centred on each other's middle; rows stand
+ * as far apart, each centred across the widest. All of it too wide for the
+ * column, or too tall for its rows, is scaled down as a whole.
+ */
+export function fitImageBlock(own: readonly { width: number; height: number }[], block: ImageBlock, box: ImageBox): BlockFit {
+  const { columnPx, rowsPx } = boxPixels(box)
+  const gap = IMAGE_GAP * columnPx
+  let next = 0
+  const rows = block.rows.map(row => {
+    const items = row.map(image => {
+      const boxPx = image.box && Math.min(columnPx, image.box.kind === 'absolute' ? (image.box.pt / LINE_WIDTH_PT) * columnPx : image.box.fraction * columnPx)
+      const size = imageSize(own[next++] ?? { width: 1, height: 1 }, image, boxPx ?? columnPx, columnPx, rowsPx)
+      return { ...size, slot: Math.max(boxPx ?? 0, size.width) }
+    })
+    const width = items.reduce((sum, item) => sum + item.slot, 0) + gap * (items.length - 1)
+    return { items, width, height: Math.max(...items.map(item => item.height)) }
+  })
+  const width = Math.max(...rows.map(row => row.width))
+  const height = rows.reduce((sum, row) => sum + row.height, 0) + gap * (rows.length - 1)
+  const k = Math.min(1, columnPx / width, rowsPx / height)
+  const images: BlockFit['images'] = []
+  let y = 0
+  for (const row of rows) {
+    let x = (width - row.width) / 2
+    for (const item of row.items) {
+      const left = x + (item.slot - item.width) / 2
+      const top = y + (row.height - item.height) / 2
+      images.push({ x: Math.round(left * k), y: Math.round(top * k), widthPx: Math.max(1, Math.round(item.width * k)), heightPx: Math.max(1, Math.round(item.height * k)) })
+      x += item.slot + gap
+    }
+    y += row.height + gap
+  }
+  const widthPx = Math.max(1, Math.round(width * k))
+  const heightPx = Math.max(1, Math.round(height * k))
+  return { ...cellsFor(widthPx, heightPx, box), widthPx, heightPx, images }
 }

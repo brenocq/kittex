@@ -4,9 +4,9 @@
 // and the reserved options of a block off screen. Nothing here takes `$`;
 // register.tsx composes these images into what Claude Code draws.
 
-import { measureDisplay, measureDisplayResult, renderDisplay, renderDisplayResult, renderImage, renderInline, renderInlineResult, renderPicture, TexError, toBase64 } from './core.js'
-import type { ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv } from './core.js'
-import { imageBook, imageSpecOf } from './image.ts'
+import { blockImages, measureDisplay, measureDisplayResult, renderDisplay, renderDisplayResult, renderImageBlock, renderInline, renderInlineResult, renderPicture, TexError, toBase64 } from './core.js'
+import type { ImageBlock, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv } from './core.js'
+import { imageBlockOf, imageBook } from './image.ts'
 import { IMAGE_LIMIT } from './math.ts'
 import type { PlanOptions } from './math.ts'
 import { diagramJob, mathJob, texBook, texResult } from './tex.ts'
@@ -138,8 +138,8 @@ export const pictureRedraws = new WeakMap<RenderedImage, (density: number) => Re
  * directory where kept (ImageBook.place).
  */
 export function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number, tex = true, cwd?: string): RenderedImage | { error: string } | null {
-  const file = imageSpecOf(source, kind)
-  if (file) return fileImage(imageBook.place(file, cwd), env, rows)
+  const files = imageBlockOf(source, kind)
+  if (files) return filesImage(imageBook.place(files, cwd), env, rows)
   if (!tex) return null
   const job = diagramJob(source, kind)
   if (!job) return null
@@ -161,21 +161,24 @@ export function diagramImage(source: string, kind: DiagramKind, env: PictureEnv,
   }
 }
 
-/** An image block's file drawn `rows` tall (its own when not given): as ImageBook has it, or null (asked for, drawn once read) or { error }. */
-function fileImage(spec: ImageSpec, env: PictureEnv, rows?: number): RenderedImage | { error: string } | null {
-  const outcome = imageBook.known(spec)
-  if (!outcome || (!outcome.ok && !outcome.lasting)) {
-    imageBook.ask(spec)
+/** An image block's files drawn `rows` tall (their own when not given): as ImageBook has them, or null (those unread asked for, drawn once read) or { error }. */
+function filesImage(block: ImageBlock, env: PictureEnv, rows?: number): RenderedImage | { error: string } | null {
+  const outcome = imageBook.knownBlock(block)
+  if (!outcome) {
+    for (const image of blockImages(block)) {
+      const known = imageBook.known(image)
+      if (!known || (!known.ok && !known.lasting)) imageBook.ask(image)
+    }
     return null
   }
   if (!outcome.ok) return { error: outcome.error }
   try {
     const background = env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''
-    const key = `f\n${geometryKey(env)},${background},${env.maxRows ?? ''}\n${rows ?? ''}\n${outcome.id}\n${JSON.stringify(spec)}`
-    const image = cachedImage(key, () => renderImage(outcome.source, spec, env, rows))
+    const key = `f\n${geometryKey(env)},${background},${env.maxRows ?? ''}\n${rows ?? ''}\n${outcome.id}\n${JSON.stringify(block)}`
+    const image = cachedImage(key, () => renderImageBlock(outcome.sources, block, env, rows))
     // Drawn again at fewer pixels (fitPictures) relative to the density it was drawn at: a photo is already below 1.
     const drawnAt = 'density' in image && typeof image.density === 'number' ? image.density : 1
-    if (!pictureRedraws.has(image)) pictureRedraws.set(image, density => cachedImage(`${key}\n${density}`, () => renderImage(outcome.source, spec, env, image.rows, density * drawnAt)))
+    if (!pictureRedraws.has(image)) pictureRedraws.set(image, density => cachedImage(`${key}\n${density}`, () => renderImageBlock(outcome.sources, block, env, image.rows, density * drawnAt)))
     return image
   } catch (error) {
     if (error instanceof TexError) return { error: error.message }
