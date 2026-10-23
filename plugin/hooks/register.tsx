@@ -51,7 +51,7 @@ import {
   BUILD_ID,
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
-import { imageBook, imageSpecOf, NO_PDF } from './image.ts'
+import { imageBlockOf, imageBook, NO_PDF } from './image.ts'
 import type { ImageHost } from './image.ts'
 import {
   BLANK_ALT,
@@ -584,7 +584,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
     if (texOn || filesOn) {
       const pictureEnv = pictureEnvFor(env, columns)
       planOptions.diagram = (source, kind, rows) => {
-        fileDrawn ||= filesOn && imageSpecOf(source, kind) !== undefined
+        fileDrawn ||= filesOn && imageBlockOf(source, kind) !== undefined
         return diagramImage(source, kind, pictureEnv, rows, texOn, found.block?.cwd)
       }
     }

@@ -1,12 +1,13 @@
-// Image files shown in place of an image block (a ```latex block holding one
-// \includegraphics: core's imageBlock). Nothing here takes `$`: register.tsx
-// hands an ImageHost of closures over session.start's `$`, as it does TeX's.
-// The book reads and decodes each file once per version of it (its real
-// path, size and modification time), and the stream and the landing read
-// what it holds synchronously, as they read TeX's outcomes (tex.ts).
+// Image files shown in place of an image block (a ```latex block holding
+// \includegraphics commands: core's imageBlock). Nothing here takes `$`:
+// register.tsx hands an ImageHost of closures over session.start's `$`, as it
+// does TeX's. The book reads and decodes each file once per version of it
+// (its real path, size and modification time), and the stream and the
+// landing read what it holds synchronously, as they read TeX's outcomes
+// (tex.ts). A block of several images is drawn once all its files are read.
 
-import { ImageError, imageBlock, MAX_IMAGE_FILE_BYTES, pictureSource, readImageFile, resolveImagePath, SvgError, XmlError } from './core.js'
-import type { ImageSource, ImageSpec } from './core.js'
+import { blockImages, ImageError, imageBlock, KEPT_IMAGE_PIXELS, MAX_BLOCK_IMAGES, MAX_IMAGE_FILE_BYTES, pictureSource, readImageFile, resolveImagePath, SvgError, XmlError } from './core.js'
+import type { ImageBlock, ImageSource, ImageSpec } from './core.js'
 import type { DiagramKind, TexOutcome } from './tex.ts'
 
 /** What an image block's file gave: what to draw (`id`: the file's version), or why there is nothing. */
@@ -27,14 +28,21 @@ export interface ImageHost {
 /** Why a PDF file stays code where nothing converts it. */
 export const NO_PDF = 'PDF files are drawn with the local TeX, which is not there or reads no PDF'
 
-/** The image a diagram segment shows: a ```latex block that is an image block (imageBlock); undefined for any other. */
-export function imageSpecOf(source: string, kind: DiagramKind): ImageSpec | undefined {
+/** The images a diagram segment shows: a ```latex block that is an image block (imageBlock); undefined for any other. */
+export function imageBlockOf(source: string, kind: DiagramKind): ImageBlock | undefined {
   return kind === 'latex' ? imageBlock(source) : undefined
 }
 
-/** Files the book keeps decoded, at most, and their kept pixels in all (KEPT_IMAGE_PIXELS each at most). */
+/** What an image block's files gave together: every file drawn (`sources` in reading order, `id` their versions), or why the block is not. */
+export type BlockOutcome = { ok: true; sources: ImageSource[]; id: string } | { ok: false; error: string }
+
+/**
+ * Files the book keeps decoded, at most, and their kept pixels in all
+ * (KEPT_IMAGE_PIXELS each at most): a block's MAX_BLOCK_IMAGES files stay
+ * together at their largest, so drawing one never evicts its own files.
+ */
 const BOOK_LIMIT = 8
-const BOOK_PIXELS = 24_000_000
+const BOOK_PIXELS = MAX_BLOCK_IMAGES * KEPT_IMAGE_PIXELS
 
 interface Entry {
   outcome: ImageOutcome
@@ -83,17 +91,43 @@ export class ImageBook {
   }
 
   /**
-   * A block's spec with its path resolved against `cwd`, the working directory
-   * its reply streamed in (kept with the reply), so redrawing that reply after
-   * a /cd still shows its own file. As given where `cwd` is unknown or the
-   * path can't be placed: then it resolves against the book's.
+   * A block with its paths resolved against `cwd`, the working directory its
+   * reply streamed in (kept with the reply), so redrawing that reply after a
+   * /cd still shows its own files. A path is as given where `cwd` is unknown
+   * or the path can't be placed: then it resolves against the book's.
    */
-  place(spec: ImageSpec, cwd: string | undefined): ImageSpec {
-    const path = cwd === undefined ? undefined : resolveImagePath(spec.path, cwd, this.home)
-    return path === undefined ? spec : { ...spec, path }
+  place(block: ImageBlock, cwd: string | undefined): ImageBlock {
+    if (cwd === undefined) return block
+    return {
+      rows: block.rows.map(row =>
+        row.map(image => {
+          const path = resolveImagePath(image.path, cwd, this.home)
+          return path === undefined ? image : { ...image, path }
+        }),
+      ),
+    }
   }
 
-  /** What a block's file gave, when it was read in this process; a passing failure included. */
+  /**
+   * What a block's files gave, as far as this process read them: all drawn,
+   * or the first file (in reading order) that failed for good; undefined
+   * while any is unread or failed only for now.
+   */
+  knownBlock(block: ImageBlock): BlockOutcome | undefined {
+    const outcomes = blockImages(block).map(image => this.known(image))
+    const failed = outcomes.find(outcome => outcome !== undefined && !outcome.ok && outcome.lasting)
+    if (failed && !failed.ok) return { ok: false, error: failed.error }
+    const sources: ImageSource[] = []
+    const ids: string[] = []
+    for (const outcome of outcomes) {
+      if (!outcome?.ok) return undefined
+      sources.push(outcome.source)
+      ids.push(outcome.id)
+    }
+    return { ok: true, sources, id: ids.join('\n') }
+  }
+
+  /** What a file gave, when it was read in this process; a passing failure included. */
   known(spec: ImageSpec): ImageOutcome | undefined {
     const key = this.key(spec)
     const entry = this.entries.get(key)
@@ -183,18 +217,19 @@ export class ImageBook {
     }
     const bytes = await host.readBytes(path)
     if (!bytes) return failed(`can't read ${path}`)
+    // What the file's contents gave is named by its path, as every answer above is: a block of several files says which one.
     let outcome: ImageOutcome
     try {
       const read = readImageFile(bytes)
       if (read !== 'pdf') outcome = { ok: true, source: read, id: stamp }
-      else if (!host.pdf) outcome = { ok: false, error: NO_PDF, lasting: true }
+      else if (!host.pdf) outcome = { ok: false, error: `${path}: ${NO_PDF}`, lasting: true }
       else {
         const converted = await host.pdf(real, timeoutMs)
-        outcome = converted.ok ? { ok: true, source: pictureSource(converted.picture), id: stamp } : { ok: false, error: converted.error, lasting: converted.lasting }
+        outcome = converted.ok ? { ok: true, source: pictureSource(converted.picture), id: stamp } : { ok: false, error: `${path}: ${converted.error}`, lasting: converted.lasting }
       }
     } catch (error) {
       if (!(error instanceof ImageError || error instanceof SvgError || error instanceof XmlError)) throw error
-      outcome = { ok: false, error: error.message, lasting: true }
+      outcome = { ok: false, error: `${path}: ${error.message}`, lasting: true }
     }
     this.remember(spec, outcome, outcome.ok || outcome.lasting ? stamp : undefined)
     return outcome

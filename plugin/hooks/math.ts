@@ -14,11 +14,12 @@ import {
   layoutProse,
   layoutQuote,
   layoutTable,
+  blockImages,
   measureDisplay,
   measureDisplayResult,
   measureInline,
   measureInlineResult,
-  measureImage,
+  measureImageBlock,
   measurePicture,
   MAX_PICTURE_ROWS,
   MAX_TEX_LENGTH,
@@ -35,9 +36,9 @@ import {
   fontCell,
   mathEmPx,
 } from './core.js'
-import type { BlockPart, CellBox, CellSize, ImageSpec, InkPlace, InlineEnv, LineScanner, LinkMode, PictureEnv, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace, TexDocument } from './core.js'
+import type { BlockPart, CellBox, CellSize, ImageBlock, ImageSpec, InkPlace, InlineEnv, LineScanner, LinkMode, PictureEnv, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace, TexDocument } from './core.js'
 import type { KittexBlock, KittexEnv, KittexPreview } from '../types'
-import { imageBook, imageSpecOf } from './image.ts'
+import { imageBlockOf, imageBook } from './image.ts'
 import { diagramJob, diagramLabel, mathJob, texBook, texResult } from './tex.ts'
 import type { DiagramKind } from './tex.ts'
 
@@ -1543,9 +1544,11 @@ export class MessageStream {
       // The later ones TeX (or the book) will be asked for too: side by side, not one per resume.
       for (const segment of segments.slice(wait + 1)) {
         if (segment.kind !== 'math' || (segment.diagram !== undefined && quoted(segment))) continue
-        const image = imageWanted(segment, env)
-        if (image) {
-          if (!imageBook.checkedSince(image, this.started) && !images.some(one => imageBook.key(one) === imageBook.key(image))) images.push(image)
+        const block = imageWanted(segment, env)
+        if (block) {
+          for (const image of blockImages(block)) {
+            if (!imageBook.checkedSince(image, this.started) && !images.some(one => imageBook.key(one) === imageBook.key(image))) images.push(image)
+          }
           continue
         }
         const document = env.tex ? texDocument(segment, env) : undefined
@@ -2161,7 +2164,7 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     if (drawn === null) return writer.text(segment.raw)
     changed = true
     if ('error' in drawn) return void writer.block([...segment.raw.split('\n'), '', put({ kind: 'note', text: notRenderedText(drawn.error, maxColumns) })])
-    const label = imageSpecOf(segment.tex, segment.diagram!) ? IMAGE_LABEL : diagramLabel(segment.tex)
+    const label = imageBlockOf(segment.tex, segment.diagram!) ? IMAGE_LABEL : diagramLabel(segment.tex)
     markBlock(diagramPlaceholder(label, drawn.rows, maxColumns, segment.tex, drawn.columns), { tex: segment.tex, columns: maxColumns, rows: drawn.rows, diagram: segment.diagram! })
   }
 
@@ -2740,7 +2743,8 @@ export function imageInstructions(pdf: boolean): string {
   return (
     `Image files can be shown here too: when the user asks to see or be shown an image file, or a picture helps (a plot a script just saved, a figure in the project), ` +
     'write `\\includegraphics[width=0.8\\linewidth]{/absolute/path/to/file}` alone in a ```latex code block, and kittex draws the file ' +
-    `(PNG, JPEG, SVG${pdf ? ' or the first page of a PDF' : ''}) in its place, as wide as the option asks. ` +
+    `(PNG, JPEG, SVG${pdf ? ' or the first page of a PDF' : ''}) in its place, as wide as the option asks; ` +
+    'several images go side by side as several `\\includegraphics` in one block. ' +
     'That block is how an image is shown to the user: the Read tool shows it to you alone, so "show me this image" means the block, not Read. ' +
     'An image on the web is downloaded to a temporary file first (for example with `curl -o`), then shown the same way. ' +
     "Don't open, read or verify the file first, and add no fallback advice after the block (opening it elsewhere, what to do if it doesn't appear): " +
@@ -2817,18 +2821,17 @@ function texPending(segment: Segment, env: StreamEnv, pending: TexDocument[]): b
   return true
 }
 
-/** The image a segment shows in a stream with these options: an image block, where image files are drawn; undefined for anything else. */
-function imageWanted(segment: Segment, env: StreamEnv): ImageSpec | undefined {
+/** The images a segment shows in a stream with these options: an image block, where image files are drawn; undefined for anything else. */
+function imageWanted(segment: Segment, env: StreamEnv): ImageBlock | undefined {
   if (segment.kind !== 'math' || segment.diagram === undefined || !env.imageFiles || !env.images || env.math?.block === 'unicode' || leftRaw(segment, env.math)) return undefined
-  return imageSpecOf(segment.tex, segment.diagram)
+  return imageBlockOf(segment.tex, segment.diagram)
 }
 
-/** Whether a segment waits for its image file: an image block whose file this stream (started at `since`) hasn't looked at; added to `images`. */
+/** Whether a segment waits for its image files: an image block with a file this stream (started at `since`) hasn't looked at; each such file added to `images`. */
 function imagePending(segment: Segment, env: StreamEnv, since: number, images: ImageSpec[]): boolean {
-  const spec = imageWanted(segment, env)
-  if (!spec || imageBook.checkedSince(spec, since)) return false
-  images.push(spec)
-  return true
+  const unread = blockImages(imageWanted(segment, env) ?? { rows: [] }).filter(image => !imageBook.checkedSince(image, since))
+  images.push(...unread)
+  return unread.length > 0
 }
 
 /**
@@ -2948,17 +2951,17 @@ function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
   }
   if ('refused' in job) return failed(job.refused)
   if ('image' in job) {
-    const known = imageBook.known(job.image)
-    if (!known || (!known.ok && !known.lasting)) {
+    const known = imageBook.knownBlock(job.image)
+    if (!known) {
       // Not read in time (a PDF still converting): shown as written, and left so when its block lands.
-      imageBook.markShownAsSource(job.image)
+      for (const image of blockImages(job.image)) imageBook.markShownAsSource(image)
       return writer.text(segment.raw)
     }
     if (!known.ok) return failed(known.error)
     const pictureEnv = pictureEnvFor(env)
     let box: CellBox
     try {
-      box = measureImage(known.source, job.image, pictureEnv)
+      box = measureImageBlock(known.sources, job.image, pictureEnv)
     } catch (error) {
       if (!(error instanceof TexError)) throw error
       return failed(reasonOf(error))
