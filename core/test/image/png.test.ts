@@ -1,6 +1,6 @@
 import { once } from 'node:events'
 import { createDeflate } from 'node:zlib'
-import { zlibSync } from 'fflate'
+import { Unzlib, zlibSync } from 'fflate'
 import { describe, expect, test } from 'vitest'
 import { decodeImage, ImageError, MAX_IMAGE_PIXELS } from '../../src/image/index.js'
 import { CHANNELS, chunk, fixture, ihdr, makePng, pngFile, samples, scanlines } from './make-png.js'
@@ -181,7 +181,7 @@ describe('decodeImage: corrupt PNG', () => {
     expect(() => decodeImage(pngFile(ihdr(W, H, 8, 0), chunk('IDAT', zlibSync(bomb))))).toThrow(/inflates to/)
   })
 
-  test('a zlib bomb is refused in well under 100 ms, not inflated whole first', async () => {
+  test('a zlib bomb is refused long before it could be inflated whole', async () => {
     // 256 MiB of zeros, about 250 KB deflated, streamed so the test never holds the inflated bytes.
     const deflate = createDeflate({ level: 9 })
     const parts: Buffer[] = []
@@ -190,10 +190,17 @@ describe('decodeImage: corrupt PNG', () => {
     for (let i = 0; i < 256; i++) if (!deflate.write(zeros)) await once(deflate, 'drain')
     deflate.end()
     await once(deflate, 'end')
-    const bomb = pngFile(ihdr(W, H, 8, 0), chunk('IDAT', Buffer.concat(parts)))
+    const deflated = Buffer.concat(parts)
+    const bomb = pngFile(ihdr(W, H, 8, 0), chunk('IDAT', deflated))
     const start = performance.now()
     expect(() => decodeImage(bomb)).toThrow(/inflates to more than/)
-    expect(performance.now() - start).toBeLessThan(100)
+    const refused = performance.now() - start
+    // Against inflating the same stream whole on this machine (output dropped), so a slow CI runner scales both.
+    const whole = performance.now()
+    const inflater = new Unzlib(() => undefined)
+    inflater.push(deflated, true)
+    const inflated = performance.now() - whole
+    expect(refused).toBeLessThan(inflated / 4)
   })
 
   test('image data that inflates to less than the header needs throws', () => {
