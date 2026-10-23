@@ -1,1639 +1,2104 @@
-import{__esm,init_OutputJax,init_MathItem,init_MmlNode,init_FontData,init_Options,init_LinebreakVisitor,init_lengths,init_Styles,AbstractOutputJax,FontData,separateOptions,LinebreakVisitor,percent,length2em,TEXCLASS,STATE,Styles,init_Factory,AbstractFactory,init_string,init_BBox,init_LineBBox,em,NOSTRETCH,BBox,LineBBox,TextNode,DIRECTION,BIGDIMEN,px,lookup,unicodeChars,split,__kittexLate}from'./p18.js';export*from'./p18.js';
-// node_modules/@mathjax/src/mjs/util/StyleJson.js
-var StyleJsonSheet;
-var init_StyleJson = __esm({
-  "node_modules/@mathjax/src/mjs/util/StyleJson.js"() {
-    StyleJsonSheet = class {
-      get cssText() {
-        return this.getStyleString();
-      }
-      constructor(styles = null) {
-        this.styles = {};
-        this.addStyles(styles);
-      }
-      addStyles(styles) {
-        if (!styles)
-          return;
-        for (const style of Object.keys(styles)) {
-          if (!this.styles[style]) {
-            this.styles[style] = {};
-          }
-          Object.assign(this.styles[style], styles[style]);
-        }
-      }
-      removeStyles(...selectors) {
-        for (const selector of selectors) {
-          delete this.styles[selector];
-        }
-      }
-      clear() {
-        this.styles = {};
-      }
-      getStyleString() {
-        return this.getStyleRules().join("\n\n");
-      }
-      getStyleRules(styles = this.styles, spaces = "") {
-        const selectors = Object.keys(styles);
-        const defs = new Array(selectors.length);
-        let i2 = 0;
-        for (const selector of selectors) {
-          const data = styles[selector];
-          defs[i2++] = `${spaces}${selector} {
-${this.getStyleDefString(data, spaces)}
-${spaces}}`;
-        }
-        return defs;
-      }
-      getStyleDefString(styles, spaces) {
-        const properties = Object.keys(styles);
-        const values = new Array(properties.length);
-        let i2 = 0;
-        for (const property of properties) {
-          values[i2++] = styles[property] instanceof Object ? spaces + this.getStyleRules({
-            [property]: styles[property]
-          }, spaces + "  ").join("\n" + spaces) : "  " + spaces + property + ": " + styles[property] + ";";
-        }
-        return values.join("\n" + spaces);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/output/common.js
-var FONTPATH;
-var CommonOutputJax;
-var init_common = __esm({
-  "node_modules/@mathjax/src/mjs/output/common.js"() {
-    init_OutputJax();
-    init_MathItem();
-    init_MmlNode();
-    init_FontData();
-    init_Options();
-    init_LinebreakVisitor();
-    init_lengths();
-    init_lengths();
-    init_Styles();
-    init_StyleJson();
-    FONTPATH = "@mathjax/%%FONT%%-font";
-    CommonOutputJax = class extends AbstractOutputJax {
-      get forceInlineBreaks() {
-        return false;
-      }
-      constructor(options3 = {}, defaultFactory = null, defaultFont = null) {
-        const [fontClass, font] = options3.fontData instanceof FontData ? [options3.fontData.constructor, options3.fontData] : [options3.fontData || defaultFont, null];
-        const [jaxOptions, fontOptions] = separateOptions(options3, fontClass.OPTIONS);
-        super(jaxOptions);
-        this.factory = this.options.wrapperFactory || new defaultFactory();
-        this.factory.jax = this;
-        this.styleJson = this.options.styleJson || new StyleJsonSheet();
-        this.font = font || new fontClass(fontOptions);
-        this.font.setOptions({ mathmlSpacing: this.options.mathmlSpacing });
-        this.constructor.genericFont = fontClass;
-        this.unknownCache = /* @__PURE__ */ new Map();
-        const linebreaks = this.options.linebreaks.LinebreakVisitor || LinebreakVisitor;
-        this.linebreaks = new linebreaks(this.factory);
-      }
-      setAdaptor(adaptor) {
-        super.setAdaptor(adaptor);
-        if (this.options.htmlHDW === "auto") {
-          this.options.htmlHDW = adaptor.canMeasureNodes ? "ignore" : "force";
-        }
-      }
-      addExtension(font, prefix = "") {
-        return this.font.addExtension(font, prefix);
-      }
-      typeset(math, html2) {
-        const CLASS = this.constructor;
-        const generic = CLASS.genericFont;
-        CLASS.genericFont = this.font.constructor;
-        this.setDocument(html2);
-        const node = this.createNode();
-        try {
-          this.toDOM(math, node, html2);
-        } finally {
-          CLASS.genericFont = generic;
-        }
-        return node;
-      }
-      createNode() {
-        const jax = this.constructor.NAME;
-        return this.html("mjx-container", { class: "MathJax", jax });
-      }
-      setScale(node, wrapper) {
-        let scale2 = this.getInitialScale() * this.options.scale;
-        if (wrapper.node.attributes.get("overflow") === "scale" && this.math.display) {
-          const w = wrapper.getOuterBBox().w;
-          const W = Math.max(0, this.math.metrics.containerWidth - 4) / this.pxPerEm;
-          if (w > W && w) {
-            scale2 *= W / w;
-          }
-        }
-        if (scale2 !== 1) {
-          this.adaptor.setStyle(node, "fontSize", percent(scale2));
-        }
-      }
-      getInitialScale() {
-        return this.math.metrics.scale;
-      }
-      toDOM(math, node, html2 = null) {
+import{__esm,init_HandlerTypes,init_NodeUtil,init_TexConstants,init_ParseUtil,TexConstant,ParseUtil,HandlerType,NodeUtil_default,init_TokenMap,init_BaseMethods,init_MmlNode,init_lengths,em,MATHSPACE,RegExpMap,MacroMap,BaseMethods_default,CharacterMap,TEXCLASS,DelimiterMap,CommandMap,EnvironmentMap,MapHandler,getRange,TexError_default,init_Configuration,init_MapHandler,init_TexError,init_BaseItems,init_Tags,init_OperatorDictionary,init_context,AbstractTags,Configuration,ConfigurationType,StartItem,StopItem,OpenItem,CloseItem,NullItem,PrimeItem,SubsupItem,OverItem,LeftItem,Middle,RightItem,BreakItem,BeginItem,EndItem,StyleItem,PositionItem,CellItem,MmlItem,FnItem,NotItem,NonscriptItem,DotsItem,ArrayItem,EqnArrayItem,EquationItem,MstyleItem,context,init_InputJax,init_Options,init_FindTeX,init_FilterUtil,init_TexParser,init_ParseOptions,AbstractInputJax,ParserConfiguration,TagsFactory,separateOptions,FindTeX,ParseOptions_default,userOptions,FilterUtil_default,TexParser,defaultOptions,init_mathjax,init_AsyncLoad,init_Retries,asyncLoad,mathjax,retryAfter,BIGDIMEN,init_Visitor,AbstractVisitor,OPTABLE}from'./p18.js';export*from'./p18.js';
+// node_modules/@mathjax/src/mjs/input/tex/ParseMethods.js
+var MATHVARIANT2;
+var ParseMethods;
+var ParseMethods_default;
+var init_ParseMethods = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/ParseMethods.js"() {
+    init_HandlerTypes();
+    init_NodeUtil();
+    init_TexConstants();
+    init_ParseUtil();
+    MATHVARIANT2 = TexConstant.Variant;
+    ParseMethods = {
+      variable(parser2, c) {
         var _a2;
-        this.setDocument(html2);
-        this.math = math;
-        this.container = node;
-        this.pxPerEm = math.metrics.ex / this.font.params.x_height;
-        this.executeFilters(this.preFilters, math, html2, node);
-        this.nodeMap = /* @__PURE__ */ new Map();
-        math.root.attributes.getAllInherited().overflow = this.options.displayOverflow;
-        const overflow = math.root.attributes.get("overflow");
-        this.adaptor.setAttribute(node, "overflow", overflow);
-        const linebreak = overflow === "linebreak";
-        if (linebreak) {
-          this.getLinebreakWidth();
-        }
-        const makeBreaks = this.options.linebreaks.inline && !math.display;
-        let inlineMarked = !!math.root.getProperty("inlineMarked");
-        if (inlineMarked && (!makeBreaks || this.forceInlineBreaks !== math.root.getProperty("inlineForced"))) {
-          this.unmarkInlineBreaks(math.root);
-          math.root.removeProperty("inlineMarked");
-          math.root.removeProperty("inlineForced");
-          inlineMarked = false;
-        }
-        if (makeBreaks && !inlineMarked) {
-          this.markInlineBreaks((_a2 = math.root.childNodes) === null || _a2 === void 0 ? void 0 : _a2[0]);
-          math.root.setProperty("inlineMarked", true);
-          math.root.setProperty("inlineForced", this.forceInlineBreaks);
-        }
-        math.root.setTeXclass(null);
-        const wrapper = this.factory.wrap(math.root);
-        this.setScale(node, wrapper);
-        this.processMath(wrapper, node);
-        this.nodeMap = null;
-        this.executeFilters(this.postFilters, math, html2, node);
-      }
-      getBBox(math, html2) {
-        this.setDocument(html2);
-        this.math = math;
-        math.root.setTeXclass(null);
-        this.nodeMap = /* @__PURE__ */ new Map();
-        const bbox = this.factory.wrap(math.root).getOuterBBox();
-        this.nodeMap = null;
-        return bbox;
-      }
-      getLinebreakWidth() {
-        const W = this.math.metrics.containerWidth / this.pxPerEm;
-        const width = this.math.root.attributes.get("maxwidth") || this.options.linebreaks.width;
-        this.containerWidth = length2em(width, W, 1, this.pxPerEm);
-      }
-      markInlineBreaks(node) {
-        if (!node)
-          return;
-        const forcebreak = this.forceInlineBreaks;
-        let postbreak = false;
-        let marked4 = false;
-        let markNext = "";
-        for (const child of node.childNodes) {
-          if (markNext) {
-            marked4 = this.markInlineBreak(marked4, forcebreak, markNext, node, child);
-            markNext = "";
-            postbreak = false;
-          } else if (child.isEmbellished) {
-            if (child === node.childNodes[0]) {
-              continue;
-            }
-            const mo = child.coreMO();
-            const texClass = mo.texClass;
-            const linebreak = mo.attributes.get("linebreak");
-            const linebreakstyle = mo.attributes.get("linebreakstyle");
-            if ((texClass === TEXCLASS.BIN || texClass === TEXCLASS.REL || texClass === TEXCLASS.ORD && mo.hasSpacingAttributes() || linebreak !== "auto") && linebreak !== "nobreak") {
-              if (linebreakstyle === "before") {
-                if (!postbreak || linebreak !== "auto") {
-                  marked4 = this.markInlineBreak(marked4, forcebreak, linebreak, node, child, mo);
-                }
-              } else {
-                markNext = linebreak;
-              }
-            }
-            postbreak = linebreak === "newline" && linebreakstyle === "after";
-          } else if (child.isKind("mspace")) {
-            const linebreak = child.attributes.get("linebreak");
-            if (linebreak !== "nobreak" && child.canBreak) {
-              marked4 = this.markInlineBreak(marked4, forcebreak, linebreak, node, child);
-            }
-            postbreak = linebreak === "newline";
-          } else {
-            postbreak = false;
-            if (child.isKind("mstyle") && !child.attributes.get("style") && !child.attributes.hasExplicit("mathbackground") || child.isKind("semantics")) {
-              this.markInlineBreaks(child.childNodes[0]);
-              if (child.getProperty("process-breaks")) {
-                child.setProperty("inline-breaks", true);
-                child.childNodes[0].setProperty("inline-breaks", true);
-                node.parent.setProperty("process-breaks", "true");
-              }
-            } else if (child.isKind("mrow") && child.attributes.get("data-semantic-added")) {
-              this.markInlineBreaks(child);
-              if (child.getProperty("process-breaks")) {
-                child.setProperty("inline-breaks", true);
-                node.parent.setProperty("process-breaks", "true");
-              }
-            }
+        const def2 = ParseUtil.getFontDef(parser2);
+        const env = parser2.stack.env;
+        if (env.multiLetterIdentifiers && env.font !== "") {
+          c = ((_a2 = parser2.string.substring(parser2.i - 1).match(env.multiLetterIdentifiers)) === null || _a2 === void 0 ? void 0 : _a2[0]) || c;
+          parser2.i += c.length - 1;
+          if (def2.mathvariant === MATHVARIANT2.NORMAL && env.noAutoOP && c.length > 1) {
+            def2.autoOP = false;
           }
         }
-      }
-      markInlineBreak(marked4, forcebreak, linebreak, node, child, mo = null) {
-        child.setProperty("breakable", true);
-        if (forcebreak && linebreak !== "newline") {
-          child.setProperty("forcebreak", true);
-          mo === null || mo === void 0 ? void 0 : mo.setProperty("forcebreak", true);
-        } else {
-          child.removeProperty("forcebreak");
-          mo === null || mo === void 0 ? void 0 : mo.removeProperty("forcebreak");
-          if (linebreak === "newline") {
-            child.setProperty("newline", true);
+        if (!def2.mathvariant && ParseUtil.isLatinOrGreekChar(c)) {
+          const variant = parser2.configuration.mathStyle(c);
+          if (variant) {
+            def2.mathvariant = variant;
           }
         }
-        if (!marked4) {
-          node.setProperty("process-breaks", true);
-          node.parent.setProperty("process-breaks", true);
-          marked4 = true;
-        }
-        return marked4;
-      }
-      unmarkInlineBreaks(node) {
-        if (!node)
-          return;
-        node.removeProperty("forcebreak");
-        node.removeProperty("breakable");
-        node.coreMO().removeProperty("forcebreak");
-        if (node.getProperty("process-breaks")) {
-          node.removeProperty("process-breaks");
-          for (const child of node.childNodes) {
-            this.unmarkInlineBreaks(child);
-          }
-        }
-      }
-      getMetrics(html2) {
-        this.setDocument(html2);
-        const adaptor = this.adaptor;
-        const maps3 = this.getMetricMaps(html2);
-        for (const math of html2.math) {
-          const parent = adaptor.parent(math.start.node);
-          if (math.state() < STATE.METRICS && parent) {
-            const map = maps3[math.display ? 1 : 0];
-            const { em: em2, ex, containerWidth, scale: scale2, family } = map.get(parent);
-            math.setMetrics(em2, ex, containerWidth, scale2);
-            if (this.options.mtextInheritFont) {
-              math.outputData.mtextFamily = family;
-            }
-            if (this.options.merrorInheritFont) {
-              math.outputData.merrorFamily = family;
-            }
-            math.state(STATE.METRICS);
-          }
-        }
-      }
-      getMetricsFor(node, display) {
-        const getFamily = this.options.mtextInheritFont || this.options.merrorInheritFont;
-        const test = this.getTestElement(node, display);
-        const metrics = Object.assign(Object.assign({}, this.measureMetrics(test, getFamily)), { display });
-        this.adaptor.remove(test);
-        return metrics;
-      }
-      getMetricMaps(html2) {
-        const adaptor = this.adaptor;
-        const domMaps = [
-          /* @__PURE__ */ new Map(),
-          /* @__PURE__ */ new Map()
-        ];
-        for (const math of html2.math) {
-          const node = adaptor.parent(math.start.node);
-          if (node && math.state() < STATE.METRICS) {
-            const map = domMaps[math.display ? 1 : 0];
-            if (!map.has(node)) {
-              map.set(node, this.getTestElement(node, math.display));
-            }
-          }
-        }
-        const getFamily = this.options.mtextInheritFont || this.options.merrorInheritFont;
-        const maps3 = [/* @__PURE__ */ new Map(), /* @__PURE__ */ new Map()];
-        for (const i2 of maps3.keys()) {
-          for (const node of domMaps[i2].keys()) {
-            maps3[i2].set(node, this.measureMetrics(domMaps[i2].get(node), getFamily));
-          }
-        }
-        for (const i2 of maps3.keys()) {
-          for (const node of domMaps[i2].values()) {
-            adaptor.remove(node);
-          }
-        }
-        return maps3;
-      }
-      getTestElement(node, display) {
-        const adaptor = this.adaptor;
-        if (!this.testInline) {
-          this.testInline = this.html("mjx-test", {
-            style: {
-              display: "inline-block",
-              width: "100%",
-              "font-style": "normal",
-              "font-weight": "normal",
-              "font-size": "100%",
-              "font-size-adjust": "none",
-              "text-indent": 0,
-              "text-transform": "none",
-              "letter-spacing": "normal",
-              "word-spacing": "normal",
-              overflow: "hidden",
-              height: "1px",
-              "margin-right": "-1px"
-            }
-          }, [
-            this.html("mjx-left-box", {
-              style: {
-                display: "inline-block",
-                width: 0,
-                float: "left"
-              }
-            }),
-            this.html("mjx-ex-box", {
-              style: {
-                position: "absolute",
-                overflow: "hidden",
-                width: "1px",
-                height: "60ex"
-              }
-            }),
-            this.html("mjx-right-box", {
-              style: {
-                display: "inline-block",
-                width: 0,
-                float: "right"
-              }
-            })
-          ]);
-          this.testDisplay = adaptor.clone(this.testInline);
-          adaptor.setStyle(this.testDisplay, "display", "table");
-          adaptor.setStyle(this.testDisplay, "margin-right", "");
-          adaptor.setStyle(adaptor.firstChild(this.testDisplay), "display", "none");
-          const right = adaptor.lastChild(this.testDisplay);
-          adaptor.setStyle(right, "display", "table-cell");
-          adaptor.setStyle(right, "width", "10000em");
-          adaptor.setStyle(right, "float", "");
-        }
-        return adaptor.append(node, adaptor.clone(display ? this.testDisplay : this.testInline));
-      }
-      measureMetrics(node, getFamily) {
-        const adaptor = this.adaptor;
-        const family = getFamily ? adaptor.fontFamily(node) : "";
-        const em2 = adaptor.fontSize(node);
-        const [w, h] = adaptor.nodeSize(adaptor.childNode(node, 1));
-        const ex = w ? h / 60 : em2 * this.options.exFactor;
-        const containerWidth = !w ? 1e6 : adaptor.getStyle(node, "display") === "table" ? adaptor.nodeSize(adaptor.lastChild(node))[0] - 1 : adaptor.nodeBBox(adaptor.lastChild(node)).left - adaptor.nodeBBox(adaptor.firstChild(node)).left - 2;
-        const scale2 = Math.max(this.options.minScale, this.options.matchFontHeight ? ex / this.font.params.x_height / em2 : 1);
-        return { em: em2, ex, containerWidth, scale: scale2, family };
-      }
-      styleSheet(html2) {
-        this.setDocument(html2);
-        this.styleJson.clear();
-        this.styleJson.addStyles(this.constructor.commonStyles);
-        if ("getStyles" in html2) {
-          for (const styles of html2.getStyles()) {
-            this.styleJson.addStyles(styles);
-          }
-        }
-        this.addWrapperStyles(this.styleJson);
-        this.addFontStyles(this.styleJson);
-        const sheet = this.html("style", { id: "MJX-styles" }, [
-          this.text("\n" + this.styleJson.cssText + "\n")
-        ]);
-        return sheet;
-      }
-      addFontStyles(styles) {
-        styles.addStyles(this.font.styles);
-      }
-      addWrapperStyles(styles) {
-        for (const kind of this.factory.getKinds()) {
-          this.addClassStyles(this.factory.getNodeClass(kind), styles);
-        }
-      }
-      addClassStyles(CLASS, styles) {
-        CLASS.addStyles(styles, this);
-      }
-      insertStyles(_styles) {
-      }
-      setDocument(html2) {
-        if (html2) {
-          this.document = html2;
-          this.adaptor.document = html2.document;
-        }
-      }
-      html(type, def2 = {}, content = [], ns) {
-        return this.adaptor.node(type, def2, content, ns);
-      }
-      text(text) {
-        return this.adaptor.text(text);
-      }
-      fixed(m, n = 3) {
-        if (Math.abs(m) < 6e-4) {
-          return "0";
-        }
-        return m.toFixed(n).replace(/\.?0+$/, "");
-      }
-      measureText(text, variant, font = ["", false, false]) {
-        const node = this.unknownText(text, variant);
-        if (variant === "-explicitFont") {
-          const styles = this.cssFontStyles(font);
-          this.adaptor.setAttributes(node, { style: styles });
-        }
-        return this.measureTextNodeWithCache(node, text, variant, font);
-      }
-      measureTextNodeWithCache(text, chars, variant, font = ["", false, false]) {
-        if (variant === "-explicitFont") {
-          variant = [font[0], font[1] ? "T" : "F", font[2] ? "T" : "F", ""].join("-");
-        }
-        if (!this.unknownCache.has(variant)) {
-          this.unknownCache.set(variant, /* @__PURE__ */ new Map());
-        }
-        const map = this.unknownCache.get(variant);
-        const cached = map.get(chars);
-        if (cached)
-          return cached;
-        const bbox = this.measureTextNode(text);
-        map.set(chars, bbox);
-        return bbox;
-      }
-      cssFontStyles(font, styles = {}) {
-        const [family, italic2, bold2] = font;
-        styles["font-family"] = this.font.getFamily(family);
-        if (italic2)
-          styles["font-style"] = "italic";
-        if (bold2)
-          styles["font-weight"] = "bold";
-        return styles;
-      }
-      getFontData(styles) {
-        if (!styles) {
-          styles = new Styles();
-        }
-        return [
-          this.font.getFamily(styles.get("font-family")),
-          styles.get("font-style") === "italic",
-          styles.get("font-weight") === "bold"
-        ];
-      }
-    };
-    CommonOutputJax.NAME = "Common";
-    CommonOutputJax.OPTIONS = Object.assign(Object.assign({}, AbstractOutputJax.OPTIONS), { scale: 1, minScale: 0.5, mtextInheritFont: false, merrorInheritFont: false, mtextFont: "", merrorFont: "serif", mathmlSpacing: false, skipAttributes: {}, exFactor: 0.5, displayAlign: "center", displayIndent: "0", displayOverflow: "overflow", linebreaks: {
-      inline: true,
-      width: "100%",
-      lineleading: 0.2,
-      LinebreakVisitor: null
-    }, font: "", fontExtensions: [], htmlHDW: "auto", wrapperFactory: null, fontData: null, fontPath: FONTPATH, styleJson: null });
-    CommonOutputJax.commonStyles = {
-      'mjx-container[overflow="scroll"][display]': {
-        overflow: "auto clip",
-        "min-width": "initial !important"
+        const node = parser2.create("token", "mi", def2, c);
+        parser2.Push(node);
       },
-      'mjx-container[overflow="truncate"][display]': {
-        overflow: "hidden clip",
-        "min-width": "initial !important"
-      },
-      "mjx-container[display]": {
-        display: "block",
-        "text-align": "center",
-        "justify-content": "center",
-        margin: ".7em 0",
-        padding: ".3em 2px"
-      },
-      'mjx-container[display][width="full"]': {
-        display: "flex"
-      },
-      'mjx-container[justify="left"]': {
-        "text-align": "left",
-        "justify-content": "left"
-      },
-      'mjx-container[justify="right"]': {
-        "text-align": "right",
-        "justify-content": "right"
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/Tree/WrapperFactory.js
-var AbstractWrapperFactory;
-var init_WrapperFactory = __esm({
-  "node_modules/@mathjax/src/mjs/core/Tree/WrapperFactory.js"() {
-    init_Factory();
-    AbstractWrapperFactory = class extends AbstractFactory {
-      wrap(node, ...args) {
-        return this.create(node.kind, node, ...args);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/output/common/WrapperFactory.js
-var CommonWrapperFactory;
-var init_WrapperFactory2 = __esm({
-  "node_modules/@mathjax/src/mjs/output/common/WrapperFactory.js"() {
-    init_WrapperFactory();
-    CommonWrapperFactory = class extends AbstractWrapperFactory {
-      constructor() {
-        super(...arguments);
-        this.jax = null;
-      }
-      get Wrappers() {
-        return this.node;
-      }
-    };
-    CommonWrapperFactory.defaultNodes = {};
-  }
-});
-// node_modules/@mathjax/src/mjs/core/Tree/Wrapper.js
-var AbstractWrapper;
-var init_Wrapper = __esm({
-  "node_modules/@mathjax/src/mjs/core/Tree/Wrapper.js"() {
-    AbstractWrapper = class {
-      get kind() {
-        return this.node.kind;
-      }
-      constructor(factory, node) {
-        this.factory = factory;
-        this.node = node;
-      }
-      wrap(node) {
-        return this.factory.wrap(node);
-      }
-      walkTree(func, data) {
-        func(this, data);
-        if ("childNodes" in this) {
-          for (const child of this.childNodes) {
-            if (child) {
-              child.walkTree(func, data);
-            }
-          }
-        }
-        return data;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/output/common/Wrapper.js
-function MathMLSpace(script2, nodict, size) {
-  return nodict ? script2 ? SMALLSIZE : MOSPACE : script2 ? size < SMALLSIZE ? 0 : SMALLSIZE : size;
-}
-var SMALLSIZE;
-var MOSPACE;
-var SPACE3;
-var CommonWrapper;
-var init_Wrapper2 = __esm({
-  "node_modules/@mathjax/src/mjs/output/common/Wrapper.js"() {
-    init_Wrapper();
-    init_MmlNode();
-    init_string();
-    init_lengths();
-    init_Styles();
-    init_Options();
-    init_BBox();
-    init_LineBBox();
-    init_FontData();
-    SMALLSIZE = 2 / 18;
-    MOSPACE = 5 / 18;
-    SPACE3 = {
-      [em(0)]: "0",
-      [em(2 / 18)]: "1",
-      [em(3 / 18)]: "2",
-      [em(4 / 18)]: "3",
-      [em(5 / 18)]: "4",
-      [em(6 / 18)]: "5"
-    };
-    CommonWrapper = class _CommonWrapper extends AbstractWrapper {
-      static addStyles(styles, _jax) {
-        styles.addStyles(this.styles);
-      }
-      get jax() {
-        return this.factory.jax;
-      }
-      get adaptor() {
-        return this.factory.jax.adaptor;
-      }
-      get metrics() {
-        return this.factory.jax.math.metrics;
-      }
-      get containerWidth() {
-        return this.parent ? this.parent.containerWidth : this.jax.containerWidth;
-      }
-      get linebreaks() {
-        return this.jax.linebreaks;
-      }
-      get linebreakOptions() {
-        return this.jax.options.linebreaks;
-      }
-      get fixesPWidth() {
-        return !this.node.notParent && !this.node.isToken;
-      }
-      get breakCount() {
-        if (this._breakCount < 0) {
-          const node = this.node;
-          this._breakCount = node.isEmbellished ? this.coreMO().embellishedBreakCount : node.arity < 0 && !node.linebreakContainer && this.childNodes[0].isStack ? this.childNodes[0].breakCount : 0;
-        }
-        return this._breakCount;
-      }
-      breakTop(mrow, _child) {
-        return this.node.linebreakContainer || !this.parent ? mrow : this.parent.breakTop(mrow, this);
-      }
-      constructor(factory, node, parent = null) {
-        super(factory, node);
-        this.parent = null;
-        this.dom = null;
-        this.removedStyles = null;
-        this.styles = null;
-        this.styleData = null;
-        this.variant = "";
-        this.bboxComputed = false;
-        this._breakCount = -1;
-        this.lineBBox = [];
-        this.stretch = NOSTRETCH;
-        this.font = null;
-        this.parent = parent;
-        this.font = factory.jax.font;
-        this.bbox = BBox.zero();
-        this.getStyles();
-        this.getStyleData();
-        this.getVariant();
-        this.getScale();
-        this.getSpace();
-        this.childNodes = node.childNodes.map((child) => {
-          const wrapped = this.wrap(child);
-          if (wrapped.bbox.pwidth && (node.notParent || node.isKind("math"))) {
-            this.bbox.pwidth = BBox.fullWidth;
-          }
-          return wrapped;
-        });
-      }
-      wrap(node, parent = null) {
-        const wrapped = this.factory.wrap(node, parent || this);
-        if (parent) {
-          parent.childNodes.push(wrapped);
-        }
-        this.jax.nodeMap.set(node, wrapped);
-        return wrapped;
-      }
-      getBBox(save = true) {
-        if (this.bboxComputed) {
-          return this.bbox;
-        }
-        const bbox = save ? this.bbox : BBox.zero();
-        this.computeBBox(bbox);
-        this.bboxComputed = save;
-        return bbox;
-      }
-      getOuterBBox(save = true) {
-        var _a2;
-        const bbox = this.getBBox(save);
-        if (!this.styleData)
-          return bbox;
-        const padding2 = this.styleData.padding;
-        const border = ((_a2 = this.styleData.border) === null || _a2 === void 0 ? void 0 : _a2.width) || [0, 0, 0, 0];
-        const margin = this.styleData.margin || [0, 0, 0, 0];
-        const obox = bbox.copy();
-        for (const [, i2, side] of BBox.boxSides) {
-          obox[side] += padding2[i2] + border[i2] + margin[i2];
-        }
-        return obox;
-      }
-      getUnbrokenHD() {
-        const n = this.breakCount + 1;
-        let H2 = 0;
-        let D = 0;
-        for (let i2 = 0; i2 < n; i2++) {
-          const { h, d } = this.getLineBBox(i2);
-          if (h > H2) {
-            H2 = h;
-          }
-          if (d > D) {
-            D = d;
-          }
-        }
-        return [H2, D];
-      }
-      computeBBox(bbox, recompute = false) {
-        bbox.empty();
-        for (const child of this.childNodes) {
-          bbox.append(child.getOuterBBox());
-        }
-        bbox.clean();
-        if (this.fixesPWidth && this.setChildPWidths(recompute)) {
-          this.computeBBox(bbox, true);
-        }
-      }
-      getLineBBox(i2) {
-        if (!this.lineBBox[i2]) {
-          const n = this.breakCount;
-          if (n) {
-            const line = this.embellishedBBox(i2) || this.computeLineBBox(i2);
-            this.lineBBox[i2] = line;
-            if (i2 === 0) {
-              if (!this.node.isKind("mo") && this.node.isEmbellished) {
-                line.originalL = this.getBBox().L;
-              } else {
-                line.L = this.getBBox().L;
-              }
-            }
-            if (i2 === n) {
-              line.R = this.getBBox().R;
-            }
-          } else {
-            const obox = this.getOuterBBox();
-            this.lineBBox[i2] = LineBBox.from(obox, this.linebreakOptions.lineleading);
-          }
-        }
-        return this.lineBBox[i2];
-      }
-      embellishedBBox(i2) {
-        if (!this.node.isEmbellished || this.node.isKind("mo"))
-          return null;
-        const mo = this.coreMO();
-        return mo.moLineBBox(i2, mo.embellishedBreakStyle, this.getOuterBBox());
-      }
-      computeLineBBox(i2) {
-        return this.getChildLineBBox(this.childNodes[0], i2);
-      }
-      getBreakNode(bbox) {
-        var _a2, _b2;
-        if (!bbox.start) {
-          return [this, null];
-        }
-        const [i2, j] = bbox.start;
-        if (this.node.isEmbellished) {
-          return [this, this.coreMO()];
-        }
-        const childNodes = ((_b2 = (_a2 = this.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.node) === null || _b2 === void 0 ? void 0 : _b2.isInferred) || this.node.isKind("semantics") ? this.childNodes[0].childNodes : this.childNodes;
-        if (this.node.isToken || !childNodes[i2]) {
-          return [this, null];
-        }
-        return childNodes[i2].getBreakNode(childNodes[i2].getLineBBox(j));
-      }
-      getChildLineBBox(child, i2) {
-        const n = this.breakCount;
-        let cbox = child.getLineBBox(i2);
-        if (this.styleData || this.bbox.L || this.bbox.R) {
-          cbox = cbox.copy();
-        }
-        this.addMiddleBorders(cbox);
-        if (i2 === 0) {
-          cbox.L += this.bbox.L;
-          this.addLeftBorders(cbox);
-        } else if (i2 === n) {
-          cbox.R += this.bbox.R;
-          this.addRightBorders(cbox);
-        }
-        return cbox;
-      }
-      sideStyleSize(n) {
-        var _a2;
-        const border = this.styleData.border;
-        const padding2 = this.styleData.padding;
-        const margin = this.styleData.margin;
-        return (((_a2 = border === null || border === void 0 ? void 0 : border.width) === null || _a2 === void 0 ? void 0 : _a2[n]) || 0) + ((padding2 === null || padding2 === void 0 ? void 0 : padding2[n]) || 0) + ((margin === null || margin === void 0 ? void 0 : margin[n]) || 0);
-      }
-      addLeftBorders(bbox) {
-        if (!this.styleData)
-          return;
-        bbox.w += this.sideStyleSize(3);
-      }
-      addMiddleBorders(bbox) {
-        if (!this.styleData)
-          return;
-        bbox.h += this.sideStyleSize(0);
-        bbox.d += this.sideStyleSize(2);
-      }
-      addRightBorders(bbox) {
-        if (!this.styleData)
-          return;
-        bbox.w += this.sideStyleSize(1);
-      }
-      setChildPWidths(recompute, w = null, clear = true) {
-        if (recompute) {
+      digit(parser2, _c) {
+        const pattern = parser2.configuration.options["numberPattern"];
+        const n = parser2.string.slice(parser2.i - 1).match(pattern);
+        if (!n) {
           return false;
         }
-        if (clear) {
-          this.bbox.pwidth = "";
+        const def2 = ParseUtil.getFontDef(parser2);
+        const mml = parser2.create("token", "mn", def2, n[0].replace(/[{}]/g, ""));
+        parser2.i += n[0].length - 1;
+        parser2.Push(mml);
+        return true;
+      },
+      controlSequence(parser2, _c) {
+        const name = parser2.GetCS();
+        parser2.parse(HandlerType.MACRO, [parser2, name]);
+      },
+      lcGreek(parser2, mchar) {
+        const def2 = {
+          mathvariant: parser2.configuration.mathStyle(mchar.char) || MATHVARIANT2.ITALIC
+        };
+        const node = parser2.create("token", "mi", def2, mchar.char);
+        parser2.Push(node);
+      },
+      ucGreek(parser2, mchar) {
+        const def2 = {
+          mathvariant: parser2.stack.env["font"] || parser2.configuration.mathStyle(mchar.char, true) || MATHVARIANT2.NORMAL
+        };
+        const node = parser2.create("token", "mi", def2, mchar.char);
+        parser2.Push(node);
+      },
+      mathchar0mi(parser2, mchar) {
+        const def2 = mchar.attributes || { mathvariant: MATHVARIANT2.ITALIC };
+        const node = parser2.create("token", "mi", def2, mchar.char);
+        parser2.Push(node);
+      },
+      mathchar0mo(parser2, mchar) {
+        const def2 = mchar.attributes || {};
+        def2["stretchy"] = false;
+        const node = parser2.create("token", "mo", def2, mchar.char);
+        NodeUtil_default.setProperty(node, "fixStretchy", true);
+        parser2.configuration.addNode("fixStretchy", node);
+        parser2.Push(node);
+      },
+      mathchar7(parser2, mchar) {
+        const def2 = mchar.attributes || { mathvariant: MATHVARIANT2.NORMAL };
+        if (parser2.stack.env["font"]) {
+          def2["mathvariant"] = parser2.stack.env["font"];
         }
-        let changed = false;
-        for (const child of this.childNodes) {
-          const cbox = child.getBBox();
-          if (cbox.pwidth && child.setChildPWidths(recompute, w === null ? cbox.w : w, clear)) {
-            changed = true;
+        const node = parser2.create("token", "mi", def2, mchar.char);
+        parser2.Push(node);
+      },
+      delimiter(parser2, delim) {
+        let def2 = delim.attributes || {};
+        def2 = Object.assign({ fence: false, stretchy: false }, def2);
+        const node = parser2.create("token", "mo", def2, delim.char);
+        if (delim.char === "|") {
+          node.setProperty("keep-attrs", "stretchy");
+        }
+        parser2.Push(node);
+      },
+      environment(parser2, env, func, args) {
+        const mml = parser2.itemFactory.create("begin").setProperty("name", env);
+        parser2.Push(func(parser2, mml, ...args.slice(1)));
+      }
+    };
+    ParseMethods_default = ParseMethods;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/base/BaseMappings.js
+var THICKMATHSPACE;
+var VARIANT;
+var init_BaseMappings = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/base/BaseMappings.js"() {
+    init_TokenMap();
+    init_TexConstants();
+    init_BaseMethods();
+    init_ParseMethods();
+    init_ParseUtil();
+    init_MmlNode();
+    init_lengths();
+    THICKMATHSPACE = em(MATHSPACE.thickmathspace);
+    VARIANT = TexConstant.Variant;
+    new RegExpMap("letter", ParseMethods_default.variable, /[a-z]/i);
+    new RegExpMap("digit", ParseMethods_default.digit, /[0-9.,]/);
+    new RegExpMap("command", ParseMethods_default.controlSequence, /^\\/);
+    new MacroMap("special", {
+      "{": BaseMethods_default.Open,
+      "}": BaseMethods_default.Close,
+      "~": BaseMethods_default.Tilde,
+      "^": BaseMethods_default.Superscript,
+      _: BaseMethods_default.Subscript,
+      "|": BaseMethods_default.Bar,
+      " ": BaseMethods_default.Space,
+      "	": BaseMethods_default.Space,
+      "\r": BaseMethods_default.Space,
+      "\n": BaseMethods_default.Space,
+      "'": BaseMethods_default.Prime,
+      "%": BaseMethods_default.Comment,
+      "&": BaseMethods_default.Entry,
+      "#": BaseMethods_default.Hash,
+      "\u00A0": BaseMethods_default.Space,
+      "’": BaseMethods_default.Prime
+    });
+    new CharacterMap("lcGreek", ParseMethods_default.lcGreek, JSON.parse(`{
+ "alpha":"α","beta":"β","gamma":"γ","delta":"δ","epsilon":"ϵ","zeta":"ζ","eta":"η","theta":"θ","iota":"ι","kappa":"κ","lambda":"λ","mu":"μ","nu":"ν","xi":"ξ","omicron":"ο","pi":"π","rho":"ρ",
+ "sigma":"σ","tau":"τ","upsilon":"υ","phi":"ϕ","chi":"χ","psi":"ψ","omega":"ω","varepsilon":"ε","vartheta":"ϑ","varpi":"ϖ","varrho":"ϱ","varsigma":"ς","varphi":"φ"
+}`));
+    new CharacterMap("ucGreek", ParseMethods_default.ucGreek, {
+      Gamma: "Γ",
+      Delta: "Δ",
+      Theta: "Θ",
+      Lambda: "Λ",
+      Xi: "Ξ",
+      Pi: "Π",
+      Sigma: "Σ",
+      Upsilon: "Υ",
+      Phi: "Φ",
+      Psi: "Ψ",
+      Omega: "Ω"
+    });
+    new CharacterMap("mathchar0mi", ParseMethods_default.mathchar0mi, {
+      AA: "Å",
+      S: ["§", { mathvariant: VARIANT.NORMAL }],
+      aleph: ["ℵ", { mathvariant: VARIANT.NORMAL }],
+      hbar: ["ℏ", { variantForm: true }],
+      imath: "ı",
+      jmath: "ȷ",
+      ell: "ℓ",
+      wp: ["℘", { mathvariant: VARIANT.NORMAL }],
+      Re: ["ℜ", { mathvariant: VARIANT.NORMAL }],
+      Im: ["ℑ", { mathvariant: VARIANT.NORMAL }],
+      partial: ["∂", { mathvariant: VARIANT.ITALIC }],
+      infty: ["∞", { mathvariant: VARIANT.NORMAL }],
+      prime: ["′", { variantForm: true }],
+      emptyset: ["∅", { mathvariant: VARIANT.NORMAL }],
+      nabla: ["∇", { mathvariant: VARIANT.NORMAL }],
+      top: ["⊤", { mathvariant: VARIANT.NORMAL }],
+      bot: ["⊥", { mathvariant: VARIANT.NORMAL }],
+      angle: ["∠", { mathvariant: VARIANT.NORMAL }],
+      triangle: ["△", { mathvariant: VARIANT.NORMAL }],
+      backslash: ["\\", { mathvariant: VARIANT.NORMAL }],
+      forall: ["∀", { mathvariant: VARIANT.NORMAL }],
+      exists: ["∃", { mathvariant: VARIANT.NORMAL }],
+      neg: ["¬", { mathvariant: VARIANT.NORMAL }],
+      lnot: ["¬", { mathvariant: VARIANT.NORMAL }],
+      flat: ["♭", { mathvariant: VARIANT.NORMAL }],
+      natural: ["♮", { mathvariant: VARIANT.NORMAL }],
+      sharp: ["♯", { mathvariant: VARIANT.NORMAL }],
+      clubsuit: ["♣", { mathvariant: VARIANT.NORMAL }],
+      diamondsuit: ["♢", { mathvariant: VARIANT.NORMAL }],
+      heartsuit: ["♡", { mathvariant: VARIANT.NORMAL }],
+      spadesuit: ["♠", { mathvariant: VARIANT.NORMAL }]
+    });
+    new CharacterMap("mathchar0mo", ParseMethods_default.mathchar0mo, {
+      surd: ["√", { symmetric: true }],
+      coprod: ["∐", { movesupsub: true }],
+      bigvee: ["⋁", { movesupsub: true }],
+      bigwedge: ["⋀", { movesupsub: true }],
+      biguplus: ["⨄", { movesupsub: true }],
+      bigcap: ["⋂", { movesupsub: true }],
+      bigcup: ["⋃", { movesupsub: true }],
+      int: "∫",
+      intop: ["∫", { movesupsub: true, movablelimits: true }],
+      iint: "∬",
+      iiint: "∭",
+      prod: ["∏", { movesupsub: true }],
+      sum: ["∑", { movesupsub: true }],
+      bigotimes: ["⨂", { movesupsub: true }],
+      bigoplus: ["⨁", { movesupsub: true }],
+      bigodot: ["⨀", { movesupsub: true }],
+      oint: "∮",
+      ointop: ["∮", { movesupsub: true, movablelimits: true }],
+      oiint: "∯",
+      oiiint: "∰",
+      bigsqcup: ["⨆", { movesupsub: true }],
+      smallint: ["∫", { largeop: false }],
+      triangleleft: "◃",
+      triangleright: "▹",
+      bigtriangleup: "△",
+      bigtriangledown: "▽",
+      wedge: "∧",
+      land: "∧",
+      vee: "∨",
+      lor: "∨",
+      cap: "∩",
+      cup: "∪",
+      ddagger: "‡",
+      dagger: "†",
+      sqcap: "⊓",
+      sqcup: "⊔",
+      uplus: "⊎",
+      amalg: "⨿",
+      diamond: "⋄",
+      bullet: "∙",
+      wr: "≀",
+      div: "÷",
+      odot: ["⊙", { largeop: false }],
+      oslash: ["⊘", { largeop: false }],
+      otimes: ["⊗", { largeop: false }],
+      ominus: ["⊖", { largeop: false }],
+      oplus: ["⊕", { largeop: false }],
+      mp: "∓",
+      pm: "±",
+      circ: "∘",
+      bigcirc: "◯",
+      setminus: "∖",
+      cdot: "⋅",
+      ast: "∗",
+      times: "×",
+      star: "⋆",
+      propto: "∝",
+      sqsubseteq: "⊑",
+      sqsupseteq: "⊒",
+      parallel: "∥",
+      mid: "∣",
+      dashv: "⊣",
+      vdash: "⊢",
+      leq: "≤",
+      le: "≤",
+      geq: "≥",
+      ge: "≥",
+      lt: "<",
+      gt: ">",
+      succ: "≻",
+      prec: "≺",
+      approx: "≈",
+      succeq: "⪰",
+      preceq: "⪯",
+      supset: "⊃",
+      subset: "⊂",
+      supseteq: "⊇",
+      subseteq: "⊆",
+      in: "∈",
+      ni: "∋",
+      notin: "∉",
+      owns: "∋",
+      gg: "≫",
+      ll: "≪",
+      sim: "∼",
+      simeq: "≃",
+      perp: "⟂",
+      equiv: "≡",
+      asymp: "≍",
+      smile: "⌣",
+      frown: "⌢",
+      ne: "≠",
+      neq: "≠",
+      cong: "≅",
+      doteq: "≐",
+      bowtie: "⋈",
+      models: "⊧",
+      notChar: "⧸",
+      Leftrightarrow: "⇔",
+      Leftarrow: "⇐",
+      Rightarrow: "⇒",
+      leftrightarrow: "↔",
+      leftarrow: "←",
+      gets: "←",
+      rightarrow: "→",
+      to: ["→", { accent: false }],
+      mapsto: "↦",
+      leftharpoonup: "↼",
+      leftharpoondown: "↽",
+      rightharpoonup: "⇀",
+      rightharpoondown: "⇁",
+      nearrow: "↗",
+      searrow: "↘",
+      nwarrow: "↖",
+      swarrow: "↙",
+      rightleftharpoons: "⇌",
+      hookrightarrow: "↪",
+      hookleftarrow: "↩",
+      longleftarrow: "⟵",
+      Longleftarrow: "⟸",
+      longrightarrow: "⟶",
+      Longrightarrow: "⟹",
+      Longleftrightarrow: "⟺",
+      longleftrightarrow: "⟷",
+      longmapsto: "⟼",
+      ldots: "…",
+      cdots: "⋯",
+      vdots: "⋮",
+      ddots: "⋱",
+      iddots: "⋰",
+      dotsc: "…",
+      dotsb: "⋯",
+      dotsm: "⋯",
+      dotsi: "⋯",
+      dotso: "…",
+      ldotp: [".", { texClass: TEXCLASS.PUNCT }],
+      cdotp: ["⋅", { texClass: TEXCLASS.PUNCT }],
+      colon: [":", { texClass: TEXCLASS.PUNCT }]
+    });
+    new CharacterMap("mathchar7", ParseMethods_default.mathchar7, {
+      _: "_",
+      "#": "#",
+      $: "$",
+      "%": "%",
+      "&": "&",
+      And: "&"
+    });
+    new DelimiterMap("delimiter", ParseMethods_default.delimiter, {
+      "(": "(",
+      ")": ")",
+      "[": "[",
+      "]": "]",
+      "<": "⟨",
+      ">": "⟩",
+      "\\lt": "⟨",
+      "\\gt": "⟩",
+      "/": "/",
+      "|": ["|", { texClass: TEXCLASS.ORD }],
+      ".": "",
+      "\\lmoustache": "⎰",
+      "\\rmoustache": "⎱",
+      "\\lgroup": "⟮",
+      "\\rgroup": "⟯",
+      "\\arrowvert": "⏐",
+      "\\Arrowvert": "‖",
+      "\\bracevert": "⎪",
+      "\\Vert": ["‖", { texClass: TEXCLASS.ORD }],
+      "\\|": ["‖", { texClass: TEXCLASS.ORD }],
+      "\\vert": ["|", { texClass: TEXCLASS.ORD }],
+      "\\uparrow": "↑",
+      "\\downarrow": "↓",
+      "\\updownarrow": "↕",
+      "\\Uparrow": "⇑",
+      "\\Downarrow": "⇓",
+      "\\Updownarrow": "⇕",
+      "\\backslash": "\\",
+      "\\rangle": "⟩",
+      "\\langle": "⟨",
+      "\\rbrace": "}",
+      "\\lbrace": "{",
+      "\\}": "}",
+      "\\{": "{",
+      "\\rceil": "⌉",
+      "\\lceil": "⌈",
+      "\\rfloor": "⌋",
+      "\\lfloor": "⌊",
+      "\\lbrack": "[",
+      "\\rbrack": "]"
+    });
+    new CommandMap("macros", {
+      displaystyle: [BaseMethods_default.SetStyle, "D", true, 0],
+      textstyle: [BaseMethods_default.SetStyle, "T", false, 0],
+      scriptstyle: [BaseMethods_default.SetStyle, "S", false, 1],
+      scriptscriptstyle: [BaseMethods_default.SetStyle, "SS", false, 2],
+      rm: [BaseMethods_default.SetFont, VARIANT.NORMAL],
+      mit: [BaseMethods_default.SetFont, VARIANT.ITALIC],
+      oldstyle: [BaseMethods_default.SetFont, VARIANT.OLDSTYLE],
+      cal: [BaseMethods_default.SetFont, VARIANT.CALLIGRAPHIC],
+      it: [BaseMethods_default.SetFont, VARIANT.MATHITALIC],
+      bf: [BaseMethods_default.SetFont, VARIANT.BOLD],
+      sf: [BaseMethods_default.SetFont, VARIANT.SANSSERIF],
+      tt: [BaseMethods_default.SetFont, VARIANT.MONOSPACE],
+      frak: [BaseMethods_default.MathFont, VARIANT.FRAKTUR],
+      Bbb: [BaseMethods_default.MathFont, VARIANT.DOUBLESTRUCK],
+      mathrm: [BaseMethods_default.MathFont, VARIANT.NORMAL],
+      mathup: [BaseMethods_default.MathFont, VARIANT.NORMAL],
+      mathnormal: [BaseMethods_default.MathFont, ""],
+      mathbf: [BaseMethods_default.MathFont, VARIANT.BOLD],
+      mathbfup: [BaseMethods_default.MathFont, VARIANT.BOLD],
+      mathit: [BaseMethods_default.MathFont, VARIANT.MATHITALIC],
+      mathbfit: [BaseMethods_default.MathFont, VARIANT.BOLDITALIC],
+      mathbb: [BaseMethods_default.MathFont, VARIANT.DOUBLESTRUCK],
+      mathfrak: [BaseMethods_default.MathFont, VARIANT.FRAKTUR],
+      mathbffrak: [BaseMethods_default.MathFont, VARIANT.BOLDFRAKTUR],
+      mathscr: [BaseMethods_default.MathFont, VARIANT.SCRIPT],
+      mathbfscr: [BaseMethods_default.MathFont, VARIANT.BOLDSCRIPT],
+      mathsf: [BaseMethods_default.MathFont, VARIANT.SANSSERIF],
+      mathsfup: [BaseMethods_default.MathFont, VARIANT.SANSSERIF],
+      mathbfsf: [BaseMethods_default.MathFont, VARIANT.BOLDSANSSERIF],
+      mathbfsfup: [BaseMethods_default.MathFont, VARIANT.BOLDSANSSERIF],
+      mathsfit: [BaseMethods_default.MathFont, VARIANT.SANSSERIFITALIC],
+      mathbfsfit: [BaseMethods_default.MathFont, VARIANT.SANSSERIFBOLDITALIC],
+      mathtt: [BaseMethods_default.MathFont, VARIANT.MONOSPACE],
+      mathcal: [BaseMethods_default.MathFont, VARIANT.CALLIGRAPHIC],
+      mathbfcal: [BaseMethods_default.MathFont, VARIANT.BOLDCALLIGRAPHIC],
+      symrm: [BaseMethods_default.MathFont, VARIANT.NORMAL],
+      symup: [BaseMethods_default.MathFont, VARIANT.NORMAL],
+      symnormal: [BaseMethods_default.MathFont, ""],
+      symbf: [BaseMethods_default.MathFont, VARIANT.BOLD, VARIANT.BOLDITALIC],
+      symbfup: [BaseMethods_default.MathFont, VARIANT.BOLD],
+      symit: [BaseMethods_default.MathFont, VARIANT.ITALIC],
+      symbfit: [BaseMethods_default.MathFont, VARIANT.BOLDITALIC],
+      symbb: [BaseMethods_default.MathFont, VARIANT.DOUBLESTRUCK],
+      symfrak: [BaseMethods_default.MathFont, VARIANT.FRAKTUR],
+      symbffrak: [BaseMethods_default.MathFont, VARIANT.BOLDFRAKTUR],
+      symscr: [BaseMethods_default.MathFont, VARIANT.SCRIPT],
+      symbfscr: [BaseMethods_default.MathFont, VARIANT.BOLDSCRIPT],
+      symsf: [BaseMethods_default.MathFont, VARIANT.SANSSERIF, VARIANT.SANSSERIFITALIC],
+      symsfup: [BaseMethods_default.MathFont, VARIANT.SANSSERIF],
+      symbfsf: [BaseMethods_default.MathFont, VARIANT.BOLDSANSSERIF],
+      symbfsfup: [BaseMethods_default.MathFont, VARIANT.BOLDSANSSERIF],
+      symsfit: [BaseMethods_default.MathFont, VARIANT.SANSSERIFITALIC],
+      symbfsfit: [BaseMethods_default.MathFont, VARIANT.SANSSERIFBOLDITALIC],
+      symtt: [BaseMethods_default.MathFont, VARIANT.MONOSPACE],
+      symcal: [BaseMethods_default.MathFont, VARIANT.CALLIGRAPHIC],
+      symbfcal: [BaseMethods_default.MathFont, VARIANT.BOLDCALLIGRAPHIC],
+      textrm: [BaseMethods_default.HBox, null, VARIANT.NORMAL],
+      textup: [BaseMethods_default.HBox, null, VARIANT.NORMAL],
+      textnormal: [BaseMethods_default.HBox],
+      textit: [BaseMethods_default.HBox, null, VARIANT.ITALIC],
+      textbf: [BaseMethods_default.HBox, null, VARIANT.BOLD],
+      textsf: [BaseMethods_default.HBox, null, VARIANT.SANSSERIF],
+      texttt: [BaseMethods_default.HBox, null, VARIANT.MONOSPACE],
+      Tiny: [BaseMethods_default.SetSize, 0.5],
+      tiny: [BaseMethods_default.SetSize, 0.6],
+      scriptsize: [BaseMethods_default.SetSize, 0.7],
+      SMALL: [BaseMethods_default.SetSize, 0.7],
+      Small: [BaseMethods_default.SetSize, 0.8],
+      footnotesize: [BaseMethods_default.SetSize, 0.8],
+      small: [BaseMethods_default.SetSize, 0.9],
+      normalsize: [BaseMethods_default.SetSize, 1],
+      large: [BaseMethods_default.SetSize, 1.095],
+      Large: [BaseMethods_default.SetSize, 1.2],
+      LARGE: [BaseMethods_default.SetSize, 1.44],
+      huge: [BaseMethods_default.SetSize, 1.728],
+      Huge: [BaseMethods_default.SetSize, 2.074],
+      HUGE: [BaseMethods_default.SetSize, 2.49],
+      arcsin: BaseMethods_default.NamedFn,
+      arccos: BaseMethods_default.NamedFn,
+      arctan: BaseMethods_default.NamedFn,
+      arg: BaseMethods_default.NamedFn,
+      cos: BaseMethods_default.NamedFn,
+      cosh: BaseMethods_default.NamedFn,
+      cot: BaseMethods_default.NamedFn,
+      coth: BaseMethods_default.NamedFn,
+      csc: BaseMethods_default.NamedFn,
+      deg: BaseMethods_default.NamedFn,
+      det: BaseMethods_default.NamedOp,
+      dim: BaseMethods_default.NamedFn,
+      exp: BaseMethods_default.NamedFn,
+      gcd: BaseMethods_default.NamedOp,
+      hom: BaseMethods_default.NamedFn,
+      inf: BaseMethods_default.NamedOp,
+      ker: BaseMethods_default.NamedFn,
+      lg: BaseMethods_default.NamedFn,
+      lim: BaseMethods_default.NamedOp,
+      liminf: [BaseMethods_default.NamedOp, "lim&thinsp;inf"],
+      limsup: [BaseMethods_default.NamedOp, "lim&thinsp;sup"],
+      ln: BaseMethods_default.NamedFn,
+      log: BaseMethods_default.NamedFn,
+      max: BaseMethods_default.NamedOp,
+      min: BaseMethods_default.NamedOp,
+      Pr: BaseMethods_default.NamedOp,
+      sec: BaseMethods_default.NamedFn,
+      sin: BaseMethods_default.NamedFn,
+      sinh: BaseMethods_default.NamedFn,
+      sup: BaseMethods_default.NamedOp,
+      tan: BaseMethods_default.NamedFn,
+      tanh: BaseMethods_default.NamedFn,
+      limits: [BaseMethods_default.Limits, true],
+      nolimits: [BaseMethods_default.Limits, false],
+      overline: [BaseMethods_default.UnderOver, "2015"],
+      underline: [BaseMethods_default.UnderOver, "2015"],
+      overbrace: [BaseMethods_default.UnderOver, "23DE", true],
+      underbrace: [BaseMethods_default.UnderOver, "23DF", true],
+      overparen: [BaseMethods_default.UnderOver, "23DC"],
+      underparen: [BaseMethods_default.UnderOver, "23DD"],
+      overrightarrow: [BaseMethods_default.UnderOver, "2192"],
+      underrightarrow: [BaseMethods_default.UnderOver, "2192"],
+      overleftarrow: [BaseMethods_default.UnderOver, "2190"],
+      underleftarrow: [BaseMethods_default.UnderOver, "2190"],
+      overleftrightarrow: [BaseMethods_default.UnderOver, "2194"],
+      underleftrightarrow: [BaseMethods_default.UnderOver, "2194"],
+      overset: BaseMethods_default.Overset,
+      underset: BaseMethods_default.Underset,
+      overunderset: BaseMethods_default.Overunderset,
+      stackrel: [BaseMethods_default.Macro, "\\mathrel{\\mathop{#2}\\limits^{#1}}", 2],
+      stackbin: [BaseMethods_default.Macro, "\\mathbin{\\mathop{#2}\\limits^{#1}}", 2],
+      over: BaseMethods_default.Over,
+      overwithdelims: BaseMethods_default.Over,
+      atop: BaseMethods_default.Over,
+      atopwithdelims: BaseMethods_default.Over,
+      above: BaseMethods_default.Over,
+      abovewithdelims: BaseMethods_default.Over,
+      brace: [BaseMethods_default.Over, "{", "}"],
+      brack: [BaseMethods_default.Over, "[", "]"],
+      choose: [BaseMethods_default.Over, "(", ")"],
+      frac: BaseMethods_default.Frac,
+      sqrt: BaseMethods_default.Sqrt,
+      root: BaseMethods_default.Root,
+      uproot: [BaseMethods_default.MoveRoot, "upRoot"],
+      leftroot: [BaseMethods_default.MoveRoot, "leftRoot"],
+      left: BaseMethods_default.LeftRight,
+      right: BaseMethods_default.LeftRight,
+      middle: BaseMethods_default.LeftRight,
+      llap: BaseMethods_default.Lap,
+      rlap: BaseMethods_default.Lap,
+      raise: BaseMethods_default.RaiseLower,
+      lower: BaseMethods_default.RaiseLower,
+      moveleft: BaseMethods_default.MoveLeftRight,
+      moveright: BaseMethods_default.MoveLeftRight,
+      ",": [BaseMethods_default.Spacer, MATHSPACE.thinmathspace],
+      ":": [BaseMethods_default.Spacer, MATHSPACE.mediummathspace],
+      ">": [BaseMethods_default.Spacer, MATHSPACE.mediummathspace],
+      ";": [BaseMethods_default.Spacer, MATHSPACE.thickmathspace],
+      "!": [BaseMethods_default.Spacer, MATHSPACE.negativethinmathspace],
+      enspace: [BaseMethods_default.Spacer, 0.5],
+      quad: [BaseMethods_default.Spacer, 1],
+      qquad: [BaseMethods_default.Spacer, 2],
+      thinspace: [BaseMethods_default.Spacer, MATHSPACE.thinmathspace],
+      negthinspace: [BaseMethods_default.Spacer, MATHSPACE.negativethinmathspace],
+      "*": BaseMethods_default.DiscretionaryTimes,
+      allowbreak: BaseMethods_default.AllowBreak,
+      goodbreak: [BaseMethods_default.Linebreak, TexConstant.LineBreak.GOODBREAK],
+      badbreak: [BaseMethods_default.Linebreak, TexConstant.LineBreak.BADBREAK],
+      nobreak: [BaseMethods_default.Linebreak, TexConstant.LineBreak.NOBREAK],
+      break: BaseMethods_default.Break,
+      hskip: BaseMethods_default.Hskip,
+      hspace: BaseMethods_default.Hskip,
+      kern: [BaseMethods_default.Hskip, true],
+      mskip: BaseMethods_default.Hskip,
+      mspace: BaseMethods_default.Hskip,
+      mkern: [BaseMethods_default.Hskip, true],
+      rule: BaseMethods_default.rule,
+      Rule: [BaseMethods_default.Rule],
+      Space: [BaseMethods_default.Rule, "blank"],
+      nonscript: BaseMethods_default.Nonscript,
+      big: [BaseMethods_default.MakeBig, TEXCLASS.ORD, 0.85],
+      Big: [BaseMethods_default.MakeBig, TEXCLASS.ORD, 1.15],
+      bigg: [BaseMethods_default.MakeBig, TEXCLASS.ORD, 1.45],
+      Bigg: [BaseMethods_default.MakeBig, TEXCLASS.ORD, 1.75],
+      bigl: [BaseMethods_default.MakeBig, TEXCLASS.OPEN, 0.85],
+      Bigl: [BaseMethods_default.MakeBig, TEXCLASS.OPEN, 1.15],
+      biggl: [BaseMethods_default.MakeBig, TEXCLASS.OPEN, 1.45],
+      Biggl: [BaseMethods_default.MakeBig, TEXCLASS.OPEN, 1.75],
+      bigr: [BaseMethods_default.MakeBig, TEXCLASS.CLOSE, 0.85],
+      Bigr: [BaseMethods_default.MakeBig, TEXCLASS.CLOSE, 1.15],
+      biggr: [BaseMethods_default.MakeBig, TEXCLASS.CLOSE, 1.45],
+      Biggr: [BaseMethods_default.MakeBig, TEXCLASS.CLOSE, 1.75],
+      bigm: [BaseMethods_default.MakeBig, TEXCLASS.REL, 0.85],
+      Bigm: [BaseMethods_default.MakeBig, TEXCLASS.REL, 1.15],
+      biggm: [BaseMethods_default.MakeBig, TEXCLASS.REL, 1.45],
+      Biggm: [BaseMethods_default.MakeBig, TEXCLASS.REL, 1.75],
+      mathord: [BaseMethods_default.TeXAtom, TEXCLASS.ORD],
+      mathop: [BaseMethods_default.TeXAtom, TEXCLASS.OP],
+      mathopen: [BaseMethods_default.TeXAtom, TEXCLASS.OPEN],
+      mathclose: [BaseMethods_default.TeXAtom, TEXCLASS.CLOSE],
+      mathbin: [BaseMethods_default.TeXAtom, TEXCLASS.BIN],
+      mathrel: [BaseMethods_default.TeXAtom, TEXCLASS.REL],
+      mathpunct: [BaseMethods_default.TeXAtom, TEXCLASS.PUNCT],
+      mathinner: [BaseMethods_default.TeXAtom, TEXCLASS.INNER],
+      vtop: [BaseMethods_default.VBox, "top"],
+      vcenter: [BaseMethods_default.VBox, "center"],
+      vbox: [BaseMethods_default.VBox, "bottom"],
+      hsize: BaseMethods_default.Hsize,
+      parbox: BaseMethods_default.ParBox,
+      breakAlign: BaseMethods_default.BreakAlign,
+      buildrel: BaseMethods_default.BuildRel,
+      hbox: [BaseMethods_default.HBox, 0],
+      text: BaseMethods_default.HBox,
+      mbox: [BaseMethods_default.HBox, 0],
+      fbox: BaseMethods_default.FBox,
+      boxed: [BaseMethods_default.Macro, "\\fbox{$\\displaystyle{#1}$}", 1],
+      framebox: BaseMethods_default.FrameBox,
+      makebox: BaseMethods_default.MakeBox,
+      strut: BaseMethods_default.Strut,
+      mathstrut: [BaseMethods_default.Macro, "\\vphantom{(}"],
+      phantom: BaseMethods_default.Phantom,
+      vphantom: [BaseMethods_default.Phantom, 1, 0],
+      hphantom: [BaseMethods_default.Phantom, 0, 1],
+      smash: BaseMethods_default.Smash,
+      acute: [BaseMethods_default.Accent, "00B4"],
+      grave: [BaseMethods_default.Accent, "0060"],
+      ddot: [BaseMethods_default.Accent, "00A8"],
+      dddot: [BaseMethods_default.Accent, "20DB"],
+      ddddot: [BaseMethods_default.Accent, "20DC"],
+      tilde: [BaseMethods_default.Accent, "007E"],
+      bar: [BaseMethods_default.Accent, "00AF"],
+      breve: [BaseMethods_default.Accent, "02D8"],
+      check: [BaseMethods_default.Accent, "02C7"],
+      hat: [BaseMethods_default.Accent, "005E"],
+      vec: [BaseMethods_default.Accent, "2192", false],
+      dot: [BaseMethods_default.Accent, "02D9"],
+      widetilde: [BaseMethods_default.Accent, "007E", true],
+      widehat: [BaseMethods_default.Accent, "005E", true],
+      matrix: BaseMethods_default.Matrix,
+      array: BaseMethods_default.Matrix,
+      pmatrix: [BaseMethods_default.Matrix, "(", ")"],
+      cases: [BaseMethods_default.Matrix, "{", "", "left left", null, ".2em", null, true],
+      eqalign: [
+        BaseMethods_default.Matrix,
+        null,
+        null,
+        "right left",
+        THICKMATHSPACE,
+        ".5em",
+        "D"
+      ],
+      displaylines: [BaseMethods_default.Matrix, null, null, "center", null, ".5em", "D"],
+      cr: BaseMethods_default.Cr,
+      "\\": BaseMethods_default.CrLaTeX,
+      newline: [BaseMethods_default.CrLaTeX, true],
+      hline: BaseMethods_default.HLine,
+      hdashline: [BaseMethods_default.HLine, "dashed"],
+      eqalignno: [
+        BaseMethods_default.Matrix,
+        null,
+        null,
+        "right left",
+        THICKMATHSPACE,
+        ".5em",
+        "D",
+        null,
+        "right"
+      ],
+      leqalignno: [
+        BaseMethods_default.Matrix,
+        null,
+        null,
+        "right left",
+        THICKMATHSPACE,
+        ".5em",
+        "D",
+        null,
+        "left"
+      ],
+      hfill: BaseMethods_default.HFill,
+      hfil: BaseMethods_default.HFill,
+      hfilll: BaseMethods_default.HFill,
+      bmod: [
+        BaseMethods_default.Macro,
+        `\\mmlToken{mo}[lspace="${THICKMATHSPACE}" rspace="${THICKMATHSPACE}"]{mod}`
+      ],
+      pmod: [BaseMethods_default.Macro, "\\pod{\\mmlToken{mi}{mod}\\kern 6mu #1}", 1],
+      mod: [
+        BaseMethods_default.Macro,
+        "\\mathchoice{\\kern18mu}{\\kern12mu}{\\kern12mu}{\\kern12mu}\\mmlToken{mi}{mod}\\,\\,#1",
+        1
+      ],
+      pod: [
+        BaseMethods_default.Macro,
+        "\\mathchoice{\\kern18mu}{\\kern8mu}{\\kern8mu}{\\kern8mu}(#1)",
+        1
+      ],
+      iff: [BaseMethods_default.Macro, "\\;\\Longleftrightarrow\\;"],
+      skew: [BaseMethods_default.Macro, "{{#2{#3\\mkern#1mu}\\mkern-#1mu}{}}", 3],
+      pmb: [BaseMethods_default.Macro, "\\rlap{#1}\\kern1px{#1}", 1],
+      TeX: [BaseMethods_default.Macro, "T\\kern-.14em\\lower.5ex{E}\\kern-.115em X"],
+      LaTeX: [
+        BaseMethods_default.Macro,
+        "L\\kern-.325em\\raise.21em{\\scriptstyle{A}}\\kern-.17em\\TeX"
+      ],
+      not: BaseMethods_default.Not,
+      dots: BaseMethods_default.Dots,
+      space: BaseMethods_default.Tilde,
+      "\u00A0": BaseMethods_default.Tilde,
+      " ": BaseMethods_default.Tilde,
+      begin: BaseMethods_default.BeginEnd,
+      end: BaseMethods_default.BeginEnd,
+      label: BaseMethods_default.HandleLabel,
+      ref: BaseMethods_default.HandleRef,
+      nonumber: BaseMethods_default.HandleNoTag,
+      newcolumntype: BaseMethods_default.NewColumnType,
+      mathchoice: BaseMethods_default.MathChoice,
+      mmlToken: BaseMethods_default.MmlToken
+    });
+    new EnvironmentMap("environment", ParseMethods_default.environment, {
+      displaymath: [BaseMethods_default.Equation, null, false],
+      math: [BaseMethods_default.Equation, null, false, false],
+      array: [BaseMethods_default.AlignedArray],
+      darray: [BaseMethods_default.AlignedArray, null, "D"],
+      equation: [BaseMethods_default.Equation, null, true],
+      eqnarray: [
+        BaseMethods_default.EqnArray,
+        null,
+        true,
+        true,
+        "rcl",
+        "bmt",
+        ParseUtil.cols(0, MATHSPACE.thickmathspace),
+        ".5em"
+      ],
+      indentalign: [BaseMethods_default.IndentAlign]
+    });
+    new CharacterMap("not_remap", null, JSON.parse(`{
+ "←":"↚","→":"↛","↔":"↮","⇐":"⇍","⇒":"⇏","⇔":"⇎","∈":"∉","∋":"∌","∣":"∤","∥":"∦","∼":"≁","~":"≁","≃":"≄","≅":"≇","≈":"≉","≍":"≭","=":"≠","≡":"≢","<":"≮",">":"≯","≤":"≰","≥":"≱","≲":"≴","≳":"≵","≶":"≸",
+ "≷":"≹","≺":"⊀","≻":"⊁","⊂":"⊄","⊃":"⊅","⊆":"⊈","⊇":"⊉","⊢":"⊬","⊨":"⊭","⊩":"⊮","⊫":"⊯","≼":"⋠","≽":"⋡","⊑":"⋢","⊒":"⋣","⊲":"⋪","⊳":"⋫","⊴":"⋬","⊵":"⋭","∃":"∄"
+}`));
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/base/BaseConfiguration.js
+function Other(parser2, char) {
+  const font = parser2.stack.env["font"];
+  const ifont = parser2.stack.env["italicFont"];
+  const def2 = font ? { mathvariant: font } : {};
+  const remap = MapHandler.getMap("remap").lookup(char);
+  const range = getRange(char);
+  const type = range[3];
+  const mo = parser2.create("token", type, def2, remap ? remap.char : char);
+  const style = ParseUtil.isLatinOrGreekChar(char) ? parser2.configuration.mathStyle(char, true) || ifont : "";
+  const variant = range[4] || (font && style === MATHVARIANT3.NORMAL ? "" : style);
+  if (variant) {
+    mo.attributes.set("mathvariant", variant);
+  }
+  if (type === "mo") {
+    NodeUtil_default.setProperty(mo, "fixStretchy", true);
+    parser2.configuration.addNode("fixStretchy", mo);
+  }
+  parser2.Push(mo);
+}
+function csUndefined(_parser, name) {
+  throw new TexError_default("UndefinedControlSequence", "Undefined control sequence %1", "\\" + name);
+}
+function envUndefined(_parser, env) {
+  throw new TexError_default("UnknownEnv", "Unknown environment '%1'", env);
+}
+function filterNonscript({ data }) {
+  for (const mml of data.getList("nonscript")) {
+    if (mml.attributes.get("scriptlevel") > 0) {
+      const parent = mml.parent;
+      parent.childNodes.splice(parent.childIndex(mml), 1);
+      data.removeFromList(mml.kind, [mml]);
+      if (mml.isKind("mrow")) {
+        const mstyle = mml.childNodes[0];
+        data.removeFromList("mstyle", [mstyle]);
+        data.removeFromList("mspace", mstyle.childNodes[0].childNodes);
+      }
+    } else if (mml.isKind("mrow")) {
+      mml.parent.replaceChild(mml.childNodes[0], mml);
+      data.removeFromList("mrow", [mml]);
+    }
+  }
+}
+var MATHVARIANT3;
+var BaseTags;
+var BaseConfiguration;
+var init_BaseConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/base/BaseConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_MapHandler();
+    init_TexError();
+    init_NodeUtil();
+    init_TokenMap();
+    init_BaseItems();
+    init_Tags();
+    init_BaseMappings();
+    init_OperatorDictionary();
+    init_ParseMethods();
+    init_ParseUtil();
+    init_TexConstants();
+    init_context();
+    MATHVARIANT3 = TexConstant.Variant;
+    new CharacterMap("remap", null, {
+      "-": "−",
+      "*": "∗",
+      "`": "‘"
+    });
+    BaseTags = class extends AbstractTags {
+    };
+    BaseConfiguration = Configuration.create("base", {
+      [ConfigurationType.CONFIG]: function(config2, jax) {
+        const options3 = jax.parseOptions.options;
+        if (options3.digits) {
+          options3.numberPattern = options3.digits;
+        }
+        new RegExpMap("digit", ParseMethods_default.digit, options3.initialDigit);
+        new RegExpMap("letter", ParseMethods_default.variable, options3.initialLetter);
+        const handler = config2.handlers.get(HandlerType.CHARACTER);
+        handler.add(["letter", "digit"], null, 4);
+      },
+      [ConfigurationType.HANDLER]: {
+        [HandlerType.CHARACTER]: ["command", "special"],
+        [HandlerType.DELIMITER]: ["delimiter"],
+        [HandlerType.MACRO]: [
+          "delimiter",
+          "macros",
+          "lcGreek",
+          "ucGreek",
+          "mathchar0mi",
+          "mathchar0mo",
+          "mathchar7"
+        ],
+        [HandlerType.ENVIRONMENT]: ["environment"]
+      },
+      [ConfigurationType.FALLBACK]: {
+        [HandlerType.CHARACTER]: Other,
+        [HandlerType.MACRO]: csUndefined,
+        [HandlerType.ENVIRONMENT]: envUndefined
+      },
+      [ConfigurationType.ITEMS]: {
+        [StartItem.prototype.kind]: StartItem,
+        [StopItem.prototype.kind]: StopItem,
+        [OpenItem.prototype.kind]: OpenItem,
+        [CloseItem.prototype.kind]: CloseItem,
+        [NullItem.prototype.kind]: NullItem,
+        [PrimeItem.prototype.kind]: PrimeItem,
+        [SubsupItem.prototype.kind]: SubsupItem,
+        [OverItem.prototype.kind]: OverItem,
+        [LeftItem.prototype.kind]: LeftItem,
+        [Middle.prototype.kind]: Middle,
+        [RightItem.prototype.kind]: RightItem,
+        [BreakItem.prototype.kind]: BreakItem,
+        [BeginItem.prototype.kind]: BeginItem,
+        [EndItem.prototype.kind]: EndItem,
+        [StyleItem.prototype.kind]: StyleItem,
+        [PositionItem.prototype.kind]: PositionItem,
+        [CellItem.prototype.kind]: CellItem,
+        [MmlItem.prototype.kind]: MmlItem,
+        [FnItem.prototype.kind]: FnItem,
+        [NotItem.prototype.kind]: NotItem,
+        [NonscriptItem.prototype.kind]: NonscriptItem,
+        [DotsItem.prototype.kind]: DotsItem,
+        [ArrayItem.prototype.kind]: ArrayItem,
+        [EqnArrayItem.prototype.kind]: EqnArrayItem,
+        [EquationItem.prototype.kind]: EquationItem,
+        [MstyleItem.prototype.kind]: MstyleItem
+      },
+      [ConfigurationType.OPTIONS]: {
+        maxMacros: 1e3,
+        digits: "",
+        numberPattern: /^(?:[0-9]+(?:\{,\}[0-9]{3})*(?:\.[0-9]*)?|\.[0-9]+)/,
+        initialDigit: /[0-9.,]/,
+        identifierPattern: /^[a-zA-Z]+/,
+        initialLetter: /[a-zA-Z]/,
+        baseURL: !context.document || context.document.getElementsByTagName("base").length === 0 ? "" : String(context.document.location).replace(/#.*$/, "")
+      },
+      [ConfigurationType.TAGS]: {
+        base: BaseTags
+      },
+      [ConfigurationType.POSTPROCESSORS]: [[filterNonscript, -4]]
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex.js
+var TeX;
+var init_tex = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex.js"() {
+    init_InputJax();
+    init_Options();
+    init_FindTeX();
+    init_FilterUtil();
+    init_NodeUtil();
+    init_TexParser();
+    init_TexError();
+    init_ParseOptions();
+    init_Tags();
+    init_Configuration();
+    init_TexConstants();
+    init_BaseConfiguration();
+    TeX = class _TeX extends AbstractInputJax {
+      static configure(packages) {
+        const configuration = new ParserConfiguration(packages, ["tex"]);
+        configuration.init();
+        return configuration;
+      }
+      static tags(options3, configuration) {
+        TagsFactory.addTags(configuration.tags);
+        TagsFactory.setDefault(options3.options.tags);
+        options3.tags = TagsFactory.getDefault();
+        options3.tags.configuration = options3;
+      }
+      constructor(options3 = {}) {
+        const [rest, tex, find] = separateOptions(options3, _TeX.OPTIONS, FindTeX.OPTIONS);
+        super(tex);
+        this.findTeX = this.options["FindTeX"] || new FindTeX(find);
+        const packages = this.options.packages;
+        const configuration = this.configuration = _TeX.configure(packages);
+        const parseOptions2 = this._parseOptions = new ParseOptions_default(configuration, [
+          this.options,
+          TagsFactory.OPTIONS
+        ]);
+        userOptions(parseOptions2.options, rest);
+        configuration.config(this);
+        _TeX.tags(parseOptions2, configuration);
+        this.postFilters.addList([
+          [FilterUtil_default.cleanSubSup, -7],
+          [FilterUtil_default.setInherited, -6],
+          [FilterUtil_default.checkScriptlevel, -5],
+          [FilterUtil_default.moveLimits, -4],
+          [FilterUtil_default.cleanStretchy, -3],
+          [FilterUtil_default.cleanAttributes, -2],
+          [FilterUtil_default.combineRelations, -1]
+        ]);
+      }
+      setMmlFactory(mmlFactory) {
+        super.setMmlFactory(mmlFactory);
+        this._parseOptions.nodeFactory.setMmlFactory(mmlFactory);
+      }
+      get parseOptions() {
+        return this._parseOptions;
+      }
+      reset(tag3 = 0) {
+        this.parseOptions.clear();
+        this.parseOptions.tags.reset(tag3);
+      }
+      compile(math, document) {
+        this.parseOptions.clear();
+        this.parseOptions.mathItem = math;
+        this.executeFilters(this.preFilters, math, document, this.parseOptions);
+        this.latex = math.math;
+        let node;
+        this.parseOptions.tags.startEquation(math);
+        let parser2;
+        try {
+          parser2 = new TexParser(this.latex, { display: math.display, isInner: false }, this.parseOptions);
+          node = parser2.mml();
+        } catch (err2) {
+          if (!(err2 instanceof TexError_default)) {
+            throw err2;
+          }
+          this.parseOptions.error = true;
+          node = this.options.formatError(this, err2);
+        }
+        node = this.parseOptions.nodeFactory.create("node", "math", [node]);
+        node.attributes.set(TexConstant.Attr.LATEX, this.latex);
+        if (math.display) {
+          NodeUtil_default.setAttribute(node, "display", "block");
+        }
+        this.parseOptions.tags.finishEquation(math);
+        this.parseOptions.root = node;
+        this.executeFilters(this.postFilters, math, document, this.parseOptions);
+        if (parser2 && parser2.stack.env.hsize) {
+          NodeUtil_default.setAttribute(node, "maxwidth", parser2.stack.env.hsize);
+          NodeUtil_default.setAttribute(node, "overflow", "linebreak");
+        }
+        this.mathNode = this.parseOptions.root;
+        return this.mathNode;
+      }
+      findMath(strings) {
+        return this.findTeX.findMath(strings);
+      }
+      formatError(err2) {
+        const message = err2.message.replace(/\n.*/, "");
+        return this.parseOptions.nodeFactory.create("error", message, err2.id, this.latex);
+      }
+    };
+    TeX.NAME = "TeX";
+    TeX.OPTIONS = Object.assign(Object.assign({}, AbstractInputJax.OPTIONS), { FindTeX: null, packages: ["base"], maxBuffer: 5 * 1024, maxTemplateSubtitutions: 1e4, mathStyle: "TeX", formatError: (jax, err2) => jax.formatError(err2) });
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/Direction.js
+var DIRECTION;
+var V;
+var H;
+var init_Direction = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/Direction.js"() {
+    DIRECTION = { None: "", Vertical: "v", Horizontal: "h" };
+    V = DIRECTION.Vertical;
+    H = DIRECTION.Horizontal;
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/FontData.js
+function mergeOptions(obj, dst, src) {
+  return src ? defaultOptions(obj, { [dst]: src })[dst] : obj[dst];
+}
+var __awaiter4;
+var VFUZZ;
+var HFUZZ;
+var NOSTRETCH;
+var FontData;
+var init_FontData = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/FontData.js"() {
+    init_mathjax();
+    init_Options();
+    init_AsyncLoad();
+    init_Retries();
+    init_Direction();
+    init_Direction();
+    __awaiter4 = function(thisArg, _arguments, P, generator) {
+      function adopt(value) {
+        return value instanceof P ? value : new P(function(resolve) {
+          resolve(value);
+        });
+      }
+      return new (P || (P = Promise))(function(resolve, reject) {
+        function fulfilled(value) {
+          try {
+            step(generator.next(value));
+          } catch (e) {
+            reject(e);
           }
         }
-        return changed;
-      }
-      breakToWidth(_W) {
-      }
-      invalidateBBox(bubble = true) {
-        if (this.bboxComputed || this._breakCount >= 0) {
-          this.bboxComputed = false;
-          this.lineBBox = [];
-          this._breakCount = -1;
-          if (this.parent && bubble) {
-            this.parent.invalidateBBox();
+        function rejected(value) {
+          try {
+            step(generator["throw"](value));
+          } catch (e) {
+            reject(e);
           }
         }
-      }
-      copySkewIC(bbox) {
-        var _a2, _b2, _c;
-        const first = this.childNodes[0];
-        if ((_a2 = first === null || first === void 0 ? void 0 : first.bbox) === null || _a2 === void 0 ? void 0 : _a2.sk) {
-          bbox.sk = first.bbox.sk;
+        function step(result) {
+          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
         }
-        if ((_b2 = first === null || first === void 0 ? void 0 : first.bbox) === null || _b2 === void 0 ? void 0 : _b2.dx) {
-          bbox.dx = first.bbox.dx;
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+      });
+    };
+    VFUZZ = 0.07;
+    HFUZZ = 0.07;
+    NOSTRETCH = { dir: DIRECTION.None };
+    FontData = class {
+      get CLASS() {
+        return this.constructor;
+      }
+      static charOptions(font, n) {
+        const char = font[n];
+        if (!Array.isArray(char)) {
+          throw Error(`Character data hasn't been loaded for 0x${n.toString(16).toUpperCase()}`);
         }
-        const last = this.childNodes[this.childNodes.length - 1];
-        if ((_c = last === null || last === void 0 ? void 0 : last.bbox) === null || _c === void 0 ? void 0 : _c.ic) {
-          bbox.ic = last.bbox.ic;
-          bbox.w += bbox.ic;
-        }
-      }
-      getStyles() {
-        const styleString = this.node.attributes.getExplicit("style");
-        if (!styleString)
-          return;
-        const style = this.styles = new Styles(styleString);
-        for (let i2 = 0, m = _CommonWrapper.removeStyles.length; i2 < m; i2++) {
-          const id = _CommonWrapper.removeStyles[i2];
-          if (style.get(id)) {
-            if (!this.removedStyles)
-              this.removedStyles = {};
-            this.removedStyles[id] = style.get(id);
-            style.set(id, "");
-          }
-        }
-      }
-      getStyleData() {
-        if (!this.styles)
-          return;
-        const padding2 = Array(4).fill(0);
-        const margin = Array(4).fill(0);
-        const width = Array(4).fill(0);
-        const style = Array(4);
-        const color = Array(4);
-        let hasPadding = false;
-        let hasBorder = false;
-        let hasMargin = false;
-        for (const [name, i2] of BBox.boxSides) {
-          const key = "border" + name;
-          const w = this.styles.get(key + "Width");
-          if (w) {
-            hasBorder = true;
-            width[i2] = Math.max(0, this.length2em(w, 1));
-            style[i2] = this.styles.get(key + "Style") || "solid";
-            color[i2] = this.styles.get(key + "Color");
-          }
-          const p = this.styles.get("padding" + name);
-          if (p) {
-            hasPadding = true;
-            padding2[i2] = Math.max(0, this.length2em(p, 1));
-          }
-          const m = this.styles.get("margin" + name);
-          if (m) {
-            hasMargin = true;
-            margin[i2] = this.length2em(m, 1);
-          }
-        }
-        this.styleData = hasPadding || hasBorder || hasMargin ? {
-          padding: padding2,
-          margin,
-          border: hasBorder ? { width, style, color } : null
-        } : null;
-      }
-      getVariant() {
-        if (!this.node.isToken)
-          return;
-        const attributes = this.node.attributes;
-        let variant = attributes.get("mathvariant");
-        if (attributes.hasExplicit("mathvariant")) {
-          if (!this.font.getVariant(variant)) {
-            console.warn(`Invalid variant: ${variant}`);
-            variant = "normal";
-          }
-        } else {
-          const values = attributes.getList("fontfamily", "fontweight", "fontstyle");
-          if (this.removedStyles) {
-            const style = this.removedStyles;
-            if (style.fontFamily)
-              values.family = style.fontFamily;
-            if (style.fontWeight)
-              values.weight = style.fontWeight;
-            if (style.fontStyle)
-              values.style = style.fontStyle;
-          }
-          if (values.fontfamily)
-            values.family = values.fontfamily;
-          if (values.fontweight)
-            values.weight = values.fontweight;
-          if (values.fontstyle)
-            values.style = values.fontstyle;
-          if (values.weight && values.weight.match(/^\d+$/)) {
-            values.weight = parseInt(values.weight) > 600 ? "bold" : "normal";
-          }
-          if (values.family) {
-            variant = this.explicitVariant(values.family, values.weight, values.style);
-          } else {
-            if (this.node.getProperty("variantForm"))
-              variant = "-tex-variant";
-            variant = (_CommonWrapper.BOLDVARIANTS[values.weight] || {})[variant] || variant;
-            variant = (_CommonWrapper.ITALICVARIANTS[values.style] || {})[variant] || variant;
-          }
-        }
-        this.variant = variant;
-      }
-      explicitVariant(fontFamily, fontWeight, fontStyle) {
-        let style = this.styles;
-        if (!style)
-          style = this.styles = new Styles();
-        style.set("fontFamily", fontFamily);
-        if (fontWeight)
-          style.set("fontWeight", fontWeight);
-        if (fontStyle)
-          style.set("fontStyle", fontStyle);
-        return "-explicitFont";
-      }
-      getScale() {
-        let scale2 = 1;
-        const parent = this.parent;
-        const pscale = parent ? parent.bbox.scale : 1;
-        const attributes = this.node.attributes;
-        const scriptlevel = Math.min(attributes.get("scriptlevel"), 2);
-        let fontsize = attributes.get("fontsize");
-        let mathsize = this.node.isToken || this.node.isKind("mstyle") ? attributes.get("mathsize") : attributes.getInherited("mathsize");
-        if (scriptlevel !== 0) {
-          scale2 = Math.pow(attributes.get("scriptsizemultiplier"), scriptlevel);
-        }
-        if (this.removedStyles && this.removedStyles.fontSize && !fontsize) {
-          fontsize = this.removedStyles.fontSize;
-        }
-        if (fontsize && !attributes.hasExplicit("mathsize")) {
-          mathsize = fontsize;
-        }
-        if (mathsize !== "1") {
-          scale2 *= this.length2em(mathsize, 1, 1);
-        }
-        if (scriptlevel !== 0) {
-          const scriptminsize = this.length2em(attributes.get("scriptminsize"), 0.4, 1);
-          if (scale2 < scriptminsize)
-            scale2 = scriptminsize;
-        }
-        this.bbox.scale = scale2;
-        this.bbox.rscale = scale2 / pscale;
-      }
-      getSpace() {
-        const isTop = this.isTopEmbellished();
-        const hasSpacing = this.node.hasSpacingAttributes();
-        if (this.jax.options.mathmlSpacing || hasSpacing) {
-          if (isTop) {
-            this.getMathMLSpacing();
-          }
-        } else {
-          this.getTeXSpacing(isTop, hasSpacing);
-        }
-      }
-      getMathMLSpacing() {
-        const node = this.node.coreMO();
-        const child = node.coreParent();
-        const parent = child.parent;
-        if (!parent || !parent.isKind("mrow") || parent.childNodes.length === 1) {
-          return;
-        }
-        const n = parent.childIndex(child);
-        if (n === null)
-          return;
-        const noDictDef = node.getProperty("noDictDef");
-        const attributes = node.attributes;
-        const isScript = attributes.get("scriptlevel") > 0;
-        this.bbox.L = attributes.isSet("lspace") ? Math.max(0, this.length2em(attributes.get("lspace"))) : MathMLSpace(isScript, noDictDef, node.lspace);
-        this.bbox.R = attributes.isSet("rspace") ? Math.max(0, this.length2em(attributes.get("rspace"))) : MathMLSpace(isScript, noDictDef, node.rspace);
-        if (!n)
-          return;
-        const prev = parent.childNodes[n - 1];
-        if (!prev.isEmbellished)
-          return;
-        const bbox = this.jax.nodeMap.get(prev).getBBox();
-        if (bbox.R) {
-          this.bbox.L = Math.max(0, this.bbox.L - bbox.R);
-        }
-      }
-      getTeXSpacing(isTop, hasSpacing) {
-        if (!hasSpacing) {
-          const space = this.node.texSpacing();
-          if (space) {
-            this.bbox.L = this.length2em(space);
-          }
-        }
-        if (isTop || hasSpacing) {
-          const attributes = this.node.coreMO().attributes;
-          if (attributes.isSet("lspace")) {
-            this.bbox.L = Math.max(0, this.length2em(attributes.get("lspace")));
-          }
-          if (attributes.isSet("rspace")) {
-            this.bbox.R = Math.max(0, this.length2em(attributes.get("rspace")));
-          }
-        }
-      }
-      isTopEmbellished() {
-        return this.node.isEmbellished && !(this.node.parent && this.node.parent.isEmbellished);
-      }
-      core() {
-        return this.jax.nodeMap.get(this.node.core());
-      }
-      coreMO() {
-        return this.jax.nodeMap.get(this.node.coreMO());
-      }
-      coreRScale() {
-        let rscale = this.bbox.rscale;
-        let node = this.coreMO();
-        while (node !== this && node) {
-          rscale *= node.bbox.rscale;
-          node = node.parent;
-        }
-        return rscale;
-      }
-      getRScale() {
-        let rscale = 1;
-        let node = this;
-        while (node) {
-          rscale *= node.bbox.rscale;
-          node = node.parent;
-        }
-        return rscale;
-      }
-      getText() {
-        let text = "";
-        if (this.node.isToken) {
-          for (const child of this.node.childNodes) {
-            if (child instanceof TextNode) {
-              text += child.getText();
-            }
-          }
-        }
-        return text;
-      }
-      canStretch(direction) {
-        this.stretch = NOSTRETCH;
-        if (this.node.isEmbellished) {
-          const core = this.core();
-          if (core && core.node !== this.node) {
-            if (core.canStretch(direction)) {
-              this.stretch = core.stretch;
-            }
-          }
-        }
-        return this.stretch.dir !== DIRECTION.None;
-      }
-      getAlignShift() {
-        let { indentalign, indentshift, indentalignfirst, indentshiftfirst } = this.node.attributes.getAllAttributes();
-        if (indentalignfirst !== "indentalign") {
-          indentalign = indentalignfirst;
-        }
-        if (indentshiftfirst !== "indentshift") {
-          indentshift = indentshiftfirst;
-        }
-        return this.processIndent(indentalign, indentshift);
-      }
-      processIndent(indentalign, indentshift, align = "", shift = "", width = this.metrics.containerWidth) {
-        if (!this.jax.math.display) {
-          return ["left", 0];
-        }
-        if (!align || align === "auto") {
-          align = this.jax.math.root.getProperty("inlineMarked") ? "left" : this.jax.options.displayAlign;
-        }
-        if (!shift || shift === "auto") {
-          shift = this.jax.math.root.getProperty("inlineMarked") ? "0" : this.jax.options.displayIndent;
-        }
-        if (indentalign === "auto") {
-          indentalign = align;
-        }
-        if (indentshift === "auto") {
-          indentshift = shift;
-          if (indentalign === "right" && !indentshift.match(/^\s*0[a-z]*\s*$/)) {
-            indentshift = ("-" + indentshift.trim()).replace(/^--/, "");
-          }
-        }
-        const indent = this.length2em(indentshift, width);
-        return [indentalign, indent];
-      }
-      getAlignX(W, bbox, align) {
-        return align === "right" ? W - (bbox.w + bbox.R) * bbox.rscale : align === "left" ? bbox.L * bbox.rscale : (W - bbox.w * bbox.rscale) / 2;
-      }
-      getAlignY(H2, D, h, d, align) {
-        return align === "top" ? H2 - h : align === "bottom" ? d - D : align === "center" ? (H2 - h - (D - d)) / 2 : 0;
-      }
-      getWrapWidth(i2) {
-        return this.childNodes[i2].getBBox().w;
-      }
-      getChildAlign(_i) {
-        return "left";
-      }
-      percent(m) {
-        return percent(m);
-      }
-      em(m) {
-        return em(m);
-      }
-      px(m, M = -BIGDIMEN) {
-        return px(m, M, this.metrics.em);
-      }
-      length2em(length4, size = 1, scale2 = null) {
-        if (scale2 === null) {
-          scale2 = this.bbox.scale;
-        }
-        const t = this.font.params.rule_thickness;
-        const factor = lookup(length4, { medium: 1, thin: 2 / 3, thick: 5 / 3 }, 0);
-        return factor ? factor * t : length2em(length4, size, scale2, this.jax.pxPerEm);
-      }
-      unicodeChars(text, name = this.variant) {
-        let chars = unicodeChars(text);
-        const variant = this.font.getVariant(name);
-        if (variant && variant.chars) {
-          const map = variant.chars;
-          chars = chars.map((n) => {
-            var _a2, _b2;
-            return ((_b2 = (_a2 = map[n]) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2.smp) || n;
-          });
-        }
-        return chars;
-      }
-      remapChars(chars) {
-        return chars;
-      }
-      mmlText(text) {
-        return this.node.factory.create("text").setText(text);
-      }
-      mmlNode(kind, properties = {}, children = []) {
-        return this.node.factory.create(kind, properties, children);
-      }
-      createMo(text) {
-        const mmlFactory = this.node.factory;
-        const textNode = mmlFactory.create("text").setText(text);
-        const mml = mmlFactory.create("mo", { stretchy: true }, [textNode]);
-        mml.inheritAttributesFrom(this.node);
-        mml.parent = this.node.parent;
-        const node = this.wrap(mml);
-        node.parent = this;
-        return node;
-      }
-      getVariantChar(variant, n) {
-        const char = this.font.getChar(variant, n) || [0, 0, 0, { unknown: true }];
         if (char.length === 3) {
           char[3] = {};
         }
+        return char[3];
+      }
+      static defineDynamicFiles(dynamicFiles, extension = "") {
+        const list3 = {};
+        (dynamicFiles || []).forEach(([file, variants, delimiters2]) => {
+          list3[file] = {
+            extension,
+            file,
+            variants,
+            delimiters: delimiters2 || [],
+            promise: null,
+            failed: false,
+            setup: (_font) => {
+              list3[file].failed = true;
+            }
+          };
+        });
+        return list3;
+      }
+      static dynamicSetup(extension, file, variants, delimiters2 = {}, fonts = null) {
+        const data = extension ? this.dynamicExtensions.get(extension) : null;
+        const files = extension ? data.files : this.dynamicFiles;
+        files[file].setup = (font) => {
+          Object.keys(variants).forEach((name) => font.defineChars(name, variants[name]));
+          font.defineDelimiters(delimiters2);
+          if (extension) {
+            this.adjustDelimiters(font.delimiters, Object.keys(delimiters2), data.sizeN, data.stretchN);
+          }
+          if (fonts) {
+            font.addDynamicFontCss(fonts);
+          }
+        };
+      }
+      static adjustDelimiters(delimiters2, keys2, sizeN, stretchN) {
+        keys2.forEach((id) => {
+          const delim = delimiters2[parseInt(id)];
+          if ("dir" in delim) {
+            if (delim.variants) {
+              delim.variants = this.adjustArrayIndices(delim.variants, sizeN);
+            }
+            if (delim.stretchv) {
+              delim.stretchv = this.adjustArrayIndices(delim.stretchv, stretchN);
+            }
+          }
+        });
+      }
+      static adjustArrayIndices(list3, N) {
+        return list3.map((n) => n < 0 ? N - 1 - n : n);
+      }
+      static addExtension(data, prefix = "") {
+        const extension = {
+          name: data.name,
+          prefix: prefix || `[${data.name}-extension]/${this.JAX.toLowerCase()}/dynamic`,
+          files: this.defineDynamicFiles(data.ranges, data.name),
+          sizeN: this.defaultSizeVariants.length,
+          stretchN: this.defaultStretchVariants.length
+        };
+        this.dynamicExtensions.set(data.name, extension);
+        for (const [src, dst] of [
+          ["options", "OPTIONS"],
+          ["variants", "defaultVariants"],
+          ["variantSmp", "VariantSmp"],
+          ["cssFonts", "defaultCssFonts"],
+          ["accentMap", "defaultAccentMap"],
+          ["moMap", "defaultMoMap"],
+          ["mnMap", "defaultMnMap"],
+          ["parameters", "defaultParams"],
+          ["chars", "defaultChars"],
+          ["sizeVariants", "defaultSizeVariants"],
+          ["stretchVariants", "defaultStretchVariants"]
+        ]) {
+          mergeOptions(this, dst, data[src]);
+        }
+        if (data.delimiters) {
+          Object.assign(this.defaultDelimiters, data.delimiters);
+          this.adjustDelimiters(this.defaultDelimiters, Object.keys(data.delimiters), extension.sizeN, extension.stretchN);
+        }
+      }
+      constructor(options3 = null) {
+        this.variant = {};
+        this.delimiters = {};
+        this.cssFontMap = {};
+        this.cssFontPrefix = "";
+        this.remapChars = {};
+        this.skewIcFactor = 0.75;
+        const CLASS = this.CLASS;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.params = Object.assign({}, CLASS.defaultParams);
+        this.sizeVariants = [...CLASS.defaultSizeVariants];
+        this.stretchVariants = [...CLASS.defaultStretchVariants];
+        this.defineCssFonts(CLASS.defaultCssFonts);
+        this.cssFamilyPrefix = CLASS.defaultCssFamilyPrefix;
+        this.createVariants(CLASS.defaultVariants);
+        this.defineDelimiters(CLASS.defaultDelimiters);
+        Object.keys(CLASS.defaultChars).forEach((name) => this.defineChars(name, CLASS.defaultChars[name]));
+        this.defineRemap("accent", CLASS.defaultAccentMap);
+        this.defineRemap("mo", CLASS.defaultMoMap);
+        this.defineRemap("mn", CLASS.defaultMnMap);
+        this.defineDynamicCharacters(CLASS.dynamicFiles);
+        CLASS.dynamicExtensions.forEach((data) => this.defineDynamicCharacters(data.files));
+      }
+      setOptions(options3) {
+        defaultOptions(this.options, options3);
+      }
+      addExtension(data, prefix = "") {
+        const jax = this.constructor.JAX.toLowerCase();
+        const dynamicFont = {
+          name: data.name,
+          prefix: prefix || `[${data.name}-extension]/${jax}/dynamic`,
+          files: this.CLASS.defineDynamicFiles(data.ranges, prefix),
+          sizeN: this.sizeVariants.length,
+          stretchN: this.stretchVariants.length
+        };
+        this.CLASS.dynamicExtensions.set(data.name, dynamicFont);
+        defaultOptions(this.options, data.options || {});
+        defaultOptions(this.params, data.parameters || {});
+        mergeOptions(this, "sizeVariants", data.sizeVariants);
+        mergeOptions(this, "stretchVariants", data.stretchVariants);
+        mergeOptions(this.constructor, "VariantSmp", data.variantSmp);
+        this.defineCssFonts(mergeOptions({ cssFonts: {} }, "cssFonts", data.cssFonts));
+        this.createVariants(mergeOptions({ variants: [] }, "variants", data.variants));
+        if (data.delimiters) {
+          this.defineDelimiters(mergeOptions({ delimiters: {} }, "delimiters", data.delimiters));
+          this.CLASS.adjustDelimiters(this.delimiters, Object.keys(data.delimiters), dynamicFont.sizeN, dynamicFont.stretchN);
+        }
+        for (const name of Object.keys(data.chars || {})) {
+          this.defineChars(name, data.chars[name]);
+        }
+        this.defineRemap("accent", data.accentMap);
+        this.defineRemap("mo", data.moMap);
+        this.defineRemap("mn", data.mnMap);
+        if (data.ranges) {
+          this.defineDynamicCharacters(dynamicFont.files);
+        }
+        return [];
+      }
+      get styles() {
+        return this._styles;
+      }
+      set styles(style) {
+        this._styles = style;
+      }
+      createVariant(name, inherit = null, link2 = null) {
+        const variant = {
+          linked: [],
+          chars: Object.create(inherit ? this.variant[inherit].chars : {})
+        };
+        if (this.variant[link2]) {
+          Object.assign(variant.chars, this.variant[link2].chars);
+          this.variant[link2].linked.push(variant.chars);
+          variant.chars = Object.create(variant.chars);
+        }
+        this.remapSmpChars(variant.chars, name);
+        this.variant[name] = variant;
+      }
+      remapSmpChars(chars, name) {
+        const CLASS = this.CLASS;
+        let remap = CLASS.VariantSmp[name];
+        if (typeof remap === "string") {
+          remap = CLASS.VariantSmp[remap];
+        }
+        if (!remap)
+          return;
+        const SmpRemap = CLASS.SmpRemap;
+        const SmpGreek = [null, null, CLASS.SmpRemapGreekU, CLASS.SmpRemapGreekL];
+        for (const [i2, lo, hi] of CLASS.SmpRanges) {
+          const base = remap[i2];
+          if (!base)
+            continue;
+          for (let n = lo; n <= hi; n++) {
+            if (n === 930)
+              continue;
+            const smp = base + n - lo;
+            chars[n] = this.smpChar(SmpRemap[smp] || smp);
+          }
+          if (SmpGreek[i2]) {
+            for (const n of Object.keys(SmpGreek[i2]).map((x2) => parseInt(x2))) {
+              chars[n] = this.smpChar(base + SmpGreek[i2][n]);
+            }
+          }
+        }
+        const extra = remap[5] || {};
+        for (const n of Object.keys(extra)) {
+          chars[n] = this.smpChar(remap[5][n]);
+        }
+      }
+      smpChar(n) {
+        return [, , , { smp: n }];
+      }
+      createVariants(variants) {
+        for (const variant of variants) {
+          this.createVariant(variant[0], variant[1], variant[2]);
+        }
+      }
+      defineChars(name, chars) {
+        const variant = this.variant[name];
+        Object.assign(variant.chars, chars);
+        for (const link2 of variant.linked) {
+          Object.assign(link2, chars);
+        }
+      }
+      defineCssFonts(fonts) {
+        Object.assign(this.cssFontMap, fonts);
+        for (const name of Object.keys(fonts)) {
+          if (this.cssFontMap[name][0] === "unknown") {
+            this.cssFontMap[name][0] = this.options.unknownFamily;
+          }
+        }
+      }
+      defineDelimiters(delims) {
+        Object.assign(this.delimiters, delims);
+      }
+      defineRemap(name, remap) {
+        if (remap) {
+          if (!Object.hasOwn(this.remapChars, name)) {
+            this.remapChars[name] = {};
+          }
+          Object.assign(this.remapChars[name], remap);
+        }
+      }
+      defineDynamicCharacters(dynamicFiles) {
+        for (const file of Object.keys(dynamicFiles)) {
+          const dynamic = dynamicFiles[file];
+          for (const name of Object.keys(dynamic.variants)) {
+            this.defineChars(name, this.flattenRanges(dynamic.variants[name], dynamic));
+          }
+          this.defineDelimiters(this.flattenRanges(dynamic.delimiters, dynamic));
+        }
+      }
+      flattenRanges(ranges, dynamic) {
+        const chars = {};
+        for (const n of ranges) {
+          if (Array.isArray(n)) {
+            for (let j = n[0]; j <= n[1]; j++) {
+              chars[j] = dynamic;
+            }
+          } else {
+            chars[n] = dynamic;
+          }
+        }
+        return chars;
+      }
+      dynamicFileName(dynamic) {
+        const prefix = !dynamic.extension ? this.options.dynamicPrefix : this.CLASS.dynamicExtensions.get(dynamic.extension).prefix;
+        return dynamic.file.match(/^(?:[/[]|[a-z]+:\/\/|[a-z]:)/i) ? dynamic.file : prefix + "/" + dynamic.file.replace(/(\.js)?$/, ".js");
+      }
+      loadDynamicFile(dynamic) {
+        return __awaiter4(this, void 0, void 0, function* () {
+          if (dynamic.failed)
+            return Promise.reject(new Error(`dynamic file '${dynamic.file}' failed to load`));
+          if (!dynamic.promise) {
+            dynamic.promise = asyncLoad(this.dynamicFileName(dynamic)).catch((err2) => {
+              dynamic.failed = true;
+              console.warn(err2);
+            });
+          }
+          return dynamic.promise.then(() => dynamic.setup(this));
+        });
+      }
+      loadDynamicFiles() {
+        const dynamicFiles = this.CLASS.dynamicFiles;
+        const promises = Object.keys(dynamicFiles).map((name) => this.loadDynamicFile(dynamicFiles[name]));
+        for (const data of this.CLASS.dynamicExtensions.values()) {
+          promises.push(...Object.keys(data.files).map((name) => this.loadDynamicFile(data.files[name])));
+        }
+        return Promise.all(promises);
+      }
+      loadDynamicFilesSync() {
+        if (!mathjax.asyncIsSynchronous) {
+          throw Error("MathJax(loadDynamicFilesSync): mathjax.asyncLoad must be specified and synchronous\n    Try importing #js/../components/require.mjs and #js/util/asyncLoad/node.js");
+        }
+        const dynamicFiles = this.CLASS.dynamicFiles;
+        Object.keys(dynamicFiles).forEach((name) => this.loadDynamicFileSync(dynamicFiles[name]));
+        for (const data of this.CLASS.dynamicExtensions.values()) {
+          Object.keys(data.files).forEach((name) => this.loadDynamicFileSync(data.files[name]));
+        }
+      }
+      loadDynamicFileSync(dynamic) {
+        if (!dynamic.promise) {
+          dynamic.promise = Promise.resolve();
+          try {
+            mathjax.asyncLoad(this.dynamicFileName(dynamic));
+          } catch (err2) {
+            dynamic.failed = true;
+            console.warn(err2);
+          }
+          dynamic.setup(this);
+        }
+      }
+      addDynamicFontCss(_fonts, _root) {
+      }
+      getDelimiter(n) {
+        const delim = this.delimiters[n];
+        if (delim && !("dir" in delim)) {
+          this.delimiters[n] = null;
+          if (mathjax.asyncIsSynchronous) {
+            this.loadDynamicFileSync(delim);
+            return this.getDelimiter(n);
+          }
+          retryAfter(this.loadDynamicFile(delim));
+          return null;
+        }
+        return delim;
+      }
+      getSizeVariant(n, i2) {
+        const delim = this.getDelimiter(n);
+        if (delim && delim.variants) {
+          i2 = delim.variants[i2];
+        }
+        return this.sizeVariants[i2];
+      }
+      getStretchVariant(n, i2) {
+        const delim = this.getDelimiter(n);
+        return this.stretchVariants[delim.stretchv ? delim.stretchv[i2] : 0];
+      }
+      getStretchVariants(n) {
+        return [0, 1, 2, 3].map((i2) => this.getStretchVariant(n, i2));
+      }
+      getChar(name, n) {
+        const char = this.variant[name].chars[n];
+        if (char && !Array.isArray(char)) {
+          const variant = this.variant[name];
+          delete variant.chars[n];
+          variant.linked.forEach((link2) => delete link2[n]);
+          if (mathjax.asyncIsSynchronous) {
+            this.loadDynamicFileSync(char);
+            return this.getChar(name, n);
+          }
+          retryAfter(this.loadDynamicFile(char));
+          return null;
+        }
         return char;
       }
-      html(type, def2 = {}, content = []) {
-        return this.jax.html(type, def2, content);
+      getVariant(name) {
+        return this.variant[name];
+      }
+      getCssFont(variant) {
+        return this.cssFontMap[variant] || ["serif", false, false];
+      }
+      getFamily(family) {
+        return this.cssFamilyPrefix ? this.cssFamilyPrefix + ", " + family : family;
+      }
+      getRemappedChar(name, c) {
+        const map = this.remapChars[name] || {};
+        return map[c];
       }
     };
-    CommonWrapper.kind = "unknown";
-    CommonWrapper.styles = {};
-    CommonWrapper.removeStyles = [
-      "fontSize",
-      "fontFamily",
-      "fontWeight",
-      "fontStyle",
-      "fontVariant",
-      "font"
+    FontData.OPTIONS = {
+      unknownFamily: "serif",
+      dynamicPrefix: "."
+    };
+    FontData.JAX = "common";
+    FontData.NAME = "";
+    FontData.defaultVariants = JSON.parse(`[
+ ["normal"],
+ ["bold","normal"],
+ ["italic","normal"],
+ ["bold-italic","italic","bold"],
+ ["double-struck","bold"],
+ ["fraktur","normal"],
+ ["bold-fraktur","bold","fraktur"],
+ ["script","italic"],
+ ["bold-script","bold-italic","script"],
+ ["sans-serif","normal"],
+ ["bold-sans-serif","bold","sans-serif"],
+ ["sans-serif-italic","italic","sans-serif"],
+ ["sans-serif-bold-italic","bold-italic","bold-sans-serif"],
+ ["monospace","normal"],
+ ["-smallop","normal"],
+ ["-largeop","normal"],
+ ["-tex-calligraphic","italic"],
+ ["-tex-bold-calligraphic","bold-italic"],
+ ["-tex-oldstyle","normal"],
+ ["-tex-bold-oldstyle","bold"],
+ ["-tex-mathit","italic"],
+ ["-tex-variant","normal"]
+]`);
+    FontData.defaultCssFonts = JSON.parse(`{
+ "normal":["unknown",false,false],
+ "bold":["unknown",false,true],
+ "italic":["unknown",true,false],
+ "bold-italic":["unknown",true,true],
+ "double-struck":["unknown",false,true],
+ "fraktur":["unknown",false,false],
+ "bold-fraktur":["unknown",false,true],
+ "script":["cursive",false,false],
+ "bold-script":["cursive",false,true],
+ "sans-serif":["sans-serif",false,false],
+ "bold-sans-serif":["sans-serif",false,true],
+ "sans-serif-italic":["sans-serif",true,false],
+ "sans-serif-bold-italic":["sans-serif",true,true],
+ "monospace":["monospace",false,false],
+ "-smallop":["unknown",false,false],
+ "-largeop":["unknown",false,false],
+ "-tex-calligraphic":["cursive",true,false],
+ "-tex-bold-calligraphic":["cursive",true,true],
+ "-tex-oldstyle":["unknown",false,false],
+ "-tex-bold-oldstyle":["unknown",false,true],
+ "-tex-mathit":["unknown",true,false],
+ "-tex-variant":["unknown",false,false]
+}`);
+    FontData.defaultCssFamilyPrefix = "";
+    FontData.VariantSmp = {
+      bold: [
+        119808,
+        119834,
+        120488,
+        120514,
+        120782,
+        { 988: 120778, 989: 120779 }
+      ],
+      italic: [119860, 119886, 120546, 120572],
+      "bold-italic": [119912, 119938, 120604, 120630],
+      script: [119964, 119990],
+      "bold-script": [120016, 120042],
+      fraktur: [120068, 120094],
+      "double-struck": [120120, 120146, , , 120792],
+      "bold-fraktur": [120172, 120198],
+      "sans-serif": [120224, 120250, , , 120802],
+      "bold-sans-serif": [120276, 120302, 120662, 120688, 120812],
+      "sans-serif-italic": [120328, 120354],
+      "sans-serif-bold-italic": [120380, 120406, 120720, 120746],
+      monospace: [120432, 120458, , , 120822]
+    };
+    FontData.SmpRanges = [
+      [0, 65, 90],
+      [1, 97, 122],
+      [2, 913, 937],
+      [3, 945, 969],
+      [4, 48, 57]
     ];
-    CommonWrapper.skipAttributes = {
-      fontfamily: true,
-      fontsize: true,
-      fontweight: true,
-      fontstyle: true,
-      color: true,
-      background: true,
-      class: true,
-      href: true,
-      style: true,
-      xmlns: true
+    FontData.SmpRemap = JSON.parse(`{
+ "119893":8462,"119965":8492,"119968":8496,"119969":8497,"119971":8459,"119972":8464,"119975":8466,"119976":8499,"119981":8475,"119994":8495,"119996":8458,"120004":8500,"120070":8493,"120075":8460,
+ "120076":8465,"120085":8476,"120093":8488,"120122":8450,"120127":8461,"120133":8469,"120135":8473,"120136":8474,"120137":8477,"120145":8484
+}`);
+    FontData.SmpRemapGreekU = {
+      8711: 25,
+      1012: 17
     };
-    CommonWrapper.BOLDVARIANTS = {
-      bold: {
-        normal: "bold",
-        italic: "bold-italic",
-        fraktur: "bold-fraktur",
-        script: "bold-script",
-        "sans-serif": "bold-sans-serif",
-        "sans-serif-italic": "sans-serif-bold-italic"
-      },
-      normal: {
-        bold: "normal",
-        "bold-italic": "italic",
-        "bold-fraktur": "fraktur",
-        "bold-script": "script",
-        "bold-sans-serif": "sans-serif",
-        "sans-serif-bold-italic": "sans-serif-italic"
+    FontData.SmpRemapGreekL = {
+      977: 27,
+      981: 29,
+      982: 31,
+      1008: 28,
+      1009: 30,
+      1013: 26,
+      8706: 25
+    };
+    FontData.defaultAccentMap = {
+      94: "ˆ",
+      126: "˜",
+      768: "ˋ",
+      769: "ˊ",
+      770: "ˆ",
+      771: "˜",
+      772: "ˉ",
+      774: "˘",
+      775: "˙",
+      776: "¨",
+      778: "˚",
+      780: "ˇ",
+      8594: "\u20D7"
+    };
+    FontData.defaultMoMap = {
+      45: "−"
+    };
+    FontData.defaultMnMap = {
+      45: "−"
+    };
+    FontData.defaultParams = JSON.parse(`{
+ "x_height":0.442,"quad":1,"num1":0.676,"num2":0.394,"num3":0.444,"denom1":0.686,"denom2":0.345,"sup1":0.413,"sup2":0.363,"sup3":0.289,"sub1":0.15,"sub2":0.247,"sup_drop":0.386,"sub_drop":0.05,
+ "delim1":2.39,"delim2":1,"axis_height":0.25,"rule_thickness":0.06,"big_op_spacing1":0.111,"big_op_spacing2":0.167,"big_op_spacing3":0.2,"big_op_spacing4":0.6,"big_op_spacing5":0.1,"surd_height":0.06,
+ "scriptspace":0.05,"nulldelimiterspace":0.12,"delimiterfactor":901,"delimitershortfall":0.3,"rule_factor":1.25,"min_rule_thickness":1.25,"separation_factor":1.75,"extra_ic":0.033,
+ "extender_factor":0.333
+}`);
+    FontData.defaultDelimiters = {};
+    FontData.defaultChars = {};
+    FontData.defaultSizeVariants = [];
+    FontData.defaultStretchVariants = [];
+    FontData.dynamicFiles = {};
+    FontData.dynamicExtensions = /* @__PURE__ */ new Map();
+  }
+});
+// node_modules/@mathjax/src/mjs/util/BBox.js
+var BBox;
+var init_BBox = __esm({
+  "node_modules/@mathjax/src/mjs/util/BBox.js"() {
+    init_lengths();
+    BBox = class _BBox {
+      static zero() {
+        return new _BBox({ h: 0, d: 0, w: 0 });
+      }
+      static empty() {
+        return new _BBox();
+      }
+      constructor(def2 = { w: 0, h: -BIGDIMEN, d: -BIGDIMEN }) {
+        this.w = def2.w || 0;
+        this.h = "h" in def2 ? def2.h : -BIGDIMEN;
+        this.d = "d" in def2 ? def2.d : -BIGDIMEN;
+        this.L = this.R = this.ic = this.oc = this.sk = this.dx = 0;
+        this.scale = this.rscale = 1;
+        this.pwidth = "";
+      }
+      empty() {
+        this.w = 0;
+        this.h = this.d = -BIGDIMEN;
+        return this;
+      }
+      clean() {
+        if (this.w === -BIGDIMEN)
+          this.w = 0;
+        if (this.h === -BIGDIMEN)
+          this.h = 0;
+        if (this.d === -BIGDIMEN)
+          this.d = 0;
+      }
+      rescale(scale2) {
+        this.w *= scale2;
+        this.h *= scale2;
+        this.d *= scale2;
+      }
+      combine(cbox, x2 = 0, y = 0) {
+        const rscale = cbox.rscale;
+        const w = x2 + rscale * (cbox.w + cbox.L + cbox.R);
+        const h = y + rscale * cbox.h;
+        const d = rscale * cbox.d - y;
+        if (w > this.w)
+          this.w = w;
+        if (h > this.h)
+          this.h = h;
+        if (d > this.d)
+          this.d = d;
+      }
+      append(cbox) {
+        const scale2 = cbox.rscale;
+        this.w += scale2 * (cbox.w + cbox.L + cbox.R);
+        if (scale2 * cbox.h > this.h) {
+          this.h = scale2 * cbox.h;
+        }
+        if (scale2 * cbox.d > this.d) {
+          this.d = scale2 * cbox.d;
+        }
+      }
+      updateFrom(cbox) {
+        this.h = cbox.h;
+        this.d = cbox.d;
+        this.w = cbox.w;
+        if (cbox.pwidth) {
+          this.pwidth = cbox.pwidth;
+        }
+      }
+      copy() {
+        const bbox = new _BBox();
+        Object.assign(bbox, this);
+        return bbox;
       }
     };
-    CommonWrapper.ITALICVARIANTS = {
-      italic: {
-        normal: "italic",
-        bold: "bold-italic",
-        "sans-serif": "sans-serif-italic",
-        "bold-sans-serif": "sans-serif-bold-italic"
-      },
-      normal: {
-        italic: "normal",
-        "bold-italic": "bold",
-        "sans-serif-italic": "sans-serif",
-        "sans-serif-bold-italic": "bold-sans-serif"
+    BBox.fullWidth = "100%";
+    BBox.boxSides = [
+      ["Top", 0, "h"],
+      ["Right", 1, "w"],
+      ["Bottom", 2, "d"],
+      ["Left", 3, "w"]
+    ];
+  }
+});
+// node_modules/@mathjax/src/mjs/output/common/LineBBox.js
+var LineBBox;
+var init_LineBBox = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/LineBBox.js"() {
+    init_BBox();
+    LineBBox = class _LineBBox extends BBox {
+      static from(bbox, leading, indent = null) {
+        const nbox = new this();
+        Object.assign(nbox, bbox);
+        nbox.lineLeading = leading;
+        if (indent) {
+          nbox.indentData = indent;
+        }
+        return nbox;
+      }
+      constructor(def2, start = null) {
+        super(def2);
+        this.indentData = null;
+        this.isFirst = false;
+        this.originalL = this.L;
+        if (start) {
+          this.start = start;
+        }
+      }
+      append(cbox) {
+        if (this.isFirst) {
+          cbox.originalL += cbox.L;
+          cbox.L = 0;
+        }
+        if (cbox.indentData) {
+          this.indentData = cbox.indentData;
+        }
+        this.lineLeading = cbox.lineLeading;
+        super.append(cbox);
+        this.isFirst = cbox.isFirst;
+      }
+      copy() {
+        const bbox = _LineBBox.from(this, this.lineLeading);
+        bbox.indentData = this.indentData;
+        bbox.lineLeading = this.lineLeading;
+        return bbox;
+      }
+      getIndentData(node) {
+        let { indentalign, indentshift, indentalignfirst, indentshiftfirst, indentalignlast, indentshiftlast } = node.attributes.getAllAttributes();
+        if (indentalignfirst === "indentalign") {
+          indentalignfirst = node.attributes.getInherited("indentalign");
+        }
+        if (indentshiftfirst === "indentshift") {
+          indentshiftfirst = node.attributes.getInherited("indentshift");
+        }
+        if (indentalignlast === "indentalign") {
+          indentalignlast = indentalign;
+        }
+        if (indentshiftlast === "indentshift") {
+          indentshiftlast = indentshift;
+        }
+        this.indentData = [
+          [indentalignfirst, indentshiftfirst],
+          [indentalign, indentshift],
+          [indentalignlast, indentshiftlast]
+        ];
+      }
+      copyIndentData(bbox) {
+        return bbox.indentData.map(([align, indent]) => [align, indent]);
       }
     };
   }
 });
-// node_modules/@mathjax/src/mjs/output/svg/Wrapper.js
-var SvgWrapper;
-var init_Wrapper3 = __esm({
-  "node_modules/@mathjax/src/mjs/output/svg/Wrapper.js"() {
-    init_string();
-    init_Wrapper2();
-    (__kittexLate.init_svg2?.())();
-    SvgWrapper = class _SvgWrapper extends CommonWrapper {
+// node_modules/@mathjax/src/mjs/output/common/LinebreakVisitor.js
+var NOBREAK;
+var Linebreaks;
+var LinebreakVisitor;
+var init_LinebreakVisitor = __esm({
+  "node_modules/@mathjax/src/mjs/output/common/LinebreakVisitor.js"() {
+    init_Visitor();
+    init_LineBBox();
+    init_MmlNode();
+    init_OperatorDictionary();
+    NOBREAK = 1e6;
+    Linebreaks = class extends AbstractVisitor {
+      breakToWidth(_wrapper, _W) {
+      }
+    };
+    LinebreakVisitor = class extends Linebreaks {
       constructor() {
         super(...arguments);
-        this.dx = 0;
-        this.utext = "";
+        this.PENALTY = {
+          newline: (_p) => 0,
+          nobreak: (_p) => NOBREAK,
+          goodbreak: (p) => p - 200 * this.state.depth,
+          badbreak: (p) => p + 200 * this.state.depth,
+          auto: (p) => p
+        };
+        this.FACTORS = {
+          depth: (p) => p + 800 * this.state.depth,
+          width: (p) => p + Math.floor((this.state.width - this.state.w) / this.state.width * 2500),
+          tail: (p) => p + Math.floor(this.state.width / Math.max(1e-4, this.state.mathLeft - this.state.w) * 500),
+          open: (p, mo) => {
+            const prevClass = mo.node.prevClass;
+            if (prevClass === TEXCLASS.BIN || prevClass === TEXCLASS.REL || prevClass === TEXCLASS.OP) {
+              return p + 5e3;
+            }
+            const prev = this.getPrevious(mo);
+            if (prev && (prev.attributes.get("form") !== "postfix" || prev.attributes.get("linebreak") === "nobreak")) {
+              return p + 5e3;
+            }
+            const parent = mo.node.Parent;
+            if ((parent === null || parent === void 0 ? void 0 : parent.isKind("mmultiscripts")) && mo.node === this.getFirstToken(parent)) {
+              const prescripts = !!parent.childNodes.filter((node) => node.isKind("mprescripts")).length;
+              if (prescripts)
+                return NOBREAK;
+            }
+            return p - 500;
+          },
+          close: (p, mo) => {
+            var _a2;
+            const parent = mo.node.Parent;
+            if ((parent === null || parent === void 0 ? void 0 : parent.isKind("msubsup")) && !(parent.isKind("mmultiscripts") && ((_a2 = parent.childNodes[1]) === null || _a2 === void 0 ? void 0 : _a2.isKind("mprescripts"))) && mo.node === this.getLastToken(parent.childNodes[0])) {
+              return NOBREAK;
+            }
+            return p + 500;
+          },
+          space: (p, node) => {
+            const mspace = node;
+            if (!mspace.canBreak)
+              return NOBREAK;
+            const w = mspace.getBBox().w;
+            return w < 0 ? NOBREAK : w < 1 ? p : p - 100 * (w + 4);
+          },
+          separator: (p) => p + 500,
+          fuzz: (p) => p * 0.99
+        };
+        this.TEXCLASS = {
+          [TEXCLASS.BIN]: (p) => p - 250,
+          [TEXCLASS.REL]: (p) => p - 500
+        };
       }
-      toSVG(parents) {
-        if (this.toEmbellishedSVG(parents))
-          return;
-        this.addChildren(this.standardSvgNodes(parents));
-      }
-      toEmbellishedSVG(parents) {
-        if (parents.length <= 1 || !this.node.isEmbellished || this.node.parent.isEmbellished) {
-          return false;
+      breakToWidth(wrapper, W) {
+        const state = this.state;
+        this.state = this.createState(wrapper);
+        this.state.width = W;
+        const n = wrapper.breakCount;
+        for (let i2 = 0; i2 <= n; i2++) {
+          const line = wrapper.lineBBox[i2] || wrapper.getLineBBox(i2);
+          if (line.w > W) {
+            this.breakLineToWidth(wrapper, i2);
+          }
         }
-        const style = this.coreMO().embellishedBreakStyle;
-        const dom = [];
-        for (const [parent, STYLE] of [
-          [parents[0], "before"],
-          [parents[1], "after"]
-        ]) {
-          if (style !== STYLE) {
-            this.toSVG([parent]);
-            dom.push(this.dom[0]);
-            this.place(0, 0);
+        for (const [ww, ij] of this.state.breaks) {
+          if (ij === null) {
+            const mo = ww.coreMO();
+            mo.setBreakStyle(mo.node.attributes.get("linebreakstyle") || "before");
           } else {
-            dom.push(this.createSvgNodes([parent])[0]);
+            ww.setBreakAt(ij);
           }
+          ww.invalidateBBox();
         }
-        this.dom = dom;
-        return true;
+        this.state = state;
       }
-      addChildren(parents) {
-        let x2 = 0;
-        for (const child of this.childNodes) {
-          child.toSVG(parents);
-          const bbox = child.getOuterBBox();
-          if (child.dom) {
-            child.place(x2 + bbox.L * bbox.rscale, 0);
-          }
-          x2 += (bbox.L + bbox.w + bbox.R) * bbox.rscale;
+      createState(wrapper) {
+        const mathWidth = wrapper.getBBox().w;
+        return {
+          breaks: /* @__PURE__ */ new Set(),
+          potential: [],
+          width: 0,
+          w: 0,
+          prevWidth: 0,
+          prevBreak: null,
+          depth: 0,
+          mathWidth,
+          mathLeft: mathWidth
+        };
+      }
+      breakLineToWidth(wrapper, i2) {
+        const state = this.state;
+        state.potential = [];
+        state.w = 0;
+        state.prevWidth = 0;
+        state.prevBreak = null;
+        state.depth = 0;
+        this.visitNode(wrapper, i2);
+      }
+      addWidth(bbox, w = null) {
+        if (w === null) {
+          w = bbox.L + bbox.w + bbox.R;
         }
-      }
-      standardSvgNodes(parents) {
-        const svg = this.createSvgNodes(parents);
-        this.handleStyles();
-        this.handleScale();
-        this.handleBorder();
-        this.handleColor();
-        this.handleAttributes();
-        return svg;
-      }
-      createSvgNodes(parents) {
-        this.dom = parents.map((_parent) => this.svg("g", { "data-mml-node": this.node.kind }));
-        parents = this.handleHref(parents);
-        for (const i2 of parents.keys()) {
-          this.adaptor.append(parents[i2], this.dom[i2]);
-        }
-        return this.dom;
-      }
-      handleHref(parents) {
-        const href = this.node.attributes.get("href");
-        if (!href)
-          return parents;
-        let i2 = 0;
-        const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
-        return parents.map((parent) => {
-          parent = this.adaptor.append(parent, this.svg("a", { href }));
-          const { h, d, w } = isEmbellished ? this.getOuterBBox() : this.getLineBBox(i2);
-          this.adaptor.append(this.dom[i2++], this.svg("rect", {
-            "data-hitbox": true,
-            fill: "none",
-            stroke: "none",
-            "pointer-events": "all",
-            width: this.fixed(w),
-            height: this.fixed(h + d),
-            x: i2 === 1 || isEmbellished ? this.fixed(-this.dx) : 0,
-            y: this.fixed(-d)
-          }));
-          return parent;
-        });
-      }
-      handleStyles() {
-        var _a2, _b2, _c, _d;
-        if (!this.styles)
+        if (!w)
           return;
-        const styles = this.styles.cssText;
-        if (styles) {
-          this.dom.forEach((node) => this.adaptor.setAttribute(node, "style", styles));
+        w *= bbox.rscale;
+        this.state.w += w;
+        if (this.state.potential.length) {
+          this.state.potential[0][4] += w;
         }
-        const padding2 = (((_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.padding) || [0, 0, 0, 0])[3];
-        const margin = (((_b2 = this.styleData) === null || _b2 === void 0 ? void 0 : _b2.margin) || [0, 0, 0, 0])[3];
-        const border = (((_d = (_c = this.styleData) === null || _c === void 0 ? void 0 : _c.border) === null || _d === void 0 ? void 0 : _d.width) || [0, 0, 0, 0])[3];
-        if (padding2 || border) {
-          this.dx = padding2 + border;
-        }
-        if (margin) {
-          const transform = `translate(${this.fixed(margin)},0)`;
-          this.dom.forEach((node) => this.adaptor.setAttribute(node, "transform", transform));
+        this.processBreak();
+      }
+      processBreak() {
+        const state = this.state;
+        while (state.potential.length && state.w > this.state.width) {
+          const br2 = state.potential.pop();
+          const [ww, , pw, dw, w] = br2;
+          state.breaks.add(ww);
+          state.w = state.potential.reduce((w2, brk) => w2 + brk[4], dw + w);
+          if (state.prevBreak && state.prevWidth + pw <= state.width) {
+            state.breaks.delete(state.prevBreak[0]);
+            state.prevWidth += pw;
+          } else {
+            state.prevWidth = pw + dw;
+          }
+          state.potential.forEach((data) => data[2] -= pw);
+          state.prevBreak = br2;
+          state.mathLeft -= pw;
         }
       }
-      handleScale() {
-        if (this.bbox.rscale !== 1) {
-          const scale2 = "scale(" + this.fixed(this.bbox.rscale / 1e3, 3) + ")";
-          this.dom.forEach((node) => this.adaptor.setAttribute(node, "transform", scale2));
-        }
-      }
-      handleColor() {
+      pushBreak(wrapper, penalty, w, ij) {
         var _a2;
-        const adaptor = this.adaptor;
-        const attributes = this.node.attributes;
-        const color = attributes.getExplicit("mathcolor") || attributes.getExplicit("color");
-        const background = attributes.getExplicit("mathbackground") || attributes.getExplicit("background") || ((_a2 = this.styles) === null || _a2 === void 0 ? void 0 : _a2.get("background-color"));
-        if (color) {
-          this.dom.forEach((node) => {
-            adaptor.setAttribute(node, "fill", color);
-            adaptor.setAttribute(node, "stroke", color);
-          });
-        }
-        if (background) {
-          let i2 = 0;
-          const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
-          this.dom.forEach((node) => {
-            const { h, d, w } = isEmbellished ? this.getOuterBBox() : this.getLineBBox(i2++);
-            const rect = this.svg("rect", {
-              fill: background,
-              x: i2 === 1 || isEmbellished ? this.fixed(-this.dx) : 0,
-              y: this.fixed(-d),
-              width: this.fixed(w),
-              height: this.fixed(h + d),
-              "data-bgcolor": true
-            });
-            const child = adaptor.firstChild(node);
-            if (child) {
-              adaptor.insert(rect, child);
-            } else {
-              adaptor.append(node, rect);
-            }
-          });
-        }
-      }
-      handleBorder() {
-        var _a2, _b2, _c;
-        const border = (_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.border;
-        if (!border)
+        const state = this.state;
+        if (penalty >= NOBREAK || state.w === 0 && state.prevWidth === 0)
           return;
-        const margin = (_c = (_b2 = this.styleData) === null || _b2 === void 0 ? void 0 : _b2.margin) !== null && _c !== void 0 ? _c : [0, 0, 0, 0];
-        const f = _SvgWrapper.borderFuzz;
-        const adaptor = this.adaptor;
-        let k = 0;
-        const n = this.dom.length - 1;
-        const isEmbellished = this.node.isEmbellished && !this.node.isKind("mo");
-        for (const dom of this.dom) {
-          const L = !n || !k ? 1 : 0;
-          const R = !n || k === n ? 1 : 0;
-          const bbox = isEmbellished ? this.getOuterBBox() : this.getLineBBox(k++);
-          const h = bbox.h - margin[0] + f;
-          const d = bbox.d - margin[2] + f;
-          const w = bbox.w - margin[1] - margin[3] + f;
-          const outerRT = [w, h];
-          const outerLT = [-f, h];
-          const outerRB = [w, -d];
-          const outerLB = [-f, -d];
-          const innerRT = [w - R * border.width[1], h - border.width[0]];
-          const innerLT = [-f + L * border.width[3], h - border.width[0]];
-          const innerRB = [w - R * border.width[1], -d + border.width[2]];
-          const innerLB = [-f + L * border.width[3], -d + border.width[2]];
-          const paths = [
-            [outerLT, outerRT, innerRT, innerLT],
-            [outerRB, outerRT, innerRT, innerRB],
-            [outerLB, outerRB, innerRB, innerLB],
-            [outerLB, outerLT, innerLT, innerLB]
-          ];
-          const child = adaptor.firstChild(dom);
-          const dx = L * this.dx;
-          for (const i2 of [0, 1, 2, 3]) {
-            if (!border.width[i2] || i2 === 3 && !L || i2 === 1 && !R)
-              continue;
-            const path = paths[i2];
-            if (border.style[i2] === "dashed" || border.style[i2] === "dotted") {
-              this.addBorderBroken(path, border.color[i2], border.style[i2], border.width[i2], i2, dom, dx);
-            } else {
-              this.addBorderSolid(path, border.color[i2], child, dom, dx);
-            }
+        while (state.potential.length && state.potential[0][1] > this.FACTORS.fuzz(penalty)) {
+          const data = state.potential.shift();
+          if (state.potential.length) {
+            state.potential[0][4] += data[4];
           }
         }
-      }
-      addBorderSolid(path, color, child, parent, dx) {
-        const border = this.svg("polygon", {
-          points: path.map(([x2, y]) => `${this.fixed(x2 - dx)},${this.fixed(y)}`).join(" "),
-          stroke: "none"
-        });
-        if (color) {
-          this.adaptor.setAttribute(border, "fill", color);
-        }
-        if (child) {
-          this.adaptor.insert(border, child);
-        } else {
-          this.adaptor.append(parent, border);
-        }
-      }
-      addBorderBroken(path, color, style, t, i2, parent, dx) {
-        const dot = style === "dotted";
-        const t2 = t / 2;
-        const [tx1, ty1, tx2, ty2] = [
-          [t2, -t2, -t2, -t2],
-          [-t2, t2, -t2, -t2],
-          [t2, t2, -t2, t2],
-          [t2, t2, t2, -t2]
-        ][i2];
-        const [A, B] = path;
-        const x1 = A[0] + tx1 - dx;
-        const y1 = A[1] + ty1;
-        const x2 = B[0] + tx2 - dx;
-        const y2 = B[1] + ty2;
-        const W = Math.abs(i2 % 2 ? y2 - y1 : x2 - x1);
-        const n = dot ? Math.ceil(W / (2 * t)) : Math.ceil((W - t) / (4 * t));
-        const m = W / (4 * n + 1);
-        const line = this.svg("line", {
-          x1: this.fixed(x1),
-          y1: this.fixed(y1),
-          x2: this.fixed(x2),
-          y2: this.fixed(y2),
-          "stroke-width": this.fixed(t),
-          stroke: color,
-          "stroke-linecap": dot ? "round" : "square",
-          "stroke-dasharray": dot ? [1, this.fixed(W / n - 2e-3)].join(" ") : [this.fixed(m), this.fixed(3 * m)].join(" ")
-        });
-        const adaptor = this.adaptor;
-        const child = adaptor.firstChild(parent);
-        if (child) {
-          adaptor.insert(line, child);
-        } else {
-          adaptor.append(parent, line);
-        }
-      }
-      handleAttributes() {
-        const adaptor = this.adaptor;
-        const attributes = this.node.attributes;
-        const defaults = attributes.getAllDefaults();
-        const skip = _SvgWrapper.skipAttributes;
-        for (const name of attributes.getExplicitNames()) {
-          if (skip[name] === false || !(name in defaults) && !skip[name] && !adaptor.hasAttribute(this.dom[0], name)) {
-            this.dom.forEach((dom) => adaptor.setAttribute(dom, name, attributes.getExplicit(name)));
-          }
-        }
-        if (attributes.get("class")) {
-          for (const name of split(attributes.get("class"))) {
-            this.dom.forEach((node) => adaptor.addClass(node, name));
-          }
-        }
-      }
-      place(x2, y, element = null) {
-        if (!element) {
-          x2 += this.dx * this.bbox.rscale;
-        }
-        if (!(x2 || y))
-          return;
-        if (!element) {
-          element = this.dom[0];
-          y = this.handleId(y);
-        }
-        const translate3 = `translate(${this.fixed(x2)},${this.fixed(y)})`;
-        const transform = this.adaptor.getAttribute(element, "transform") || "";
-        this.adaptor.setAttribute(element, "transform", translate3 + (transform ? " " + transform : ""));
-      }
-      handleId(y) {
-        if (!this.node.attributes || !this.node.attributes.get("id")) {
-          return y;
-        }
-        const adaptor = this.adaptor;
-        const { h, rscale } = this.getBBox();
-        const children = adaptor.childNodes(this.dom[0]);
-        children.forEach((child) => adaptor.remove(child));
-        const g = this.svg("g", { "data-idbox": true, transform: `translate(0,${this.fixed(-h)})` }, children);
-        adaptor.append(this.dom[0], this.svg("text", { "data-id-align": true }, [this.text("")]));
-        adaptor.append(this.dom[0], g);
-        return y + h * rscale;
-      }
-      firstChild(dom = this.dom[0]) {
-        const adaptor = this.adaptor;
-        let child = adaptor.firstChild(dom);
-        if (child && adaptor.kind(child) === "text" && adaptor.getAttribute(child, "data-id-align")) {
-          child = adaptor.firstChild(adaptor.next(child));
-        }
-        if (child && adaptor.kind(child) === "rect" && adaptor.getAttribute(child, "data-hitbox")) {
-          child = adaptor.next(child);
-        }
-        return child;
-      }
-      placeChar(n, x2, y, parent, variant = null, buffer = false) {
-        if (variant === null) {
-          variant = this.variant;
-        }
-        const C = n.toString(16).toUpperCase();
-        const [, , w, data] = this.getVariantChar(variant, n);
-        if (data.unknown) {
-          this.utext += String.fromCodePoint(n);
-          return buffer ? 0 : this.addUtext(x2, y, parent, variant);
-        }
-        const dx = this.addUtext(x2, y, parent, variant);
-        if ("p" in data) {
-          x2 += dx;
-          const path = data.p ? "M" + data.p + "Z" : "";
-          this.place(x2, y, this.adaptor.append(parent, this.charNode(variant, C, path)));
-          return w + dx;
-        }
-        if ("c" in data) {
-          const g = this.adaptor.append(parent, this.svg("g", { "data-c": C }));
-          this.place(x2 + dx, y, g);
-          x2 = 0;
-          for (const n2 of this.unicodeChars(data.c, variant)) {
-            x2 += this.placeChar(n2, x2, y, g, variant);
-          }
-          return x2 + dx;
-        }
-        return w;
-      }
-      addUtext(x2, y, parent, variant) {
-        const c = this.utext;
-        if (!c) {
-          return 0;
-        }
-        this.utext = "";
-        const text = this.adaptor.append(parent, this.jax.unknownText(c, variant));
-        this.place(x2, y, text);
-        return this.jax.measureTextNodeWithCache(text, c, variant).w;
-      }
-      charNode(variant, C, path) {
-        const cache = this.jax.options.fontCache;
-        return cache !== "none" ? this.useNode(variant, C, path) : this.pathNode(C, path);
-      }
-      pathNode(C, path) {
-        return this.svg("path", { "data-c": C, d: path });
-      }
-      useNode(variant, C, path) {
-        const use2 = this.svg("use", { "data-c": C });
-        const id = "#" + this.jax.fontCache.cachePath(variant, C, path);
-        this.adaptor.setAttribute(use2, "href", id, this.jax.options.useXlink ? (__kittexLate.XLINKNS?.()) : null);
-        return use2;
-      }
-      drawBBox() {
-        var _a2, _b2;
-        const { w, h, d } = this.getOuterBBox();
-        const L = (((_b2 = (_a2 = this.styleData) === null || _a2 === void 0 ? void 0 : _a2.border) === null || _b2 === void 0 ? void 0 : _b2.width) || [0, 0, 0, 0])[3];
-        const def2 = { style: { opacity: 0.25 } };
-        if (L) {
-          def2.transform = `translate(${this.fixed(-L)}, 0)`;
-        }
-        const box = this.svg("g", def2, [
-          this.svg("rect", {
-            fill: "red",
-            height: this.fixed(h),
-            width: this.fixed(w)
-          }),
-          this.svg("rect", {
-            fill: "green",
-            height: this.fixed(d),
-            width: this.fixed(w),
-            y: this.fixed(-d)
-          })
+        state.potential.unshift([
+          [wrapper, ij],
+          penalty,
+          state.w - (((_a2 = state.prevBreak) === null || _a2 === void 0 ? void 0 : _a2[3]) || 0),
+          w,
+          0
         ]);
-        const node = this.dom[0] || this.parent.dom[0];
-        this.adaptor.append(node, box);
       }
-      html(type, def2 = {}, content = []) {
-        return this.jax.html(type, def2, content);
+      getBorderLR(wrapper) {
+        var _a2;
+        const data = wrapper.styleData;
+        if (!data)
+          return [0, 0];
+        const border = ((_a2 = data === null || data === void 0 ? void 0 : data.border) === null || _a2 === void 0 ? void 0 : _a2.width) || [0, 0, 0, 0];
+        const padding2 = (data === null || data === void 0 ? void 0 : data.padding) || [0, 0, 0, 0];
+        return [border[3] + padding2[3], border[1] + padding2[1]];
       }
-      svg(type, def2 = {}, content = []) {
-        return this.jax.svg(type, def2, content);
+      getFirstToken(node) {
+        return node.isToken ? node : this.getFirstToken(node.childNodes[0]);
       }
-      text(text) {
-        return this.jax.text(text);
+      getLastToken(node) {
+        return node.isToken ? node : this.getLastToken(node.childNodes[node.childNodes.length - 1]);
       }
-      fixed(x2, n = 1) {
-        return this.jax.fixed(x2 * 1e3, n);
+      visitNode(wrapper, i2) {
+        if (!wrapper)
+          return;
+        this.state.depth++;
+        if (wrapper.node.isEmbellished && !wrapper.node.isKind("mo")) {
+          this.visitEmbellishedOperator(wrapper, i2);
+        } else {
+          super.visitNode(wrapper, i2);
+        }
+        this.state.depth--;
+      }
+      visitDefault(wrapper, i2) {
+        var _a2;
+        const bbox = wrapper.getLineBBox(i2);
+        if (wrapper.node.isToken || wrapper.node.linebreakContainer || !((_a2 = wrapper.childNodes) === null || _a2 === void 0 ? void 0 : _a2[0])) {
+          this.addWidth(bbox);
+        } else {
+          const [L, R] = this.getBorderLR(wrapper);
+          if (i2 === 0) {
+            this.addWidth(bbox, bbox.L + L);
+          }
+          this.visitNode(wrapper.childNodes[0], i2);
+          if (i2 === wrapper.breakCount) {
+            this.addWidth(bbox, bbox.R + R);
+          }
+        }
+      }
+      visitEmbellishedOperator(wrapper, _i) {
+        const mo = wrapper.coreMO();
+        const bbox = LineBBox.from(wrapper.getOuterBBox(), wrapper.linebreakOptions.lineleading);
+        bbox.getIndentData(mo.node);
+        const style = mo.getBreakStyle(mo.node.attributes.get("linebreakstyle"));
+        const dw = mo.processIndent("", bbox.indentData[1][1], "", bbox.indentData[0][1], this.state.width)[1];
+        const penalty = this.moPenalty(mo);
+        if (style === "before") {
+          this.pushBreak(wrapper, penalty, dw - bbox.L, null);
+          this.addWidth(bbox);
+        } else {
+          this.addWidth(bbox);
+          const w = (style === "after" ? 0 : mo.multChar ? mo.multChar.getBBox().w : bbox.w) + dw;
+          this.pushBreak(wrapper, penalty, w, null);
+        }
+      }
+      visitMoNode(wrapper, _i) {
+        const mo = wrapper;
+        const bbox = LineBBox.from(mo.getOuterBBox(), mo.linebreakOptions.lineleading);
+        bbox.getIndentData(mo.node);
+        const style = mo.getBreakStyle(mo.node.attributes.get("linebreakstyle"));
+        const dw = mo.processIndent("", bbox.indentData[1][1], "", bbox.indentData[0][1], this.state.width)[1];
+        const penalty = this.moPenalty(mo);
+        if (style === "before") {
+          this.pushBreak(wrapper, penalty, dw - bbox.L, null);
+          this.addWidth(bbox);
+        } else {
+          this.addWidth(bbox);
+          const w = (style === "after" ? 0 : mo.multChar ? mo.multChar.getBBox().w : bbox.w) + dw;
+          this.pushBreak(wrapper, penalty, w, null);
+        }
+      }
+      moPenalty(mo) {
+        const { linebreak, fence, form } = mo.node.attributes.getList("linebreak", "fence", "form");
+        const FACTORS = this.FACTORS;
+        let penalty = FACTORS.tail(FACTORS.width(0));
+        const isOpen = fence && form === "prefix" || mo.node.texClass === TEXCLASS.OPEN;
+        const isClose = fence && form === "postfix" || mo.node.texClass === TEXCLASS.CLOSE;
+        if (isOpen) {
+          penalty = FACTORS.open(penalty, mo);
+          this.state.depth++;
+        }
+        if (isClose) {
+          penalty = FACTORS.close(penalty, mo);
+          this.state.depth--;
+        }
+        penalty = (this.TEXCLASS[mo.node.texClass] || ((p) => p))(penalty);
+        return (this.PENALTY[linebreak] || ((p) => p))(FACTORS.depth(penalty));
+      }
+      getPrevious(mo) {
+        let child = mo.node;
+        let parent = child.parent;
+        let i2 = parent.childIndex(child);
+        while (parent && (parent.notParent || parent.isKind("mrow")) && i2 === 0) {
+          child = parent;
+          parent = child.parent;
+          i2 = parent.childIndex(child);
+        }
+        if (!parent || !i2)
+          return null;
+        const prev = parent.childNodes[i2 - 1];
+        return prev.isEmbellished ? prev.coreMO() : null;
+      }
+      visitMspaceNode(wrapper, i2) {
+        const bbox = wrapper.getLineBBox(i2);
+        const mspace = wrapper;
+        if (mspace.canBreak) {
+          const penalty = this.mspacePenalty(mspace);
+          bbox.getIndentData(wrapper.node);
+          const dw = wrapper.processIndent("", bbox.indentData[1][1], "", bbox.indentData[0][1], this.state.width)[1];
+          this.pushBreak(wrapper, penalty, dw - bbox.w, null);
+        }
+        this.addWidth(bbox);
+      }
+      mspacePenalty(mspace) {
+        const linebreak = mspace.node.attributes.get("linebreak");
+        const FACTORS = this.FACTORS;
+        const penalty = FACTORS.space(FACTORS.tail(FACTORS.width(0)), mspace);
+        return (this.PENALTY[linebreak] || ((p) => p))(FACTORS.depth(penalty));
+      }
+      visitMtextNode(wrapper, i2) {
+        if (!wrapper.getText().match(/ /)) {
+          this.visitDefault(wrapper, i2);
+          return;
+        }
+        const mtext = wrapper;
+        mtext.clearBreakPoints();
+        const space = mtext.textWidth(" ");
+        const bbox = wrapper.getBBox();
+        const [L, R] = this.getBorderLR(wrapper);
+        this.addWidth(bbox, bbox.L + L);
+        const children = mtext.childNodes;
+        for (const j of children.keys()) {
+          const child = children[j];
+          if (child.node.isKind("text")) {
+            const words2 = child.node.getText().split(/ /);
+            const last = words2.pop();
+            for (const k of words2.keys()) {
+              this.addWidth(bbox, mtext.textWidth(words2[k]));
+              this.pushBreak(wrapper, this.mtextPenalty(), -space, [j, k + 1]);
+              this.addWidth(bbox, space);
+            }
+            this.addWidth(bbox, mtext.textWidth(last));
+          } else {
+            this.addWidth(child.getBBox());
+          }
+        }
+        this.addWidth(bbox, bbox.R + R);
+      }
+      mtextPenalty() {
+        const FACTORS = this.FACTORS;
+        return FACTORS.depth(FACTORS.tail(FACTORS.width(0)));
+      }
+      visitMrowNode(wrapper, i2) {
+        const line = wrapper.lineBBox[i2] || wrapper.getLineBBox(i2);
+        const [start, startL] = line.start || [0, 0];
+        const [end, endL] = line.end || [wrapper.childNodes.length - 1, 0];
+        const [L, R] = this.getBorderLR(wrapper);
+        this.addWidth(line, line.L + L);
+        for (let i3 = start; i3 <= end; i3++) {
+          this.visitNode(wrapper.childNodes[i3], i3 === start ? startL : i3 === end ? endL : 0);
+        }
+        this.addWidth(line, line.R + R);
+      }
+      visitInferredMrowNode(wrapper, i2) {
+        this.state.depth--;
+        this.visitMrowNode(wrapper, i2);
+        this.state.depth++;
+      }
+      visitMfracNode(wrapper, i2) {
+        const mfrac = wrapper;
+        if (!mfrac.node.attributes.get("bevelled") && mfrac.getOuterBBox().w > this.state.width) {
+          this.breakToWidth(mfrac.childNodes[0], this.state.width);
+          this.breakToWidth(mfrac.childNodes[1], this.state.width);
+        }
+        this.visitDefault(wrapper, i2);
+      }
+      visitMsqrtNode(wrapper, i2) {
+        if (wrapper.getOuterBBox().w > this.state.width) {
+          const msqrt = wrapper;
+          const base = msqrt.childNodes[msqrt.base];
+          this.breakToWidth(base, this.state.width - msqrt.rootWidth());
+          msqrt.getStretchedSurd();
+        }
+        this.visitDefault(wrapper, i2);
+      }
+      visitMrootNode(wrapper, i2) {
+        this.visitMsqrtNode(wrapper, i2);
+      }
+      visitMsubNode(wrapper, i2) {
+        this.visitDefault(wrapper, i2);
+        const msub = wrapper;
+        const x2 = msub.getOffset()[0];
+        const sbox = msub.scriptChild.getOuterBBox();
+        const [L, R] = this.getBorderLR(wrapper);
+        this.addWidth(msub.getLineBBox(i2), x2 + L + sbox.rscale * sbox.w + msub.font.params.scriptspace + R);
+      }
+      visitMsupNode(wrapper, i2) {
+        this.visitDefault(wrapper, i2);
+        const msup = wrapper;
+        const x2 = msup.getOffset()[0];
+        const sbox = msup.scriptChild.getOuterBBox();
+        const [L, R] = this.getBorderLR(wrapper);
+        this.addWidth(msup.getLineBBox(i2), x2 + L + sbox.rscale * sbox.w + msup.font.params.scriptspace + R);
+      }
+      visitMsubsupNode(wrapper, i2) {
+        this.visitDefault(wrapper, i2);
+        const msubsup = wrapper;
+        const subbox = msubsup.subChild.getOuterBBox();
+        const supbox = msubsup.supChild.getOuterBBox();
+        const x2 = msubsup.getAdjustedIc();
+        const w = Math.max(subbox.rscale * subbox.w, x2 + supbox.rscale * supbox.w) + msubsup.font.params.scriptspace;
+        const [L, R] = this.getBorderLR(wrapper);
+        this.addWidth(wrapper.getLineBBox(i2), L + w + R);
+      }
+      visitMmultiscriptsNode(wrapper, i2) {
+        const mmultiscripts = wrapper;
+        const data = mmultiscripts.scriptData;
+        if (data.numPrescripts) {
+          const w = Math.max(data.psup.rscale * data.psup.w, data.psub.rscale * data.psub.w);
+          this.addWidth(wrapper.getLineBBox(i2), w + mmultiscripts.font.params.scriptspace);
+        }
+        this.visitDefault(wrapper, i2);
+        if (data.numScripts) {
+          const w = Math.max(data.sup.rscale * data.sup.w, data.sub.rscale * data.sub.w);
+          this.addWidth(wrapper.getLineBBox(i2), w + mmultiscripts.font.params.scriptspace);
+        }
+      }
+      visitMfencedNode(wrapper, i2) {
+        const mfenced = wrapper;
+        const bbox = wrapper.getLineBBox(i2);
+        const [L, R] = this.getBorderLR(wrapper);
+        if (i2 === 0) {
+          this.addWidth(bbox, bbox.L + L);
+        }
+        this.visitNode(mfenced.mrow, i2);
+        if (i2 === wrapper.breakCount) {
+          this.addWidth(bbox, bbox.R + R);
+        }
+      }
+      visitMactionNode(wrapper, i2) {
+        const maction = wrapper;
+        const bbox = wrapper.getLineBBox(i2);
+        const [L, R] = this.getBorderLR(wrapper);
+        if (i2 === 0) {
+          this.addWidth(bbox, bbox.L + L);
+        }
+        this.visitNode(maction.selected, i2);
+        if (i2 === wrapper.breakCount) {
+          this.addWidth(bbox, bbox.R + R);
+        }
       }
     };
-    SvgWrapper.kind = "unknown";
-    SvgWrapper.borderFuzz = 5e-3;
+    (function() {
+      for (const op of Object.keys(OPTABLE.postfix)) {
+        const data = OPTABLE.postfix[op][3];
+        if (data && data.fence) {
+          data.linebreakstyle = "after";
+        }
+      }
+      OPTABLE.infix["\u2061"] = [...OPTABLE.infix["\u2061"]];
+      OPTABLE.infix["\u2061"][3] = { linebreak: "nobreak" };
+    })();
   }
 });
-export{init_Wrapper3,SvgWrapper,init_WrapperFactory2,CommonWrapperFactory,init_common,init_StyleJson,init_Wrapper2,CommonOutputJax,StyleJsonSheet,SPACE3};
+export{init_FontData,init_LinebreakVisitor,FontData,LinebreakVisitor,init_BBox,init_LineBBox,NOSTRETCH,BBox,LineBBox,DIRECTION,mergeOptions,VFUZZ,HFUZZ,init_Direction,V,H,init_ParseMethods,ParseMethods_default,init_BaseConfiguration,Other,TeX,init_tex,NOBREAK};

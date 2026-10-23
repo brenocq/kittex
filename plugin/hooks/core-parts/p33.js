@@ -1,1091 +1,1345 @@
-import{inkAlpha,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,Coverage,RULE_MIN_SNAP,encodeAlphaPng,flattenPath,RULE_MIN_FILL,flattenSubpaths,MIN_STROKE_PX,OUTLINE_EM_PX,encodeQuantizedPng,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN}from'./p32.js';export*from'./p32.js';
-// core/src/raster/paint.ts
-var Canvas2 = class {
-  constructor(width, height2) {
-    this.width = width;
-    this.height = height2;
-    this.pixels = new Uint8Array(width * height2 * 4);
-  }
-  width;
-  height;
-  /** Premultiplied RGBA, row-major. */
-  pixels;
-  /**
-   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
-   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
-   */
-  paint(coverage, x0, y0, w, h, color, opacity, mask) {
-    const px2 = this.pixels;
-    const W = this.width;
-    const erase = color === "erase";
-    const r = erase ? 0 : color.r;
-    const g = erase ? 0 : color.g;
-    const b = erase ? 0 : color.b;
-    const k = Math.min(1, Math.max(0, opacity)) / 255;
-    for (let y = 0; y < h; y++) {
-      const cy = y0 + y;
-      if (cy < 0 || cy >= this.height) continue;
-      for (let x2 = 0; x2 < w; x2++) {
-        const c = coverage[y * w + x2];
-        if (c === 0) continue;
-        const cx = x0 + x2;
-        if (cx < 0 || cx >= W) continue;
-        const at = cy * W + cx;
-        let a = c * k;
-        if (mask) {
-          const m = mask[at];
-          if (m === 0) continue;
-          a = a * m / 255;
-        }
-        const keep = 1 - a;
-        const i2 = at * 4;
-        if (erase) {
-          px2[i2] = px2[i2] * keep + 0.5;
-          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
-        } else {
-          px2[i2] = r * a + px2[i2] * keep + 0.5;
-          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
-          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
-          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
-        }
-      }
-    }
-  }
-  /**
-   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
-   * alpha corrected for its colour as the terminal corrects text blended over
-   * that background (inkAlpha: Ghostty's linear-corrected blending).
-   */
-  straight(over) {
-    const px2 = this.pixels;
-    const out = new Uint8Array(px2.length);
-    const tables = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < px2.length; i2 += 4) {
-      const a = px2[i2 + 3];
-      if (a === 0) continue;
-      const half = a >> 1;
-      const r0 = (px2[i2] * 255 + half) / a | 0;
-      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
-      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
-      const r = r0 > 255 ? 255 : r0;
-      const g = g0 > 255 ? 255 : g0;
-      const b = b0 > 255 ? 255 : b0;
-      out[i2] = r;
-      out[i2 + 1] = g;
-      out[i2 + 2] = b;
-      if (!over || a === 255) {
-        out[i2 + 3] = a;
-        continue;
-      }
-      const key = r << 16 | g << 8 | b;
-      let table2 = tables.get(key);
-      if (!table2) {
-        if (tables.size >= 4096) {
-          out[i2 + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over));
-          continue;
-        }
-        table2 = correctionTable({ r, g, b }, over);
-        tables.set(key, table2);
-      }
-      out[i2 + 3] = table2[a];
-    }
-    return out;
-  }
-};
-function correctionTable(color, over) {
-  const table2 = new Uint8Array(256);
-  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over));
-  return table2;
+import{STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,readSvg,LINE_WIDTH_PT,TEXT_HEIGHT_PT,PNG_SIGNATURE,__toESM,require_decoder,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,__kittexLate}from'./p32.js';export*from'./p32.js';
+__kittexLate.clamp01=()=>clamp01;
+var clamp01 = (v) => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+// core/src/diagram/tex.ts
+function diagramFence(info) {
+  const lang = info.trim().split(/\s+/, 1)[0].toLowerCase();
+  if (lang === "latex" || lang === "tex") return "latex";
+  if (lang === "tikz") return "tikz";
+  return void 0;
 }
-// core/src/raster/stroke.ts
-function strokeOutlines(subpaths, g) {
-  const hw = g.width / 2;
-  if (!(hw > 0)) return [];
-  const out = [];
-  for (const piece of dashed(subpaths, g)) strokePiece(piece, hw, g, out);
-  for (const c of out) if (area(c) < 0) reverse(c);
+function drawsPicture(source, lang) {
+  if (lang !== "latex") return true;
+  if (isDocument(source)) return hasBody(source);
+  return PICTURE.test(source) || IMPLIED_PACKAGES.some((implied) => implied.drawing && implied.use.test(source));
+}
+var PICTURE = /\\begin\{(?:tikzpicture|tikzcd|circuitikz|axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|ternaryaxis|picture|forest|chemfig)\}|\\(?:tikz|chemfig|schemestart|chemname|ctikzset|draw|SI|qty|si|unit|num)\b/;
+var IMPLIED_PACKAGES = [
+  { use: /\\begin\{quantikz\}/, line: "\\usepackage{quantikz}", name: "quantikz", drawing: true },
+  { use: /\\feynmandiagram\b|\\begin\{feynman\}/, line: "\\usepackage{tikz-feynman}", name: "tikz-feynman", drawing: true },
+  { use: /\\begin\{ganttchart\}/, line: "\\usepackage{pgfgantt}", name: "pgfgantt", drawing: true },
+  { use: /\\smartdiagram\b/, line: "\\usepackage{smartdiagram}", name: "smartdiagram", drawing: true },
+  { use: /\\begin\{karnaugh-map\}/, line: "\\usepackage{karnaugh-map}", name: "karnaugh-map", drawing: true },
+  { use: /\\begin\{tikztimingtable\}|\\texttiming\b/, line: "\\usepackage{tikz-timing}", name: "tikz-timing", drawing: true },
+  { use: /\\begin\{neuralnetwork\}/, line: "\\usepackage{neuralnetwork}", name: "neuralnetwork", drawing: true },
+  { use: /\\begin\{sequencediagram\}/, line: "\\usepackage{pgf-umlsd}", name: "pgf-umlsd", drawing: true },
+  { use: /\\begin\{dependency\}/, line: "\\usepackage{tikz-dependency}", name: "tikz-dependency", drawing: true },
+  { use: /\\begin\{(?:BodeMagPlot|BodePhPlot|BodePlot|NyquistPlot|NicholsChart)\}/, line: "\\usepackage{bodeplot}", name: "bodeplot", drawing: true },
+  { use: /\\xymatrix\b|\\begin\{xy\}/, line: "\\usepackage[all]{xy}", name: "xy", drawing: true },
+  { use: /\\Qcircuit\b/, line: "\\usepackage[braket,qm]{qcircuit}", name: "qcircuit", drawing: true },
+  { use: /\\pie\s*[[{]/, line: "\\usepackage{pgf-pie}", name: "pgf-pie", drawing: true },
+  { use: /\\Tree\s*\[/, line: "\\usepackage{tikz-qtree}", name: "tikz-qtree", drawing: true },
+  { use: /\\begin\{forest\}/, line: "\\usepackage{forest}", name: "forest" },
+  { use: /\\tkz[A-Z]/, line: "\\usepackage{tkz-euclide}", name: "tkz-euclide" },
+  { use: /\\tdplotsetmaincoords\b|\btdplot_main_coords\b/, line: "\\usepackage{tikz-3dplot}", name: "tikz-3dplot" },
+  { use: /\\ce\s*\{/, line: "\\usepackage[version=4]{mhchem}", name: "mhchem" },
+  { use: /\\bm\s*\{/, line: "\\usepackage{bm}", name: "bm" },
+  { use: /\\mathscr\s*\{/, line: "\\usepackage{mathrsfs}", name: "mathrsfs" },
+  { use: /\\(?:toprule|midrule|bottomrule)\b/, line: "\\usepackage{booktabs}", name: "booktabs" },
+  { use: /\\multirow\b/, line: "\\usepackage{multirow}", name: "multirow" },
+  // A TikZ library from spath3, which a basic TeX Live (BasicTeX, the README's lists) lacks: loaded only when used.
+  { use: /\\(?:calligraphy|pen)\b|calligraphic|copperplate|nib style|pen colou?r/, line: "\\usetikzlibrary{calligraphy}", name: "calligraphy" }
+];
+function impliedPackages(body, moved) {
+  const loaded2 = new Set(moved.flatMap((line) => /^\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/.exec(line)?.[1]?.split(",").map((name) => name.trim()) ?? []));
+  return IMPLIED_PACKAGES.filter((implied) => implied.use.test(body) && !loaded2.has(implied.name)).map((implied) => implied.line);
+}
+function isDocument(source) {
+  return /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(source) || /\\begin\{document\}/.test(source);
+}
+function hasBody(source) {
+  const start = /\\begin\{document\}/.exec(source);
+  if (!start) return false;
+  const end = source.indexOf("\\end{document}", start.index);
+  const body = source.slice(start.index + start[0].length, end < 0 ? void 0 : end);
+  return body.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, "$1$2").trim() !== "";
+}
+var TIKZ_LIBRARIES = [
+  "arrows.meta,positioning,calc,shapes.geometric,shapes.misc,shapes.arrows,decorations.pathmorphing,decorations.markings,patterns,matrix,fit,backgrounds,automata,trees,intersections,angles,quotes,3d,shadows,chains",
+  // What replies use and often don't load: braces, text along a path, the old arrow tips (stealth', latex'), shapes'
+  // other families, fadings, magnified insets, \graph, \tikzmath, mindmaps, petri nets, plot marks, bent tips.
+  "arrows,decorations.pathreplacing,decorations.text,decorations.shapes,shapes.symbols,shapes.multipart,shapes.callouts,fadings,shadings,spy,through,graphs,math,mindmap,petri,plotmarks,patterns.meta,bending,perspective"
+].join(",");
+var FRAGMENT_PREAMBLE = [
+  "\\documentclass[dvisvgm,border=1pt]{standalone}",
+  `\\makeatletter${STANDALONE_NO_PS}\\makeatother`,
+  "\\usepackage{amsmath,amssymb}",
+  "\\usepackage{tikz}",
+  `\\usetikzlibrary{${TIKZ_LIBRARIES}}`,
+  "\\usepackage{pgfplots}",
+  "\\pgfplotsset{compat=1.18}",
+  // pgfplots' own libraries: polar axes, groups of plots, box plots, more colormaps, patch plots, ternary axes and dates.
+  "\\usepgfplotslibrary{fillbetween,polar,groupplots,statistics,colormaps,patchplots,ternary,dateplot}",
+  "\\usepackage{chemfig}",
+  "\\usepackage{circuitikz}",
+  "\\usepackage{tikz-cd}",
+  "\\usepackage{siunitx}"
+];
+var PREAMBLE_LINE = /^[ \t]*\\(?:usepackage|RequirePackage|usetikzlibrary|usepgfplotslibrary|usepgflibrary|usegdlibrary)\b[^\n]*$/gm;
+function curvesSampledOnce(source) {
+  const start = /\\addplot3\s*\+?/g;
+  let out = "";
+  let from = 0;
+  for (let match = start.exec(source); match; match = start.exec(source)) {
+    let at = skipBlanks(source, match.index + match[0].length);
+    let options3;
+    if (source[at] === "[") {
+      const close2 = matchingBracket(source, at, "[", "]");
+      if (close2 < 0) continue;
+      options3 = { open: at, close: close2 };
+      at = skipBlanks(source, close2 + 1);
+    }
+    if (source[at] !== "(") continue;
+    const close = matchingBracket(source, at, "(", ")");
+    if (close < 0) continue;
+    const triple = source.slice(at + 1, close);
+    const optionText = options3 ? source.slice(options3.open + 1, options3.close) : "";
+    if (/(?:^|[^A-Za-z\\])y(?![A-Za-z])|\\y(?![A-Za-z])/.test(triple) || /samples\s+y|y\s+domain|variable\s+y/.test(optionText)) continue;
+    if (options3) {
+      const separator = optionText.trim() === "" ? "" : ", ";
+      out += `${source.slice(from, options3.close)}${separator}samples y=0`;
+      from = options3.close;
+    } else {
+      const end = match.index + match[0].length;
+      out += `${source.slice(from, end)}[samples y=0]`;
+      from = end;
+    }
+  }
+  return out + source.slice(from);
+}
+function inlineTables(source) {
+  const read = /\\pgfplotstableread\s*/g;
+  const tables = /* @__PURE__ */ new Map();
+  let blanked = "";
+  let from = 0;
+  for (let match = read.exec(source); match; match = read.exec(source)) {
+    let at = match.index + match[0].length;
+    let options3 = "";
+    if (source[at] === "[") {
+      const close2 = matchingBracket(source, at, "[", "]");
+      if (close2 < 0) return source;
+      options3 = source.slice(at + 1, close2).trim();
+      at = skipBlanks(source, close2 + 1);
+    }
+    if (source[at] !== "{") return source;
+    const close = matchingBracket(source, at, "{", "}");
+    if (close < 0) return source;
+    const rows = source.slice(at + 1, close).split("\n").map((line) => line.replace(/(?<!\\)%.*$/, "").trim()).filter((line) => line !== "");
+    if (rows.length < 2 || !source.slice(at + 1, close).includes("\n") || /\\\\/.test(source.slice(at + 1, close))) return source;
+    at = skipBlanks(source, close + 1);
+    const name = /^(?:\{\s*(\\[A-Za-z]+)\s*\}|(\\[A-Za-z]+)(?![A-Za-z]))/.exec(source.slice(at));
+    if (!name) return source;
+    const end = at + name[0].length;
+    tables.set(name[1] ?? name[2], { options: options3, rows: rows.map((row) => `${row}\\\\`).join("") });
+    blanked += source.slice(from, match.index) + source.slice(match.index, end).replace(/[^\n]/g, "");
+    from = end;
+  }
+  if (tables.size === 0) return source;
+  blanked += source.slice(from);
+  let inlined = blanked.replace(/^([ \t]*\\usepackage\s*(?:\[[^\]]*\]\s*)?\{)([^}]*)\}/gm, (_, head, names) => {
+    const kept = names.split(",").filter((name) => name.trim() !== "pgfplotstable");
+    return kept.length === 0 ? "" : `${head}${kept.join(",")}}`;
+  });
+  for (const [name, table2] of tables) {
+    const use2 = new RegExp(String.raw`\btable\s*(?:\[([^\]]*)\])?\s*\{\s*\\${name.slice(1)}\s*\}`, "g");
+    inlined = inlined.replace(use2, (_, options3) => {
+      const all = ["row sep=\\\\", table2.options, options3?.trim() ?? ""].filter((option) => option !== "").join(", ");
+      return `table[${all}]{${table2.rows}}`;
+    });
+    if (new RegExp(String.raw`\\${name.slice(1)}(?![A-Za-z])`).test(inlined)) return source;
+  }
+  return inlined;
+}
+function skipBlanks(text, at) {
+  while (at < text.length && /\s/.test(text[at])) at++;
+  return at;
+}
+function matchingBracket(text, open, opening, closing) {
+  let depth = 0;
+  for (let at = open; at < text.length; at++) {
+    if (text[at] === opening) depth++;
+    else if (text[at] === closing && --depth === 0) return at;
+  }
+  return -1;
+}
+function diagramDocument(source, lang) {
+  const trimmed2 = curvesSampledOnce(
+    source.replace(/^\s*\n/, "").replace(/\s+$/, "").replace(/shader\s*=\s*(\{\s*)?(faceted\s+)?interp\b/g, (_, brace, faceted) => `shader=${brace ? "{" : ""}${faceted ? "faceted" : "flat"}`).replace(/\bcolorbar(\s+(?:horizontal|left|right))?(?=\s*[,\]])/g, (_, side) => side ? `colorbar${side}, colorbar sampled` : "colorbar sampled")
+  );
+  if (lang === "latex" && isDocument(trimmed2)) {
+    const hasClass = /^(?:\s|%[^\n]*\n)*\\documentclass\b/.test(trimmed2);
+    const body2 = hasClass ? trimmed2 : `\\documentclass[dvisvgm,border=1pt]{standalone}
+${trimmed2}`;
+    const head2 = `\\def\\pgfsysdriver{pgfsys-dvisvgm.def}\\PassOptionsToPackage{dvisvgm}{graphicx}\\makeatletter\\AddToHook{class/standalone/after}{${STANDALONE_NO_PS}}\\makeatother`;
+    const classed = body2.replace(
+      /\\documentclass\s*(?:\[([^\]]*)\])?\s*\{/,
+      (_, options3) => options3 === void 0 ? "\\documentclass[dvisvgm]{" : /(?:^|,)\s*dvisvgm\s*(?:,|$)/.test(options3) ? `\\documentclass[${options3}]{` : `\\documentclass[${options3},dvisvgm]{`
+    );
+    const text = `${head2}
+${classed.replace(/\\begin\{document\}/, "\\begin{document}\\pagestyle{empty}\\thispagestyle{empty}")}
+`;
+    return { text, offset: hasClass ? 1 : 2, baseline: "bottom", fontSize: documentFontSize(body2) };
+  }
+  const moved = [...trimmed2.matchAll(PREAMBLE_LINE)].map((match) => match[0].trim());
+  let body = moved.length > 0 ? trimmed2.replace(PREAMBLE_LINE, "") : trimmed2;
+  body = body.replace(/(?<!\\)\\\[([\s\S]*?)(?<!\\)\\\]/g, "$\\displaystyle $1$").replace(/\$\$([\s\S]*?)\$\$/g, "$\\displaystyle $1$");
+  if (lang === "tikz" && !/\\begin\{tikzpicture\}|\\tikz\b/.test(body)) body = `\\begin{tikzpicture}
+${body}
+\\end{tikzpicture}`;
+  const head = [...FRAGMENT_PREAMBLE, DUMP_POINT, ...moved, ...impliedPackages(body, moved), "\\begin{document}"];
+  const wrapped = lang === "tikz" && body !== trimmed2 && body.startsWith("\\begin{tikzpicture}\n") && !trimmed2.startsWith("\\begin{tikzpicture}");
+  const offset = head.length + (wrapped ? 1 : 0);
+  return { text: `${head.join("\n")}
+${body}
+\\end{document}
+`, offset, baseline: "bottom", fontSize: 10, format: true };
+}
+var FORMAT_SOURCE = `${[...FRAGMENT_PREAMBLE, DUMP_POINT, "\\begin{document}", "\\end{document}"].join("\n")}
+`;
+function formatName(versions) {
+  let hash = 2166136261;
+  for (const char of `${PREAMBLE_VERSION}
+${versions}
+${FORMAT_SOURCE}`) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return `kittex-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+function formatArgv(name) {
+  return ["latex", "-ini", "-no-shell-escape", "-interaction=nonstopmode", "-halt-on-error", "-no-mktex=tex", "-no-mktex=tfm", "-no-mktex=pk", `-jobname=${name}`, "&latex", "mylatexformat.ltx", `${name}.tex`];
+}
+function latexArgv(format) {
+  return format === void 0 ? [...LATEX_ARGV] : [...LATEX_ARGV.slice(0, -2), `-fmt=${format}`, ...LATEX_ARGV.slice(-2)];
+}
+var DISPLAY_ENV = /^\\begin\{(equation|align|gather|multline|flalign|alignat|eqnarray)\*?\}/;
+function mathDocument(tex, display) {
+  const body = tex.trim();
+  if (!display) {
+    const head2 = [...MATH_PREAMBLE.slice(0, 3), "\\usepackage[active]{preview}", "\\begin{document}"];
+    return { text: `${head2.join("\n")}
+\\begin{preview}$${body}$\\end{preview}
+\\end{document}
+`, offset: head2.length, baseline: "origin", fontSize: 10 };
+  }
+  const head = [...MATH_PREAMBLE, "\\begin{document}"];
+  const math = DISPLAY_ENV.test(body) ? body : `\\[
+${body}
+\\]`;
+  return { text: `${head.join("\n")}
+${math}
+\\end{document}
+`, offset: head.length + (DISPLAY_ENV.test(body) ? 0 : 1), baseline: "bottom", fontSize: 10 };
+}
+function documentFontSize(source) {
+  const options3 = /\\documentclass\s*\[([^\]]*)\]/.exec(source)?.[1] ?? "";
+  const size = /(?:^|,)\s*(\d{1,2}(?:\.\d+)?)pt\s*(?:,|$)/.exec(options3)?.[1];
+  const n = size === void 0 ? 10 : Number(size);
+  return n >= 5 && n <= 25 ? n : 10;
+}
+function emPerUnit(document) {
+  return 72.27 / 72 / document.fontSize;
+}
+var REFUSED_PATTERN = new RegExp(String.raw`\\(?:${REFUSED_COMMANDS.map((name) => name.replace(/[*]/g, "\\*")).join("|")})(?![A-Za-z@])`);
+var REFUSED_PACKAGES = /* @__PURE__ */ new Set([
+  "shellesc",
+  "minted",
+  "pythontex",
+  "sagetex",
+  "bashful",
+  "gnuplottex",
+  "asymptote",
+  "svg",
+  "epstopdf",
+  "auto-pst-pdf",
+  "pst-pdf",
+  "luacode",
+  "luatextra",
+  "luapackageloader",
+  "fontspec",
+  "filecontents",
+  "catchfile",
+  "verbatim",
+  "fancyvrb",
+  "listings",
+  "import",
+  "standalone",
+  "datatool",
+  "csvsimple",
+  "readarray",
+  "pgfplotstable",
+  "xstring",
+  "docmute",
+  "subfiles",
+  "embedfile",
+  "attachfile",
+  "attachfile2",
+  "write18",
+  "pstricks",
+  "pst-node"
+]);
+var FILE_COMMAND = /\\(?:usepackage|RequirePackage|documentclass|LoadClass|usetikzlibrary|usepgfplotslibrary|usepgflibrary)\s*(?:\[[^\]]*\]\s*)?(?:\{([^}]*)\}|([^\s{\\][^\s\\]*))/g;
+var PLOT_FILE = /\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{([^}\\\n]*)\}/g;
+var PLOT_FILE_MACRO = /\b(?:table|file|graphics)\s*(?:\[[^\]]*\]\s*)?\{\s*\\[A-Za-z]/;
+function unsafeTex(source) {
+  if (source.length > MAX_TEX_SOURCE) return `source longer than ${MAX_TEX_SOURCE} characters`;
+  if (source.includes("^^")) return "uses ^^ character notation";
+  if (/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(source)) return "holds control characters";
+  const refused = REFUSED_PATTERN.exec(source);
+  if (refused) return `uses ${refused[0]}`;
+  const internal = /\\[A-Za-z]*@[A-Za-z@]*/.exec(source);
+  if (internal) return `uses ${internal[0]}`;
+  if (/\\begin\{(?:luacode\*?|filecontents\*?|verbatimwrite|VerbatimOut|lstlisting|minted|pycode|sagesilent|sageblock|bash|asy|asydef)\}/.test(source)) return "uses an environment that runs code or writes files";
+  for (const match of source.matchAll(FILE_COMMAND)) {
+    const names = (match[1] ?? match[2] ?? "").split(",");
+    for (const raw of names) {
+      const name = raw.trim();
+      if (unsafePath(name)) return `reads ${name}`;
+      if (/^\\(?:usepackage|RequirePackage)/.test(match[0]) && REFUSED_PACKAGES.has(name)) return `uses the ${name} package`;
+    }
+  }
+  for (const match of source.matchAll(PLOT_FILE)) {
+    const name = match[1].trim();
+    if (name !== "" && unsafePath(name)) return `reads ${name}`;
+  }
+  if (PLOT_FILE_MACRO.test(source)) return "reads a plot file named by a macro";
+  if (/\bgnuplot\b|\\addplot[^;]*\bshell\b/.test(source)) return "runs gnuplot or a shell";
+  const path = /(?:^|[\s{=,(])((?:~|\$HOME|\$\{HOME\})\/|\.\.[/\\]|\/+(?:home|root|etc|Users|private|var|tmp|proc|sys|dev|run|mnt|media|srv|opt|usr|Library|Volumes|System|boot|snap|nix)\b)/.exec(source);
+  if (path) return `names a path outside the picture (${path[1]})`;
+  return void 0;
+}
+function unsafePath(name) {
+  return /^[/\\~]|^[A-Za-z]:|\.\.|^\.|\$|\||[`"'<>]|^\s*-/.test(name) || /[/\\]\./.test(name);
+}
+var MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+function bwrapProbe(hide) {
+  return ["bwrap", ...bwrapMounts(hide, void 0), "true"];
+}
+function bwrapMounts(hide, dir, readable = []) {
+  const args = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"];
+  for (const path of hide) args.push("--tmpfs", path);
+  for (const path of readable) args.push("--ro-bind", path, path);
+  if (dir !== void 0) args.push("--bind", dir, dir, "--chdir", dir);
+  args.push("--unshare-all", "--die-with-parent", "--new-session");
+  return args;
+}
+var ULIMIT_SCRIPT = `ulimit -f ${MAX_OUTPUT_BYTES / 1024} && ulimit -t ${MAX_CPU_SECONDS} && exec "$@"`;
+function ulimited(argv) {
+  return ["/bin/sh", "-c", ULIMIT_SCRIPT, "kittex-tex", ...argv];
+}
+function ulimitProbe() {
+  return ulimited(["true"]);
+}
+function confined(argv, dir, confinement, readable = []) {
+  let out = [...argv];
+  if (confinement.bwrap) out = ["bwrap", ...bwrapMounts(confinement.bwrap.hide, dir, readable), ...out];
+  if (confinement.prlimit) out = ["prlimit", `--fsize=${MAX_OUTPUT_BYTES}`, `--cpu=${MAX_CPU_SECONDS}`, ...out];
+  else if (confinement.ulimit) out = ulimited(out);
   return out;
 }
-function dashed(subpaths, g) {
-  const dash = g.dash;
-  if (!dash || dash.length === 0) return [...subpaths];
-  const period = dash.reduce((sum2, n) => sum2 + n, 0);
-  if (!(period >= MIN_DASH_PERIOD)) return [...subpaths];
-  const pieces = [];
-  for (const sub of subpaths) {
-    const pts = sub.points.slice();
-    if (sub.closed) pts.push(pts[0], pts[1]);
-    let phase = ((g.dashOffset ?? 0) % period + period) % period;
-    let k = 0;
-    while (phase >= dash[k]) {
-      phase -= dash[k];
-      k = (k + 1) % dash.length;
-    }
-    let left = dash[k] - phase;
-    let on = k % 2 === 0;
-    let current = on ? [pts[0], pts[1]] : [];
-    for (let i2 = 0; i2 + 3 < pts.length; i2 += 2) {
-      const x0 = pts[i2], y0 = pts[i2 + 1], x1 = pts[i2 + 2], y1 = pts[i2 + 3];
-      const len = Math.hypot(x1 - x0, y1 - y0);
-      let at = 0;
-      while (len - at > left) {
-        at += left;
-        const t = at / len;
-        const x2 = x0 + (x1 - x0) * t;
-        const y = y0 + (y1 - y0) * t;
-        if (on) {
-          current.push(x2, y);
-          pieces.push({ points: current, closed: false });
-          if (pieces.length > MAX_DASHES) return [...subpaths];
-          current = [];
-        } else {
-          current = [x2, y];
-        }
-        on = !on;
-        k = (k + 1) % dash.length;
-        left = dash[k];
-      }
-      left -= len - at;
-      if (on) current.push(x1, y1);
-    }
-    if (on && current.length >= 4) pieces.push({ points: current, closed: false });
-  }
-  return pieces;
-}
-function strokePiece(sub, hw, g, out) {
-  const pts = [];
-  for (let i2 = 0; i2 + 1 < sub.points.length; i2 += 2) {
-    const x2 = sub.points[i2];
-    const y = sub.points[i2 + 1];
-    const n2 = pts.length;
-    if (n2 >= 2 && Math.abs(x2 - pts[n2 - 2]) < SAME_POINT && Math.abs(y - pts[n2 - 1]) < SAME_POINT) continue;
-    pts.push(x2, y);
-  }
-  let closed = sub.closed;
-  if (closed && pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) < SAME_POINT && Math.abs(pts[1] - pts[pts.length - 1]) < SAME_POINT) pts.length -= 2;
-  const n = pts.length / 2;
-  if (n < 2) {
-    if (n === 1 && g.cap !== "butt" && sub.points.length >= 4) {
-      const x2 = pts[0], y = pts[1];
-      out.push(g.cap === "round" ? circle(x2, y, hw) : [x2 - hw, y - hw, x2 + hw, y - hw, x2 + hw, y + hw, x2 - hw, y + hw]);
-    }
-    return;
-  }
-  if (n === 2) closed = false;
-  const segments = closed ? n : n - 1;
-  const dx = new Float64Array(segments);
-  const dy = new Float64Array(segments);
-  for (let i2 = 0; i2 < segments; i2++) {
-    const j = (i2 + 1) % n;
-    const ex = pts[2 * j] - pts[2 * i2];
-    const ey = pts[2 * j + 1] - pts[2 * i2 + 1];
-    const len = Math.hypot(ex, ey);
-    dx[i2] = ex / len;
-    dy[i2] = ey / len;
-  }
-  for (let i2 = 0; i2 < segments; i2++) {
-    const j = (i2 + 1) % n;
-    const nx = -dy[i2] * hw;
-    const ny = dx[i2] * hw;
-    const ax = pts[2 * i2], ay = pts[2 * i2 + 1], bx = pts[2 * j], by = pts[2 * j + 1];
-    out.push([ax + nx, ay + ny, bx + nx, by + ny, bx - nx, by - ny, ax - nx, ay - ny]);
-  }
-  const first = closed ? 0 : 1;
-  const last = closed ? n - 1 : n - 2;
-  for (let v = first; v <= last; v++) {
-    const into = (v - 1 + segments) % segments;
-    const from = v % segments;
-    join(pts[2 * v], pts[2 * v + 1], dx[into], dy[into], dx[from], dy[from], hw, g, out);
-  }
-  if (!closed) {
-    cap(pts[0], pts[1], -dx[0], -dy[0], hw, g.cap, out);
-    cap(pts[2 * n - 2], pts[2 * n - 1], dx[segments - 1], dy[segments - 1], hw, g.cap, out);
-  }
-}
-function join(x2, y, ix, iy, ox, oy, hw, g, out) {
-  const cross = ix * oy - iy * ox;
-  const dot = ix * ox + iy * oy;
-  const turn = Math.atan2(Math.abs(cross), dot);
-  if (hw * turn < NO_JOIN) return;
-  const s = cross > 0 ? -1 : 1;
-  const ax = x2 + s * -iy * hw;
-  const ay = y + s * ix * hw;
-  const bx = x2 + s * -oy * hw;
-  const by = y + s * ox * hw;
-  if (g.join === "round" && hw * turn > ROUND_AS_BEVEL) {
-    out.push(circle(x2, y, hw));
-    return;
-  }
-  if (g.join === "miter") {
-    const ratio = 1 / Math.sqrt(Math.max(1e-12, (1 + dot) / 2));
-    if (ratio <= g.miterLimit) {
-      let mx = -iy - oy;
-      let my = ix + ox;
-      const len = Math.hypot(mx, my);
-      if (len > 1e-9) {
-        mx = mx / len * s * hw * ratio;
-        my = my / len * s * hw * ratio;
-        out.push([x2, y, ax, ay, x2 + mx, y + my, bx, by]);
-        return;
-      }
-    }
-  }
-  out.push([x2, y, ax, ay, bx, by]);
-}
-function cap(x2, y, dx, dy, hw, kind, out) {
-  if (kind === "round") {
-    out.push(circle(x2, y, hw));
-  } else if (kind === "square") {
-    const nx = -dy * hw;
-    const ny = dx * hw;
-    const ex = x2 + dx * hw;
-    const ey = y + dy * hw;
-    out.push([x2 + nx, y + ny, ex + nx, ey + ny, ex - nx, ey - ny, x2 - nx, y - ny]);
-  }
-}
-function circle(x2, y, r) {
-  const k = r <= ARC_FLATNESS ? 6 : Math.min(128, Math.max(6, Math.ceil(Math.PI / Math.acos(1 - ARC_FLATNESS / r))));
-  const c = [];
-  for (let i2 = 0; i2 < k; i2++) {
-    const t = 2 * Math.PI * i2 / k;
-    c.push(x2 + r * Math.cos(t), y + r * Math.sin(t));
-  }
-  return c;
-}
-function area(c) {
-  let sum2 = 0;
-  const n = c.length;
-  let x0 = c[n - 2];
-  let y0 = c[n - 1];
-  for (let i2 = 0; i2 < n; i2 += 2) {
-    sum2 += x0 * c[i2 + 1] - c[i2] * y0;
-    x0 = c[i2];
-    y0 = c[i2 + 1];
-  }
-  return sum2 / 2;
-}
-function reverse(c) {
-  for (let i2 = 0, j = c.length - 2; i2 < j; i2 += 2, j -= 2) {
-    const x2 = c[i2];
-    const y = c[i2 + 1];
-    c[i2] = c[j];
-    c[i2 + 1] = c[j + 1];
-    c[j] = x2;
-    c[j + 1] = y;
-  }
-}
-function snapStroke(subpaths, width) {
-  const whole = Math.max(1, Math.round(width));
-  const at = (v) => whole % 2 === 1 ? Math.floor(v) + 0.5 : Math.round(v);
-  let snapped = false;
-  for (const sub of subpaths) {
-    const p = sub.points;
-    if (sub.closed && p.length >= 6 && Math.abs(p[0] - p[p.length - 2]) < SAME_POINT && Math.abs(p[1] - p[p.length - 1]) < SAME_POINT) p.length -= 2;
-    const n = p.length / 2;
-    const segments = sub.closed ? n : n - 1;
-    const snapX = new Uint8Array(n);
-    const snapY = new Uint8Array(n);
-    for (let i2 = 0; i2 < segments; i2++) {
-      const j = (i2 + 1) % n;
-      const ex = p[2 * j] - p[2 * i2];
-      const ey = p[2 * j + 1] - p[2 * i2 + 1];
-      const len = Math.hypot(ex, ey);
-      if (!(len > 0)) continue;
-      if (Math.abs(ey) < 1e-3 * len) snapY[i2] = snapY[j] = 1;
-      else if (Math.abs(ex) < 1e-3 * len) snapX[i2] = snapX[j] = 1;
-    }
-    for (let i2 = 0; i2 < n; i2++) {
-      if (snapX[i2]) p[2 * i2] = at(p[2 * i2]);
-      if (snapY[i2]) p[2 * i2 + 1] = at(p[2 * i2 + 1]);
-      if (snapX[i2] || snapY[i2]) snapped = true;
-    }
-  }
-  return snapped ? whole : width;
-}
-// core/src/raster/index.ts
-var WEIGHT_STEPS = [
-  [300, 12],
-  [400, DEFAULT_WEIGHT],
-  [500, 20],
-  [600, 23],
-  [700, 26]
+var LATEX_ARGV = [
+  "latex",
+  "-no-shell-escape",
+  "-interaction=nonstopmode",
+  "-halt-on-error",
+  "-no-mktex=tex",
+  "-no-mktex=tfm",
+  "-no-mktex=pk",
+  `-jobname=${JOB_NAME}`,
+  `${JOB_NAME}.tex`
 ];
-function strokeWeight(fontWeight) {
-  if (fontWeight === void 0 || !Number.isFinite(fontWeight)) return DEFAULT_WEIGHT;
-  const first = WEIGHT_STEPS[0];
-  const last = WEIGHT_STEPS.at(-1);
-  if (fontWeight <= first[0]) return first[1];
-  if (fontWeight >= last[0]) return last[1];
-  const i2 = WEIGHT_STEPS.findIndex(([w]) => w >= fontWeight);
-  const [w0, s0] = WEIGHT_STEPS[i2 - 1];
-  const [w1, s1] = WEIGHT_STEPS[i2];
-  return Math.round(s0 + (s1 - s0) * (fontWeight - w0) / (w1 - w0));
+function dvisvgmArgv(dir) {
+  return ["dvisvgm", "--no-fonts", "--exact-bbox", "--no-specials=ps,pdf,html", `--libgs=${dir}/no-ghostscript`, "--no-mktexmf", "--cache=none", `--tmpdir=${dir}`, "--page=1", "--stdout", "--verbosity=1", `${JOB_NAME}.dvi`];
 }
-function layout(result, options3) {
-  const { emPx, cellWidth, cellHeight } = options3;
-  if (!(emPx > 0 && cellWidth > 0 && cellHeight > 0)) throw new RangeError("raster: emPx and cell sizes must be positive");
-  const maxColumns = Math.max(1, Math.min(255, Math.floor(options3.maxColumns) || 1));
-  const minRows = Math.max(1, Math.min(255, Math.ceil(options3.minRows ?? 1)));
-  const weight = Math.max(0, options3.weight ?? DEFAULT_WEIGHT);
-  const width = Math.max(0, result.width);
-  const boxHeight = Math.max(0, result.height + result.depth);
-  const dilation0 = weight / 1e3 * emPx;
-  const pad2 = Math.ceil(dilation0 - 1e-9);
-  const span = options3.align === "left" && options3.centerInk ? inkSpan(result, emPx, dilation0, pad2) : void 0;
-  const fullWidth = span ?? width * emPx;
-  const availWidth = maxColumns * cellWidth - (span === void 0 ? 2 * pad2 : 0);
-  const availHeight = 255 * cellHeight - 2 * pad2;
-  const inline3 = options3.baselinePx !== void 0;
-  let scale2 = 1;
-  let inlineBaseline = 0;
-  if (fullWidth > availWidth) scale2 = Math.max(0, availWidth - (span === void 0 ? 0 : INK_MARGIN)) / fullWidth;
-  if (inline3) {
-    const heightPx2 = Math.max(1, Math.round(minRows * cellHeight));
-    const baseline = Math.min(heightPx2, Math.max(0, Math.round(options3.baselinePx)));
-    const above2 = Math.max(0, result.height) * emPx + dilation0;
-    const below2 = Math.max(0, result.depth) * emPx + dilation0;
-    const shift = Math.max(1, Math.round(cellHeight * BASELINE_SHIFT));
-    const floor = options3.minScale ?? 0;
-    const fitAt = (edge) => (at) => Math.min(scale2, above2 > 0 ? Math.max(0, at - edge) / above2 : Infinity, below2 > 0 ? (heightPx2 - at) / below2 : Infinity);
-    const place = (fit) => {
-      let best = baseline;
-      for (let d = 1; d <= shift; d++) {
-        for (const at of [baseline - d, baseline + d]) {
-          if (at >= 0 && at <= heightPx2 && fit(at) > fit(best) + 1e-9) best = at;
-        }
-      }
-      return { at: best, scale: fit(best) };
-    };
-    let placed = place(fitAt(INK_EDGE));
-    if (placed.scale < floor) placed = place(fitAt(0));
-    inlineBaseline = placed.at;
-    scale2 = placed.scale;
-    const slack = Math.max(0, options3.overflowPx ?? 0);
-    if (scale2 < floor && slack > 0) {
-      const fitWith = (at) => Math.min(above2 > 0 ? (at + slack) / above2 : Infinity, below2 > 0 ? (heightPx2 - at + slack) / below2 : Infinity);
-      let rescue = baseline;
-      for (let d = 1; d <= shift; d++) {
-        for (const at of [baseline - d, baseline + d]) {
-          if (at >= 0 && at <= heightPx2 && fitWith(at) > fitWith(rescue) + 1e-9) rescue = at;
-        }
-      }
-      if (fitWith(rescue) >= floor - 1e-9 && (fullWidth * floor <= availWidth || availWidth <= 0)) {
-        inlineBaseline = rescue;
-        scale2 = floor;
-      }
-    }
-  } else if (boxHeight * emPx * scale2 > availHeight) {
-    scale2 = Math.max(0, availHeight) / (boxHeight * emPx);
-  }
-  const k = emPx * scale2;
-  const inkWidth = span === void 0 ? width * k + 2 * pad2 : scale2 === 1 ? span : span * scale2 + INK_MARGIN;
-  const inkHeight = boxHeight * k + 2 * pad2;
-  const minColumns = Math.max(1, Math.floor(options3.minColumns ?? 1));
-  const columns = options3.align === "center" ? maxColumns : Math.min(maxColumns, Math.max(minColumns, Math.ceil(inkWidth / cellWidth - 1e-9)));
-  const rows = inline3 ? minRows : Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)));
-  const widthPx = Math.max(1, Math.round(columns * cellWidth));
-  const heightPx = Math.max(1, Math.round(rows * cellHeight));
-  const originX = options3.align === "center" ? Math.round((widthPx - width * k) / 2) : pad2;
-  const baselinePx = inline3 ? inlineBaseline : Math.round((heightPx - inkHeight) / 2 + pad2 + Math.max(0, result.height) * k);
-  return { columns, rows, scale: scale2, widthPx, heightPx, k, dilation: dilation0 * scale2, originX, baselinePx };
+function pdfArgv(converter2, dir) {
+  if (converter2 === "mutool") return ["mutool", "draw", "-q", "-F", "svg", "-O", "text=path", "-o", "-", PDF_NAME, "1"];
+  return ["dvisvgm", "--pdf", "--page=1", "--no-fonts", "--cache=none", `--tmpdir=${dir}`, "--stdout", "--verbosity=1", PDF_NAME];
 }
-function measure(result, options3) {
-  const { columns, rows, scale: scale2 } = layout(result, options3);
-  return { columns, rows, scale: scale2 };
+function pdfCopyArgv(path, dir, confinement) {
+  return confined(["cp", "--", path, `${dir}/${PDF_NAME}`], dir, { prlimit: confinement.prlimit, ...confinement.ulimit ? { ulimit: true } : {} });
 }
-function rasterize(result, options3) {
-  const box = layout(result, options3);
-  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box;
-  const coverage = new Coverage(widthPx, heightPx);
-  const toPx = [k, 0, 0, k, originX, baselinePx];
-  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k);
-  const shapes = result.ops.flatMap((op) => outline(op, toPx, dilation, ruleMax) ?? []);
-  const dx = options3.align === "left" && options3.centerInk ? inkShift(shapes, widthPx, options3.inkPlace ?? "center") : 0;
-  for (const { contours, sign } of shapes) {
-    for (const c of contours) {
-      if (dx !== 0) for (let i2 = 0; i2 < c.length; i2 += 2) c[i2] = c[i2] + dx;
-      coverage.fill(c, sign);
-    }
-  }
+var TRIAL_PDF = (() => {
+  const content = "0 0 1 rg 10 10 30 20 re f\n";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 50 40] /Contents 4 0 R /Resources << >> >>",
+    `<< /Length ${content.length} >>
+stream
+${content}endstream`
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((body, i2) => {
+    offsets.push(pdf.length);
+    pdf += `${i2 + 1} 0 obj
+${body}
+endobj
+`;
+  });
+  const xref = pdf.length;
+  pdf += `xref
+0 ${objects.length + 1}
+0000000000 65535 f 
+${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n 
+`).join("")}`;
+  return `${pdf}trailer
+<< /Size ${objects.length + 1} /Root 1 0 R >>
+startxref
+${xref}
+%%EOF
+`;
+})();
+function texEnvironment(dir) {
   return {
-    columns: box.columns,
-    rows: box.rows,
-    scale: box.scale,
-    alpha: coverage.toAlpha(),
-    widthPx,
-    heightPx,
-    baselinePx
+    shell_escape: "f",
+    openin_any: "p",
+    openout_any: "p",
+    TEXMFOUTPUT: dir,
+    HOME: dir,
+    MKTEXTEX: "0",
+    MKTEXTFM: "0",
+    MKTEXPK: "0",
+    MKTEXMF: "0",
+    MKTEXFMT: "0",
+    max_print_line: "1000",
+    error_line: "254",
+    half_error_line: "238"
   };
 }
-function encodePng(raster, ink, over, curve) {
-  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink, over, curve);
+function jobDirTemplate(tmpdir) {
+  const base = (tmpdir && tmpdir.startsWith("/") ? tmpdir : "/tmp").replace(/\/+$/, "");
+  return `${base}/kittex-tex.XXXXXXXXXX`;
 }
-function inkSpan(result, emPx, dilation, originX) {
-  const toPx = [emPx, 0, 0, emPx, originX, 0];
-  const shapes = result.ops.flatMap((op) => outline(op, toPx, dilation, Math.max(RULE_MIN_SNAP, 0.15 * emPx)) ?? []);
-  const { x0, x1 } = extent(shapes);
-  return x1 > x0 ? Math.ceil(x1 - 1e-9) - Math.floor(x0 + 1e-9) : void 0;
+function isJobDir(path) {
+  return /^\/(?:[^\n/]+\/)*kittex-tex\.[A-Za-z0-9]{10}$/.test(path) && !path.includes("/../") && !path.includes("/./");
 }
-function extent(shapes) {
-  let x0 = Infinity;
-  let x1 = -Infinity;
-  for (const { contours } of shapes) {
-    for (const c of contours) {
-      for (let i2 = 0; i2 < c.length; i2 += 2) {
-        if (c[i2] < x0) x0 = c[i2];
-        if (c[i2] > x1) x1 = c[i2];
-      }
+function texError(log, offset = 0) {
+  const lines2 = log.split(/\r?\n/);
+  const at = lines2.findIndex((line2) => line2.startsWith("! "));
+  if (at < 0) {
+    if (/No pages of output/.test(log)) return "the picture is empty";
+    return /Emergency stop|Fatal error/.test(log) ? "TeX stopped" : "TeX failed";
+  }
+  let message = lines2[at].slice(2).trim().replace(/\.$/, "");
+  message = message.replace(/^(?:LaTeX|Package \S+|Class \S+) Error:\s*/, "");
+  let line;
+  if (/^Undefined control sequence$/.test(message)) {
+    const first = (lines2[at + 1] ?? "").replace(/^l\.\d+ /, "");
+    const token2 = /(\\[A-Za-z@]+|\\.)\s*$/.exec(first)?.[1];
+    if (token2) message += ` ${token2}`;
+  }
+  for (const next of lines2.slice(at + 1, at + 12)) {
+    const context2 = /^l\.(\d+) (.*)$/.exec(next);
+    if (context2) {
+      const n = Number(context2[1]) - offset;
+      if (n >= 1) line = n;
+      break;
     }
   }
-  return { x0, x1 };
+  return line === void 0 ? message : `${message} (line ${line})`;
 }
-function inkShift(shapes, widthPx, place) {
-  const { x0, x1 } = extent(shapes);
-  if (!(x1 > x0) || x1 - x0 > widthPx) return 0;
-  const slack = widthPx - (x1 - x0);
-  const dx = Math.round((place === "start" ? 0 : place === "end" ? slack : slack / 2) - x0);
-  return Math.min(Math.max(dx, Math.ceil(-x0 - 1e-9)), Math.floor(widthPx - x1 + 1e-9));
+// core/src/diagram/color.ts
+function assumedBackground(ink) {
+  return oklab(ink).l > 0.5 ? { r: 24, g: 24, b: 24 } : { r: 255, g: 255, b: 255 };
 }
-function outline(op, toPx, dilation, ruleMax) {
-  let contours;
-  if (op.type === "rect") {
-    const [k, , , , e, f] = toPx;
-    const x0 = e + k * Math.min(op.x, op.x + op.width);
-    const x1 = e + k * Math.max(op.x, op.x + op.width);
-    const y0 = f + k * Math.min(op.y, op.y + op.height);
-    const y1 = f + k * Math.max(op.y, op.y + op.height);
-    if (!(x1 > x0 && y1 > y0)) return void 0;
-    contours = [[x0, y0, x1, y0, x1, y1, x0, y1]];
-  } else {
-    contours = flattenPath(op.d, compose(toPx, op.transform));
+function adaptColor(color, paper, line) {
+  if (color.r <= NEAR && color.g <= NEAR && color.b <= NEAR) return paper.ink;
+  if (color.r >= 255 - NEAR && color.g >= 255 - NEAR && color.b >= 255 - NEAR) return "erase";
+  const lab = oklab(color);
+  const inkL = oklab(paper.ink).l;
+  const backL = oklab(paper.background).l;
+  let l = lab.l;
+  if (backL < 0.5) {
+    const flipped = inkL + lab.l * (backL - inkL);
+    const chroma = Math.hypot(lab.a, lab.b);
+    const keep = clamp012(chroma / SATURATED) * clamp012(1 - Math.abs(lab.l - KEEP_CENTER) / KEEP_BAND);
+    l = flipped + (lab.l - flipped) * keep;
   }
-  let area2 = 0;
-  for (const c of contours) area2 += signedArea(c);
-  if (!(Math.abs(area2) > 1e-9)) return void 0;
-  const sign = area2 > 0 ? 1 : -1;
-  const out = [];
-  for (let c of contours) {
-    if (dilation > 0) c = dilate(c, dilation, sign);
-    snapRule(c, ruleMax);
-    out.push(c);
+  if (l === lab.l && !(line && Math.abs(l - backL) < MIN_CONTRAST)) return { ...color };
+  if (line && Math.abs(l - backL) < MIN_CONTRAST) {
+    const towards = inkL >= backL ? 1 : -1;
+    l = clamp012(backL + towards * MIN_CONTRAST);
   }
-  return { contours: out, sign };
+  return fromOklab(l, lab.a, lab.b);
 }
-function compose(p, t) {
+var toLinear = (v) => {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
+var fromLinear = (v) => (v <= 31308e-7 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255;
+function oklab(c) {
+  const r = toLinear(c.r), g = toLinear(c.g), b = toLinear(c.b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return {
+    l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
+  };
+}
+function linearOf(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
   return [
-    p[0] * t[0] + p[2] * t[1],
-    p[1] * t[0] + p[3] * t[1],
-    p[0] * t[2] + p[2] * t[3],
-    p[1] * t[2] + p[3] * t[3],
-    p[0] * t[4] + p[2] * t[5] + p[4],
-    p[1] * t[4] + p[3] * t[5] + p[5]
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
   ];
 }
-function signedArea(c) {
-  let sum2 = 0;
-  const n = c.length;
-  let x0 = c[n - 2];
-  let y0 = c[n - 1];
-  for (let i2 = 0; i2 < n; i2 += 2) {
-    const x1 = c[i2];
-    const y1 = c[i2 + 1];
-    sum2 += x0 * y1 - x1 * y0;
-    x0 = x1;
-    y0 = y1;
-  }
-  return sum2 / 2;
-}
-function dilate(c, d, sign) {
-  const pts = [];
-  for (let i2 = 0; i2 < c.length; i2 += 2) {
-    const x2 = c[i2];
-    const y = c[i2 + 1];
-    const n2 = pts.length;
-    if (n2 >= 2 && Math.abs(x2 - pts[n2 - 2]) < 1e-6 && Math.abs(y - pts[n2 - 1]) < 1e-6) continue;
-    pts.push(x2, y);
-  }
-  while (pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) < 1e-6 && Math.abs(pts[1] - pts[pts.length - 1]) < 1e-6) {
-    pts.length -= 2;
-  }
-  const n = pts.length / 2;
-  if (n < 3) return c;
-  const nx = new Float64Array(n);
-  const ny = new Float64Array(n);
-  for (let i2 = 0; i2 < n; i2++) {
-    const j = (i2 + 1) % n;
-    const dx = pts[2 * j] - pts[2 * i2];
-    const dy = pts[2 * j + 1] - pts[2 * i2 + 1];
-    const len = Math.hypot(dx, dy);
-    nx[i2] = sign * dy / len;
-    ny[i2] = -sign * dx / len;
-  }
-  const out = new Array(2 * n);
-  for (let i2 = 0; i2 < n; i2++) {
-    const p = (i2 + n - 1) % n;
-    const sx = nx[p] + nx[i2];
-    const sy = ny[p] + ny[i2];
-    const cos1 = 1 + nx[p] * nx[i2] + ny[p] * ny[i2];
-    let mx = 0;
-    let my = 0;
-    if (cos1 >= 0.5) {
-      mx = sx / cos1;
-      my = sy / cos1;
-    } else {
-      const len = Math.hypot(sx, sy);
-      if (len > 1e-9) {
-        mx = 2 * sx / len;
-        my = 2 * sy / len;
-      }
+function fromOklab(L, a, b) {
+  const inside = (k2) => linearOf(L, a * k2, b * k2).every((v) => v >= -1e-6 && v <= 1 + 1e-6);
+  let k = 1;
+  if (!inside(1)) {
+    let lo = 0;
+    let hi = 1;
+    for (let i2 = 0; i2 < 20; i2++) {
+      const mid = (lo + hi) / 2;
+      if (inside(mid)) lo = mid;
+      else hi = mid;
     }
-    out[2 * i2] = pts[2 * i2] + d * mx;
-    out[2 * i2 + 1] = pts[2 * i2 + 1] + d * my;
+    k = lo;
+  }
+  const [r, g, bl] = linearOf(L, a * k, b * k);
+  const byte = (v) => Math.min(255, Math.max(0, Math.round(fromLinear(Math.min(1, Math.max(0, v))))));
+  return { r: byte(r), g: byte(g), b: byte(bl) };
+}
+var clamp012 = (v) => Math.min(1, Math.max(0, v));
+// core/src/diagram/index.ts
+function texPicture(svg, document, text) {
+  return readSvg(svg, { baseline: document.baseline, emPerUnit: emPerUnit(document), ...text ? { text } : {} });
+}
+// core/src/image/block.ts
+var UNIT_PT = {
+  pt: 1,
+  bp: 72.27 / 72,
+  px: 72.27 / 72,
+  in: 72.27,
+  cm: 72.27 / 2.54,
+  mm: 72.27 / 25.4,
+  pc: 12,
+  dd: 1238 / 1157,
+  cc: 12 * 1238 / 1157,
+  sp: 1 / 65536,
+  em: 10,
+  ex: 4.31
+};
+var WIDTHS = /* @__PURE__ */ new Set(["linewidth", "textwidth", "columnwidth", "hsize", "paperwidth"]);
+var HEIGHTS = /* @__PURE__ */ new Set(["textheight", "vsize", "paperheight"]);
+function parseLength(text) {
+  const m = /^\s*(\d*\.?\d*)\s*(?:\\([A-Za-z]+)|([a-z]{2}))\s*$/.exec(text);
+  if (!m) return void 0;
+  const number = m[1] === "" ? 1 : Number(m[1]);
+  if (!Number.isFinite(number) || number <= 0) return void 0;
+  if (m[2] !== void 0) {
+    if (WIDTHS.has(m[2])) return { kind: "line", fraction: number };
+    if (HEIGHTS.has(m[2])) return { kind: "page", fraction: number };
+    return void 0;
+  }
+  const unit = m[1] === "" ? void 0 : UNIT_PT[m[3]];
+  return unit === void 0 ? void 0 : { kind: "absolute", pt: number * unit };
+}
+function parseOptions(text) {
+  const out = {};
+  for (const item of text.split(",")) {
+    const eq = item.indexOf("=");
+    if (eq < 0) continue;
+    const key = item.slice(0, eq).trim();
+    const value = item.slice(eq + 1).trim().replace(/^\{(.*)\}$/, "$1");
+    if (key === "width" || key === "height") {
+      const length4 = parseLength(value);
+      if (length4) out[key] = length4;
+    } else if (key === "scale") {
+      const scale2 = Number(value);
+      if (Number.isFinite(scale2) && scale2 > 0) out.scale = scale2;
+    }
   }
   return out;
 }
-function snapRule(c, maxThickness = RULE_MIN_SNAP) {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i2 = 0; i2 < c.length; i2 += 2) {
-    const x2 = c[i2];
-    const y = c[i2 + 1];
-    if (x2 < x0) x0 = x2;
-    if (x2 > x1) x1 = x2;
-    if (y < y0) y0 = y;
-    if (y > y1) y1 = y;
+function groupEnd(text, open) {
+  let depth = 0;
+  for (let at = open; at < text.length; at++) {
+    const c = text[at];
+    if (c === "\\") at++;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return at + 1;
   }
-  const w = x1 - x0;
-  const h = y1 - y0;
-  if (!(w > 0 && h > 0) || Math.abs(signedArea(c)) < RULE_MIN_FILL * w * h) return;
-  const axis = h <= maxThickness && w >= 2 * h ? 1 : w <= maxThickness && h >= 2 * w ? 0 : -1;
-  if (axis < 0) return;
-  const lo = axis === 1 ? y0 : x0;
-  const size = axis === 1 ? h : w;
-  const t = Math.max(1, Math.round(size));
-  const to = Math.round(lo + size / 2 - t / 2);
-  const f = t / size;
-  for (let i2 = axis; i2 < c.length; i2 += 2) c[i2] = to + (c[i2] - lo) * f;
+  return -1;
 }
-function pictureLayout(picture, options3) {
-  const maxRows = Math.max(1, Math.min(255, Math.floor(options3.maxRows) || 1));
-  const weight = Math.max(0, options3.weight ?? DEFAULT_WEIGHT);
-  const box = { width: picture.width, height: picture.height, depth: picture.depth, ops: [] };
-  const boxHeight = Math.max(0, picture.height + picture.depth);
-  let emPx = options3.emPx;
-  const pad2 = Math.ceil(weight / 1e3 * emPx - 1e-9);
-  const room = maxRows * options3.cellHeight - 2 * pad2;
-  if (boxHeight * emPx > room) emPx = Math.max(1e-6, room) / boxHeight;
-  const placed = layout(box, { emPx, cellWidth: options3.cellWidth, cellHeight: options3.cellHeight, maxColumns: options3.maxColumns, align: "left", minRows: options3.minRows, ...options3.minColumns !== void 0 ? { minColumns: options3.minColumns } : {}, weight });
-  const originX = Math.round((placed.widthPx - box.width * placed.k) / 2);
-  return { ...placed, originX, scale: placed.scale * emPx / options3.emPx };
-}
-function measurePicture(picture, options3) {
-  const { columns, rows, scale: scale2 } = pictureLayout(picture, options3);
-  return { columns, rows, scale: scale2 };
-}
-function rasterizePicture(picture, options3) {
-  const box = pictureLayout(picture, options3);
-  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box;
-  const toPx = [k, 0, 0, k, originX, baselinePx];
-  const canvas = new Canvas2(widthPx, heightPx);
-  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k);
-  const masks = /* @__PURE__ */ new Map();
-  const maskOf = (index) => {
-    const known = masks.get(index);
-    if (known) return known;
-    const clip = picture.clips[index];
-    if (!clip) return void 0;
-    const mask = new Uint8Array(widthPx * heightPx);
-    for (const path of clip.paths) {
-      const coverage = new Coverage(widthPx, heightPx);
-      const contours = flattenPath(path.d, compose(toPx, path.transform));
-      let area2 = 0;
-      for (const c of contours) area2 += signedArea(c);
-      for (const c of contours) coverage.fill(c, area2 >= 0 ? 1 : -1);
-      const alpha = path.rule === "evenodd" ? coverage.toAlphaEvenOdd() : coverage.toAlpha();
-      for (let i2 = 0; i2 < mask.length; i2++) if (alpha[i2] > mask[i2]) mask[i2] = alpha[i2];
-    }
-    const outer = clip.within !== void 0 && clip.within < index ? maskOf(clip.within) : void 0;
-    if (outer) for (let i2 = 0; i2 < mask.length; i2++) mask[i2] = (mask[i2] * outer[i2] + 127) / 255;
-    masks.set(index, mask);
-    return mask;
-  };
-  for (const op of picture.ops) {
-    const m = compose(toPx, op.transform);
-    let contours;
-    let sign = 1;
-    let evenOdd = false;
-    if (op.type === "fill") {
-      contours = flattenPath(op.d, m);
-      if (op.rule === "evenodd") {
-        evenOdd = true;
-      } else {
-        let area2 = 0;
-        for (const c of contours) area2 += signedArea(c);
-        if (!(Math.abs(area2) > 1e-9)) continue;
-        sign = area2 > 0 ? 1 : -1;
-        contours = contours.map((c) => {
-          const grown = dilation > 0 ? dilate(c, dilation, sign) : c;
-          snapRule(grown, ruleMax);
-          return grown;
-        });
-      }
+var SPACING = /^\\(?:centering|noindent|par|smallskip|medskip|bigskip)(?![A-Za-z])/;
+function imageBlock(source) {
+  let rest = source.replace(/(^|[^\\])((?:\\\\)*)%[^\n]*/g, "$1$2");
+  const open = [];
+  let spec;
+  for (; ; ) {
+    rest = rest.replace(/^\s+/, "");
+    if (rest === "") break;
+    let m;
+    if (m = /^\\begin\s*\{(figure\*?|center)\}\s*(?:\[[^\]\n]*\])?/.exec(rest)) {
+      open.push(m[1]);
+      rest = rest.slice(m[0].length);
+    } else if (m = /^\\end\s*\{(figure\*?|center)\}/.exec(rest)) {
+      if (open.pop() !== m[1]) return void 0;
+      rest = rest.slice(m[0].length);
+    } else if (m = SPACING.exec(rest)) {
+      rest = rest.slice(m[0].length);
+    } else if (m = /^\\(?:caption|label)\s*(?:\[[^\]\n]*\]\s*)?(?=\{)/.exec(rest)) {
+      const end = groupEnd(rest, m[0].length);
+      if (end < 0) return void 0;
+      rest = rest.slice(end);
+    } else if (m = /^\\includegraphics\*?\s*(?:\[([^\]]*)\]\s*)?\{([^{}\n]*)\}/.exec(rest)) {
+      if (spec) return void 0;
+      const path = m[2].trim().replace(/^"(.*)"$/, "$1");
+      if (path === "") return void 0;
+      spec = { path, ...parseOptions(m[1] ?? "") };
+      rest = rest.slice(m[0].length);
     } else {
-      const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
-      const subpaths = flattenSubpaths(op.d, m);
-      const width = snapStroke(subpaths, Math.max(MIN_STROKE_PX, op.style.width * unit) + 2 * dilation);
-      contours = strokeOutlines(subpaths, {
-        width,
-        cap: op.style.cap,
-        join: op.style.join,
-        miterLimit: op.style.miterLimit,
-        ...op.style.dash ? { dash: op.style.dash.map((n) => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}
-      });
+      return void 0;
     }
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const c of contours) {
-      for (let i2 = 0; i2 < c.length; i2 += 2) {
-        if (c[i2] < x0) x0 = c[i2];
-        if (c[i2] > x1) x1 = c[i2];
-        if (c[i2 + 1] < y0) y0 = c[i2 + 1];
-        if (c[i2 + 1] > y1) y1 = c[i2 + 1];
-      }
-    }
-    const left = Math.max(0, Math.floor(x0));
-    const top = Math.max(0, Math.floor(y0));
-    const right = Math.min(widthPx, Math.ceil(x1));
-    const bottom = Math.min(heightPx, Math.ceil(y1));
-    if (!(right > left && bottom > top)) continue;
-    const w = right - left;
-    const h = bottom - top;
-    const coverage = new Coverage(w, h);
-    for (const c of contours) {
-      for (let i2 = 0; i2 < c.length; i2 += 2) {
-        c[i2] = c[i2] - left;
-        c[i2 + 1] = c[i2 + 1] - top;
-      }
-      coverage.fill(c, sign);
-    }
-    const alpha = evenOdd ? coverage.toAlphaEvenOdd() : coverage.toAlpha();
-    const color = options3.color(op.paint.color, op.type === "stroke" || op.glyph === true);
-    canvas.paint(alpha, left, top, w, h, color, op.paint.opacity, op.clip !== void 0 ? maskOf(op.clip) : void 0);
   }
-  return { columns: box.columns, rows: box.rows, scale: box.scale, rgba: canvas.straight(options3.over), widthPx, heightPx };
+  return open.length === 0 ? spec : void 0;
 }
-function pictureOutlines(picture) {
-  const ops = [];
-  const back = [1 / OUTLINE_EM_PX, 0, 0, 1 / OUTLINE_EM_PX, 0, 0];
-  for (const op of picture.ops) {
-    if (op.type === "fill") {
-      ops.push({ type: "path", d: op.d, transform: op.transform });
+function resolveImagePath(path, cwd, home) {
+  let full;
+  if (path.startsWith("/")) full = path;
+  else if (path === "~" || path.startsWith("~/")) {
+    if (home === void 0 || !home.startsWith("/")) return void 0;
+    full = `${home}/${path.slice(2)}`;
+  } else if (path.startsWith("~")) return void 0;
+  else {
+    if (cwd === void 0 || !cwd.startsWith("/")) return void 0;
+    full = `${cwd}/${path}`;
+  }
+  const parts = [];
+  for (const part of full.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return `/${parts.join("/")}`;
+}
+function fitImage(own, spec, box2) {
+  const ownWidth = Math.max(1, own.width);
+  const ownHeight = Math.max(1, own.height);
+  const aspect = ownHeight / ownWidth;
+  const columnPx = Math.max(1, Math.floor(box2.maxColumns)) * box2.cellWidth;
+  const rowsPx = Math.max(1, Math.floor(box2.maxRows)) * box2.cellHeight;
+  const along = (length4, axis) => {
+    const full = axis === "width" ? columnPx : rowsPx;
+    if (length4.kind === "line") return length4.fraction * columnPx;
+    if (length4.kind === "page") return length4.fraction * rowsPx;
+    return length4.pt / (axis === "width" ? LINE_WIDTH_PT : TEXT_HEIGHT_PT) * full;
+  };
+  let width;
+  if (spec.width && spec.height) width = Math.min(along(spec.width, "width"), along(spec.height, "height") / aspect);
+  else if (spec.width) width = along(spec.width, "width");
+  else if (spec.height) width = along(spec.height, "height") / aspect;
+  else if (spec.scale !== void 0) width = ownWidth * spec.scale;
+  else width = columnPx;
+  width = Math.min(width, columnPx, rowsPx / aspect, ownWidth);
+  const widthPx = Math.max(1, Math.round(width));
+  const heightPx = Math.max(1, Math.min(Math.round(rowsPx), Math.round(width * aspect)));
+  const columns = Math.min(Math.max(1, Math.floor(box2.maxColumns)), Math.max(1, Math.ceil(widthPx / box2.cellWidth - 1e-9)));
+  const rows = Math.min(Math.max(1, Math.floor(box2.maxRows)), Math.max(1, Math.ceil(heightPx / box2.cellHeight - 1e-9)));
+  return { columns, rows, widthPx, heightPx };
+}
+// core/src/image/bitmap.ts
+var ImageError = class extends Error {
+  name = "ImageError";
+};
+function checkSize(width, height2, maxPixels) {
+  if (!(width > 0 && height2 > 0)) throw new ImageError(`image has no pixels (${width}×${height2})`);
+  if (width * height2 > maxPixels) throw new ImageError(`image is ${width}×${height2}, over the ${maxPixels}-pixel cap`);
+}
+// core/src/image/header.ts
+function imageHeader(bytes) {
+  if (PNG_SIGNATURE.every((b, i2) => bytes[i2] === b)) {
+    if (bytes.length < 24 || ascii(bytes, 12, 16) !== "IHDR") return { format: "png" };
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return { format: "png", width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
+    const info = jpegInfo(bytes);
+    if (!info) return { format: "jpeg" };
+    const turned = info.orientation >= 5;
+    return { format: "jpeg", width: turned ? info.height : info.width, height: turned ? info.width : info.height };
+  }
+  const head = ascii(bytes, 0, Math.min(bytes.length, 4096));
+  if (head.slice(0, 1024).includes("%PDF-")) return { format: "pdf" };
+  if (SVG_START.test(head.replace(/^\xef\xbb\xbf/, ""))) return { format: "svg" };
+  return void 0;
+}
+var SVG_START = /^(?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>)*<svg[\s>/]/i;
+function jpegInfo(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let orientation = 1;
+  let at = 2;
+  while (at + 4 <= bytes.length) {
+    if (bytes[at] !== 255) return void 0;
+    const marker = bytes[at + 1];
+    if (marker === 255) {
+      at++;
       continue;
     }
-    const m = compose([OUTLINE_EM_PX, 0, 0, OUTLINE_EM_PX, 0, 0], op.transform);
-    const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
-    const contours = strokeOutlines(flattenSubpaths(op.d, m), {
-      width: op.style.width * unit,
-      cap: op.style.cap,
-      join: op.style.join,
-      miterLimit: op.style.miterLimit,
-      ...op.style.dash ? { dash: op.style.dash.map((n) => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}
+    if (marker === 1 || marker >= 208 && marker <= 215) {
+      at += 2;
+      continue;
+    }
+    if (marker === 217 || marker === 218) return void 0;
+    const length4 = view.getUint16(at + 2);
+    const end = at + 2 + length4;
+    if (length4 < 2 || end > bytes.length) return void 0;
+    const isFrame = marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204;
+    if (isFrame) {
+      if (length4 < 7) return void 0;
+      return { width: view.getUint16(at + 7), height: view.getUint16(at + 5), orientation };
+    }
+    if (marker === 225 && length4 >= 8 && ascii(bytes, at + 4, at + 10) === "Exif\0\0") orientation = exifOrientation(view, at + 10, end) ?? orientation;
+    at = end;
+  }
+  return void 0;
+}
+function exifOrientation(view, start, end) {
+  if (start + 8 > end) return void 0;
+  const order = view.getUint16(start);
+  if (order !== 18761 && order !== 19789) return void 0;
+  const little = order === 18761;
+  if (view.getUint16(start + 2, little) !== 42) return void 0;
+  const ifd = start + view.getUint32(start + 4, little);
+  if (ifd + 2 > end) return void 0;
+  const count = view.getUint16(ifd, little);
+  for (let i2 = 0; i2 < count; i2++) {
+    const entry = ifd + 2 + i2 * 12;
+    if (entry + 12 > end) return void 0;
+    if (view.getUint16(entry, little) !== 274) continue;
+    const value = view.getUint16(entry + 8, little);
+    return value >= 1 && value <= 8 ? value : void 0;
+  }
+  return void 0;
+}
+function ascii(bytes, from, to) {
+  let s = "";
+  for (let i2 = from; i2 < to && i2 < bytes.length; i2++) s += String.fromCharCode(bytes[i2]);
+  return s;
+}
+// core/src/image/jpeg.ts
+var import_decoder = __toESM(require_decoder(), 1);
+// core/src/image/jpeg-scans.ts
+var isRestart = (byte) => byte >= 208 && byte <= 215;
+function checkScans(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u163 = (at2) => at2 + 2 <= bytes.length ? view.getUint16(at2) : -1;
+  let frame2;
+  let resetInterval = 0;
+  let scans = 0;
+  let visits = 0;
+  let recovered = false;
+  let at = 2;
+  for (; ; ) {
+    const marker = u163(at);
+    if (marker === -1 || marker === 65497) return;
+    if (marker === 65280) {
+      at += 2;
+      continue;
+    }
+    if (marker === 65535) {
+      at += bytes[at + 2] === 255 ? 2 : 1;
+      continue;
+    }
+    const length4 = u163(at + 2);
+    if (length4 === -1) throw new ImageError("JPEG is truncated");
+    const end = at + 2 + length4;
+    if (marker >= 65504 && marker <= 65519 || marker === 65534) {
+      at = at + 2 + Math.max(length4, 2);
+      continue;
+    }
+    if (marker === 65499 || marker === 65476) {
+      if (tablesEnd(bytes, marker, at + 4, end) !== end) throw new ImageError("JPEG table segment length disagrees with its tables");
+      at = end;
+      continue;
+    }
+    if (marker === 65501 || marker === 65500) {
+      if (length4 !== 4) throw new ImageError("JPEG DRI or DNL segment has the wrong length");
+      if (marker === 65501) resetInterval = u163(at + 4);
+      at = end;
+      continue;
+    }
+    if (marker >= 65472 && marker <= 65474) {
+      if (frame2) throw new ImageError("JPEG has more than one frame");
+      frame2 = parseFrame(bytes, at, marker === 65474);
+      at = end;
+      continue;
+    }
+    if (marker === 65498) {
+      if (!frame2) throw new ImageError("JPEG scan comes before its frame");
+      if (++scans > MAX_JPEG_SCANS) throw new ImageError(`JPEG has more than ${MAX_JPEG_SCANS} scans`);
+      const scan2 = parseScan(bytes, at, frame2, resetInterval);
+      visits += scan2.visits;
+      if (visits > frame2.budget) throw new ImageError(`JPEG scans ask for more than ${VISITS_PER_COEFFICIENT} decoding passes over the frame`);
+      at = skipEntropy(bytes, at + 2 + length4, scan2.intervals);
+      continue;
+    }
+    if (bytes[at - 1] === 255 && bytes[at] >= 192 && bytes[at] <= 254) {
+      at -= 1;
+      continue;
+    }
+    if ((marker === 224 || marker === 225) && !recovered && bytes[end] === 255) {
+      recovered = true;
+      at = end;
+      continue;
+    }
+    throw new ImageError(`JPEG has an unknown marker 0x${marker.toString(16)}`);
+  }
+}
+function tablesEnd(bytes, marker, start, end) {
+  let at = start;
+  while (at < end && at < bytes.length) {
+    if (marker === 65499) {
+      const precision = bytes[at] >> 4;
+      if (precision > 1) throw new ImageError("JPEG DQT has an invalid table spec");
+      at += 1 + 64 * (precision + 1);
+    } else {
+      let count = 0;
+      for (let i2 = 1; i2 <= 16; i2++) count += bytes[at + i2] ?? 0;
+      at += 17 + count;
+    }
+  }
+  return at;
+}
+function parseFrame(bytes, at, progressive) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = bytes[at + 9] ?? 0;
+  if (at + 10 + 3 * count > bytes.length || view.getUint16(at + 2) !== 8 + 3 * count) throw new ImageError("JPEG frame header length disagrees with its components");
+  const height2 = view.getUint16(at + 5);
+  const width = view.getUint16(at + 7);
+  const sampling = /* @__PURE__ */ new Map();
+  for (let i2 = 0; i2 < count; i2++) {
+    const hv = bytes[at + 11 + 3 * i2];
+    if (hv >> 4 === 0 || (hv & 15) === 0) throw new ImageError("JPEG component has a zero sampling factor");
+    sampling.set(bytes[at + 10 + 3 * i2], { h: hv >> 4, v: hv & 15 });
+  }
+  const values = [...sampling.values()];
+  const maxH = Math.max(1, ...values.map((c) => c.h));
+  const maxV = Math.max(1, ...values.map((c) => c.v));
+  const mcusPerLine = Math.ceil(width / 8 / maxH);
+  const mcusPerColumn = Math.ceil(height2 / 8 / maxV);
+  const components = /* @__PURE__ */ new Map();
+  let blocks = 0;
+  for (const [id, { h, v }] of sampling) {
+    components.set(id, {
+      h,
+      v,
+      blocksPerLine: Math.ceil(Math.ceil(width / 8) * h / maxH),
+      blocksPerColumn: Math.ceil(Math.ceil(height2 / 8) * v / maxV)
     });
-    if (contours.length > 0) ops.push({ type: "path", d: contours.map(contourPath).join(""), transform: back });
+    blocks += mcusPerLine * h * mcusPerColumn * v;
   }
-  return { width: picture.width, height: picture.height, depth: picture.depth, ops };
+  return { progressive, mcusPerLine, mcusPerColumn, components, budget: VISITS_PER_COEFFICIENT * 64 * blocks };
 }
-function contourPath(c) {
-  const n = (v) => (Math.round(v * 1e3) / 1e3).toString();
-  let d = `M${n(c[0])} ${n(c[1])}`;
-  for (let i2 = 2; i2 < c.length; i2 += 2) d += `L${n(c[i2])} ${n(c[i2 + 1])}`;
-  return d + "Z";
-}
-function encodePicturePng(raster) {
-  return encodeQuantizedPng(raster.rgba, raster.widthPx, raster.heightPx);
-}
-// core/src/scan/blocks.ts
-var FENCE = /^(`{3,}|~{3,})(.*)$/;
-function fenceOpen(body) {
-  const m = FENCE.exec(body);
-  if (!m) return null;
-  const run2 = m[1];
-  const info = m[2];
-  if (run2[0] === "`" && info.includes("`")) return null;
-  const lang = info.trim().split(/\s+/, 1)[0].toLowerCase();
-  const diagram = lang === "latex" || lang === "tex" ? "latex" : lang === "tikz" ? "tikz" : void 0;
-  return { ch: run2[0], len: run2.length, math: lang === "math", ...diagram ? { diagram } : {} };
-}
-function closesFence(body, ch, len) {
-  let n = 0;
-  while (body[n] === ch) n++;
-  if (n < len) return false;
-  for (let i2 = n; i2 < body.length; i2++) {
-    const c = body.charCodeAt(i2);
-    if (c !== 32 && c !== 9 && c !== 13) return false;
+function parseScan(bytes, at, frame2, resetInterval) {
+  const count = bytes[at + 4] ?? 0;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (at + 8 + 2 * count > bytes.length) throw new ImageError("JPEG scan header is truncated");
+  if (view.getUint16(at + 2) !== 6 + 2 * count) throw new ImageError("JPEG scan header length disagrees with its components");
+  const listed = [];
+  for (let i2 = 0; i2 < count; i2++) {
+    const component = frame2.components.get(bytes[at + 5 + 2 * i2]);
+    if (!component) throw new ImageError("JPEG scan names a component its frame lacks");
+    listed.push(component);
   }
-  return true;
+  const ss = bytes[at + 5 + 2 * count];
+  const se = bytes[at + 6 + 2 * count];
+  const single2 = listed.length === 1 ? listed[0] : void 0;
+  const mcus = single2 ? single2.blocksPerLine * single2.blocksPerColumn : frame2.mcusPerLine * frame2.mcusPerColumn;
+  const blocks = single2 ? mcus : mcus * listed.reduce((n, c) => n + c.h * c.v, 0);
+  const perBlock = !frame2.progressive ? 64 : ss === 0 ? 1 : Math.max(1, se - ss + 1);
+  return { visits: blocks * perBlock, intervals: resetInterval > 0 ? Math.ceil(mcus / resetInterval) : 1 };
 }
-function looksLikeFence(body) {
-  return body.startsWith("```") || body.startsWith("~~~");
+function skipEntropy(bytes, start, intervals) {
+  let restarts = 0;
+  for (let at = start; at + 1 < bytes.length; at++) {
+    if (bytes[at] !== 255) continue;
+    const next = bytes[at + 1];
+    if (next === 0) continue;
+    if (!isRestart(next)) return at;
+    if (++restarts >= intervals) throw new ImageError("JPEG scan has more restart markers than restart intervals");
+    at++;
+  }
+  return bytes.length;
 }
-var ENVS = /* @__PURE__ */ new Set([
-  "equation",
-  "align",
-  "gather",
-  "multline",
-  "flalign",
-  "alignat",
-  "eqnarray",
-  "displaymath",
-  "subequations",
-  "matrix",
-  "pmatrix",
-  "bmatrix",
-  "Bmatrix",
-  "vmatrix",
-  "Vmatrix",
-  "smallmatrix",
-  "cases",
-  "dcases",
-  "rcases",
-  "aligned",
-  "alignedat",
-  "gathered",
-  "split",
-  "multlined",
-  "array",
-  "CD",
-  "empheq"
+// core/src/image/jpeg.ts
+function decodeJpeg(bytes, maxPixels) {
+  const info = jpegInfo(bytes);
+  if (!info) throw new ImageError("JPEG has no frame header");
+  checkSize(info.width, info.height, maxPixels);
+  checkScans(bytes);
+  let decoded;
+  try {
+    decoded = (0, import_decoder.default)(bytes, { useTArray: true, formatAsRGBA: true, maxResolutionInMP: maxPixels / 1e6 });
+  } catch (error) {
+    throw new ImageError(`JPEG is corrupt or unsupported (${error instanceof Error ? error.message : String(error)})`);
+  }
+  const { width, height: height2, data } = decoded;
+  if (width !== info.width || height2 !== info.height || data.length !== width * height2 * 4) throw new ImageError("JPEG decoded to an unexpected size");
+  return orient({ width, height: height2, rgba: data }, info.orientation);
+}
+function orient(bitmap, orientation) {
+  if (orientation <= 1 || orientation > 8) return bitmap;
+  const { width: w, height: h, rgba } = bitmap;
+  const turned = orientation >= 5;
+  const outW = turned ? h : w;
+  const outH = turned ? w : h;
+  const out = new Uint8Array(rgba.length);
+  const pixels = new Uint32Array(rgba.buffer, rgba.byteOffset, w * h);
+  const target = new Uint32Array(out.buffer);
+  const last = (h - 1) * w;
+  const [origin, dx, dy] = {
+    2: [w - 1, -1, w],
+    3: [last + w - 1, -1, -w],
+    4: [last, 1, -w],
+    5: [0, w, 1],
+    6: [last, -w, 1],
+    7: [last + w - 1, -w, -1],
+    8: [w - 1, w, -1]
+  }[orientation];
+  for (let y = 0; y < outH; y++) {
+    let from = origin + y * dy;
+    for (let x2 = 0; x2 < outW; x2++, from += dx) target[y * outW + x2] = pixels[from];
+  }
+  return { width: outW, height: outH, rgba: out };
+}
+// node_modules/fflate/esm/browser.js
+var u8 = Uint8Array;
+var u16 = Uint16Array;
+var i32 = Int32Array;
+var fleb = new u8([
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  1,
+  2,
+  2,
+  2,
+  2,
+  3,
+  3,
+  3,
+  3,
+  4,
+  4,
+  4,
+  4,
+  5,
+  5,
+  5,
+  5,
+  0,
+  /* unused */
+  0,
+  0,
+  /* impossible */
+  0
 ]);
-var BEGIN = /^\\begin\{([A-Za-z]+)(\*?)\}/;
-var DIAGRAM_ENVS2 = /* @__PURE__ */ new Set(["tikzpicture", "tikzcd", "circuitikz"]);
-function displayOpen(body, diagrams = false) {
-  let kind;
-  let delimiter;
-  let from;
-  if (body.startsWith("$$")) {
-    if (body[2] === "$") return null;
-    kind = delimiter = "$$";
-    from = 2;
-  } else if (body.startsWith("\\[")) {
-    kind = delimiter = "\\[";
-    from = 2;
+var fdeb = new u8([
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  2,
+  2,
+  3,
+  3,
+  4,
+  4,
+  5,
+  5,
+  6,
+  6,
+  7,
+  7,
+  8,
+  8,
+  9,
+  9,
+  10,
+  10,
+  11,
+  11,
+  12,
+  12,
+  13,
+  13,
+  /* unused */
+  0,
+  0
+]);
+var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+var freb = function(eb, start) {
+  var b = new u16(31);
+  for (var i2 = 0; i2 < 31; ++i2) {
+    b[i2] = start += 1 << eb[i2 - 1];
+  }
+  var r = new i32(b[30]);
+  for (var i2 = 1; i2 < 30; ++i2) {
+    for (var j = b[i2]; j < b[i2 + 1]; ++j) {
+      r[j] = j - b[i2] << 5 | i2;
+    }
+  }
+  return { b, r };
+};
+var _a = freb(fleb, 2);
+var fl = _a.b;
+var revfl = _a.r;
+fl[28] = 258, revfl[258] = 28;
+var _b = freb(fdeb, 0);
+var fd = _b.b;
+var revfd = _b.r;
+var rev = new u16(32768);
+for (i = 0; i < 32768; ++i) {
+  x = (i & 43690) >> 1 | (i & 21845) << 1;
+  x = (x & 52428) >> 2 | (x & 13107) << 2;
+  x = (x & 61680) >> 4 | (x & 3855) << 4;
+  rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
+}
+var x;
+var i;
+var hMap = (function(cd, mb, r) {
+  var s = cd.length;
+  var i2 = 0;
+  var l = new u16(mb);
+  for (; i2 < s; ++i2) {
+    if (cd[i2])
+      ++l[cd[i2] - 1];
+  }
+  var le = new u16(mb);
+  for (i2 = 1; i2 < mb; ++i2) {
+    le[i2] = le[i2 - 1] + l[i2 - 1] << 1;
+  }
+  var co;
+  if (r) {
+    co = new u16(1 << mb);
+    var rvb = 15 - mb;
+    for (i2 = 0; i2 < s; ++i2) {
+      if (cd[i2]) {
+        var sv = i2 << 4 | cd[i2];
+        var r_1 = mb - cd[i2];
+        var v = le[cd[i2] - 1]++ << r_1;
+        for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
+          co[rev[v] >> rvb] = sv;
+        }
+      }
+    }
   } else {
-    const m = BEGIN.exec(body);
-    if (!m || !(ENVS.has(m[1]) || diagrams && DIAGRAM_ENVS2.has(m[1]))) return null;
-    kind = m[1] + m[2];
-    delimiter = "env";
-    from = m[0].length;
+    co = new u16(s);
+    for (i2 = 0; i2 < s; ++i2) {
+      if (cd[i2]) {
+        co[i2] = rev[le[cd[i2] - 1]++] >> 15 - cd[i2];
+      }
+    }
   }
-  const close = findClose(kind, body, from);
-  if (!close) return { kind, delimiter, from };
-  if (!close.ok || !onlySpaceAfter(body, close.end)) return null;
-  if (isBlankRange(body, from, close.pos)) return null;
-  const tex = (delimiter === "env" ? body.slice(0, close.end) : body.slice(from, close.pos)).trim();
-  return { kind, delimiter, from, oneLine: { end: close.end, tex } };
-}
-function findClose(kind, s, from) {
-  if (kind === "$$") {
-    for (let i2 = from; i2 < s.length; ) {
-      const c = s.charCodeAt(i2);
-      if (c === BACKSLASH) {
-        i2 += 2;
-      } else if (c === DOLLAR) {
-        let j = i2 + 1;
-        while (s.charCodeAt(j) === DOLLAR) j++;
-        if (j - i2 >= 2) return { pos: i2, end: j, ok: j - i2 === 2 };
-        i2 = j;
+  return co;
+});
+var flt = new u8(288);
+for (i = 0; i < 144; ++i)
+  flt[i] = 8;
+var i;
+for (i = 144; i < 256; ++i)
+  flt[i] = 9;
+var i;
+for (i = 256; i < 280; ++i)
+  flt[i] = 7;
+var i;
+for (i = 280; i < 288; ++i)
+  flt[i] = 8;
+var i;
+var fdt = new u8(32);
+for (i = 0; i < 32; ++i)
+  fdt[i] = 5;
+var i;
+var flm = /* @__PURE__ */ hMap(flt, 9, 0);
+var flrm = /* @__PURE__ */ hMap(flt, 9, 1);
+var fdm = /* @__PURE__ */ hMap(fdt, 5, 0);
+var fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
+var max = function(a) {
+  var m = a[0];
+  for (var i2 = 1; i2 < a.length; ++i2) {
+    if (a[i2] > m)
+      m = a[i2];
+  }
+  return m;
+};
+var bits = function(d, p, m) {
+  var o = p / 8 | 0;
+  return (d[o] | d[o + 1] << 8) >> (p & 7) & m;
+};
+var bits16 = function(d, p) {
+  var o = p / 8 | 0;
+  return (d[o] | d[o + 1] << 8 | d[o + 2] << 16) >> (p & 7);
+};
+var shft = function(p) {
+  return (p + 7) / 8 | 0;
+};
+var slc = function(v, s, e) {
+  if (s == null || s < 0)
+    s = 0;
+  if (e == null || e > v.length)
+    e = v.length;
+  return new u8(v.subarray(s, e));
+};
+var ec = [
+  "unexpected EOF",
+  "invalid block type",
+  "invalid length/literal",
+  "invalid distance",
+  "stream finished",
+  "no stream handler",
+  ,
+  // determined by compression function
+  "no callback",
+  "invalid UTF-8 data",
+  "extra field too long",
+  "date not in range 1980-2099",
+  "filename too long",
+  "stream finishing",
+  "invalid zip data"
+  // determined by unknown compression method
+];
+var err = function(ind, msg, nt) {
+  var e = new Error(msg || ec[ind]);
+  e.code = ind;
+  if (Error.captureStackTrace)
+    Error.captureStackTrace(e, err);
+  if (!nt)
+    throw e;
+  return e;
+};
+var inflt = function(dat, st, buf, dict) {
+  var sl = dat.length, dl = dict ? dict.length : 0;
+  if (!sl || st.f && !st.l)
+    return buf || new u8(0);
+  var noBuf = !buf;
+  var resize = noBuf || st.i != 2;
+  var noSt = st.i;
+  if (noBuf)
+    buf = new u8(sl * 3);
+  var cbuf = function(l2) {
+    var bl = buf.length;
+    if (l2 > bl) {
+      var nbuf = new u8(Math.max(bl * 2, l2));
+      nbuf.set(buf);
+      buf = nbuf;
+    }
+  };
+  var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+  var tbts = sl * 8;
+  do {
+    if (!lm) {
+      final = bits(dat, pos, 1);
+      var type = bits(dat, pos + 1, 3);
+      pos += 3;
+      if (!type) {
+        var s = shft(pos) + 4, l = dat[s - 4] | dat[s - 3] << 8, t = s + l;
+        if (t > sl) {
+          if (noSt)
+            err(0);
+          break;
+        }
+        if (resize)
+          cbuf(bt + l);
+        buf.set(dat.subarray(s, t), bt);
+        st.b = bt += l, st.p = pos = t * 8, st.f = final;
+        continue;
+      } else if (type == 1)
+        lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+      else if (type == 2) {
+        var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+        var tl = hLit + bits(dat, pos + 5, 31) + 1;
+        pos += 14;
+        var ldt = new u8(tl);
+        var clt = new u8(19);
+        for (var i2 = 0; i2 < hcLen; ++i2) {
+          clt[clim[i2]] = bits(dat, pos + i2 * 3, 7);
+        }
+        pos += hcLen * 3;
+        var clb = max(clt), clbmsk = (1 << clb) - 1;
+        var clm = hMap(clt, clb, 1);
+        for (var i2 = 0; i2 < tl; ) {
+          var r = clm[bits(dat, pos, clbmsk)];
+          pos += r & 15;
+          var s = r >> 4;
+          if (s < 16) {
+            ldt[i2++] = s;
+          } else {
+            var c = 0, n = 0;
+            if (s == 16)
+              n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i2 - 1];
+            else if (s == 17)
+              n = 3 + bits(dat, pos, 7), pos += 3;
+            else if (s == 18)
+              n = 11 + bits(dat, pos, 127), pos += 7;
+            while (n--)
+              ldt[i2++] = c;
+          }
+        }
+        var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+        lbt = max(lt);
+        dbt = max(dt);
+        lm = hMap(lt, lbt, 1);
+        dm = hMap(dt, dbt, 1);
+      } else
+        err(1);
+      if (pos > tbts) {
+        if (noSt)
+          err(0);
+        break;
+      }
+    }
+    if (resize)
+      cbuf(bt + 131072);
+    var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+    var lpos = pos;
+    for (; ; lpos = pos) {
+      var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+      pos += c & 15;
+      if (pos > tbts) {
+        if (noSt)
+          err(0);
+        break;
+      }
+      if (!c)
+        err(2);
+      if (sym < 256)
+        buf[bt++] = sym;
+      else if (sym == 256) {
+        lpos = pos, lm = null;
+        break;
       } else {
-        i2++;
+        var add = sym - 254;
+        if (sym > 264) {
+          var i2 = sym - 257, b = fleb[i2];
+          add = bits(dat, pos, (1 << b) - 1) + fl[i2];
+          pos += b;
+        }
+        var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+        if (!d)
+          err(3);
+        pos += d & 15;
+        var dt = fd[dsym];
+        if (dsym > 3) {
+          var b = fdeb[dsym];
+          dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+        }
+        if (pos > tbts) {
+          if (noSt)
+            err(0);
+          break;
+        }
+        if (resize)
+          cbuf(bt + 131072);
+        var end = bt + add;
+        if (bt < dt) {
+          var shift = dl - dt, dend = Math.min(dt, end);
+          if (shift + bt < 0)
+            err(3);
+          for (; bt < dend; ++bt)
+            buf[bt] = dict[shift + bt];
+        }
+        for (; bt < end; ++bt)
+          buf[bt] = buf[bt - dt];
       }
     }
-    return null;
+    st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+    if (lm)
+      final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+  } while (!final);
+  return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+};
+var wbits = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+};
+var wbits16 = function(d, p, v) {
+  v <<= p & 7;
+  var o = p / 8 | 0;
+  d[o] |= v;
+  d[o + 1] |= v >> 8;
+  d[o + 2] |= v >> 16;
+};
+var hTree = function(d, mb) {
+  var t = [];
+  for (var i2 = 0; i2 < d.length; ++i2) {
+    if (d[i2])
+      t.push({ s: i2, f: d[i2] });
   }
-  const token2 = kind === "\\[" ? "]" : `end{${kind}}`;
-  for (let i2 = from; i2 < s.length; i2++) {
-    if (s.charCodeAt(i2) !== BACKSLASH) continue;
-    if (s.startsWith(token2, i2 + 1)) return { pos: i2, end: i2 + 1 + token2.length, ok: true };
-    i2++;
+  var s = t.length;
+  var t2 = t.slice();
+  if (!s)
+    return { t: (__kittexLate.et?.()), l: 0 };
+  if (s == 1) {
+    var v = new u8(t[0].s + 1);
+    v[t[0].s] = 1;
+    return { t: v, l: 1 };
   }
-  return null;
-}
-function onlySpaceAfter(s, from) {
-  return isBlankRange(s, from, s.length);
-}
-function isBlankRange(s, from, to) {
-  return s.slice(from, to).trim() === "";
-}
-var LIST_ITEM = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
-var HEADING = /^#{1,6}(?:[ \t]|$)/;
-var THEMATIC_OR_SETEXT = /^(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*)\r?$/;
-function isListItem(body) {
-  return LIST_ITEM.test(body);
-}
-function standsAlone(body) {
-  return HEADING.test(body) || body.startsWith("|");
-}
-function startsBlock(body) {
-  return HEADING.test(body) || LIST_ITEM.test(body) || body.startsWith("|") || THEMATIC_OR_SETEXT.test(body);
-}
-var DELIMITER_ROW = /^ {0,3}((?:\| *)?:?-+:? *(?:\| *:?-+:? *)*(?:\| *)?)$/;
-function delimitsTable(header, body) {
-  const delimiter = DELIMITER_ROW.exec(body.replace(/[ \t\r]+$/, ""))?.[1];
-  if (!delimiter || !/[:|]/.test(delimiter) || header.trim() === "") return false;
-  return cellCount(header) === delimiter.replace(/^\||\| *$/g, "").split("|").length;
-}
-function cellCount(line) {
-  const cells2 = line.replace(/\|/g, (_match, offset, all) => {
-    let escaped = false;
-    for (let p = offset - 1; p >= 0 && all[p] === "\\"; p--) escaped = !escaped;
-    return escaped ? "|" : " |";
-  }).split(/ \|/);
-  if (!cells2[0]?.trim()) cells2.shift();
-  if (cells2.length > 0 && !cells2.at(-1)?.trim()) cells2.pop();
-  return cells2.length;
-}
-function endsTable(body) {
-  return HEADING.test(body) || LIST_ITEM.test(body) || THEMATIC_OR_SETEXT.test(body) || looksLikeFence(body) || body.startsWith("<");
-}
-// core/src/scan/lines.ts
-function makeLine(raw, start) {
-  const text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-  const prefixEnds = [0];
-  let p = 0;
-  for (let q = quoteMarkerEnd(text, p); q >= 0; q = quoteMarkerEnd(text, p)) {
-    p = q;
-    prefixEnds.push(p);
+  t.sort(function(a, b) {
+    return a.f - b.f;
+  });
+  t.push({ s: -1, f: 25001 });
+  var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
+  t[0] = { s: -1, f: l.f + r.f, l, r };
+  while (i1 != s - 1) {
+    l = t[t[i0].f < t[i22].f ? i0++ : i22++];
+    r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
+    t[i1++] = { s: -1, f: l.f + r.f, l, r };
   }
-  let indent = 0;
-  let i2 = p;
-  for (; i2 < text.length; i2++) {
-    const c = text.charCodeAt(i2);
-    if (c === 32) indent++;
-    else if (c === 9) indent += 4 - indent % 4;
-    else break;
+  var maxSym = t2[0].s;
+  for (var i2 = 1; i2 < s; ++i2) {
+    if (t2[i2].s > maxSym)
+      maxSym = t2[i2].s;
   }
-  const body = text.slice(i2);
-  return {
-    raw,
-    text,
-    start,
-    end: start + raw.length,
-    depth: prefixEnds.length - 1,
-    prefixEnds,
-    indent,
-    bodyStart: i2,
-    body,
-    blank: isBlank(body)
-  };
-}
-function restAt(line, depth) {
-  return line.text.slice(line.prefixEnds[depth] ?? 0);
-}
-function stripQuotes(text, depth) {
-  let p = 0;
-  for (let d = 0; d < depth; d++) {
-    const q = quoteMarkerEnd(text, p);
-    if (q < 0) break;
-    p = q;
-  }
-  return text.slice(p);
-}
-function quoteMarkerEnd(text, p) {
-  let q = p;
-  while (q - p < 3 && text.charCodeAt(q) === 32) q++;
-  if (text.charCodeAt(q) !== 62) return -1;
-  q++;
-  const c = text.charCodeAt(q);
-  if (c === 32 || c === 9) q++;
-  return q;
-}
-function isBlank(s) {
-  for (let i2 = 0; i2 < s.length; i2++) if (!isSpace(s.charCodeAt(i2))) return false;
-  return true;
-}
-function isSpace(c) {
-  if (c <= 32) return c === 32 || c >= 9 && c <= 13;
-  return c >= 128 && /\s/.test(String.fromCharCode(c));
-}
-function trimEndLength(s) {
-  let n = s.length;
-  while (n > 0 && isSpace(s.charCodeAt(n - 1))) n--;
-  return n;
-}
-// core/src/scan/inline.ts
-function scanInline(lines2, open, isRow = () => false) {
-  const first = lines2[0];
-  const base = first.start;
-  const depth = first.depth;
-  const s = lines2.length === 1 ? first.raw : lines2.map((l) => l.raw).join("");
-  const tokens = tokenize(s);
-  const n = tokens.length;
-  let pending = Infinity;
-  const closeTick = new Int32Array(n).fill(-1);
-  {
-    const nextByLen = /* @__PURE__ */ new Map();
-    const nextSame = new Int32Array(n).fill(-1);
-    for (let k = n - 1; k >= 0; k--) {
-      const t = tokens[k];
-      if (t.type !== TICK) continue;
-      if (t.open > 0) nextSame[k] = nextByLen.get(t.open) ?? -1;
-      nextByLen.set(t.len, k);
-    }
-    for (let k = 0; k < n; k++) {
-      const t = tokens[k];
-      if (t.type !== TICK || t.open === 0) continue;
-      const m = nextSame[k];
-      if (m >= 0) {
-        closeTick[k] = m;
-        k = m;
-      } else if (open) {
-        pending = t.pos;
-        break;
-      }
-    }
-  }
-  const nextDollar = new Int32Array(n).fill(-1);
-  const nextParen = new Int32Array(n).fill(-1);
-  for (let k = n - 1, dollar = -1, paren = -1; k >= 0; k--) {
-    nextDollar[k] = dollar;
-    nextParen[k] = paren;
-    const t = tokens[k];
-    if (t.type === TICK) dollar = paren = k;
-    else if (t.type === DOLLAR2) dollar = k;
-    else if (t.type === CLOSE_PAREN) paren = k;
-  }
-  const spans = [];
-  for (let k = 0; k < n; k++) {
-    const t = tokens[k];
-    if (t.pos >= pending) break;
-    if (t.type === TICK) {
-      const m2 = closeTick[k];
-      if (m2 >= 0) {
-        spans.push({ start: t.pos, end: tokens[m2].pos + tokens[m2].len });
-        k = m2;
-      }
-      continue;
-    }
-    if (t.type === CLOSE_PAREN || t.type === DOLLAR2 && (t.len > 2 || t.len === 1 && !t.canOpen)) continue;
-    const m = t.type === DOLLAR2 ? nextDollar[k] : nextParen[k];
-    if (m < 0) {
-      if (open) {
-        pending = t.pos;
-        break;
-      }
-      continue;
-    }
-    const c = tokens[m];
-    if (c.type === TICK) continue;
-    let delimiter;
-    if (t.type === OPEN_PAREN) delimiter = "\\(";
-    else if (t.len === 1 && c.len === 1 && c.canClose) delimiter = "$";
-    else if (t.len === 2 && c.len === 2) delimiter = "$$";
-    else continue;
-    k = m;
-    const tex = texOf(s.slice(t.pos + t.len, c.pos), depth);
-    spans.push({ start: t.pos, end: c.pos + c.len, math: tex === "" ? void 0 : { tex, delimiter } });
-  }
-  const starts = lineStarts(lines2, base);
-  const rows = lines2.map(isRow);
-  let cut = s.length;
-  if (pending < Infinity) cut = lineStartAt(starts, pending);
-  const last = lines2.length - 1;
-  if (open && !rows[last] && lines2[last].raw.includes("\\|")) cut = Math.min(cut, starts[last]);
-  if (cut < s.length) {
-    for (let j = spans.length - 1; j >= 0; j--) {
-      const span = spans[j];
-      if (span.end <= cut) break;
-      if (span.start < cut) cut = lineStartAt(starts, span.start);
-    }
-  }
-  const segments = [];
-  let pos = 0;
-  const text = (to) => {
-    if (to > pos) segments.push({ kind: "text", text: s.slice(pos, to), start: base + pos, end: base + to });
-  };
-  for (const span of spans) {
-    if (span.start >= cut) break;
-    if (!span.math) continue;
-    text(span.start);
-    const row = rows[lineIndexAt(starts, span.start)];
-    segments.push({
-      kind: "math",
-      display: false,
-      tex: row ? tablePipes(span.math.tex) : span.math.tex,
-      raw: s.slice(span.start, span.end),
-      delimiter: span.math.delimiter,
-      start: base + span.start,
-      end: base + span.end
+  var tr = new u16(maxSym + 1);
+  var mbt = (__kittexLate.ln?.())(t[i1 - 1], tr, 0);
+  if (mbt > mb) {
+    var i2 = 0, dt = 0;
+    var lft = mbt - mb, cst = 1 << lft;
+    t2.sort(function(a, b) {
+      return tr[b.s] - tr[a.s] || a.f - b.f;
     });
-    pos = span.end;
-  }
-  text(cut);
-  return { segments, cut: base + cut };
-}
-function tablePipes(tex) {
-  return tex.replace(/\\\\\\\||\\\|/g, (match) => match.length === 4 ? "\\|" : "|");
-}
-function texOf(content, depth) {
-  if (depth > 0 && content.includes("\n")) content = content.split("\n").map((l, i2) => i2 === 0 ? l : stripQuotes(l, depth)).join("\n");
-  return content.trim();
-}
-function tokenize(s) {
-  const tokens = [];
-  const n = s.length;
-  const push = (type, pos, len, open = 0, canOpen = false, canClose = false) => tokens.push({ type, pos, len, open, canOpen, canClose });
-  for (let i2 = 0; i2 < n; ) {
-    const c = s.charCodeAt(i2);
-    if (c === 92) {
-      let k = i2 + 1;
-      while (s.charCodeAt(k) === 92) k++;
-      const escaped = (k - i2) % 2 === 1;
-      const d = s.charCodeAt(k);
-      if (d === 96) {
-        const j = runEnd(s, k, 96);
-        push(TICK, k, j - k, escaped ? j - k - 1 : j - k);
-        i2 = j;
-      } else if (escaped && (d === 40 || d === 41)) {
-        push(d === 40 ? OPEN_PAREN : CLOSE_PAREN, k - 1, 2);
-        i2 = k + 1;
-      } else {
-        i2 = escaped && k < n ? k + 1 : k;
-      }
-    } else if (c === 96) {
-      const j = runEnd(s, i2, 96);
-      push(TICK, i2, j - i2, j - i2);
-      i2 = j;
-    } else if (c === 36) {
-      const j = runEnd(s, i2, 36);
-      const single2 = j - i2 === 1;
-      const canOpen = single2 && j < n && !isSpace(s.charCodeAt(j));
-      const next = s.charCodeAt(j);
-      const canClose = single2 && i2 > 0 && !isSpace(s.charCodeAt(i2 - 1)) && !(next >= 48 && next <= 57);
-      push(DOLLAR2, i2, j - i2, 0, canOpen, canClose);
-      i2 = j;
-    } else {
-      i2++;
+    for (; i2 < s; ++i2) {
+      var i2_1 = t2[i2].s;
+      if (tr[i2_1] > mb) {
+        dt += cst - (1 << mbt - tr[i2_1]);
+        tr[i2_1] = mb;
+      } else
+        break;
     }
+    dt >>= lft;
+    while (dt > 0) {
+      var i2_2 = t2[i2].s;
+      if (tr[i2_2] < mb)
+        dt -= 1 << mb - tr[i2_2]++ - 1;
+      else
+        ++i2;
+    }
+    for (; i2 >= 0 && dt; --i2) {
+      var i2_3 = t2[i2].s;
+      if (tr[i2_3] == mb) {
+        --tr[i2_3];
+        ++dt;
+      }
+    }
+    mbt = mb;
   }
-  return tokens;
-}
-function runEnd(s, i2, code) {
-  let j = i2;
-  while (s.charCodeAt(j) === code) j++;
-  return j;
-}
-function lineStarts(lines2, base) {
-  return lines2.map((l) => l.start - base);
-}
-function lineStartAt(starts, pos) {
-  return starts[lineIndexAt(starts, pos)];
-}
-function lineIndexAt(starts, pos) {
-  let lo = 0;
-  let hi = starts.length - 1;
-  while (lo < hi) {
-    const mid = lo + hi + 1 >> 1;
-    if (starts[mid] <= pos) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-export{DIAGRAM_ENVS2,makeLine,scanInline,restAt,looksLikeFence,findClose,onlySpaceAfter,isListItem,fenceOpen,trimEndLength,displayOpen,standsAlone,startsBlock,endsTable,delimitsTable,closesFence,measure,rasterize,encodePng,measurePicture,rasterizePicture,encodePicturePng,pictureOutlines,strokeWeight};
+  return { t: new u8(tr), l: mbt };
+};
+export{u16,shft,wbits,hTree,clim,flt,fdt,hMap,flm,fdm,wbits16,fleb,fdeb,i32,u8,revfl,revfd,slc,err,inflt,ImageError,checkSize,imageHeader,decodeJpeg,assumedBackground,adaptColor,texPicture,fitImage,FORMAT_SOURCE,LATEX_ARGV,TRIAL_PDF,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,imageBlock,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,parseLength,pdfArgv,pdfCopyArgv,resolveImagePath,texEnvironment,texError,ulimitProbe,unsafeTex};

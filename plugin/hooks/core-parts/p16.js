@@ -1,1730 +1,1845 @@
-import{__esm,init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_MmlNode,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,AbstractMmlNode,TexConstant,TexError_default,UnitUtil,init_Factory,AbstractFactory,init_NodeUtil,NodeUtil_default,init_Entities,TEXCLASS,entities,init_Options,lookup,defaultOptions,__kittexLate}from'./p15.js';export*from'./p15.js';
-// node_modules/@mathjax/src/mjs/input/tex/TexParser.js
-var TexParser;
-var init_TexParser = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/TexParser.js"() {
-    init_HandlerTypes();
-    init_UnitUtil();
-    init_Stack();
-    init_TexError();
-    init_MmlNode();
-    init_StackItem();
-    init_TexConstants();
-    TexParser = class _TexParser {
-      constructor(_string, env, configuration) {
-        this._string = _string;
-        this.configuration = configuration;
-        this.macroCount = 0;
-        this.i = 0;
-        this.currentCS = "";
-        this.saveI = 0;
-        const inner = Object.hasOwn(env, "isInner");
-        const isInner = env["isInner"];
-        delete env["isInner"];
-        let ENV;
-        if (env) {
-          ENV = {};
-          for (const id of Object.keys(env)) {
-            ENV[id] = env[id];
-          }
-        }
-        this.configuration.pushParser(this);
-        this.stack = new Stack(this.itemFactory, ENV, inner ? isInner : true);
-        this.Parse();
-        this.Push(this.itemFactory.create("stop"));
-        this.stack.env = ENV;
-      }
-      get options() {
-        return this.configuration.options;
-      }
-      get itemFactory() {
-        return this.configuration.itemFactory;
-      }
-      get tags() {
-        return this.configuration.tags;
-      }
-      set string(str) {
-        this._string = str;
-      }
-      get string() {
-        return this._string;
-      }
-      parse(kind, input) {
-        const i2 = this.saveI;
-        this.saveI = this.i - (kind === "character" && input[1] !== "&" ? input[1].length : 0);
-        const result = this.configuration.handlers.get(kind).parse(input);
-        if (kind !== "macro") {
-          this.updateResult(input[1], i2);
-        }
-        this.saveI = i2;
-        return result;
-      }
-      lookup(kind, token2) {
-        return this.configuration.handlers.get(kind).lookup(token2);
-      }
-      contains(kind, token2) {
-        return this.configuration.handlers.get(kind).contains(token2);
-      }
-      toString() {
-        let str = "";
-        for (const config2 of Array.from(this.configuration.handlers.keys())) {
-          str += config2 + ": " + this.configuration.handlers.get(config2) + "\n";
-        }
-        return str;
-      }
-      Parse() {
-        let c;
-        while (this.i < this.string.length) {
-          c = this.getCodePoint();
-          this.i += c.length;
-          this.parse(HandlerType.CHARACTER, [this, c]);
-        }
-      }
-      Push(arg) {
-        if (arg instanceof BaseItem) {
-          arg.startI = this.saveI;
-          arg.stopI = this.i;
-          arg.startStr = this.string;
-        }
-        if (arg instanceof AbstractMmlNode && arg.isInferred) {
-          this.PushAll(arg.childNodes);
-        } else {
-          this.stack.Push(arg);
-        }
-      }
-      PushAll(args) {
-        for (const arg of args) {
-          this.stack.Push(arg);
-        }
-      }
-      mml() {
-        this.configuration.popParser();
-        if (!this.stack.Top().isKind("mml")) {
-          return null;
-        }
-        const node = this.stack.Top().First;
-        const latex = this.trimTex(this.string);
-        if (latex) {
-          node.attributes.set(TexConstant.Attr.LATEX, latex);
-        }
-        return node;
-      }
-      convertDelimiter(c) {
-        var _a2;
-        const token2 = this.lookup(HandlerType.DELIMITER, c);
-        return (_a2 = token2 === null || token2 === void 0 ? void 0 : token2.char) !== null && _a2 !== void 0 ? _a2 : null;
-      }
-      getCodePoint() {
-        const code = this.string.codePointAt(this.i);
-        return code === void 0 ? "" : String.fromCodePoint(code);
-      }
-      nextIsSpace() {
-        return !!this.string.charAt(this.i).match(/\s/);
-      }
-      GetNext() {
-        while (this.nextIsSpace()) {
-          this.i++;
-        }
-        return this.getCodePoint();
-      }
-      GetCS() {
-        const CS = this.string.slice(this.i).match(/^(([a-z]+) ?|[\uD800-\uDBFF].|.)/i);
-        if (CS) {
-          this.i += CS[0].length;
-          return CS[2] || CS[1];
-        } else {
-          this.i++;
-          return " ";
-        }
-      }
-      GetArgument(_name, noneOK = false) {
-        switch (this.GetNext()) {
-          case "":
-            if (!noneOK) {
-              throw new TexError_default("MissingArgFor", "Missing argument for %1", this.currentCS);
-            }
-            return null;
-          case "}":
-            if (!noneOK) {
-              throw new TexError_default("ExtraCloseMissingOpen", "Extra close brace or missing open brace");
-            }
-            return null;
-          case "\\":
-            this.i++;
-            return "\\" + this.GetCS();
-          case "{": {
-            const j = ++this.i;
-            let parens2 = 1;
-            while (this.i < this.string.length) {
-              switch (this.string.charAt(this.i++)) {
-                case "\\":
-                  this.i++;
-                  break;
-                case "{":
-                  parens2++;
-                  break;
-                case "}":
-                  if (--parens2 === 0) {
-                    return this.string.slice(j, this.i - 1);
-                  }
-                  break;
-              }
-            }
-            throw new TexError_default("MissingCloseBrace", "Missing close brace");
-          }
-        }
-        const c = this.getCodePoint();
-        this.i += c.length;
-        return c;
-      }
-      GetBrackets(_name, def2, matchBrackets = false) {
-        if (this.GetNext() !== "[") {
-          return def2;
-        }
-        const j = ++this.i;
-        let braces = 0;
-        let brackets = 0;
-        while (this.i < this.string.length) {
-          switch (this.string.charAt(this.i++)) {
-            case "{":
-              braces++;
-              break;
-            case "\\":
-              this.i++;
-              break;
-            case "}":
-              if (braces-- <= 0) {
-                throw new TexError_default("ExtraCloseLooking", "Extra close brace while looking for %1", "']'");
-              }
-              break;
-            case "[":
-              if (braces === 0)
-                brackets++;
-              break;
-            case "]":
-              if (braces === 0) {
-                if (!matchBrackets || brackets === 0) {
-                  return this.string.slice(j, this.i - 1);
-                }
-                brackets--;
-              }
-              break;
-          }
-        }
-        throw new TexError_default("MissingCloseBracket", "Could not find closing ']' for argument to %1", this.currentCS);
-      }
-      GetDelimiter(name, braceOK = false) {
-        let c = this.GetNext();
-        this.i += c.length;
-        if (this.i <= this.string.length) {
-          if (c === "\\") {
-            c += this.GetCS();
-          } else if (c === "{" && braceOK) {
-            this.i--;
-            c = this.GetArgument(name).trim();
-          }
-          if (this.contains(HandlerType.DELIMITER, c)) {
-            return this.convertDelimiter(c);
-          }
-        }
-        throw new TexError_default("MissingOrUnrecognizedDelim", "Missing or unrecognized delimiter for %1", this.currentCS);
-      }
-      GetDimen(name) {
-        if (this.GetNext() === "{") {
-          const dimen = this.GetArgument(name);
-          const [value, unit] = UnitUtil.matchDimen(dimen);
-          if (value) {
-            return value + unit;
-          }
-        } else {
-          const dimen = this.string.slice(this.i);
-          const [value, unit, length4] = UnitUtil.matchDimen(dimen, true);
-          if (value) {
-            this.i += length4;
-            return value + unit;
-          }
-        }
-        throw new TexError_default("MissingDimOrUnits", "Missing dimension or its units for %1", this.currentCS);
-      }
-      GetUpTo(_name, token2) {
-        while (this.nextIsSpace()) {
-          this.i++;
-        }
-        const j = this.i;
-        let braces = 0;
-        while (this.i < this.string.length) {
-          const k = this.i;
-          let c = this.GetNext();
-          this.i += c.length;
-          switch (c) {
-            case "\\":
-              c += this.GetCS();
-              break;
-            case "{":
-              braces++;
-              break;
-            case "}":
-              if (braces === 0) {
-                throw new TexError_default("ExtraCloseLooking", "Extra close brace while looking for %1", token2);
-              }
-              braces--;
-              break;
-          }
-          if (braces === 0 && c === token2) {
-            return this.string.slice(j, k);
-          }
-        }
-        throw new TexError_default("TokenNotFoundForCommand", "Could not find %1 for %2", token2, this.currentCS);
-      }
-      ParseArg(name) {
-        return new _TexParser(this.GetArgument(name), this.stack.env, this.configuration).mml();
-      }
-      ParseUpTo(name, token2) {
-        return new _TexParser(this.GetUpTo(name, token2), this.stack.env, this.configuration).mml();
-      }
-      GetDelimiterArg(name) {
-        const c = UnitUtil.trimSpaces(this.GetArgument(name));
-        if (c === "") {
-          return null;
-        }
-        if (this.contains(HandlerType.DELIMITER, c)) {
-          return c;
-        }
-        throw new TexError_default("MissingOrUnrecognizedDelim", "Missing or unrecognized delimiter for %1", this.currentCS);
-      }
-      GetStar() {
-        const star = this.GetNext() === "*";
-        if (star) {
-          this.i++;
-        }
-        return star;
-      }
-      create(kind, ...rest) {
-        const node = this.configuration.nodeFactory.create(kind, ...rest);
-        if (node.isToken && node.attributes.hasExplicit("mathvariant")) {
-          if (node.attributes.get("mathvariant").charAt(0) === "-") {
-            node.setProperty("ignore-variant", true);
-          }
-        }
-        return node;
-      }
-      trimTex(tex) {
-        return tex.trim() + (tex.match(/(?:^|[^\\])(?:\\\\)*\\\s+$/) ? " " : "");
-      }
-      updateResult(input, old) {
-        const node = this.stack.Prev(true);
-        if (!node) {
-          return;
-        }
-        const LATEX = TexConstant.Attr.LATEX;
-        const latex = node.attributes.get(LATEX);
-        const existing = node.attributes.get(TexConstant.Attr.LATEXITEM);
-        if (existing !== void 0) {
-          if (!latex) {
-            if (input === "}" || existing === "}") {
-              this.composeBraces(node);
-            } else {
-              node.attributes.set(LATEX, existing);
-            }
-          }
-          return;
-        }
-        old = old < this.saveI ? this.saveI : old;
-        const str = this.trimTex(old !== this.i ? this.string.slice(old, this.i) : input);
-        if (!str || str === latex || input === "\\" && str === "\\") {
-          return;
-        }
-        if (str === "_" || str === "^") {
-          node.setProperty("sub-sup", str);
-        } else {
-          switch (node.getProperty("sub-sup")) {
-            case "^":
-              if (node.childNodes[2]) {
-                if (str === "}") {
-                  this.composeBraces(node.childNodes[2]);
-                } else if (!node.childNodes[2].attributes.hasExplicit(LATEX)) {
-                  node.childNodes[2].attributes.set(LATEX, str);
-                }
-              }
-              if (node.childNodes[1]) {
-                const sub = node.childNodes[1].attributes.get(LATEX);
-                this.composeLatex(node, `_${sub}^`, 0, 2);
-              } else {
-                this.composeLatex(node, "^", 0, 2);
-              }
-              return;
-            case "_":
-              if (node.childNodes[1]) {
-                if (str === "}") {
-                  this.composeBraces(node.childNodes[1]);
-                } else if (!node.childNodes[1].attributes.hasExplicit(LATEX)) {
-                  node.childNodes[1].attributes.set(LATEX, str);
-                }
-              }
-              if (node.childNodes[2]) {
-                const sup = node.childNodes[2].attributes.get(LATEX);
-                this.composeLatex(node, `^${sup}_`, 0, 1);
-              } else {
-                this.composeLatex(node, "_", 0, 1);
-              }
-              return;
-          }
-          if (str === "}") {
-            this.composeBraces(node);
-            return;
-          }
-        }
-        node.attributes.set(LATEX, str);
-      }
-      composeLatex(node, comp, pos1, pos2) {
-        if (!node.childNodes[pos1] || !node.childNodes[pos2])
-          return;
-        const LATEX = TexConstant.Attr.LATEX;
-        const expr = (node.childNodes[pos1].attributes.get(LATEX) || "") + comp + node.childNodes[pos2].attributes.get(LATEX);
-        node.attributes.set(LATEX, expr);
-      }
-      composeBraces(atom) {
-        const str = this.composeBracedContent(atom);
-        atom.attributes.set(TexConstant.Attr.LATEX, `{${str}}`);
-      }
-      composeBracedContent(atom) {
-        var _a2, _b2;
-        const children = ((_a2 = atom.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.childNodes) || [];
-        let expr = "";
-        for (const child of children) {
-          const att = ((_b2 = child === null || child === void 0 ? void 0 : child.attributes) === null || _b2 === void 0 ? void 0 : _b2.get(TexConstant.Attr.LATEX)) || "";
-          if (!att)
-            continue;
-          expr += expr && expr.match(/[a-zA-Z]$/) && att.match(/^[a-zA-Z]/) ? " " + att : att;
-        }
-        return expr;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/StackItemFactory.js
-var DummyItem;
-var StackItemFactory;
-var StackItemFactory_default;
-var init_StackItemFactory = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/StackItemFactory.js"() {
-    init_StackItem();
-    init_Factory();
-    DummyItem = class extends BaseItem {
-    };
-    StackItemFactory = class extends AbstractFactory {
-      constructor() {
-        super(...arguments);
-        this.defaultKind = "dummy";
-        this.configuration = null;
-      }
-    };
-    StackItemFactory.DefaultStackItems = {
-      [DummyItem.prototype.kind]: DummyItem
-    };
-    StackItemFactory_default = StackItemFactory;
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/NodeFactory.js
-var NodeFactory;
-var init_NodeFactory2 = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/NodeFactory.js"() {
-    init_NodeUtil();
-    NodeFactory = class _NodeFactory {
-      constructor() {
-        this.mmlFactory = null;
-        this.factory = {
-          node: _NodeFactory.createNode,
-          token: _NodeFactory.createToken,
-          text: _NodeFactory.createText,
-          error: _NodeFactory.createError
-        };
-      }
-      static createNode(factory, kind, children = [], def2 = {}, text) {
-        const node = factory.mmlFactory.create(kind);
-        node.setChildren(children);
-        if (text) {
-          node.appendChild(text);
-        }
-        NodeUtil_default.setProperties(node, def2);
-        return node;
-      }
-      static createToken(factory, kind, def2 = {}, text = "") {
-        const textNode = factory.create("text", text);
-        return factory.create("node", kind, [], def2, textNode);
-      }
-      static createText(factory, text) {
-        if (text == null) {
-          return null;
-        }
-        return factory.mmlFactory.create("text").setText(text);
-      }
-      static createError(factory, message) {
-        const text = factory.create("text", message);
-        const mtext = factory.create("node", "mtext", [], {}, text);
-        const error = factory.create("node", "merror", [mtext], {
-          "data-mjx-error": message
-        });
-        return error;
-      }
-      setMmlFactory(mmlFactory) {
-        this.mmlFactory = mmlFactory;
-      }
-      set(kind, func) {
-        this.factory[kind] = func;
-      }
-      setCreators(maps3) {
-        for (const kind in maps3) {
-          this.set(kind, maps3[kind]);
-        }
-      }
-      create(kind, ...rest) {
-        const func = this.factory[kind] || this.factory["node"];
-        const node = func(this, rest[0], ...rest.slice(1));
-        if (kind === "node") {
-          this.configuration.addNode(rest[0], node);
-        }
-        return node;
-      }
-      get(kind) {
-        return this.factory[kind];
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/ParseUtil.js
-function readKeyval(text, l3keys = false) {
-  const options3 = {};
-  let rest = text;
-  let end, key, val;
-  let dropBrace = true;
-  while (rest) {
-    [key, end, rest] = readValue(rest, ["=", ","], l3keys, dropBrace);
-    dropBrace = false;
-    if (end === "=") {
-      [val, end, rest] = readValue(rest, [","], l3keys);
-      val = val === "false" || val === "true" ? JSON.parse(val) : val;
-      options3[key] = val;
-    } else if (key) {
-      options3[key] = true;
-    }
-  }
-  return options3;
-}
-function removeBraces(text, count) {
-  if (count === 0) {
-    return text.replace(/^\s+/, "").replace(/([^\\\s]|^)((?:\\\\)*(?:\\\s)?)?\s+$/, "$1$2");
-  }
-  while (count > 0) {
-    text = text.trim().slice(1, -1);
-    count--;
-  }
-  return text;
-}
-function readValue(text, end, l3keys = false, dropBrace = false) {
-  const length4 = text.length;
-  let braces = 0;
-  let value = "";
-  let index = 0;
-  let start = 0;
-  let countBraces = true;
-  while (index < length4) {
-    const c = text[index++];
-    switch (c) {
-      case "\\":
-        value += c + (text[index++] || "");
-        countBraces = false;
-        continue;
-      case " ":
-        break;
-      case "{":
-        if (countBraces) {
-          start++;
-        }
-        braces++;
-        break;
-      case "}":
-        if (!braces) {
-          throw new TexError_default("ExtraCloseMissingOpen", "Extra close brace or missing open brace");
-        }
-        braces--;
-        countBraces = false;
-        break;
-      default:
-        if (!braces && end.includes(c)) {
-          return [
-            removeBraces(value, l3keys ? Math.min(1, start) : start),
-            c,
-            text.slice(index)
-          ];
-        }
-        if (start > braces) {
-          start = braces;
-        }
-        countBraces = false;
-    }
-    value += c;
-  }
-  if (braces) {
-    throw new TexError_default("ExtraOpenMissingClose", "Extra open brace or missing close brace");
-  }
-  return dropBrace && start ? ["", "", removeBraces(value, 1)] : [
-    removeBraces(value, l3keys ? Math.min(1, start) : start),
-    "",
-    text.slice(index)
-  ];
-}
-var KeyValueDef;
-var KeyValueTypes;
-var ParseUtil;
-var init_ParseUtil = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/ParseUtil.js"() {
-    init_MmlNode();
-    init_NodeUtil();
-    init_TexParser();
-    init_TexError();
-    init_Entities();
-    init_UnitUtil();
-    KeyValueDef = class {
-      static oneof(...values) {
-        return new this("string", (value) => values.includes(value), (value) => value);
-      }
-      constructor(name, verify, convert) {
-        this.name = name;
-        this.verify = verify;
-        this.convert = convert;
-      }
-    };
-    KeyValueTypes = {
-      boolean: new KeyValueDef("boolean", (value) => value === "true" || value === "false", (value) => value === "true"),
-      number: new KeyValueDef("number", (value) => !!value.match(/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/), (value) => parseFloat(value)),
-      integer: new KeyValueDef("integer", (value) => !!value.match(/^[-+]?\d+$/), (value) => parseInt(value)),
-      string: new KeyValueDef("string", (_value) => true, (value) => value),
-      dimen: new KeyValueDef("dimen", (value) => UnitUtil.matchDimen(value)[0] !== null, (value) => value)
-    };
-    ParseUtil = {
-      cols(...W) {
-        return W.map((n) => UnitUtil.em(n)).join(" ");
-      },
-      fenced(configuration, open, mml, close, big = "", color = "") {
-        const nf = configuration.nodeFactory;
-        const mrow = nf.create("node", "mrow", [], {
-          open,
-          close,
-          texClass: TEXCLASS.INNER
-        });
-        let mo;
-        if (big) {
-          mo = new TexParser("\\" + big + "l" + open, configuration.parser.stack.env, configuration).mml();
-        } else {
-          const openNode = nf.create("text", open);
-          mo = nf.create("node", "mo", [], {
-            fence: true,
-            stretchy: true,
-            symmetric: true,
-            texClass: TEXCLASS.OPEN
-          }, openNode);
-        }
-        NodeUtil_default.appendChildren(mrow, [mo, mml]);
-        if (big) {
-          mo = new TexParser("\\" + big + "r" + close, configuration.parser.stack.env, configuration).mml();
-        } else {
-          const closeNode = nf.create("text", close);
-          mo = nf.create("node", "mo", [], {
-            fence: true,
-            stretchy: true,
-            symmetric: true,
-            texClass: TEXCLASS.CLOSE
-          }, closeNode);
-        }
-        if (color) {
-          mo.attributes.set("mathcolor", color);
-        }
-        NodeUtil_default.appendChildren(mrow, [mo]);
-        return mrow;
-      },
-      fixedFence(configuration, open, mml, close) {
-        const mrow = configuration.nodeFactory.create("node", "mrow", [], {
-          open,
-          close,
-          texClass: TEXCLASS.ORD
-        });
-        if (open) {
-          NodeUtil_default.appendChildren(mrow, [
-            ParseUtil.mathPalette(configuration, open, "l")
-          ]);
-        }
-        if (NodeUtil_default.isType(mml, "mrow")) {
-          NodeUtil_default.appendChildren(mrow, NodeUtil_default.getChildren(mml));
-        } else {
-          NodeUtil_default.appendChildren(mrow, [mml]);
-        }
-        if (close) {
-          NodeUtil_default.appendChildren(mrow, [
-            ParseUtil.mathPalette(configuration, close, "r")
-          ]);
-        }
-        return mrow;
-      },
-      mathPalette(configuration, fence, side) {
-        if (fence === "{" || fence === "}") {
-          fence = "\\" + fence;
-        }
-        const D = "{\\bigg" + side + " " + fence + "}";
-        const T = "{\\big" + side + " " + fence + "}";
-        return new TexParser("\\mathchoice" + D + T + T + T, {}, configuration).mml();
-      },
-      fixInitialMO(configuration, nodes) {
-        for (let i2 = 0, m = nodes.length; i2 < m; i2++) {
-          const child = nodes[i2];
-          if (child && !NodeUtil_default.isType(child, "mspace") && (!NodeUtil_default.isType(child, "TeXAtom") || NodeUtil_default.getChildren(child)[0] && NodeUtil_default.getChildren(NodeUtil_default.getChildren(child)[0]).length)) {
-            if (NodeUtil_default.isEmbellished(child) || NodeUtil_default.isType(child, "TeXAtom") && NodeUtil_default.getTexClass(child) === TEXCLASS.REL) {
-              const mi = configuration.nodeFactory.create("node", "mi");
-              nodes.unshift(mi);
-            }
-            break;
-          }
-        }
-      },
-      internalMath(parser2, text, level, font) {
-        text = text.replace(/ +/g, " ");
-        if (parser2.configuration.options.internalMath) {
-          return parser2.configuration.options.internalMath(parser2, text, level, font);
-        }
-        const mathvariant = font || parser2.stack.env.font;
-        const def2 = mathvariant ? { mathvariant } : {};
-        let mml = [], i2 = 0, k = 0, c, node, match = "", braces = 0;
-        if (text.match(/\\?[${}\\]|\\\(|\\(?:eq)?ref\s*\{|\\U/)) {
-          while (i2 < text.length) {
-            c = text.charAt(i2++);
-            if (c === "$") {
-              if (match === "$" && braces === 0) {
-                node = parser2.create("node", "TeXAtom", [
-                  new TexParser(text.slice(k, i2 - 1), {}, parser2.configuration).mml()
-                ]);
-                mml.push(node);
-                match = "";
-                k = i2;
-              } else if (match === "") {
-                if (k < i2 - 1) {
-                  mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 1), def2));
-                }
-                match = "$";
-                k = i2;
-              }
-            } else if (c === "{" && match !== "") {
-              braces++;
-            } else if (c === "}") {
-              if (match === "}" && braces === 0) {
-                const atom = new TexParser(text.slice(k, i2), {}, parser2.configuration).mml();
-                node = parser2.create("node", "TeXAtom", [atom], def2);
-                mml.push(node);
-                match = "";
-                k = i2;
-              } else if (match !== "") {
-                if (braces) {
-                  braces--;
-                }
-              }
-            } else if (c === "\\") {
-              if (match === "" && text.substring(i2).match(/^(eq)?ref\s*\{/)) {
-                const len = RegExp["$&"].length;
-                if (k < i2 - 1) {
-                  mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 1), def2));
-                }
-                match = "}";
-                k = i2 - 1;
-                i2 += len;
-              } else {
-                c = text.charAt(i2++);
-                if (c === "(" && match === "") {
-                  if (k < i2 - 2) {
-                    mml.push(ParseUtil.internalText(parser2, text.slice(k, i2 - 2), def2));
-                  }
-                  match = ")";
-                  k = i2;
-                } else if (c === ")" && match === ")" && braces === 0) {
-                  node = parser2.create("node", "TeXAtom", [
-                    new TexParser(text.slice(k, i2 - 2), {}, parser2.configuration).mml()
-                  ]);
-                  mml.push(node);
-                  match = "";
-                  k = i2;
-                } else if (c.match(/[${}\\]/) && match === "") {
-                  i2--;
-                  text = text.substring(0, i2 - 1) + text.substring(i2);
-                } else if (c === "U") {
-                  const arg = text.substring(i2).match(/^\s*(?:([0-9A-F])|\{\s*([0-9A-F]+)\s*\})/);
-                  if (!arg) {
-                    throw new TexError_default("BadRawUnicode", "Argument to %1 must a hexadecimal number with 1 to 6 digits", "\\U");
-                  }
-                  const c2 = String.fromCodePoint(parseInt(arg[1] || arg[2], 16));
-                  text = text.substring(0, i2 - 2) + c2 + text.substring(i2 + arg[0].length);
-                  i2 = i2 - 2 + c2.length;
-                }
-              }
-            }
-          }
-          if (match !== "") {
-            throw new TexError_default("MathNotTerminated", "Math mode is not properly terminated");
-          }
-        }
-        if (k < text.length) {
-          mml.push(ParseUtil.internalText(parser2, text.slice(k), def2));
-        }
-        if (level != null) {
-          mml = [
-            parser2.create("node", "mstyle", mml, {
-              displaystyle: false,
-              scriptlevel: level
-            })
-          ];
-        } else if (mml.length > 1) {
-          mml = [parser2.create("node", "mrow", mml)];
-        }
-        return mml;
-      },
-      internalText(parser2, text, def2) {
-        text = text.replace(/\n+/g, " ").replace(/^ +/, entities.nbsp).replace(/ +$/, entities.nbsp);
-        const textNode = parser2.create("text", text);
-        return parser2.create("node", "mtext", [], def2, textNode);
-      },
-      underOver(parser2, base, script2, pos, stack2) {
-        ParseUtil.checkMovableLimits(base);
-        if (NodeUtil_default.isType(base, "munderover") && NodeUtil_default.isEmbellished(base)) {
-          NodeUtil_default.setProperties(NodeUtil_default.getCoreMO(base), {
-            lspace: 0,
-            rspace: 0
-          });
-          const mo = parser2.create("node", "mo", [], { rspace: 0 });
-          base = parser2.create("node", "mrow", [mo, base]);
-        }
-        const mml = parser2.create("node", "munderover", [base]);
-        NodeUtil_default.setChild(mml, pos === "over" ? mml.over : mml.under, script2);
-        let node = mml;
-        if (stack2) {
-          node = parser2.create("node", "TeXAtom", [
-            parser2.create("node", "mstyle", [mml], {
-              displaystyle: true,
-              scriptlevel: 0
-            })
-          ], {
-            texClass: TEXCLASS.OP,
-            movesupsub: true
-          });
-        }
-        NodeUtil_default.setProperty(node, "subsupOK", true);
-        return node;
-      },
-      checkMovableLimits(base) {
-        const symbol = NodeUtil_default.isType(base, "mo") ? NodeUtil_default.getForm(base) : null;
-        if (NodeUtil_default.getProperty(base, "movablelimits") || symbol && symbol[3] && symbol[3].movablelimits) {
-          NodeUtil_default.setProperties(base, { movablelimits: false });
-        }
-      },
-      setArrayAlign(array, align, parser2) {
-        if (!parser2) {
-          align = UnitUtil.trimSpaces(align || "");
-        }
-        if (align === "t") {
-          array.arraydef.align = "baseline 1";
-        } else if (align === "b") {
-          array.arraydef.align = "baseline -1";
-        } else if (align === "c") {
-          array.arraydef.align = "axis";
-        } else if (align) {
-          if (parser2) {
-            parser2.string = `[${align}]` + parser2.string.slice(parser2.i);
-            parser2.i = 0;
-          } else {
-            array.arraydef.align = align;
-          }
-        }
-        return array;
-      },
-      substituteArgs(parser2, args, str) {
-        let text = "";
-        let newstring = "";
-        let i2 = 0;
-        while (i2 < str.length) {
-          let c = str.charAt(i2++);
-          if (c === "\\") {
-            text += c + str.charAt(i2++);
-          } else if (c === "#") {
-            c = str.charAt(i2++);
-            if (c === "#") {
-              text += c;
-            } else {
-              if (!c.match(/[1-9]/) || parseInt(c, 10) > args.length) {
-                throw new TexError_default("IllegalMacroParam", "Illegal macro parameter reference");
-              }
-              newstring = ParseUtil.addArgs(parser2, ParseUtil.addArgs(parser2, newstring, text), args[parseInt(c, 10) - 1]);
-              text = "";
-            }
-          } else {
-            text += c;
-          }
-        }
-        return ParseUtil.addArgs(parser2, newstring, text);
-      },
-      addArgs(parser2, s1, s2) {
-        if (s2.match(/^[a-z]/i) && s1.match(/(^|[^\\])(\\\\)*\\[a-z]+$/i)) {
-          s1 += " ";
-        }
-        if (s1.length + s2.length > parser2.configuration.options["maxBuffer"]) {
-          throw new TexError_default("MaxBufferSize", "MathJax internal buffer size exceeded; is there a recursive macro call?");
-        }
-        return s1 + s2;
-      },
-      checkMaxMacros(parser2, isMacro = true) {
-        if (++parser2.macroCount <= parser2.configuration.options["maxMacros"]) {
-          return;
-        }
-        if (isMacro) {
-          throw new TexError_default("MaxMacroSub1", "MathJax maximum macro substitution count exceeded; is here a recursive macro call?");
-        } else {
-          throw new TexError_default("MaxMacroSub2", "MathJax maximum substitution count exceeded; is there a recursive latex environment?");
-        }
-      },
-      checkEqnEnv(parser2, nestable = true) {
-        const top = parser2.stack.Top();
-        const first = top.First;
-        if (top.getProperty("nestable") && nestable && !first || top.getProperty("nestStart")) {
-          return;
-        }
-        if (!top.isKind("start") || first) {
-          throw new TexError_default("ErroneousNestingEq", "Erroneous nesting of equation structures");
-        }
-      },
-      copyNode(node, parser2) {
-        const tree = node.copy();
-        const options3 = parser2.configuration;
-        tree.walkTree((n) => {
-          options3.addNode(n.kind, n);
-          const lists = (n.getProperty("in-lists") || "").split(/,/);
-          for (const list3 of lists) {
-            if (list3) {
-              options3.addNode(list3, n);
-            }
-          }
-        });
-        return tree;
-      },
-      mmlFilterAttribute(_parser, _name, value) {
-        return value;
-      },
-      getFontDef(parser2) {
-        const font = parser2.stack.env["font"];
-        return font ? { mathvariant: font } : {};
-      },
-      keyvalOptions(attrib, allowed = null, error = false, l3keys = false) {
-        const def2 = readKeyval(attrib, l3keys);
-        if (allowed) {
-          for (const key of Object.keys(def2)) {
-            if (Object.hasOwn(allowed, key)) {
-              if (allowed[key] instanceof KeyValueDef) {
-                const type = allowed[key];
-                const value = String(def2[key]);
-                if (!type.verify(value)) {
-                  throw new TexError_default("InvalidValue", "Value for key '%1' is not of the expected type", key);
-                }
-                def2[key] = type.convert(value);
-              }
-            } else {
-              if (error) {
-                throw new TexError_default("InvalidOption", "Invalid option: %1", key);
-              }
-              delete def2[key];
-            }
-          }
-        }
-        return def2;
-      },
-      isLatinOrGreekChar(c) {
-        return !!c.normalize("NFD").match(/[a-zA-Z\u0370-\u03F0]/);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/ColumnParser.js
-var ColumnParser;
-var init_ColumnParser = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/ColumnParser.js"() {
-    init_TexError();
+import{__esm,init_Options,init_InputJax,init_OutputJax,init_MathList,init_MathItem,init_MmlFactory,init_BitField,init_PrioritizedList,init_Retries,PrioritizedList,STATE,AbstractInputJax,AbstractOutputJax,AbstractMathList,AbstractMathItem,userOptions,defaultOptions,MmlFactory,handleRetriesFor,expandable,BitFieldClass,makeArray,newState,separateOptions,mathjax,init_mathjax,init_string,sortLength,quotePattern,protoItem,init_MmlNode,init_mo,AbstractMmlNode,AbstractMmlEmptyNode,MmlMo,TEXCLASS}from'./p15.js';export*from'./p15.js';
+// node_modules/@mathjax/src/mjs/core/MathDocument.js
+var __awaiter3;
+var RenderList;
+var resetOptions;
+var resetAllOptions;
+var DefaultInputJax;
+var DefaultOutputJax;
+var DefaultMathList;
+var DefaultMathItem;
+var AbstractMathDocument;
+var init_MathDocument = __esm({
+  "node_modules/@mathjax/src/mjs/core/MathDocument.js"() {
     init_Options();
-    init_ParseUtil();
-    init_UnitUtil();
-    ColumnParser = class {
-      constructor() {
-        this.columnHandler = {
-          l: (state) => state.calign[state.j++] = "left",
-          c: (state) => state.calign[state.j++] = "center",
-          r: (state) => state.calign[state.j++] = "right",
-          p: (state) => this.getColumn(state, "top"),
-          m: (state) => this.getColumn(state, "middle"),
-          b: (state) => this.getColumn(state, "bottom"),
-          w: (state) => this.getColumn(state, "top", ""),
-          W: (state) => this.getColumn(state, "top", ""),
-          "|": (state) => this.addRule(state, "solid"),
-          ":": (state) => this.addRule(state, "dashed"),
-          ">": (state) => state.cstart[state.j] = this.getBraces(state) + (state.cstart[state.j] || ""),
-          "<": (state) => state.cend[state.j - 1] = this.getBraces(state) + (state.cend[state.j - 1] || ""),
-          "@": (state) => this.addAt(state, this.getBraces(state)),
-          "!": (state) => this.addBang(state, this.getBraces(state)),
-          "*": (state) => this.repeat(state),
-          "{": (state) => this.brace(state),
-          P: (state) => this.macroColumn(state, ">{$}p{#1}<{$}", 1),
-          M: (state) => this.macroColumn(state, ">{$}m{#1}<{$}", 1),
-          B: (state) => this.macroColumn(state, ">{$}b{#1}<{$}", 1),
-          " ": (_state) => {
-          },
-          "\n": (_state_) => {
+    init_InputJax();
+    init_OutputJax();
+    init_MathList();
+    init_MathItem();
+    init_MmlFactory();
+    init_BitField();
+    init_PrioritizedList();
+    init_Retries();
+    __awaiter3 = function(thisArg, _arguments, P, generator) {
+      function adopt(value) {
+        return value instanceof P ? value : new P(function(resolve) {
+          resolve(value);
+        });
+      }
+      return new (P || (P = Promise))(function(resolve, reject) {
+        function fulfilled(value) {
+          try {
+            step(generator.next(value));
+          } catch (e) {
+            reject(e);
           }
-        };
-        this.MAXCOLUMNS = 1e4;
-      }
-      process(parser2, template, array) {
-        const state = {
-          parser: parser2,
-          template,
-          i: 0,
-          j: 0,
-          c: "",
-          cwidth: [],
-          calign: [],
-          cspace: [],
-          clines: [],
-          cstart: array.cstart,
-          cend: array.cend,
-          ralign: array.ralign,
-          cextra: array.cextra
-        };
-        if (template.charAt(0) === "{" && template.slice(-1) === "}") {
-          const braced = this.getBraces(state);
-          if (braced.length === template.length - 2) {
-            state.template = braced;
+        }
+        function rejected(value) {
+          try {
+            step(generator["throw"](value));
+          } catch (e) {
+            reject(e);
           }
-          state.i = 0;
         }
-        let n = 0;
-        while (state.i < state.template.length) {
-          if (n++ > this.MAXCOLUMNS) {
-            throw new TexError_default("MaxColumns", "Too many column specifiers (perhaps looping column definitions?)");
+        function step(result) {
+          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+        }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+      });
+    };
+    RenderList = class extends PrioritizedList {
+      static create(actions) {
+        const list3 = new this();
+        for (const id of Object.keys(actions)) {
+          const [action, priority] = this.action(id, actions[id]);
+          if (priority) {
+            list3.add(action, priority);
           }
-          const code = state.template.codePointAt(state.i);
-          const c = state.c = String.fromCodePoint(code);
-          state.i += c.length;
-          this.processColumn(state, c);
         }
-        this.setColumnAlign(state, array);
-        this.setColumnWidths(state, array);
-        this.setColumnSpacing(state, array);
-        this.setColumnLines(state, array);
-        this.setPadding(state, array);
+        return list3;
       }
-      processColumn(state, c) {
-        if (!Object.hasOwn(this.columnHandler, c)) {
-          throw new TexError_default("BadPreamToken", "Illegal pream-token (%1)", c);
+      static action(id, action) {
+        let renderDoc, renderMath;
+        let convert = true;
+        const priority = action[0];
+        if (action.length === 1 || typeof action[1] === "boolean") {
+          if (action.length === 2) {
+            convert = action[1];
+          }
+          [renderDoc, renderMath] = this.methodActions(id);
+        } else if (typeof action[1] === "string") {
+          if (typeof action[2] === "string") {
+            if (action.length === 4) {
+              convert = action[3];
+            }
+            const [method1, method2] = action.slice(1);
+            [renderDoc, renderMath] = this.methodActions(method1, method2);
+          } else {
+            if (action.length === 3) {
+              convert = action[2];
+            }
+            [renderDoc, renderMath] = this.methodActions(action[1]);
+          }
+        } else {
+          if (action.length === 4) {
+            convert = action[3];
+          }
+          [renderDoc, renderMath] = action.slice(1);
         }
-        this.columnHandler[c](state);
-      }
-      setColumnAlign(state, array) {
-        array.arraydef.columnalign = state.calign.join(" ");
-      }
-      setColumnWidths(state, array) {
-        if (!state.cwidth.length)
-          return;
-        const cwidth = [...state.cwidth];
-        if (cwidth.length < state.calign.length) {
-          cwidth.push("auto");
-        }
-        array.arraydef.columnwidth = cwidth.map((w) => w || "auto").join(" ");
-      }
-      setColumnSpacing(state, array) {
-        if (!state.cspace.length)
-          return;
-        const cspace = [...state.cspace];
-        if (cspace.length < state.calign.length) {
-          cspace.push("1em");
-        }
-        array.arraydef.columnspacing = cspace.slice(1).map((d) => d || "1em").join(" ");
-      }
-      setColumnLines(state, array) {
-        if (!state.clines.length)
-          return;
-        const clines = [...state.clines];
-        if (clines[0]) {
-          array.frame.push(["left", clines[0]]);
-        }
-        if (clines.length > state.calign.length) {
-          array.frame.push(["right", clines.pop()]);
-        } else if (clines.length < state.calign.length) {
-          clines.push("none");
-        }
-        if (clines.length > 1) {
-          array.arraydef.columnlines = clines.slice(1).map((l) => l || "none").join(" ");
-        }
-      }
-      setPadding(state, array) {
-        if (!state.cextra[0] && !state.cextra[state.calign.length - 1])
-          return;
-        const i2 = state.calign.length - 1;
-        const cspace = state.cspace;
-        const space = !state.cextra[i2] ? null : cspace[i2];
-        array.arraydef["data-array-padding"] = `${cspace[0] || ".5em"} ${space || ".5em"}`;
-      }
-      getColumn(state, ralign, calign = "left") {
-        state.calign[state.j] = calign || this.getAlign(state);
-        state.cwidth[state.j] = this.getDimen(state);
-        state.ralign[state.j] = [
-          ralign,
-          state.cwidth[state.j],
-          state.calign[state.j]
+        return [
+          { id, renderDoc, renderMath, convert },
+          priority
         ];
-        state.j++;
       }
-      getDimen(state) {
-        const dim = this.getBraces(state);
-        if (!UnitUtil.matchDimen(dim)[0]) {
-          throw new TexError_default("MissingColumnDimOrUnits", "Missing dimension or its units for %1 column declaration", state.c);
-        }
-        return dim;
-      }
-      getAlign(state) {
-        const align = this.getBraces(state);
-        return lookup(align.toLowerCase(), { l: "left", c: "center", r: "right" }, "");
-      }
-      getBraces(state) {
-        while (state.template[state.i] === " ")
-          state.i++;
-        if (state.i >= state.template.length) {
-          throw new TexError_default("MissingArgForColumn", "Missing argument for %1 column declaration", state.c);
-        }
-        if (state.template[state.i] !== "{") {
-          return state.template[state.i++];
-        }
-        const i2 = ++state.i;
-        let braces = 1;
-        while (state.i < state.template.length) {
-          switch (state.template.charAt(state.i++)) {
-            case "\\":
-              state.i++;
-              break;
-            case "{":
-              braces++;
-              break;
-            case "}":
-              if (--braces === 0) {
-                return state.template.slice(i2, state.i - 1);
-              }
-              break;
+      static methodActions(method1, method2 = method1) {
+        return [
+          (document) => {
+            if (method1) {
+              document[method1]();
+            }
+            return false;
+          },
+          (math, document) => {
+            if (method2) {
+              math[method2](document);
+            }
+            return false;
           }
-        }
-        throw new TexError_default("MissingCloseBrace", "Missing close brace");
+        ];
       }
-      macroColumn(state, macro, n) {
-        const args = [];
-        while (n > 0 && n--) {
-          args.push(this.getBraces(state));
-        }
-        state.template = ParseUtil.substituteArgs(state.parser, args, macro) + state.template.slice(state.i);
-        state.i = 0;
-      }
-      addRule(state, rule) {
-        if (state.clines[state.j]) {
-          this.addAt(state, "\\,");
-        }
-        state.clines[state.j] = rule;
-        if (state.cspace[state.j] === "0") {
-          state.cstart[state.j] = "\\hspace{.5em}";
-        }
-      }
-      addAt(state, macro) {
-        const { cstart, cspace, j } = state;
-        state.cextra[j] = true;
-        state.calign[j] = "center";
-        if (state.clines[j]) {
-          if (cspace[j] === ".5em") {
-            cstart[j - 1] += "\\hspace{.25em}";
-          } else if (!cspace[j]) {
-            state.cend[j - 1] = (state.cend[j - 1] || "") + "\\hspace{.5em}";
-          }
-        }
-        cstart[j] = macro;
-        cspace[j] = "0";
-        cspace[++state.j] = "0";
-      }
-      addBang(state, macro) {
-        const { cstart, cspace, j } = state;
-        state.cextra[j] = true;
-        state.calign[j] = "center";
-        cstart[j] = (cspace[j] === "0" && state.clines[j] ? "\\hspace{.25em}" : "") + macro;
-        if (!cspace[j]) {
-          cspace[j] = ".5em";
-        }
-        cspace[++state.j] = ".5em";
-      }
-      repeat(state) {
-        const num3 = this.getBraces(state);
-        const cols = this.getBraces(state);
-        const n = parseInt(num3);
-        if (String(n) !== num3) {
-          throw new TexError_default("ColArgNotNum", "First argument to %1 column specifier must be a number", "*");
-        }
-        state.template = new Array(n).fill(cols).join("") + state.template.substring(state.i);
-        state.i = 0;
-      }
-      brace(state) {
-        state.i--;
-        this.processColumn(state, this.getBraces(state));
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/ParseOptions.js
-var MATHVARIANT;
-var ParseOptions;
-var ParseOptions_default;
-var init_ParseOptions = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/ParseOptions.js"() {
-    init_StackItemFactory();
-    init_NodeFactory2();
-    init_NodeUtil();
-    init_TexConstants();
-    init_Options();
-    init_ColumnParser();
-    MATHVARIANT = TexConstant.Variant;
-    ParseOptions = class _ParseOptions {
-      constructor(configuration, options3 = []) {
-        this.options = {};
-        this.columnParser = new ColumnParser();
-        this.packageData = /* @__PURE__ */ new Map();
-        this.parsers = [];
-        this.root = null;
-        this.nodeLists = {};
-        this.error = false;
-        this.handlers = configuration.handlers;
-        this.nodeFactory = new NodeFactory();
-        this.nodeFactory.configuration = this;
-        this.nodeFactory.setCreators(configuration.nodes);
-        this.itemFactory = new StackItemFactory_default(configuration.items);
-        this.itemFactory.configuration = this;
-        defaultOptions(this.options, ...options3);
-        defaultOptions(this.options, configuration.options);
-        this.mathStyle = _ParseOptions.getVariant.get(this.options.mathStyle) || _ParseOptions.getVariant.get("TeX");
-      }
-      pushParser(parser2) {
-        this.parsers.unshift(parser2);
-      }
-      popParser() {
-        this.parsers.shift();
-      }
-      get parser() {
-        return this.parsers[0];
-      }
-      clear() {
-        this.parsers = [];
-        this.root = null;
-        this.nodeLists = {};
-        this.error = false;
-        this.tags.resetTag();
-      }
-      addNode(property, node) {
-        let list3 = this.nodeLists[property];
-        if (!list3) {
-          list3 = this.nodeLists[property] = [];
-        }
-        list3.push(node);
-        if (node.kind !== property) {
-          const inlists = NodeUtil_default.getProperty(node, "in-lists") || "";
-          const lists = (inlists ? inlists.split(/,/) : []).concat(property).join(",");
-          NodeUtil_default.setProperty(node, "in-lists", lists);
-        }
-      }
-      getList(property) {
-        const list3 = this.nodeLists[property] || [];
-        const result = [];
-        for (const node of list3) {
-          if (this.inTree(node)) {
-            result.push(node);
-          }
-        }
-        this.nodeLists[property] = result;
-        return result;
-      }
-      removeFromList(property, nodes) {
-        const list3 = this.nodeLists[property] || [];
-        for (const node of nodes) {
-          const i2 = list3.indexOf(node);
-          if (i2 >= 0) {
-            list3.splice(i2, 1);
+      renderDoc(document, start = STATE.UNPROCESSED) {
+        for (const item of this.items) {
+          if (item.priority >= start) {
+            if (item.item.renderDoc(document))
+              return;
           }
         }
       }
-      inTree(node) {
-        while (node && node !== this.root) {
-          node = node.parent;
-        }
-        return !!node;
-      }
-    };
-    ParseOptions.getVariant = /* @__PURE__ */ new Map([
-      [
-        "TeX",
-        (c, b) => b ? c.match(/^[\u0391-\u03A9\u03F4]/) ? MATHVARIANT.NORMAL : "" : ""
-      ],
-      ["ISO", (_c) => MATHVARIANT.ITALIC],
-      [
-        "French",
-        (c) => c.normalize("NFD").match(/^[a-z]/) ? MATHVARIANT.ITALIC : MATHVARIANT.NORMAL
-      ],
-      ["upright", (_c) => MATHVARIANT.NORMAL]
-    ]);
-    ParseOptions_default = ParseOptions;
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/Tags.js
-var Label;
-var TagInfo;
-var AbstractTags;
-var NoTags;
-var AllTags;
-var tagsMapping;
-var defaultTags;
-var TagsFactory;
-var init_Tags = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/Tags.js"() {
-    init_TexParser();
-    Label = class {
-      constructor(tag3 = "???", id = "") {
-        this.tag = tag3;
-        this.id = id;
-      }
-    };
-    TagInfo = class {
-      constructor(env = "", taggable = false, defaultTags2 = false, tag3 = null, tagId = "", tagFormat = "", noTag = false, labelId = "") {
-        this.env = env;
-        this.taggable = taggable;
-        this.defaultTags = defaultTags2;
-        this.tag = tag3;
-        this.tagId = tagId;
-        this.tagFormat = tagFormat;
-        this.noTag = noTag;
-        this.labelId = labelId;
-      }
-    };
-    AbstractTags = class {
-      constructor() {
-        this.counter = 0;
-        this.allCounter = 0;
-        this.configuration = null;
-        this.ids = {};
-        this.allIds = {};
-        this.labels = {};
-        this.allLabels = {};
-        this.redo = false;
-        this.refUpdate = false;
-        this.currentTag = new TagInfo();
-        this.history = [];
-        this.stack = [];
-        this.enTag = function(node, tag3) {
-          const nf = this.configuration.nodeFactory;
-          const cell = nf.create("node", "mtd", [node]);
-          const row = nf.create("node", "mlabeledtr", [tag3, cell]);
-          const table2 = nf.create("node", "mtable", [row], {
-            side: this.configuration.options["tagSide"],
-            minlabelspacing: this.configuration.options["tagIndent"],
-            displaystyle: true
-          });
-          return table2;
-        };
-      }
-      start(env, taggable, defaultTags2) {
-        if (this.currentTag) {
-          this.stack.push(this.currentTag);
-        }
-        const label = this.label;
-        this.currentTag = new TagInfo(env, taggable, defaultTags2);
-        this.label = label;
-      }
-      get env() {
-        return this.currentTag.env;
-      }
-      end() {
-        this.history.push(this.currentTag);
-        const label = this.label;
-        this.currentTag = this.stack.pop();
-        if (label && !this.label) {
-          this.label = label;
-        }
-      }
-      tag(tag3, noFormat) {
-        this.currentTag.tag = tag3;
-        this.currentTag.tagFormat = noFormat ? tag3 : this.formatTag(tag3);
-        this.currentTag.noTag = false;
-      }
-      notag() {
-        this.tag("", true);
-        this.currentTag.noTag = true;
-      }
-      get noTag() {
-        return this.currentTag.noTag;
-      }
-      set label(label) {
-        this.currentTag.labelId = label;
-      }
-      get label() {
-        return this.currentTag.labelId;
-      }
-      formatUrl(id, base) {
-        return base + "#" + encodeURIComponent(id);
-      }
-      formatTag(tag3) {
-        return ["(", tag3, ")"];
-      }
-      formatRef(tag3) {
-        return this.formatTag(tag3);
-      }
-      formatId(id) {
-        return "mjx-eqn:" + id.replace(/\s/g, "_");
-      }
-      formatNumber(n) {
-        return n.toString();
-      }
-      autoTag() {
-        if (this.currentTag.tag == null) {
-          this.counter++;
-          this.tag(this.formatNumber(this.counter), false);
-        }
-      }
-      clearTag() {
-        this.tag(null, true);
-        this.currentTag.tagId = "";
-      }
-      getTag(force = false) {
-        if (force) {
-          this.autoTag();
-          return this.makeTag();
-        }
-        const ct = this.currentTag;
-        if (ct.taggable && !ct.noTag) {
-          if (ct.defaultTags) {
-            this.autoTag();
+      renderMath(math, document, start = STATE.UNPROCESSED) {
+        for (const item of this.items) {
+          if (item.priority >= start) {
+            if (item.item.renderMath(math, document))
+              return;
           }
-          if (ct.tag) {
-            return this.makeTag();
+        }
+      }
+      renderConvert(math, document, end = STATE.LAST) {
+        for (const item of this.items) {
+          if (item.priority > end)
+            return;
+          if (item.item.convert) {
+            if (item.item.renderMath(math, document))
+              return;
+          }
+        }
+      }
+      findID(id) {
+        for (const item of this.items) {
+          if (item.item.id === id) {
+            return item.item;
           }
         }
         return null;
       }
-      resetTag() {
-        this.history = [];
-        this.redo = false;
-        this.refUpdate = false;
-        this.clearTag();
+    };
+    resetOptions = {
+      all: false,
+      processed: false,
+      inputJax: null,
+      outputJax: null
+    };
+    resetAllOptions = {
+      all: true,
+      processed: true,
+      inputJax: [],
+      outputJax: []
+    };
+    DefaultInputJax = class extends AbstractInputJax {
+      compile(_math) {
+        return null;
       }
-      reset(offset = 0) {
-        this.resetTag();
-        this.counter = this.allCounter = offset;
-        this.allLabels = {};
-        this.allIds = {};
-        this.label = "";
+    };
+    DefaultOutputJax = class extends AbstractOutputJax {
+      typeset(_math, _document = null) {
+        return null;
       }
-      startEquation(math) {
-        this.history = [];
-        this.stack = [];
-        this.clearTag();
-        this.currentTag = new TagInfo("", void 0, void 0);
-        this.labels = {};
-        this.ids = {};
-        this.counter = this.allCounter;
-        this.redo = false;
-        const recompile = math.inputData.recompile;
-        if (recompile) {
-          this.refUpdate = true;
-          this.counter = recompile.counter;
+      escaped(_math, _document) {
+        return null;
+      }
+    };
+    DefaultMathList = class extends AbstractMathList {
+    };
+    DefaultMathItem = class extends AbstractMathItem {
+    };
+    AbstractMathDocument = class _AbstractMathDocument {
+      constructor(document, adaptor, options3) {
+        const CLASS = this.constructor;
+        this.document = document;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.math = new (this.options["MathList"] || DefaultMathList)();
+        this.renderActions = RenderList.create(this.options["renderActions"]);
+        this._actionPromises = [];
+        this._readyPromise = Promise.resolve();
+        this.processed = new _AbstractMathDocument.ProcessBits();
+        this.outputJax = this.options["OutputJax"] || new DefaultOutputJax();
+        let inputJax = this.options["InputJax"] || [new DefaultInputJax()];
+        if (!Array.isArray(inputJax)) {
+          inputJax = [inputJax];
+        }
+        this.inputJax = inputJax;
+        this.adaptor = adaptor;
+        this.outputJax.setAdaptor(adaptor);
+        this.inputJax.map((jax) => jax.setAdaptor(adaptor));
+        this.mmlFactory = this.options["MmlFactory"] || new MmlFactory();
+        this.inputJax.map((jax) => jax.setMmlFactory(this.mmlFactory));
+        this.outputJax.initialize();
+        this.inputJax.map((jax) => jax.initialize());
+      }
+      get kind() {
+        return this.constructor.KIND;
+      }
+      addRenderAction(id, ...action) {
+        const [fn, p] = RenderList.action(id, action);
+        this.renderActions.add(fn, p);
+      }
+      removeRenderAction(id) {
+        const action = this.renderActions.findID(id);
+        if (action) {
+          this.renderActions.remove(action);
         }
       }
-      finishEquation(math) {
-        if (this.redo) {
-          math.inputData.recompile = {
-            state: math.state(),
-            counter: this.allCounter
-          };
-        }
-        if (!this.refUpdate) {
-          this.allCounter = this.counter;
-        }
-        Object.assign(this.allIds, this.ids);
-        Object.assign(this.allLabels, this.labels);
+      render() {
+        this.clearPromises();
+        this.renderActions.renderDoc(this);
+        return this;
       }
-      finalize(node, env) {
-        if (!env.display || this.currentTag.env || this.currentTag.tag == null) {
+      renderPromise() {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          this.render();
+          yield this.actionPromises();
+          this.clearPromises();
+          return this;
+        })));
+      }
+      rerender(start = STATE.RERENDER) {
+        this.state(start - 1);
+        this.render();
+        return this;
+      }
+      rerenderPromise(start = STATE.RERENDER) {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          this.rerender(start);
+          yield this.actionPromises();
+          this.clearPromises();
+          return this;
+        })));
+      }
+      convert(math, options3 = {}) {
+        let { format, display, end, ex, em: em2, containerWidth, scale: scale2, family } = userOptions({
+          format: this.inputJax[0].name,
+          display: true,
+          end: STATE.LAST,
+          em: 16,
+          ex: 8,
+          containerWidth: null,
+          scale: 1,
+          family: ""
+        }, options3);
+        if (containerWidth === null) {
+          containerWidth = 80 * ex;
+        }
+        const jax = this.inputJax.reduce((jax2, ijax) => ijax.name === format ? ijax : jax2, null);
+        const mitem = new this.options.MathItem(math, jax, display);
+        mitem.start.node = this.adaptor.body(this.document);
+        mitem.setMetrics(em2, ex, containerWidth, scale2);
+        if (family && this.outputJax.options.mtextInheritFont) {
+          mitem.outputData.mtextFamily = family;
+        }
+        if (family && this.outputJax.options.merrorInheritFont) {
+          mitem.outputData.merrorFamily = family;
+        }
+        this.clearPromises();
+        mitem.convert(this, end);
+        return mitem.typesetRoot || mitem.root;
+      }
+      convertPromise(math, options3 = {}) {
+        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
+          const node = this.convert(math, options3);
+          yield this.actionPromises();
+          this.clearPromises();
           return node;
-        }
-        const tag3 = this.makeTag();
-        const table2 = this.enTag(node, tag3);
-        return table2;
+        })));
       }
-      makeId() {
-        this.currentTag.tagId = this.formatId(this.configuration.options["useLabelIds"] ? this.label || this.currentTag.tag : this.currentTag.tag);
-      }
-      makeTag() {
-        var _a2;
-        this.makeId();
-        if (this.label) {
-          this.labels[this.label] = new Label(this.currentTag.tag, this.currentTag.tagId);
-          this.label = "";
-        }
-        const format = this.currentTag.tagFormat;
-        const tag3 = Array.isArray(format) ? format : ((_a2 = format.match(/^(\(|\[|\{)(.*)(\}|\]|\))$/)) === null || _a2 === void 0 ? void 0 : _a2.slice(1)) || [format];
-        const mml = new TexParser(tag3.map((part) => part ? `\\text{${part}}` : "").join(""), {}, this.configuration).mml();
-        return this.configuration.nodeFactory.create("node", "mtd", [mml], {
-          id: this.currentTag.tagId,
-          rowalign: this.configuration.options.tagAlign
+      whenReady(action) {
+        return this._readyPromise = this._readyPromise.catch((_) => {
+        }).then(() => {
+          const ready3 = this._readyPromise;
+          this._readyPromise = Promise.resolve();
+          const result = action();
+          const promise = this._readyPromise.then(() => result);
+          this._readyPromise = ready3;
+          return promise;
         });
       }
-    };
-    NoTags = class extends AbstractTags {
-      autoTag() {
+      actionPromises() {
+        return Promise.all(this._actionPromises);
       }
-      getTag() {
-        return !this.currentTag.tag ? null : super.getTag();
+      clearPromises() {
+        this._actionPromises = [];
       }
-    };
-    AllTags = class extends AbstractTags {
-      finalize(node, env) {
-        if (!env.display || this.history.find(function(x2) {
-          return x2.taggable;
-        })) {
-          return node;
+      savePromise(promise) {
+        this._actionPromises.push(promise);
+      }
+      findMath(_options = null) {
+        this.processed.set("findMath");
+        return this;
+      }
+      compile() {
+        if (!this.processed.isSet("compile")) {
+          const recompile = [];
+          for (const math of this.math) {
+            this.compileMath(math);
+            if (math.inputData.recompile !== void 0) {
+              recompile.push(math);
+            }
+          }
+          for (const math of recompile) {
+            const data = math.inputData.recompile;
+            math.state(data.state);
+            math.inputData.recompile = data;
+            this.compileMath(math);
+          }
+          this.processed.set("compile");
         }
-        const tag3 = this.getTag(true);
-        return this.enTag(node, tag3);
+        return this;
+      }
+      compileMath(math) {
+        try {
+          math.compile(this);
+        } catch (err2) {
+          if (err2.retry || err2.restart) {
+            throw err2;
+          }
+          this.options["compileError"](this, math, err2);
+          math.inputData["error"] = err2;
+        }
+      }
+      compileError(math, err2) {
+        math.root = this.mmlFactory.create("math", null, [
+          this.mmlFactory.create("merror", { "data-mjx-error": err2.message, title: err2.message }, [
+            this.mmlFactory.create("mtext", null, [
+              this.mmlFactory.create("text").setText("Math input error")
+            ])
+          ])
+        ]);
+        if (math.display) {
+          math.root.attributes.set("display", "block");
+        }
+        math.inputData.error = err2.message;
+      }
+      typeset() {
+        if (!this.processed.isSet("typeset")) {
+          for (const math of this.math) {
+            try {
+              math.typeset(this);
+            } catch (err2) {
+              if (err2.retry || err2.restart) {
+                throw err2;
+              }
+              this.options["typesetError"](this, math, err2);
+              math.outputData["error"] = err2;
+            }
+          }
+          this.processed.set("typeset");
+        }
+        return this;
+      }
+      typesetError(math, err2) {
+        math.typesetRoot = this.adaptor.node("mjx-container", {
+          class: "MathJax mjx-output-error",
+          jax: this.outputJax.name
+        }, [
+          this.adaptor.node("span", {
+            "data-mjx-error": err2.message,
+            title: err2.message,
+            style: {
+              color: "red",
+              "background-color": "yellow",
+              "line-height": "normal"
+            }
+          }, [this.adaptor.text("Math output error")])
+        ]);
+        if (math.display) {
+          this.adaptor.setAttributes(math.typesetRoot, {
+            style: {
+              display: "block",
+              margin: "1em 0",
+              "text-align": "center"
+            }
+          });
+        }
+        math.outputData.error = err2.message;
+      }
+      getMetrics() {
+        if (!this.processed.isSet("getMetrics")) {
+          this.outputJax.getMetrics(this);
+          this.processed.set("getMetrics");
+        }
+        return this;
+      }
+      updateDocument() {
+        if (!this.processed.isSet("updateDocument")) {
+          for (const math of this.math.reversed()) {
+            math.updateDocument(this);
+          }
+          this.processed.set("updateDocument");
+        }
+        return this;
+      }
+      removeFromDocument(_restore = false) {
+        return this;
+      }
+      state(state, restore = false) {
+        for (const math of this.math) {
+          math.state(state, restore);
+        }
+        if (state < STATE.INSERTED) {
+          this.processed.clear("updateDocument");
+        }
+        if (state < STATE.TYPESET) {
+          this.processed.clear("typeset");
+          this.processed.clear("getMetrics");
+        }
+        if (state < STATE.COMPILED) {
+          this.processed.clear("compile");
+        }
+        if (state < STATE.FINDMATH) {
+          this.processed.clear("findMath");
+        }
+        return this;
+      }
+      reset(options3 = { processed: true }) {
+        options3 = userOptions(Object.assign({}, resetOptions), options3);
+        if (options3.all) {
+          Object.assign(options3, resetAllOptions);
+        }
+        if (options3.processed) {
+          this.processed.reset();
+        }
+        if (options3.inputJax) {
+          this.inputJax.forEach((jax) => jax.reset(...options3.inputJax));
+        }
+        if (options3.outputJax) {
+          this.outputJax.reset(...options3.outputJax);
+        }
+        return this;
+      }
+      clear() {
+        this.reset();
+        this.math.clear();
+        return this;
+      }
+      done() {
+        return Promise.resolve();
+      }
+      concat(list3) {
+        this.math.merge(list3);
+        return this;
+      }
+      clearMathItemsWithin(containers) {
+        const items = this.getMathItemsWithin(containers);
+        for (const item of items.slice(0).reverse()) {
+          item.clear();
+        }
+        this.math.remove(...items);
+        return items;
+      }
+      getMathItemsWithin(elements2) {
+        if (!Array.isArray(elements2)) {
+          elements2 = [elements2];
+        }
+        const adaptor = this.adaptor;
+        const items = [];
+        const containers = adaptor.getElements(elements2, this.document);
+        ITEMS: for (const item of this.math) {
+          for (const container of containers) {
+            if (item.start.node && adaptor.contains(container, item.start.node)) {
+              items.push(item);
+              continue ITEMS;
+            }
+          }
+        }
+        return items;
       }
     };
-    tagsMapping = /* @__PURE__ */ new Map([
-      ["none", NoTags],
-      ["all", AllTags]
-    ]);
-    defaultTags = "none";
-    TagsFactory = {
-      OPTIONS: {
-        tags: defaultTags,
-        tagSide: "right",
-        tagIndent: "0.8em",
-        useLabelIds: true,
-        ignoreDuplicateLabels: false,
-        tagAlign: "baseline"
+    AbstractMathDocument.KIND = "MathDocument";
+    AbstractMathDocument.OPTIONS = {
+      OutputJax: null,
+      InputJax: null,
+      MmlFactory: null,
+      MathList: DefaultMathList,
+      MathItem: DefaultMathItem,
+      compileError: (doc, math, err2) => {
+        doc.compileError(math, err2);
       },
-      add(name, constr) {
-        tagsMapping.set(name, constr);
+      typesetError: (doc, math, err2) => {
+        doc.typesetError(math, err2);
       },
-      addTags(tags) {
-        for (const key of Object.keys(tags)) {
-          TagsFactory.add(key, tags[key]);
-        }
-      },
-      create(name) {
-        const constr = tagsMapping.get(name) || tagsMapping.get(defaultTags);
-        if (!constr) {
-          throw Error("Unknown tags class");
-        }
-        return new constr();
-      },
-      setDefault(name) {
-        defaultTags = name;
-      },
-      getDefault() {
-        return TagsFactory.create(defaultTags);
-      }
+      renderActions: expandable({
+        find: [STATE.FINDMATH, "findMath", "", false],
+        compile: [STATE.COMPILED],
+        metrics: [STATE.METRICS, "getMetrics", "", false],
+        typeset: [STATE.TYPESET],
+        update: [STATE.INSERTED, "updateDocument", false]
+      })
     };
+    AbstractMathDocument.ProcessBits = BitFieldClass("findMath", "compile", "getMetrics", "typeset", "updateDocument");
   }
 });
-// node_modules/@mathjax/src/mjs/input/tex/Token.js
-var Token;
-var Macro;
-var init_Token = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/Token.js"() {
-    Token = class {
-      constructor(_token, _char, _attributes) {
-        this._token = _token;
-        this._char = _char;
-        this._attributes = _attributes;
-      }
-      get token() {
-        return this._token;
-      }
-      get char() {
-        return this._char;
-      }
-      get attributes() {
-        return this._attributes;
-      }
+// node_modules/@mathjax/src/mjs/core/Handler.js
+var DefaultMathDocument;
+var AbstractHandler;
+var init_Handler = __esm({
+  "node_modules/@mathjax/src/mjs/core/Handler.js"() {
+    init_MathDocument();
+    DefaultMathDocument = class extends AbstractMathDocument {
     };
-    Macro = class {
-      constructor(_token, _func, _args = []) {
-        this._token = _token;
-        this._func = _func;
-        this._args = _args;
-      }
-      get token() {
-        return this._token;
-      }
-      get func() {
-        return this._func;
-      }
-      get args() {
-        return this._args;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/TokenMap.js
-function parseResult(result) {
-  return result === void 0 ? true : result;
-}
-var AbstractTokenMap;
-var RegExpMap;
-var AbstractParseMap;
-var CharacterMap;
-var DelimiterMap;
-var MacroMap;
-var CommandMap;
-var EnvironmentMap;
-var init_TokenMap = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/TokenMap.js"() {
-    init_Token();
-    (__kittexLate.init_MapHandler?.())();
-    AbstractTokenMap = class {
-      constructor(_name, _parser) {
-        this._name = _name;
-        this._parser = _parser;
-        (__kittexLate.MapHandler?.()).register(this);
+    AbstractHandler = class {
+      constructor(adaptor, priority = 5) {
+        this.documentClass = DefaultMathDocument;
+        this.adaptor = adaptor;
+        this.priority = priority;
       }
       get name() {
-        return this._name;
+        return this.constructor.NAME;
       }
-      parserFor(token2) {
-        return this.contains(token2) ? this.parser : null;
+      handlesDocument(_document) {
+        return false;
       }
-      parse([env, token2]) {
-        const parser2 = this.parserFor(token2);
-        const mapped = this.lookup(token2);
-        return parser2 && mapped ? parseResult(parser2(env, mapped)) : null;
-      }
-      set parser(parser2) {
-        this._parser = parser2;
-      }
-      get parser() {
-        return this._parser;
+      create(document, options3) {
+        return new this.documentClass(document, this.adaptor, options3);
       }
     };
-    RegExpMap = class extends AbstractTokenMap {
-      constructor(name, parser2, _regExp) {
-        super(name, parser2);
-        this._regExp = _regExp;
+    AbstractHandler.NAME = "generic";
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js
+var HTMLMathItem;
+var init_HTMLMathItem = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js"() {
+    init_MathItem();
+    HTMLMathItem = class extends AbstractMathItem {
+      get adaptor() {
+        return this.inputJax.adaptor;
       }
-      contains(token2) {
-        return this._regExp.test(token2);
+      constructor(math, jax, display = true, start = { node: null, n: 0, delim: "" }, end = { node: null, n: 0, delim: "" }) {
+        super(math, jax, display, start, end);
       }
-      lookup(token2) {
-        return this.contains(token2) ? token2 : null;
-      }
-    };
-    AbstractParseMap = class extends AbstractTokenMap {
-      constructor() {
-        super(...arguments);
-        this.map = /* @__PURE__ */ new Map();
-      }
-      lookup(token2) {
-        return this.map.get(token2);
-      }
-      contains(token2) {
-        return this.map.has(token2);
-      }
-      add(token2, object) {
-        this.map.set(token2, object);
-      }
-      remove(token2) {
-        this.map.delete(token2);
-      }
-    };
-    CharacterMap = class extends AbstractParseMap {
-      constructor(name, parser2, json) {
-        super(name, parser2);
-        for (const key of Object.keys(json)) {
-          const value = json[key];
-          const [char, attrs] = typeof value === "string" ? [value, null] : value;
-          const character = new Token(key, char, attrs);
-          this.add(key, character);
-        }
-      }
-    };
-    DelimiterMap = class extends CharacterMap {
-      parse([env, token2]) {
-        return super.parse([env, "\\" + token2]);
-      }
-    };
-    MacroMap = class extends AbstractParseMap {
-      constructor(name, json, functionMap = {}) {
-        super(name, null);
-        const getMethod = (func) => typeof func === "string" ? functionMap[func] : func;
-        for (const [key, value] of Object.entries(json)) {
-          let func;
-          let args;
-          if (Array.isArray(value)) {
-            func = getMethod(value[0]);
-            args = value.slice(1);
+      updateDocument(_html) {
+        if (this.state() < STATE.INSERTED) {
+          if (this.inputJax.processStrings) {
+            let node = this.start.node;
+            if (node === this.end.node) {
+              if (this.end.n && this.end.n < this.adaptor.value(this.end.node).length) {
+                this.adaptor.split(this.end.node, this.end.n);
+              }
+              if (this.start.n) {
+                node = this.adaptor.split(this.start.node, this.start.n);
+              }
+              if (this.adaptor.parent(node)) {
+                this.adaptor.replace(this.typesetRoot, node);
+              }
+            } else {
+              if (this.start.n) {
+                node = this.adaptor.split(node, this.start.n);
+              }
+              while (node !== this.end.node) {
+                const next = this.adaptor.next(node);
+                this.adaptor.remove(node);
+                node = next;
+              }
+              this.adaptor.insert(this.typesetRoot, node);
+              if (this.end.n < this.adaptor.value(node).length) {
+                this.adaptor.split(node, this.end.n);
+              }
+              this.adaptor.remove(node);
+            }
           } else {
-            func = getMethod(value);
-            args = [];
+            this.adaptor.replace(this.typesetRoot, this.start.node);
           }
-          const character = new Macro(key, func, args);
-          this.add(key, character);
+          this.start.node = this.end.node = this.typesetRoot;
+          this.start.n = this.end.n = 0;
+          this.state(STATE.INSERTED);
         }
       }
-      parserFor(token2) {
-        const macro = this.lookup(token2);
-        return macro ? macro.func : null;
+      updateStyleSheet(document) {
+        document.addStyleSheet();
       }
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const parser2 = this.parserFor(token2);
-        if (!macro || !parser2) {
-          return null;
+      removeFromDocument(restore = false) {
+        super.removeFromDocument(restore);
+        if (this.state() >= STATE.TYPESET) {
+          const adaptor = this.adaptor;
+          const node = this.start.node;
+          let math = adaptor.text("");
+          if (restore) {
+            const text = this.start.delim + this.math + this.end.delim;
+            if (this.inputJax.processStrings) {
+              math = adaptor.text(text);
+            } else {
+              const doc = adaptor.parse(text, "text/html");
+              math = adaptor.firstChild(adaptor.body(doc));
+            }
+          }
+          if (adaptor.parent(node)) {
+            adaptor.replace(math, node);
+          }
+          this.start.node = this.end.node = math;
+          this.start.n = this.end.n = 0;
         }
-        return parseResult(parser2(env, macro.token, ...macro.args));
-      }
-    };
-    CommandMap = class extends MacroMap {
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const parser2 = this.parserFor(token2);
-        if (!macro || !parser2) {
-          return null;
-        }
-        const saveCommand = env.currentCS;
-        env.currentCS = "\\" + token2;
-        const result = parser2(env, "\\" + macro.token, ...macro.args);
-        env.currentCS = saveCommand;
-        return parseResult(result);
-      }
-    };
-    EnvironmentMap = class extends MacroMap {
-      constructor(name, parser2, json, functionMap = {}) {
-        super(name, json, functionMap);
-        this.parser = parser2;
-      }
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const envParser = this.parserFor(token2);
-        if (!macro || !envParser) {
-          return null;
-        }
-        return parseResult(this.parser(env, macro.token, envParser, macro.args));
       }
     };
   }
 });
-export{init_TokenMap,CharacterMap,init_Tags,TagsFactory,init_ParseUtil,ParseUtil,TexParser,init_TexParser,Label,RegExpMap,MacroMap,DelimiterMap,CommandMap,EnvironmentMap,AbstractTags,init_ParseOptions,ParseOptions_default,init_Token,Token,Macro,NodeFactory,init_NodeFactory2};
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js
+var HTMLMathList;
+var init_HTMLMathList = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js"() {
+    init_MathList();
+    HTMLMathList = class extends AbstractMathList {
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js
+var HTMLDomStrings;
+var init_HTMLDomStrings = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js"() {
+    init_Options();
+    HTMLDomStrings = class {
+      constructor(options3 = null) {
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.init();
+        this.getPatterns();
+      }
+      init() {
+        this.strings = [];
+        this.string = "";
+        this.snodes = [];
+        this.nodes = [];
+        this.stack = [];
+      }
+      getPatterns() {
+        const skip = makeArray(this.options["skipHtmlTags"]);
+        const ignore = makeArray(this.options["ignoreHtmlClass"]);
+        const process2 = makeArray(this.options["processHtmlClass"]);
+        this.skipHtmlTags = new RegExp("^(?:" + skip.join("|") + ")$", "i");
+        this.ignoreHtmlClass = new RegExp("(?:^| )(?:" + ignore.join("|") + ")(?: |$)");
+        this.processHtmlClass = new RegExp("(?:^| )(?:" + process2 + ")(?: |$)");
+      }
+      pushString() {
+        if (this.string.match(/\S/)) {
+          this.strings.push(this.string);
+          this.nodes.push(this.snodes);
+        }
+        this.string = "";
+        this.snodes = [];
+      }
+      extendString(node, text) {
+        this.snodes.push([node, text.length]);
+        this.string += text;
+      }
+      handleText(node, ignore) {
+        if (!ignore) {
+          this.extendString(node, this.adaptor.value(node));
+        }
+        return this.adaptor.next(node);
+      }
+      handleTag(node, ignore) {
+        if (!ignore) {
+          const text = this.options["includeHtmlTags"][this.adaptor.kind(node)];
+          if (text instanceof Function) {
+            this.extendString(node, text(node, this.adaptor));
+          } else {
+            this.extendString(node, text);
+          }
+        }
+        return this.adaptor.next(node);
+      }
+      handleContainer(node, ignore) {
+        this.pushString();
+        const cname = this.adaptor.getAttribute(node, "class") || "";
+        const tname = this.adaptor.kind(node) || "";
+        const process2 = this.processHtmlClass.exec(cname);
+        let next = node;
+        if (this.adaptor.firstChild(node) && !this.adaptor.getAttribute(node, "data-MJX") && (process2 || !this.skipHtmlTags.exec(tname))) {
+          if (this.adaptor.next(node)) {
+            this.stack.push([this.adaptor.next(node), ignore]);
+          }
+          next = this.adaptor.firstChild(node);
+          ignore = (ignore || this.ignoreHtmlClass.exec(cname)) && !process2;
+        } else {
+          next = this.adaptor.next(node);
+        }
+        return [next, ignore];
+      }
+      handleOther(node, _ignore) {
+        this.pushString();
+        return this.adaptor.next(node);
+      }
+      find(node) {
+        this.init();
+        const stop = this.adaptor.next(node);
+        let ignore = false;
+        const include = this.options["includeHtmlTags"];
+        while (node && node !== stop) {
+          const kind = this.adaptor.kind(node);
+          if (kind === "#text") {
+            node = this.handleText(node, ignore);
+          } else if (Object.hasOwn(include, kind)) {
+            node = this.handleTag(node, ignore);
+          } else if (kind) {
+            [node, ignore] = this.handleContainer(node, ignore);
+          } else {
+            node = this.handleOther(node, ignore);
+          }
+          if (!node && this.stack.length) {
+            this.pushString();
+            [node, ignore] = this.stack.pop();
+          }
+        }
+        this.pushString();
+        const result = [this.strings, this.nodes];
+        this.init();
+        return result;
+      }
+    };
+    HTMLDomStrings.OPTIONS = {
+      skipHtmlTags: [
+        "script",
+        "noscript",
+        "style",
+        "textarea",
+        "pre",
+        "code",
+        "math",
+        "select",
+        "option",
+        "mjx-container"
+      ],
+      includeHtmlTags: expandable({ br: "\n", wbr: "", "#comment": "" }),
+      ignoreHtmlClass: "mathjax_ignore",
+      processHtmlClass: "mathjax_process"
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js
+var HTMLDocument;
+var init_HTMLDocument = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js"() {
+    init_MathDocument();
+    init_Options();
+    init_HTMLMathItem();
+    init_HTMLMathList();
+    init_HTMLDomStrings();
+    init_MathItem();
+    newState("STYLES", STATE.INSERTED + 1);
+    HTMLDocument = class extends AbstractMathDocument {
+      constructor(document, adaptor, options3) {
+        const [html2, dom] = separateOptions(options3, HTMLDomStrings.OPTIONS);
+        super(document, adaptor, html2);
+        this.domStrings = this.options["DomStrings"] || new HTMLDomStrings(dom);
+        this.domStrings.adaptor = adaptor;
+        this.styles = [];
+      }
+      findPosition(N, index, delim, nodes) {
+        const adaptor = this.adaptor;
+        const inc = 1 / (nodes[N].length || 1);
+        let i2 = N;
+        for (const [node, n] of nodes[N]) {
+          if (index <= n && adaptor.kind(node) === "#text") {
+            return { i: i2, node, n: Math.max(index, 0), delim };
+          }
+          index -= n;
+          i2 += inc;
+        }
+        return { node: null, n: 0, delim };
+      }
+      mathItem(item, jax, nodes) {
+        const math = item.math;
+        const start = this.findPosition(item.n, item.start.n, item.open, nodes);
+        const end = this.findPosition(item.n, item.end.n, item.close, nodes);
+        return new this.options.MathItem(math, jax, item.display, start, end);
+      }
+      findMath(options3) {
+        if (!this.processed.isSet("findMath")) {
+          this.adaptor.document = this.document;
+          options3 = userOptions({
+            elements: this.options.elements || [this.adaptor.body(this.document)]
+          }, options3);
+          const containers = this.adaptor.getElements(options3.elements, this.document);
+          for (const jax of this.inputJax) {
+            const list3 = jax.processStrings ? this.findMathFromStrings(jax, containers) : this.findMathFromDOM(jax, containers);
+            this.math.merge(list3);
+          }
+          this.processed.set("findMath");
+        }
+        return this;
+      }
+      findMathFromStrings(jax, containers) {
+        const strings = [];
+        const nodes = [];
+        for (const container of containers) {
+          const [slist, nlist] = this.domStrings.find(container);
+          strings.push(...slist);
+          nodes.push(...nlist);
+        }
+        const list3 = new this.options.MathList();
+        for (const math of jax.findMath(strings)) {
+          list3.push(this.mathItem(math, jax, nodes));
+        }
+        return list3;
+      }
+      findMathFromDOM(jax, containers) {
+        const items = [];
+        for (const container of containers) {
+          for (const math of jax.findMath(container)) {
+            items.push(new this.options.MathItem(math.math, jax, math.display, math.start, math.end));
+          }
+        }
+        return new this.options.MathList(...items);
+      }
+      updateDocument() {
+        if (!this.processed.isSet("updateDocument")) {
+          this.addPageElements();
+          this.addStyleSheet();
+          super.updateDocument();
+          this.processed.set("updateDocument");
+        }
+        return this;
+      }
+      addPageElements() {
+        const adaptor = this.adaptor;
+        const body = adaptor.body(this.document);
+        const node = this.documentPageElements();
+        if (node) {
+          const child = adaptor.firstChild(body);
+          if (child) {
+            adaptor.insert(node, child);
+          } else {
+            adaptor.append(body, node);
+          }
+        }
+      }
+      addStyleSheet() {
+        const sheet = this.documentStyleSheet();
+        const adaptor = this.adaptor;
+        if (sheet && !adaptor.parent(sheet)) {
+          const head = adaptor.head(this.document);
+          const styles = this.findSheet(head, adaptor.getAttribute(sheet, "id"));
+          if (styles) {
+            adaptor.replace(sheet, styles);
+          } else {
+            adaptor.append(head, sheet);
+          }
+        }
+      }
+      findSheet(head, id) {
+        if (id) {
+          for (const sheet of this.adaptor.tags(head, "style")) {
+            if (this.adaptor.getAttribute(sheet, "id") === id) {
+              return sheet;
+            }
+          }
+        }
+        return null;
+      }
+      removeFromDocument(restore = false) {
+        if (this.processed.isSet("updateDocument")) {
+          for (const math of this.math) {
+            if (math.state() >= STATE.INSERTED) {
+              math.state(STATE.TYPESET, restore);
+            }
+          }
+        }
+        this.processed.clear("updateDocument");
+        return this;
+      }
+      documentStyleSheet() {
+        return this.outputJax.styleSheet(this);
+      }
+      documentPageElements() {
+        return this.outputJax.pageElements(this);
+      }
+      addStyles(styles) {
+        this.styles.push(styles);
+        if ("insertStyles" in this.outputJax) {
+          this.outputJax.insertStyles(styles);
+        }
+      }
+      getStyles() {
+        return this.styles;
+      }
+    };
+    HTMLDocument.KIND = "HTML";
+    HTMLDocument.OPTIONS = Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS), { renderActions: expandable(Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS.renderActions), { styles: [STATE.STYLES, "", "updateStyleSheet", false] })), MathList: HTMLMathList, MathItem: HTMLMathItem, DomStrings: null });
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js
+var HTMLHandler;
+var init_HTMLHandler = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js"() {
+    init_Handler();
+    init_HTMLDocument();
+    HTMLHandler = class extends AbstractHandler {
+      constructor() {
+        super(...arguments);
+        this.documentClass = HTMLDocument;
+      }
+      handlesDocument(document) {
+        const adaptor = this.adaptor;
+        if (typeof document === "string") {
+          try {
+            document = adaptor.parse(document, "text/html");
+          } catch (_err) {
+          }
+        }
+        if (document instanceof adaptor.window.Document || document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
+          return true;
+        }
+        return false;
+      }
+      create(document, options3) {
+        const adaptor = this.adaptor;
+        if (typeof document === "string") {
+          document = adaptor.parse(document, "text/html");
+        } else if (document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
+          const child = document;
+          document = adaptor.parse("", "text/html");
+          adaptor.append(adaptor.body(document), child);
+        }
+        return super.create(document, options3);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/handlers/html.js
+function RegisterHTMLHandler(adaptor) {
+  const handler = new HTMLHandler(adaptor);
+  mathjax.handlers.register(handler);
+  return handler;
+}
+var init_html = __esm({
+  "node_modules/@mathjax/src/mjs/handlers/html.js"() {
+    init_mathjax();
+    init_HTMLHandler();
+  }
+});
+// node_modules/@mathjax/src/mjs/core/FindMath.js
+var AbstractFindMath;
+var init_FindMath = __esm({
+  "node_modules/@mathjax/src/mjs/core/FindMath.js"() {
+    init_Options();
+    AbstractFindMath = class {
+      constructor(options3) {
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+      }
+    };
+    AbstractFindMath.OPTIONS = {};
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/FindTeX.js
+var FindTeX;
+var init_FindTeX = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/FindTeX.js"() {
+    init_FindMath();
+    init_string();
+    init_MathItem();
+    FindTeX = class extends AbstractFindMath {
+      constructor(options3) {
+        super(options3);
+        this.getPatterns();
+      }
+      getPatterns() {
+        const options3 = this.options;
+        const starts = [];
+        const parts = [];
+        const subparts = [];
+        this.end = {};
+        this.env = this.sub = 0;
+        let i2 = 1;
+        options3["inlineMath"].forEach((delims) => this.addPattern(starts, delims, false));
+        options3["displayMath"].forEach((delims) => this.addPattern(starts, delims, true));
+        if (starts.length) {
+          parts.push(starts.sort(sortLength).join("|"));
+        }
+        if (options3["processEnvironments"]) {
+          parts.push("\\\\begin\\s*\\{([^}]*)\\}");
+          this.env = i2;
+          i2++;
+        }
+        if (options3["processEscapes"]) {
+          subparts.push("\\\\([\\\\$])");
+        }
+        if (options3["processRefs"]) {
+          subparts.push("(\\\\(?:eq)?ref\\s*\\{[^}]*\\})");
+        }
+        if (subparts.length) {
+          parts.push("(" + subparts.join("|") + ")");
+          this.sub = i2;
+        }
+        this.start = new RegExp(parts.join("|"), "g");
+        this.hasPatterns = parts.length > 0;
+      }
+      addPattern(starts, delims, display) {
+        const [open, close] = delims;
+        starts.push(quotePattern(open));
+        this.end[open] = [close, display, this.endPattern(close)];
+      }
+      endPattern(end, endp) {
+        return new RegExp((endp || quotePattern(end)) + "|\\\\(?:[a-zA-Z]|.)|[{}]", "g");
+      }
+      findEnd(text, n, start, end) {
+        const [close, display, pattern] = end;
+        const i2 = pattern.lastIndex = start.index + start[0].length;
+        let match, braces = 0;
+        while (match = pattern.exec(text)) {
+          if ((match[1] || match[0]) === close && braces === 0) {
+            return protoItem(start[0], text.substring(i2, match.index), match[0], n, start.index, match.index + match[0].length, display);
+          } else if (match[0] === "{") {
+            braces++;
+          } else if (match[0] === "}" && braces) {
+            braces--;
+          }
+        }
+        return null;
+      }
+      findMathInString(math, n, text) {
+        let start, match;
+        this.start.lastIndex = 0;
+        while (start = this.start.exec(text)) {
+          if (start[this.env] !== void 0 && this.env) {
+            const end = "\\\\end\\s*(\\{" + quotePattern(start[this.env]) + "\\})";
+            match = this.findEnd(text, n, start, [
+              "{" + start[this.env] + "}",
+              true,
+              this.endPattern(null, end)
+            ]);
+            if (match) {
+              match.math = match.open + match.math + match.close;
+              match.open = match.close = "";
+            }
+          } else if (start[this.sub] !== void 0 && this.sub) {
+            const math2 = start[this.sub];
+            const end = start.index + start[this.sub].length;
+            if (math2.length === 2) {
+              match = protoItem("\\", math2.substring(1), "", n, start.index, end);
+            } else {
+              match = protoItem("", math2, "", n, start.index, end, false);
+            }
+          } else {
+            match = this.findEnd(text, n, start, this.end[start[0]]);
+          }
+          if (match) {
+            math.push(match);
+            this.start.lastIndex = match.end.n;
+          }
+        }
+      }
+      findMath(strings) {
+        const math = [];
+        if (this.hasPatterns) {
+          for (let i2 = 0, m = strings.length; i2 < m; i2++) {
+            this.findMathInString(math, i2, strings[i2]);
+          }
+        }
+        return math;
+      }
+    };
+    FindTeX.OPTIONS = {
+      inlineMath: [
+        ["\\(", "\\)"]
+      ],
+      displayMath: [
+        ["$$", "$$"],
+        ["\\[", "\\]"]
+      ],
+      processEscapes: true,
+      processEnvironments: true,
+      processRefs: true
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js
+var NodeUtil;
+var NodeUtil_default;
+var init_NodeUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js"() {
+    init_MmlNode();
+    init_mo();
+    NodeUtil = {
+      attrs: /* @__PURE__ */ new Set([
+        "autoOP",
+        "fnOP",
+        "movesupsub",
+        "subsupOK",
+        "texprimestyle",
+        "useHeight",
+        "variantForm",
+        "withDelims",
+        "mathaccent",
+        "open",
+        "close"
+      ]),
+      createEntity(code) {
+        return String.fromCodePoint(parseInt(code, 16));
+      },
+      getChildren(node) {
+        return node.childNodes;
+      },
+      getText(node) {
+        return node.getText();
+      },
+      appendChildren(node, children) {
+        for (const child of children) {
+          node.appendChild(child);
+        }
+      },
+      setAttribute(node, attribute, value) {
+        node.attributes.set(attribute, value);
+      },
+      setProperty(node, property, value) {
+        node.setProperty(property, value);
+      },
+      setProperties(node, properties) {
+        for (const name of Object.keys(properties)) {
+          const value = properties[name];
+          if (name === "texClass") {
+            node.texClass = value;
+            node.setProperty(name, value);
+          } else if (name === "movablelimits") {
+            node.setProperty("movablelimits", value);
+            if (node.isKind("mo") || node.isKind("mstyle")) {
+              node.attributes.set("movablelimits", value);
+            }
+          } else if (name === "inferred") {
+          } else if (NodeUtil.attrs.has(name)) {
+            node.setProperty(name, value);
+          } else {
+            node.attributes.set(name, value);
+          }
+        }
+      },
+      getProperty(node, property) {
+        return node.getProperty(property);
+      },
+      getAttribute(node, attr) {
+        return node.attributes.get(attr);
+      },
+      removeAttribute(node, attr) {
+        node.attributes.unset(attr);
+      },
+      removeProperties(node, ...properties) {
+        node.removeProperty(...properties);
+      },
+      getChildAt(node, position) {
+        return node.childNodes[position];
+      },
+      setChild(node, position, child) {
+        const children = node.childNodes;
+        children[position] = child;
+        if (child) {
+          child.parent = node;
+        }
+      },
+      copyChildren(oldNode, newNode) {
+        const children = oldNode.childNodes;
+        for (let i2 = 0; i2 < children.length; i2++) {
+          this.setChild(newNode, i2, children[i2]);
+        }
+      },
+      copyAttributes(oldNode, newNode) {
+        newNode.attributes = oldNode.attributes;
+        for (const [prop, value] of Object.entries(oldNode.getAllProperties())) {
+          newNode.setProperty(prop, value);
+        }
+      },
+      isType(node, kind) {
+        return node.isKind(kind);
+      },
+      isEmbellished(node) {
+        return node.isEmbellished;
+      },
+      getTexClass(node) {
+        return node.texClass;
+      },
+      getCoreMO(node) {
+        return node.coreMO();
+      },
+      isNode(item) {
+        return item instanceof AbstractMmlNode || item instanceof AbstractMmlEmptyNode;
+      },
+      isInferred(node) {
+        return node.isInferred;
+      },
+      getForm(node) {
+        if (!node.isKind("mo")) {
+          return null;
+        }
+        const mo = node;
+        const forms = mo.getForms();
+        for (const form of forms) {
+          const symbol = this.getOp(mo, form);
+          if (symbol) {
+            return symbol;
+          }
+        }
+        return null;
+      },
+      getOp(mo, form = "infix") {
+        return MmlMo.OPTABLE[form][mo.getText()] || null;
+      },
+      getMoAttribute(mo, attr) {
+        var _a2, _b2;
+        if (!mo.attributes.isSet(attr)) {
+          for (const form of ["infix", "postfix", "prefix"]) {
+            const value = (_b2 = (_a2 = this.getOp(mo, form)) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2[attr];
+            if (value !== void 0) {
+              return value;
+            }
+          }
+        }
+        return mo.attributes.get(attr);
+      }
+    };
+    NodeUtil_default = NodeUtil;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TexConstants.js
+var TexConstant;
+var init_TexConstants = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexConstants.js"() {
+    TexConstant = JSON.parse(`{
+ "Variant":{
+  "NORMAL":"normal",
+  "BOLD":"bold",
+  "ITALIC":"italic",
+  "BOLDITALIC":"bold-italic",
+  "DOUBLESTRUCK":"double-struck",
+  "FRAKTUR":"fraktur",
+  "BOLDFRAKTUR":"bold-fraktur",
+  "SCRIPT":"script",
+  "BOLDSCRIPT":"bold-script",
+  "SANSSERIF":"sans-serif",
+  "BOLDSANSSERIF":"bold-sans-serif",
+  "SANSSERIFITALIC":"sans-serif-italic",
+  "SANSSERIFBOLDITALIC":"sans-serif-bold-italic",
+  "MONOSPACE":"monospace",
+  "INITIAL":"inital",
+  "TAILED":"tailed",
+  "LOOPED":"looped",
+  "STRETCHED":"stretched",
+  "CALLIGRAPHIC":"-tex-calligraphic",
+  "BOLDCALLIGRAPHIC":"-tex-bold-calligraphic",
+  "OLDSTYLE":"-tex-oldstyle",
+  "BOLDOLDSTYLE":"-tex-bold-oldstyle",
+  "MATHITALIC":"-tex-mathit"
+ },
+ "Form":{"PREFIX":"prefix","INFIX":"infix","POSTFIX":"postfix"},
+ "LineBreak":{"AUTO":"auto","NEWLINE":"newline","NOBREAK":"nobreak","GOODBREAK":"goodbreak","BADBREAK":"badbreak"},
+ "LineBreakStyle":{"BEFORE":"before","AFTER":"after","DUPLICATE":"duplicate","INFIXLINBREAKSTYLE":"infixlinebreakstyle"},
+ "IndentAlign":{"LEFT":"left","CENTER":"center","RIGHT":"right","AUTO":"auto","ID":"id","INDENTALIGN":"indentalign"},
+ "IndentShift":{"INDENTSHIFT":"indentshift"},
+ "LineThickness":{"THIN":"thin","MEDIUM":"medium","THICK":"thick"},
+ "Notation":{"LONGDIV":"longdiv","ACTUARIAL":"actuarial","PHASORANGLE":"phasorangle","RADICAL":"radical","BOX":"box","ROUNDEDBOX":"roundedbox","CIRCLE":"circle","LEFT":"left","RIGHT":"right","TOP":"top","BOTTOM":"bottom","UPDIAGONALSTRIKE":"updiagonalstrike","DOWNDIAGONALSTRIKE":"downdiagonalstrike","VERTICALSTRIKE":"verticalstrike","HORIZONTALSTRIKE":"horizontalstrike","NORTHEASTARROW":"northeastarrow","MADRUWB":"madruwb","UPDIAGONALARROW":"updiagonalarrow"},
+ "Align":{"TOP":"top","BOTTOM":"bottom","CENTER":"center","BASELINE":"baseline","AXIS":"axis","LEFT":"left","RIGHT":"right"},
+ "Lines":{"NONE":"none","SOLID":"solid","DASHED":"dashed"},
+ "Side":{"LEFT":"left","RIGHT":"right","LEFTOVERLAP":"leftoverlap","RIGHTOVERLAP":"rightoverlap"},
+ "Width":{"AUTO":"auto","FIT":"fit"},
+ "Actiontype":{"TOGGLE":"toggle","STATUSLINE":"statusline","TOOLTIP":"tooltip","INPUT":"input"},
+ "Overflow":{"LINBREAK":"linebreak","SCROLL":"scroll","ELIDE":"elide","TRUNCATE":"truncate","SCALE":"scale"},
+ "Unit":{"EM":"em","EX":"ex","PX":"px","IN":"in","CM":"cm","MM":"mm","PT":"pt","PC":"pc"},
+ "Attr":{"LATEX":"data-latex","LATEXITEM":"data-latex-item"}
+}`);
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js
+function _copyExplicit(attrs, node1, node2) {
+  const attr1 = node1.attributes;
+  const attr2 = node2.attributes;
+  attrs.forEach((x2) => {
+    const attr = attr2.getExplicit(x2);
+    if (attr != null) {
+      attr1.set(x2, attr);
+    }
+  });
+}
+function _compareExplicit(node1, node2) {
+  const filter2 = (attr, space) => {
+    const exp = attr.getExplicitNames();
+    return exp.filter((x2) => {
+      return x2 !== space && (x2 !== "stretchy" || attr.getExplicit("stretchy")) && x2 !== "data-latex" && x2 !== "data-latex-item";
+    });
+  };
+  const attr1 = node1.attributes;
+  const attr2 = node2.attributes;
+  const exp1 = filter2(attr1, "lspace");
+  const exp2 = filter2(attr2, "rspace");
+  if (exp1.length !== exp2.length) {
+    return false;
+  }
+  for (const name of exp1) {
+    if (attr1.getExplicit(name) !== attr2.getExplicit(name)) {
+      return false;
+    }
+  }
+  return true;
+}
+function _cleanSubSup(options3, low, up) {
+  const remove = [];
+  for (const mml of options3.getList("m" + low + up)) {
+    const children = mml.childNodes;
+    if (children[mml[low]] && children[mml[up]]) {
+      continue;
+    }
+    const parent = mml.parent;
+    const newNode = children[mml[low]] ? options3.nodeFactory.create("node", "m" + low, [
+      children[mml.base],
+      children[mml[low]]
+    ]) : options3.nodeFactory.create("node", "m" + up, [
+      children[mml.base],
+      children[mml[up]]
+    ]);
+    NodeUtil_default.copyAttributes(mml, newNode);
+    parent.replaceChild(newNode, mml);
+    remove.push(mml);
+  }
+  options3.removeFromList("m" + low + up, remove);
+}
+function _moveLimits(options3, underover, subsup) {
+  const remove = [];
+  for (const mml of options3.getList(underover)) {
+    if (mml.attributes.get("displaystyle")) {
+      continue;
+    }
+    const base = mml.childNodes[mml.base];
+    const mo = base.coreMO();
+    if (base.getProperty("movablelimits") && !mo.attributes.hasExplicit("movablelimits")) {
+      const node = options3.nodeFactory.create("node", subsup, mml.childNodes);
+      NodeUtil_default.copyAttributes(mml, node);
+      mml.parent.replaceChild(node, mml);
+      remove.push(mml);
+    }
+  }
+  options3.removeFromList(underover, remove);
+}
+var FilterUtil;
+var FilterUtil_default;
+var init_FilterUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js"() {
+    init_MmlNode();
+    init_NodeUtil();
+    init_TexConstants();
+    FilterUtil = {
+      cleanStretchy(arg) {
+        var _a2;
+        const options3 = arg.data;
+        for (const mo of options3.getList("fixStretchy")) {
+          if (NodeUtil_default.getProperty(mo, "fixStretchy")) {
+            const symbol = NodeUtil_default.getForm(mo);
+            if ((_a2 = symbol === null || symbol === void 0 ? void 0 : symbol[3]) === null || _a2 === void 0 ? void 0 : _a2["stretchy"]) {
+              NodeUtil_default.setAttribute(mo, "stretchy", false);
+            }
+            NodeUtil_default.removeProperties(mo, "fixStretchy");
+          }
+        }
+      },
+      cleanAttributes(arg) {
+        const node = arg.data.root;
+        node.walkTree((mml) => {
+          const keep = new Set((mml.getProperty("keep-attrs") || "").split(/ /));
+          const attribs = mml.attributes;
+          attribs.unset(TexConstant.Attr.LATEXITEM);
+          for (const key of attribs.getExplicitNames()) {
+            if (!keep.has(key) && attribs.get(key) === attribs.getInherited(key)) {
+              attribs.unset(key);
+            }
+          }
+        });
+      },
+      combineRelations(arg) {
+        const remove = [];
+        for (const mo of arg.data.getList("mo")) {
+          if (mo.getProperty("relationsCombined") || !mo.parent || mo.parent && !NodeUtil_default.isType(mo.parent, "mrow") || NodeUtil_default.getTexClass(mo) !== TEXCLASS.REL) {
+            continue;
+          }
+          const mml = mo.parent;
+          let m2;
+          const children = mml.childNodes;
+          const next = children.indexOf(mo) + 1;
+          const variantForm = NodeUtil_default.getProperty(mo, "variantForm");
+          while (next < children.length && (m2 = children[next]) && NodeUtil_default.isType(m2, "mo") && NodeUtil_default.getTexClass(m2) === TEXCLASS.REL) {
+            if (variantForm === NodeUtil_default.getProperty(m2, "variantForm") && _compareExplicit(mo, m2)) {
+              NodeUtil_default.appendChildren(mo, NodeUtil_default.getChildren(m2));
+              _copyExplicit(["stretchy", "rspace"], mo, m2);
+              for (const name of m2.getPropertyNames()) {
+                mo.setProperty(name, m2.getProperty(name));
+              }
+              if (m2.attributes.get("data-latex")) {
+                mo.attributes.set("data-latex", mo.attributes.get("data-latex") + m2.attributes.get("data-latex"));
+              }
+              children.splice(next, 1);
+              remove.push(m2);
+              m2.parent = null;
+              m2.setProperty("relationsCombined", true);
+              mo.setProperty("texClass", TEXCLASS.REL);
+            } else {
+              if (!mo.attributes.hasExplicit("rspace")) {
+                NodeUtil_default.setAttribute(mo, "rspace", "0pt");
+              }
+              if (!m2.attributes.hasExplicit("lspace")) {
+                NodeUtil_default.setAttribute(m2, "lspace", "0pt");
+              }
+              break;
+            }
+          }
+          mo.attributes.setInherited("form", mo.getForms()[0]);
+        }
+        arg.data.removeFromList("mo", remove);
+      },
+      cleanSubSup(arg) {
+        const options3 = arg.data;
+        if (options3.error) {
+          return;
+        }
+        _cleanSubSup(options3, "sub", "sup");
+        _cleanSubSup(options3, "under", "over");
+      },
+      moveLimits(arg) {
+        const options3 = arg.data;
+        _moveLimits(options3, "munderover", "msubsup");
+        _moveLimits(options3, "munder", "msub");
+        _moveLimits(options3, "mover", "msup");
+      },
+      setInherited(arg) {
+        arg.data.root.setInheritedAttributes({}, arg.math["display"], 0, false);
+      },
+      checkScriptlevel(arg) {
+        const options3 = arg.data;
+        const remove = [];
+        for (const mml of options3.getList("mstyle")) {
+          if (mml.childNodes[0].childNodes.length !== 1) {
+            continue;
+          }
+          const attributes = mml.attributes;
+          for (const key of ["displaystyle", "scriptlevel"]) {
+            if (attributes.getExplicit(key) === attributes.getInherited(key)) {
+              attributes.unset(key);
+            }
+          }
+          const names = attributes.getExplicitNames();
+          if (names.filter((key) => key.substring(0, 10) !== "data-latex").length === 0) {
+            const child = mml.childNodes[0].childNodes[0];
+            names.forEach((key) => child.attributes.set(key, attributes.get(key)));
+            mml.parent.replaceChild(child, mml);
+            remove.push(mml);
+          }
+        }
+        options3.removeFromList("mstyle", remove);
+      }
+    };
+    FilterUtil_default = FilterUtil;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js
+var ConfigurationType;
+var HandlerType;
+var init_HandlerTypes = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js"() {
+    (function(ConfigurationType2) {
+      ConfigurationType2["HANDLER"] = "handler";
+      ConfigurationType2["FALLBACK"] = "fallback";
+      ConfigurationType2["ITEMS"] = "items";
+      ConfigurationType2["TAGS"] = "tags";
+      ConfigurationType2["OPTIONS"] = "options";
+      ConfigurationType2["NODES"] = "nodes";
+      ConfigurationType2["PREPROCESSORS"] = "preprocessors";
+      ConfigurationType2["POSTPROCESSORS"] = "postprocessors";
+      ConfigurationType2["INIT"] = "init";
+      ConfigurationType2["CONFIG"] = "config";
+      ConfigurationType2["PRIORITY"] = "priority";
+      ConfigurationType2["PARSER"] = "parser";
+    })(ConfigurationType || (ConfigurationType = {}));
+    (function(HandlerType2) {
+      HandlerType2["DELIMITER"] = "delimiter";
+      HandlerType2["MACRO"] = "macro";
+      HandlerType2["CHARACTER"] = "character";
+      HandlerType2["ENVIRONMENT"] = "environment";
+    })(HandlerType || (HandlerType = {}));
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js
+function muReplace([value, unit, length4]) {
+  if (unit !== "mu") {
+    return [value, unit, length4];
+  }
+  const em2 = UnitUtil.em(UnitUtil.UNIT_CASES.get(unit) * parseFloat(value));
+  return [em2.slice(0, -2), "em", length4];
+}
+var UnitMap;
+var emPerInch;
+var pxPerInch;
+var UnitUtil;
+var init_UnitUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js"() {
+    UnitMap = class {
+      constructor(map) {
+        this.num = "([-+]?([.,]\\d+|\\d+([.,]\\d*)?))";
+        this.unit = "";
+        this.dimenEnd = /./;
+        this.dimenRest = /./;
+        this.map = new Map(map);
+        this.updateDimen();
+      }
+      updateDimen() {
+        this.unit = `(${Array.from(this.map.keys()).join("|")})`;
+        this.dimenEnd = RegExp("^\\s*" + this.num + "\\s*" + this.unit + "\\s*$");
+        this.dimenRest = RegExp("^\\s*" + this.num + "\\s*" + this.unit + " ?");
+      }
+      set(name, ems) {
+        this.map.set(name, ems);
+        this.updateDimen();
+        return this;
+      }
+      get(name) {
+        return this.map.get(name) || this.map.get("pt");
+      }
+      delete(name) {
+        if (this.map.delete(name)) {
+          this.updateDimen();
+          return true;
+        }
+        return false;
+      }
+    };
+    emPerInch = 7.2;
+    pxPerInch = 72;
+    UnitUtil = {
+      UNIT_CASES: new UnitMap([
+        ["em", 1],
+        ["ex", 0.43],
+        ["pt", 1 / 10],
+        ["pc", 1.2],
+        ["px", emPerInch / pxPerInch],
+        ["in", emPerInch],
+        ["cm", emPerInch / 2.54],
+        ["mm", emPerInch / 25.4],
+        ["mu", 1 / 18]
+      ]),
+      matchDimen(dim, rest = false) {
+        const match = dim.match(rest ? UnitUtil.UNIT_CASES.dimenRest : UnitUtil.UNIT_CASES.dimenEnd);
+        return match ? muReplace([match[1].replace(/,/, "."), match[4], match[0].length]) : [null, null, 0];
+      },
+      dimen2em(dim) {
+        const [value, unit] = UnitUtil.matchDimen(dim);
+        const m = parseFloat(value || "1");
+        const factor = UnitUtil.UNIT_CASES.get(unit);
+        return factor * m;
+      },
+      em(m) {
+        if (Math.abs(m) < 6e-4) {
+          return "0em";
+        }
+        return m.toFixed(3).replace(/\.?0+$/, "") + "em";
+      },
+      trimSpaces(text) {
+        if (typeof text !== "string") {
+          return text;
+        }
+        let TEXT = text.trim();
+        if (TEXT.match(/\\$/) && text.match(/ $/)) {
+          TEXT += " ";
+        }
+        return TEXT;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/Stack.js
+var Stack;
+var init_Stack = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Stack.js"() {
+    init_NodeUtil();
+    Stack = class {
+      constructor(_factory, _env, inner) {
+        this._factory = _factory;
+        this._env = _env;
+        this.global = {};
+        this.stack = [];
+        this.global = { isInner: inner };
+        this.stack = [this._factory.create("start", this.global)];
+        if (_env) {
+          this.stack[0].env = _env;
+        }
+        this.env = this.stack[0].env;
+      }
+      set env(env) {
+        this._env = env;
+      }
+      get env() {
+        return this._env;
+      }
+      Push(...args) {
+        for (const node of args) {
+          if (!node) {
+            continue;
+          }
+          const item = NodeUtil_default.isNode(node) ? this._factory.create("mml", node) : node;
+          item.global = this.global;
+          const [top, success] = this.stack.length ? this.Top().checkItem(item) : [null, true];
+          if (!success) {
+            continue;
+          }
+          if (top) {
+            this.Pop();
+            this.Push(...top);
+            continue;
+          }
+          if (!item.isKind("null")) {
+            this.stack.push(item);
+          }
+          if (item.env) {
+            if (item.copyEnv) {
+              Object.assign(item.env, this.env);
+            }
+            this.env = item.env;
+          } else {
+            item.env = this.env;
+          }
+        }
+      }
+      Pop() {
+        const item = this.stack.pop();
+        if (!item.isOpen) {
+          delete item.env;
+        }
+        this.env = this.stack.length ? this.Top().env : {};
+        return item;
+      }
+      Top(n = 1) {
+        return this.stack.length < n ? null : this.stack[this.stack.length - n];
+      }
+      Prev(noPop) {
+        const top = this.Top();
+        return noPop ? top.First : top.Pop();
+      }
+      get height() {
+        return this.stack.length;
+      }
+      toString() {
+        return "stack[\n  " + this.stack.join("\n  ") + "\n]";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TexError.js
+var TexError2;
+var TexError_default;
+var init_TexError = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexError.js"() {
+    TexError2 = class _TexError {
+      static processString(str, args) {
+        const parts = str.split(_TexError.pattern);
+        for (let i2 = 1, m = parts.length; i2 < m; i2 += 2) {
+          let c = parts[i2].charAt(0);
+          if (c >= "0" && c <= "9") {
+            parts[i2] = args[parseInt(parts[i2], 10) - 1];
+            if (typeof parts[i2] === "number") {
+              parts[i2] = parts[i2].toString();
+            }
+          } else if (c === "{") {
+            c = parts[i2].substring(1);
+            if (c >= "0" && c <= "9") {
+              parts[i2] = args[parseInt(parts[i2].substring(1, parts[i2].length - 1), 10) - 1];
+              if (typeof parts[i2] === "number") {
+                parts[i2] = parts[i2].toString();
+              }
+            } else {
+              const match = parts[i2].match(/^\{([a-z]+):%(\d+)\|(.*)\}$/);
+              if (match) {
+                parts[i2] = "%" + parts[i2];
+              }
+            }
+          }
+        }
+        return parts.join("");
+      }
+      constructor(id, message, ...rest) {
+        this.id = id;
+        this.message = _TexError.processString(message, rest);
+      }
+    };
+    TexError2.pattern = /%(\d+|\{\d+\}|\{[a-z]+:%\d+(?:\|(?:%\{\d+\}|%.|[^}])*)+\}|.)/g;
+    TexError_default = TexError2;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/StackItem.js
+var MmlStack;
+var BaseItem;
+var init_StackItem = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/StackItem.js"() {
+    init_TexError();
+    init_TexConstants();
+    MmlStack = class {
+      constructor(_nodes) {
+        this._nodes = _nodes;
+        this.startStr = "";
+        this.startI = 0;
+        this.stopI = 0;
+      }
+      get nodes() {
+        return this._nodes;
+      }
+      Push(...nodes) {
+        this._nodes.push(...nodes);
+      }
+      Pop() {
+        return this._nodes.pop();
+      }
+      get First() {
+        return this._nodes[this.Size() - 1];
+      }
+      set First(node) {
+        this._nodes[this.Size() - 1] = node;
+      }
+      get Last() {
+        return this._nodes[0];
+      }
+      set Last(node) {
+        this._nodes[0] = node;
+      }
+      Peek(n) {
+        if (n == null) {
+          n = 1;
+        }
+        return this._nodes.slice(this.Size() - n);
+      }
+      Size() {
+        return this._nodes.length;
+      }
+      Clear() {
+        this._nodes = [];
+      }
+      toMml(inferred = true, forceRow) {
+        if (this._nodes.length === 1 && !forceRow) {
+          return this.First;
+        }
+        return this.create("node", inferred ? "inferredMrow" : "mrow", this._nodes, {});
+      }
+      create(kind, ...rest) {
+        return this.factory.configuration.nodeFactory.create(kind, ...rest);
+      }
+    };
+    BaseItem = class _BaseItem extends MmlStack {
+      constructor(factory, ...nodes) {
+        super(nodes);
+        this.factory = factory;
+        this.global = {};
+        this._properties = {};
+        if (this.isOpen) {
+          this._env = {};
+        }
+      }
+      get kind() {
+        return "base";
+      }
+      get env() {
+        return this._env;
+      }
+      set env(value) {
+        this._env = value;
+      }
+      get copyEnv() {
+        return true;
+      }
+      getProperty(key) {
+        return this._properties[key];
+      }
+      setProperty(key, value) {
+        this._properties[key] = value;
+        return this;
+      }
+      get isOpen() {
+        return false;
+      }
+      get isClose() {
+        return false;
+      }
+      get isFinal() {
+        return false;
+      }
+      isKind(kind) {
+        return kind === this.kind;
+      }
+      checkItem(item) {
+        if (item.isKind("over") && this.isOpen) {
+          item.setProperty("num", this.toMml(false));
+          this.Clear();
+        }
+        if (item.isKind("cell") && this.isOpen) {
+          if (item.getProperty("linebreak")) {
+            return _BaseItem.fail;
+          }
+          throw new TexError_default("Misplaced", "Misplaced %1", item.getName());
+        }
+        if (item.isClose && this.getErrors(item.kind)) {
+          const [id, message] = this.getErrors(item.kind);
+          throw new TexError_default(id, message, item.getName());
+        }
+        if (!item.isFinal) {
+          return _BaseItem.success;
+        }
+        this.Push(item.First);
+        return _BaseItem.fail;
+      }
+      clearEnv() {
+        for (const id of Object.keys(this.env)) {
+          delete this.env[id];
+        }
+      }
+      setProperties(def2) {
+        Object.assign(this._properties, def2);
+        return this;
+      }
+      getName() {
+        return this.getProperty("name");
+      }
+      toString() {
+        return this.kind + "[" + this.nodes.join("; ") + "]";
+      }
+      getErrors(kind) {
+        const CLASS = this.constructor;
+        return CLASS.errors[kind] || _BaseItem.errors[kind];
+      }
+      addLatexItem(node, prefix = "") {
+        const str = this.startStr.slice(this.startI, this.stopI);
+        if (str) {
+          const tex = prefix ? prefix + str : str;
+          node.attributes.set(TexConstant.Attr.LATEXITEM, tex);
+          if (tex !== "}") {
+            node.attributes.set(TexConstant.Attr.LATEX, tex);
+          }
+        }
+      }
+    };
+    BaseItem.fail = [null, false];
+    BaseItem.success = [null, true];
+    BaseItem.errors = {
+      end: ["MissingBeginExtraEnd", "Missing \\begin{%1} or extra \\end{%1}"],
+      close: ["ExtraCloseMissingOpen", "Extra close brace or missing open brace"],
+      right: ["MissingLeftExtraRight", "Missing \\left or extra \\right"],
+      middle: ["ExtraMiddle", "Extra \\middle"]
+    };
+  }
+});
+export{init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,TexConstant,TexError_default,UnitUtil,init_NodeUtil,NodeUtil_default,ConfigurationType,init_FindTeX,init_FilterUtil,FindTeX,FilterUtil_default,RegisterHTMLHandler,init_html};

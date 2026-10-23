@@ -1,1845 +1,1915 @@
-import{__esm,init_Options,init_InputJax,init_OutputJax,init_MathList,init_MathItem,init_MmlFactory,init_BitField,init_PrioritizedList,init_Retries,PrioritizedList,STATE,AbstractInputJax,AbstractOutputJax,AbstractMathList,AbstractMathItem,userOptions,defaultOptions,MmlFactory,handleRetriesFor,expandable,BitFieldClass,makeArray,newState,separateOptions,mathjax,init_mathjax,init_string,sortLength,quotePattern,protoItem,init_MmlNode,init_mo,AbstractMmlNode,AbstractMmlEmptyNode,MmlMo,TEXCLASS}from'./p14.js';export*from'./p14.js';
-// node_modules/@mathjax/src/mjs/core/MathDocument.js
-var __awaiter3;
-var RenderList;
-var resetOptions;
-var resetAllOptions;
-var DefaultInputJax;
-var DefaultOutputJax;
-var DefaultMathList;
-var DefaultMathItem;
-var AbstractMathDocument;
-var init_MathDocument = __esm({
-  "node_modules/@mathjax/src/mjs/core/MathDocument.js"() {
-    init_Options();
-    init_InputJax();
-    init_OutputJax();
-    init_MathList();
-    init_MathItem();
-    init_MmlFactory();
-    init_BitField();
-    init_PrioritizedList();
-    init_Retries();
-    __awaiter3 = function(thisArg, _arguments, P, generator) {
-      function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve) {
-          resolve(value);
-        });
+import{__esm,init_MmlNode,AbstractMmlTokenNode,TEXCLASS,AbstractMmlNode,AbstractMmlBaseNode,init_Attributes,AbstractMmlLayoutNode,INHERIT,init_string,indentAttributes,split,init_mo,MmlMo,XMLNode,init_math,init_mi,init_mn,init_mtext,MmlMath,MmlMi,MmlMn,MmlMtext,TextNode,init_NodeFactory,AbstractNodeFactory,init_Options,lookup,TEXCLASSNAMES,toEntity,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions}from'./p14.js';export*from'./p14.js';
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mspace.js
+var MmlMspace;
+var init_mspace = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mspace.js"() {
+    init_MmlNode();
+    MmlMspace = class _MmlMspace extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.NONE;
       }
-      return new (P || (P = Promise))(function(resolve, reject) {
-        function fulfilled(value) {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function rejected(value) {
-          try {
-            step(generator["throw"](value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function step(result) {
-          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
-        }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
-    };
-    RenderList = class extends PrioritizedList {
-      static create(actions) {
-        const list3 = new this();
-        for (const id of Object.keys(actions)) {
-          const [action, priority] = this.action(id, actions[id]);
-          if (priority) {
-            list3.add(action, priority);
-          }
-        }
-        return list3;
-      }
-      static action(id, action) {
-        let renderDoc, renderMath;
-        let convert = true;
-        const priority = action[0];
-        if (action.length === 1 || typeof action[1] === "boolean") {
-          if (action.length === 2) {
-            convert = action[1];
-          }
-          [renderDoc, renderMath] = this.methodActions(id);
-        } else if (typeof action[1] === "string") {
-          if (typeof action[2] === "string") {
-            if (action.length === 4) {
-              convert = action[3];
-            }
-            const [method1, method2] = action.slice(1);
-            [renderDoc, renderMath] = this.methodActions(method1, method2);
-          } else {
-            if (action.length === 3) {
-              convert = action[2];
-            }
-            [renderDoc, renderMath] = this.methodActions(action[1]);
-          }
-        } else {
-          if (action.length === 4) {
-            convert = action[3];
-          }
-          [renderDoc, renderMath] = action.slice(1);
-        }
-        return [
-          { id, renderDoc, renderMath, convert },
-          priority
-        ];
-      }
-      static methodActions(method1, method2 = method1) {
-        return [
-          (document) => {
-            if (method1) {
-              document[method1]();
-            }
-            return false;
-          },
-          (math, document) => {
-            if (method2) {
-              math[method2](document);
-            }
-            return false;
-          }
-        ];
-      }
-      renderDoc(document, start = STATE.UNPROCESSED) {
-        for (const item of this.items) {
-          if (item.priority >= start) {
-            if (item.item.renderDoc(document))
-              return;
-          }
-        }
-      }
-      renderMath(math, document, start = STATE.UNPROCESSED) {
-        for (const item of this.items) {
-          if (item.priority >= start) {
-            if (item.item.renderMath(math, document))
-              return;
-          }
-        }
-      }
-      renderConvert(math, document, end = STATE.LAST) {
-        for (const item of this.items) {
-          if (item.priority > end)
-            return;
-          if (item.item.convert) {
-            if (item.item.renderMath(math, document))
-              return;
-          }
-        }
-      }
-      findID(id) {
-        for (const item of this.items) {
-          if (item.item.id === id) {
-            return item.item;
-          }
-        }
-        return null;
-      }
-    };
-    resetOptions = {
-      all: false,
-      processed: false,
-      inputJax: null,
-      outputJax: null
-    };
-    resetAllOptions = {
-      all: true,
-      processed: true,
-      inputJax: [],
-      outputJax: []
-    };
-    DefaultInputJax = class extends AbstractInputJax {
-      compile(_math) {
-        return null;
-      }
-    };
-    DefaultOutputJax = class extends AbstractOutputJax {
-      typeset(_math, _document = null) {
-        return null;
-      }
-      escaped(_math, _document) {
-        return null;
-      }
-    };
-    DefaultMathList = class extends AbstractMathList {
-    };
-    DefaultMathItem = class extends AbstractMathItem {
-    };
-    AbstractMathDocument = class _AbstractMathDocument {
-      constructor(document, adaptor, options3) {
-        const CLASS = this.constructor;
-        this.document = document;
-        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
-        this.math = new (this.options["MathList"] || DefaultMathList)();
-        this.renderActions = RenderList.create(this.options["renderActions"]);
-        this._actionPromises = [];
-        this._readyPromise = Promise.resolve();
-        this.processed = new _AbstractMathDocument.ProcessBits();
-        this.outputJax = this.options["OutputJax"] || new DefaultOutputJax();
-        let inputJax = this.options["InputJax"] || [new DefaultInputJax()];
-        if (!Array.isArray(inputJax)) {
-          inputJax = [inputJax];
-        }
-        this.inputJax = inputJax;
-        this.adaptor = adaptor;
-        this.outputJax.setAdaptor(adaptor);
-        this.inputJax.map((jax) => jax.setAdaptor(adaptor));
-        this.mmlFactory = this.options["MmlFactory"] || new MmlFactory();
-        this.inputJax.map((jax) => jax.setMmlFactory(this.mmlFactory));
-        this.outputJax.initialize();
-        this.inputJax.map((jax) => jax.initialize());
+      setTeXclass(prev) {
+        return prev;
       }
       get kind() {
-        return this.constructor.KIND;
+        return "mspace";
       }
-      addRenderAction(id, ...action) {
-        const [fn, p] = RenderList.action(id, action);
-        this.renderActions.add(fn, p);
+      get arity() {
+        return 0;
       }
-      removeRenderAction(id) {
-        const action = this.renderActions.findID(id);
-        if (action) {
-          this.renderActions.remove(action);
-        }
+      get isSpacelike() {
+        return !this.attributes.hasExplicit("linebreak") && this.canBreak;
       }
-      render() {
-        this.clearPromises();
-        this.renderActions.renderDoc(this);
-        return this;
+      get hasNewline() {
+        const linebreak = this.attributes.get("linebreak");
+        return this.canBreak && (linebreak === "newline" || linebreak === "indentingnewline");
       }
-      renderPromise() {
-        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
-          this.render();
-          yield this.actionPromises();
-          this.clearPromises();
-          return this;
-        })));
-      }
-      rerender(start = STATE.RERENDER) {
-        this.state(start - 1);
-        this.render();
-        return this;
-      }
-      rerenderPromise(start = STATE.RERENDER) {
-        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
-          this.rerender(start);
-          yield this.actionPromises();
-          this.clearPromises();
-          return this;
-        })));
-      }
-      convert(math, options3 = {}) {
-        let { format, display, end, ex, em: em2, containerWidth, scale: scale2, family } = userOptions({
-          format: this.inputJax[0].name,
-          display: true,
-          end: STATE.LAST,
-          em: 16,
-          ex: 8,
-          containerWidth: null,
-          scale: 1,
-          family: ""
-        }, options3);
-        if (containerWidth === null) {
-          containerWidth = 80 * ex;
-        }
-        const jax = this.inputJax.reduce((jax2, ijax) => ijax.name === format ? ijax : jax2, null);
-        const mitem = new this.options.MathItem(math, jax, display);
-        mitem.start.node = this.adaptor.body(this.document);
-        mitem.setMetrics(em2, ex, containerWidth, scale2);
-        if (family && this.outputJax.options.mtextInheritFont) {
-          mitem.outputData.mtextFamily = family;
-        }
-        if (family && this.outputJax.options.merrorInheritFont) {
-          mitem.outputData.merrorFamily = family;
-        }
-        this.clearPromises();
-        mitem.convert(this, end);
-        return mitem.typesetRoot || mitem.root;
-      }
-      convertPromise(math, options3 = {}) {
-        return this.whenReady(() => handleRetriesFor(() => __awaiter3(this, void 0, void 0, function* () {
-          const node = this.convert(math, options3);
-          yield this.actionPromises();
-          this.clearPromises();
-          return node;
-        })));
-      }
-      whenReady(action) {
-        return this._readyPromise = this._readyPromise.catch((_) => {
-        }).then(() => {
-          const ready3 = this._readyPromise;
-          this._readyPromise = Promise.resolve();
-          const result = action();
-          const promise = this._readyPromise.then(() => result);
-          this._readyPromise = ready3;
-          return promise;
-        });
-      }
-      actionPromises() {
-        return Promise.all(this._actionPromises);
-      }
-      clearPromises() {
-        this._actionPromises = [];
-      }
-      savePromise(promise) {
-        this._actionPromises.push(promise);
-      }
-      findMath(_options = null) {
-        this.processed.set("findMath");
-        return this;
-      }
-      compile() {
-        if (!this.processed.isSet("compile")) {
-          const recompile = [];
-          for (const math of this.math) {
-            this.compileMath(math);
-            if (math.inputData.recompile !== void 0) {
-              recompile.push(math);
-            }
-          }
-          for (const math of recompile) {
-            const data = math.inputData.recompile;
-            math.state(data.state);
-            math.inputData.recompile = data;
-            this.compileMath(math);
-          }
-          this.processed.set("compile");
-        }
-        return this;
-      }
-      compileMath(math) {
-        try {
-          math.compile(this);
-        } catch (err) {
-          if (err.retry || err.restart) {
-            throw err;
-          }
-          this.options["compileError"](this, math, err);
-          math.inputData["error"] = err;
-        }
-      }
-      compileError(math, err) {
-        math.root = this.mmlFactory.create("math", null, [
-          this.mmlFactory.create("merror", { "data-mjx-error": err.message, title: err.message }, [
-            this.mmlFactory.create("mtext", null, [
-              this.mmlFactory.create("text").setText("Math input error")
-            ])
-          ])
-        ]);
-        if (math.display) {
-          math.root.attributes.set("display", "block");
-        }
-        math.inputData.error = err.message;
-      }
-      typeset() {
-        if (!this.processed.isSet("typeset")) {
-          for (const math of this.math) {
-            try {
-              math.typeset(this);
-            } catch (err) {
-              if (err.retry || err.restart) {
-                throw err;
-              }
-              this.options["typesetError"](this, math, err);
-              math.outputData["error"] = err;
-            }
-          }
-          this.processed.set("typeset");
-        }
-        return this;
-      }
-      typesetError(math, err) {
-        math.typesetRoot = this.adaptor.node("mjx-container", {
-          class: "MathJax mjx-output-error",
-          jax: this.outputJax.name
-        }, [
-          this.adaptor.node("span", {
-            "data-mjx-error": err.message,
-            title: err.message,
-            style: {
-              color: "red",
-              "background-color": "yellow",
-              "line-height": "normal"
-            }
-          }, [this.adaptor.text("Math output error")])
-        ]);
-        if (math.display) {
-          this.adaptor.setAttributes(math.typesetRoot, {
-            style: {
-              display: "block",
-              margin: "1em 0",
-              "text-align": "center"
-            }
-          });
-        }
-        math.outputData.error = err.message;
-      }
-      getMetrics() {
-        if (!this.processed.isSet("getMetrics")) {
-          this.outputJax.getMetrics(this);
-          this.processed.set("getMetrics");
-        }
-        return this;
-      }
-      updateDocument() {
-        if (!this.processed.isSet("updateDocument")) {
-          for (const math of this.math.reversed()) {
-            math.updateDocument(this);
-          }
-          this.processed.set("updateDocument");
-        }
-        return this;
-      }
-      removeFromDocument(_restore = false) {
-        return this;
-      }
-      state(state, restore = false) {
-        for (const math of this.math) {
-          math.state(state, restore);
-        }
-        if (state < STATE.INSERTED) {
-          this.processed.clear("updateDocument");
-        }
-        if (state < STATE.TYPESET) {
-          this.processed.clear("typeset");
-          this.processed.clear("getMetrics");
-        }
-        if (state < STATE.COMPILED) {
-          this.processed.clear("compile");
-        }
-        if (state < STATE.FINDMATH) {
-          this.processed.clear("findMath");
-        }
-        return this;
-      }
-      reset(options3 = { processed: true }) {
-        options3 = userOptions(Object.assign({}, resetOptions), options3);
-        if (options3.all) {
-          Object.assign(options3, resetAllOptions);
-        }
-        if (options3.processed) {
-          this.processed.reset();
-        }
-        if (options3.inputJax) {
-          this.inputJax.forEach((jax) => jax.reset(...options3.inputJax));
-        }
-        if (options3.outputJax) {
-          this.outputJax.reset(...options3.outputJax);
-        }
-        return this;
-      }
-      clear() {
-        this.reset();
-        this.math.clear();
-        return this;
-      }
-      done() {
-        return Promise.resolve();
-      }
-      concat(list3) {
-        this.math.merge(list3);
-        return this;
-      }
-      clearMathItemsWithin(containers) {
-        const items = this.getMathItemsWithin(containers);
-        for (const item of items.slice(0).reverse()) {
-          item.clear();
-        }
-        this.math.remove(...items);
-        return items;
-      }
-      getMathItemsWithin(elements2) {
-        if (!Array.isArray(elements2)) {
-          elements2 = [elements2];
-        }
-        const adaptor = this.adaptor;
-        const items = [];
-        const containers = adaptor.getElements(elements2, this.document);
-        ITEMS: for (const item of this.math) {
-          for (const container of containers) {
-            if (item.start.node && adaptor.contains(container, item.start.node)) {
-              items.push(item);
-              continue ITEMS;
-            }
-          }
-        }
-        return items;
+      get canBreak() {
+        return !this.attributes.hasOneOf(_MmlMspace.NONSPACELIKE) && String(this.attributes.get("width")).trim().charAt(0) !== "-";
       }
     };
-    AbstractMathDocument.KIND = "MathDocument";
-    AbstractMathDocument.OPTIONS = {
-      OutputJax: null,
-      InputJax: null,
-      MmlFactory: null,
-      MathList: DefaultMathList,
-      MathItem: DefaultMathItem,
-      compileError: (doc, math, err) => {
-        doc.compileError(math, err);
-      },
-      typesetError: (doc, math, err) => {
-        doc.typesetError(math, err);
-      },
-      renderActions: expandable({
-        find: [STATE.FINDMATH, "findMath", "", false],
-        compile: [STATE.COMPILED],
-        metrics: [STATE.METRICS, "getMetrics", "", false],
-        typeset: [STATE.TYPESET],
-        update: [STATE.INSERTED, "updateDocument", false]
-      })
-    };
-    AbstractMathDocument.ProcessBits = BitFieldClass("findMath", "compile", "getMetrics", "typeset", "updateDocument");
+    MmlMspace.NONSPACELIKE = [
+      "height",
+      "depth",
+      "style",
+      "mathbackground",
+      "background"
+    ];
+    MmlMspace.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { width: "0em", height: "0ex", depth: "0ex", linebreak: "auto", indentshift: "auto", indentalign: "auto", indenttarget: "", indentalignfirst: "indentalign", indentshiftfirst: "indentshift", indentalignlast: "indentalign", indentshiftlast: "indentshift" });
   }
 });
-// node_modules/@mathjax/src/mjs/core/Handler.js
-var DefaultMathDocument;
-var AbstractHandler;
-var init_Handler = __esm({
-  "node_modules/@mathjax/src/mjs/core/Handler.js"() {
-    init_MathDocument();
-    DefaultMathDocument = class extends AbstractMathDocument {
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/ms.js
+var MmlMs;
+var init_ms = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/ms.js"() {
+    init_MmlNode();
+    MmlMs = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "ms";
+      }
     };
-    AbstractHandler = class {
-      constructor(adaptor, priority = 5) {
-        this.documentClass = DefaultMathDocument;
-        this.adaptor = adaptor;
-        this.priority = priority;
+    MmlMs.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { lquote: '"', rquote: '"' });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mrow.js
+var MmlMrow;
+var MmlInferredMrow;
+var init_mrow = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mrow.js"() {
+    init_MmlNode();
+    MmlMrow = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this._core = null;
+      }
+      get kind() {
+        return "mrow";
+      }
+      get isSpacelike() {
+        for (const child of this.childNodes) {
+          if (!child.isSpacelike) {
+            return false;
+          }
+        }
+        return true;
+      }
+      get isEmbellished() {
+        let embellished = false;
+        let i2 = 0;
+        for (const child of this.childNodes) {
+          if (child) {
+            if (child.isEmbellished) {
+              if (embellished) {
+                return false;
+              }
+              embellished = true;
+              this._core = i2;
+            } else if (!child.isSpacelike) {
+              return false;
+            }
+          }
+          i2++;
+        }
+        return embellished;
+      }
+      core() {
+        if (!this.isEmbellished || this._core == null) {
+          return this;
+        }
+        return this.childNodes[this._core];
+      }
+      coreMO() {
+        if (!this.isEmbellished || this._core == null) {
+          return this;
+        }
+        return this.childNodes[this._core].coreMO();
+      }
+      nonSpaceLength() {
+        let n = 0;
+        for (const child of this.childNodes) {
+          if (child && !child.isSpacelike) {
+            n++;
+          }
+        }
+        return n;
+      }
+      firstNonSpace() {
+        for (const child of this.childNodes) {
+          if (child && !child.isSpacelike) {
+            return child;
+          }
+        }
+        return null;
+      }
+      lastNonSpace() {
+        let i2 = this.childNodes.length;
+        while (--i2 >= 0) {
+          const child = this.childNodes[i2];
+          if (child && !child.isSpacelike) {
+            return child;
+          }
+        }
+        return null;
+      }
+      setTeXclass(prev) {
+        if (this.getProperty("open") != null || this.getProperty("close") != null) {
+          this.getPrevClass(prev);
+          prev = null;
+          for (const child of this.childNodes) {
+            prev = child.setTeXclass(prev);
+          }
+          if (this.texClass == null) {
+            this.texClass = TEXCLASS.INNER;
+          }
+          return this;
+        }
+        for (const child of this.childNodes) {
+          prev = child.setTeXclass(prev);
+        }
+        if (this.childNodes[0]) {
+          this.updateTeXclass(this.childNodes[0]);
+        }
+        return prev;
+      }
+    };
+    MmlMrow.defaults = Object.assign({}, AbstractMmlNode.defaults);
+    MmlInferredMrow = class extends MmlMrow {
+      get kind() {
+        return "inferredMrow";
+      }
+      get isInferred() {
+        return true;
+      }
+      get notParent() {
+        return true;
+      }
+      toString() {
+        return "[" + this.childNodes.join(",") + "]";
+      }
+    };
+    MmlInferredMrow.defaults = MmlMrow.defaults;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfrac.js
+var MmlMfrac;
+var init_mfrac = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfrac.js"() {
+    init_MmlNode();
+    MmlMfrac = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "mfrac";
+      }
+      get arity() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        if (!display || level > 0) {
+          level++;
+        }
+        const numalign = this.attributes.get("numalign");
+        const denalign = this.attributes.get("denomalign");
+        const numAttributes = this.addInheritedAttributes(Object.assign({}, attributes), {
+          numalign,
+          indentshift: "0",
+          indentalignfirst: numalign,
+          indentshiftfirst: "0",
+          indentalignlast: "indentalign",
+          indentshiftlast: "indentshift"
+        });
+        const denAttributes = this.addInheritedAttributes(Object.assign({}, attributes), {
+          denalign,
+          indentshift: "0",
+          indentalignfirst: denalign,
+          indentshiftfirst: "0",
+          indentalignlast: "indentalign",
+          indentshiftlast: "indentshift"
+        });
+        this.childNodes[0].setInheritedAttributes(numAttributes, false, level, prime);
+        this.childNodes[1].setInheritedAttributes(denAttributes, false, level, true);
+      }
+    };
+    MmlMfrac.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { linethickness: "medium", numalign: "center", denomalign: "center", bevelled: false });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msqrt.js
+var MmlMsqrt;
+var init_msqrt = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msqrt.js"() {
+    init_MmlNode();
+    MmlMsqrt = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "msqrt";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, _prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, true);
+      }
+    };
+    MmlMsqrt.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { "data-vertical-align": "bottom" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mroot.js
+var MmlMroot;
+var init_mroot = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mroot.js"() {
+    init_MmlNode();
+    MmlMroot = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mroot";
+      }
+      get arity() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        this.childNodes[1].setTeXclass(null);
+        return this;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, true);
+        this.childNodes[1].setInheritedAttributes(attributes, false, level + 2, prime);
+      }
+    };
+    MmlMroot.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { "data-vertical-align": "bottom" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mstyle.js
+var MmlMstyle;
+var init_mstyle = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mstyle.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMstyle = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "mstyle";
+      }
+      get notParent() {
+        return this.childNodes[0] && this.childNodes[0].childNodes.length === 1;
+      }
+      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
+        this.attributes.setInherited("displaystyle", display);
+        this.attributes.setInherited("scriptlevel", level);
+        super.setInheritedAttributes(attributes, display, level, prime);
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        let scriptlevel = this.attributes.getExplicit("scriptlevel");
+        if (scriptlevel != null) {
+          scriptlevel = scriptlevel.toString();
+          if (scriptlevel.match(/^\s*[-+]/)) {
+            level += parseInt(scriptlevel);
+          } else {
+            level = parseInt(scriptlevel);
+          }
+          prime = false;
+        }
+        const displaystyle = this.attributes.getExplicit("displaystyle");
+        if (displaystyle != null) {
+          display = displaystyle === true;
+          prime = false;
+        }
+        const cramped = this.attributes.getExplicit("data-cramped");
+        if (cramped != null) {
+          prime = cramped;
+        }
+        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MmlMstyle.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { scriptlevel: INHERIT, displaystyle: INHERIT, scriptsizemultiplier: 1 / Math.sqrt(2), scriptminsize: ".4em", mathbackground: INHERIT, mathcolor: INHERIT, dir: INHERIT, infixlinebreakstyle: "before" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/merror.js
+var MmlMerror;
+var init_merror = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/merror.js"() {
+    init_MmlNode();
+    MmlMerror = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "merror";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+    };
+    MmlMerror.defaults = Object.assign({}, AbstractMmlNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mpadded.js
+var MmlMpadded;
+var init_mpadded = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mpadded.js"() {
+    init_MmlNode();
+    MmlMpadded = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "mpadded";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        if (!this.getProperty("vbox")) {
+          return super.setTeXclass(prev);
+        }
+        this.getPrevClass(prev);
+        this.texClass = TEXCLASS.ORD;
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+    };
+    MmlMpadded.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { width: "", height: "", depth: "", lspace: 0, voffset: 0 });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mphantom.js
+var MmlMphantom;
+var init_mphantom = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mphantom.js"() {
+    init_MmlNode();
+    MmlMphantom = class extends AbstractMmlLayoutNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mphantom";
+      }
+    };
+    MmlMphantom.defaults = Object.assign({}, AbstractMmlLayoutNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfenced.js
+var MmlMfenced;
+var init_mfenced = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mfenced.js"() {
+    init_MmlNode();
+    MmlMfenced = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.INNER;
+        this.separators = [];
+        this.open = null;
+        this.close = null;
+      }
+      get kind() {
+        return "mfenced";
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        if (this.open) {
+          prev = this.open.setTeXclass(prev);
+        }
+        if (this.childNodes[0]) {
+          prev = this.childNodes[0].setTeXclass(prev);
+        }
+        for (let i2 = 1, m = this.childNodes.length; i2 < m; i2++) {
+          if (this.separators[i2 - 1]) {
+            prev = this.separators[i2 - 1].setTeXclass(prev);
+          }
+          if (this.childNodes[i2]) {
+            prev = this.childNodes[i2].setTeXclass(prev);
+          }
+        }
+        if (this.close) {
+          prev = this.close.setTeXclass(prev);
+        }
+        if (!this.open || !this.close) {
+          this.updateTeXclass(this.open || this.childNodes[0] || this.close);
+        }
+        return prev;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.addFakeNodes();
+        for (const child of [this.open, this.close].concat(this.separators)) {
+          if (child) {
+            child.setInheritedAttributes(attributes, display, level, prime);
+          }
+        }
+        super.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+      addFakeNodes() {
+        let { open, close, separators } = this.attributes.getList("open", "close", "separators");
+        open = open.replace(/[ \t\n\r]/g, "");
+        close = close.replace(/[ \t\n\r]/g, "");
+        separators = separators.replace(/[ \t\n\r]/g, "");
+        if (open) {
+          this.open = this.fakeNode(open, { fence: true, form: "prefix" }, TEXCLASS.OPEN);
+        }
+        if (separators) {
+          while (separators.length < this.childNodes.length - 1) {
+            separators += separators.charAt(separators.length - 1);
+          }
+          let i2 = 0;
+          for (const child of this.childNodes.slice(1)) {
+            if (child) {
+              this.separators.push(this.fakeNode(separators.charAt(i2++)));
+            }
+          }
+        }
+        if (close) {
+          this.close = this.fakeNode(close, { fence: true, form: "postfix" }, TEXCLASS.CLOSE);
+        }
+      }
+      fakeNode(c, properties = {}, texClass = null) {
+        const text = this.factory.create("text").setText(c);
+        const node = this.factory.create("mo", properties, [text]);
+        node.texClass = texClass;
+        node.parent = this;
+        return node;
+      }
+    };
+    MmlMfenced.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { open: "(", close: ")", separators: "," });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/menclose.js
+var MmlMenclose;
+var init_menclose = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/menclose.js"() {
+    init_MmlNode();
+    MmlMenclose = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "menclose";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setTeXclass(prev) {
+        prev = this.childNodes[0].setTeXclass(prev);
+        this.updateTeXclass(this.childNodes[0]);
+        return prev;
+      }
+    };
+    MmlMenclose.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { notation: "longdiv" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maction.js
+var MmlMaction;
+var init_maction = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maction.js"() {
+    init_MmlNode();
+    MmlMaction = class extends AbstractMmlNode {
+      get kind() {
+        return "maction";
+      }
+      get arity() {
+        return 1;
+      }
+      get selected() {
+        const selection = this.attributes.get("selection");
+        const i2 = Math.max(1, Math.min(this.childNodes.length, selection)) - 1;
+        return this.childNodes[i2] || this.factory.create("mrow");
+      }
+      get isEmbellished() {
+        return this.selected.isEmbellished;
+      }
+      get isSpacelike() {
+        return this.selected.isSpacelike;
+      }
+      core() {
+        return this.selected.core();
+      }
+      coreMO() {
+        return this.selected.coreMO();
+      }
+      verifyAttributes(options3) {
+        super.verifyAttributes(options3);
+        if (this.attributes.get("actiontype") !== "toggle" && this.attributes.hasExplicit("selection")) {
+          this.attributes.unset("selection");
+        }
+      }
+      setTeXclass(prev) {
+        if (this.attributes.get("actiontype") === "tooltip" && this.childNodes[1]) {
+          this.childNodes[1].setTeXclass(null);
+        }
+        const selected = this.selected;
+        prev = selected.setTeXclass(prev);
+        this.updateTeXclass(selected);
+        return prev;
+      }
+      nextToggleSelection() {
+        let selection = Math.max(1, parseInt(this.attributes.get("selection")) + 1);
+        if (selection > this.childNodes.length) {
+          selection = 1;
+        }
+        this.attributes.set("selection", selection);
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        var _a2, _b2;
+        if (this.attributes.get("actiontype").toLowerCase() !== "tooltip") {
+          super.setChildInheritedAttributes(attributes, display, level, prime);
+          return;
+        }
+        (_a2 = this.childNodes[0]) === null || _a2 === void 0 ? void 0 : _a2.setInheritedAttributes(attributes, display, level, prime);
+        (_b2 = this.childNodes[1]) === null || _b2 === void 0 ? void 0 : _b2.setInheritedAttributes(attributes, false, 1, false);
+      }
+    };
+    MmlMaction.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { actiontype: "toggle", selection: 1 });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msubsup.js
+var MmlMsubsup;
+var MmlMsub;
+var MmlMsup;
+var init_msubsup = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/msubsup.js"() {
+    init_MmlNode();
+    MmlMsubsup = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "msubsup";
+      }
+      get arity() {
+        return 3;
+      }
+      get base() {
+        return 0;
+      }
+      get sub() {
+        return 1;
+      }
+      get sup() {
+        return 2;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        const nodes = this.childNodes;
+        nodes[0].setInheritedAttributes(attributes, display, level, prime);
+        nodes[1].setInheritedAttributes(attributes, false, level + 1, prime || this.sub === 1);
+        if (!nodes[2]) {
+          return;
+        }
+        nodes[2].setInheritedAttributes(attributes, false, level + 1, prime || this.sub === 2);
+      }
+    };
+    MmlMsubsup.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { subscriptshift: "", superscriptshift: "" });
+    MmlMsub = class extends MmlMsubsup {
+      get kind() {
+        return "msub";
+      }
+      get arity() {
+        return 2;
+      }
+    };
+    MmlMsub.defaults = Object.assign({}, MmlMsubsup.defaults);
+    MmlMsup = class extends MmlMsubsup {
+      get kind() {
+        return "msup";
+      }
+      get arity() {
+        return 2;
+      }
+      get sup() {
+        return 1;
+      }
+      get sub() {
+        return 2;
+      }
+    };
+    MmlMsup.defaults = Object.assign({}, MmlMsubsup.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/munderover.js
+var MmlMunderover;
+var MmlMunder;
+var MmlMover;
+var init_munderover = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/munderover.js"() {
+    init_MmlNode();
+    MmlMunderover = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "munderover";
+      }
+      get arity() {
+        return 3;
+      }
+      get base() {
+        return 0;
+      }
+      get under() {
+        return 1;
+      }
+      get over() {
+        return 2;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        const nodes = this.childNodes;
+        nodes[0].setInheritedAttributes(attributes, display, level, prime || !!nodes[this.over]);
+        const force = !!(!display && nodes[0].coreMO().attributes.get("movablelimits"));
+        const ACCENTS = this.constructor.ACCENTS;
+        nodes[1].setInheritedAttributes(attributes, false, this.getScriptlevel(ACCENTS[1], force, level), prime || this.under === 1);
+        this.setInheritedAccent(1, ACCENTS[1], display, level, prime, force);
+        if (!nodes[2]) {
+          return;
+        }
+        nodes[2].setInheritedAttributes(attributes, false, this.getScriptlevel(ACCENTS[2], force, level), prime || this.under === 2);
+        this.setInheritedAccent(2, ACCENTS[2], display, level, prime, force);
+      }
+      getScriptlevel(accent, force, level) {
+        if (force || !this.attributes.get(accent)) {
+          level++;
+        }
+        return level;
+      }
+      setInheritedAccent(n, accent, display, level, prime, force) {
+        const node = this.childNodes[n];
+        if (!this.attributes.hasExplicit(accent) && node.isEmbellished) {
+          const value = node.coreMO().attributes.get("accent");
+          this.attributes.setInherited(accent, value);
+          if (value !== this.attributes.getDefault(accent)) {
+            node.setInheritedAttributes({}, display, this.getScriptlevel(accent, force, level), prime);
+          }
+        }
+      }
+    };
+    MmlMunderover.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { accent: false, accentunder: false, align: "center" });
+    MmlMunderover.ACCENTS = ["", "accentunder", "accent"];
+    MmlMunder = class extends MmlMunderover {
+      get kind() {
+        return "munder";
+      }
+      get arity() {
+        return 2;
+      }
+    };
+    MmlMunder.defaults = Object.assign({}, MmlMunderover.defaults);
+    MmlMover = class extends MmlMunderover {
+      get kind() {
+        return "mover";
+      }
+      get arity() {
+        return 2;
+      }
+      get over() {
+        return 1;
+      }
+      get under() {
+        return 2;
+      }
+    };
+    MmlMover.defaults = Object.assign({}, MmlMunderover.defaults);
+    MmlMover.ACCENTS = ["", "accent", "accentunder"];
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mmultiscripts.js
+var MmlMmultiscripts;
+var MmlMprescripts;
+var MmlNone;
+var init_mmultiscripts = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mmultiscripts.js"() {
+    init_MmlNode();
+    init_msubsup();
+    MmlMmultiscripts = class extends MmlMsubsup {
+      get kind() {
+        return "mmultiscripts";
+      }
+      get arity() {
+        return 1;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        this.childNodes[0].setInheritedAttributes(attributes, display, level, prime);
+        let prescripts = false;
+        for (let i2 = 1, n = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mprescripts")) {
+            if (!prescripts) {
+              prescripts = true;
+              if (i2 % 2 === 0) {
+                const none = this.factory.create("none");
+                this.childNodes.splice(i2, 0, none);
+                none.parent = this;
+                i2++;
+              }
+            }
+          } else {
+            const primestyle = prime || n % 2 === 0;
+            child.setInheritedAttributes(attributes, false, level + 1, primestyle);
+            n++;
+          }
+        }
+        if (this.childNodes.length % 2 === (prescripts ? 1 : 0)) {
+          this.appendChild(this.factory.create("none"));
+          this.childNodes[this.childNodes.length - 1].setInheritedAttributes(attributes, false, level + 1, prime);
+        }
+      }
+      verifyChildren(options3) {
+        let prescripts = false;
+        const fix = options3["fixMmultiscripts"];
+        for (let i2 = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mprescripts")) {
+            if (prescripts) {
+              child.mError(child.kind + " can only appear once in " + this.kind, options3, true);
+            } else {
+              prescripts = true;
+              if (i2 % 2 === 0 && !fix) {
+                this.mError("There must be an equal number of prescripts of each type", options3);
+              }
+            }
+          }
+        }
+        if (this.childNodes.length % 2 === (prescripts ? 1 : 0) && !fix) {
+          this.mError("There must be an equal number of scripts of each type", options3);
+        }
+        super.verifyChildren(options3);
+      }
+    };
+    MmlMmultiscripts.defaults = Object.assign({}, MmlMsubsup.defaults);
+    MmlMprescripts = class extends AbstractMmlNode {
+      get kind() {
+        return "mprescripts";
+      }
+      get arity() {
+        return 0;
+      }
+      verifyTree(options3) {
+        super.verifyTree(options3);
+        if (this.parent && !this.parent.isKind("mmultiscripts")) {
+          this.mError(this.kind + " must be a child of mmultiscripts", options3, true);
+        }
+      }
+    };
+    MmlMprescripts.defaults = Object.assign({}, AbstractMmlNode.defaults);
+    MmlNone = class extends AbstractMmlNode {
+      get kind() {
+        return "none";
+      }
+      get arity() {
+        return 0;
+      }
+      verifyTree(options3) {
+        super.verifyTree(options3);
+        if (this.parent && !this.parent.isKind("mmultiscripts")) {
+          this.mError(this.kind + " must be a child of mmultiscripts", options3, true);
+        }
+      }
+    };
+    MmlNone.defaults = Object.assign({}, AbstractMmlNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtable.js
+var MmlMtable;
+var init_mtable = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtable.js"() {
+    init_MmlNode();
+    init_string();
+    MmlMtable = class extends AbstractMmlNode {
+      constructor() {
+        super(...arguments);
+        this.properties = {
+          useHeight: true
+        };
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mtable";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setInheritedAttributes(attributes, display, level, prime) {
+        for (const name of indentAttributes) {
+          if (attributes[name]) {
+            this.attributes.setInherited(name, attributes[name][1]);
+          }
+          if (this.attributes.hasExplicit(name)) {
+            this.attributes.unset(name);
+          }
+        }
+        super.setInheritedAttributes(attributes, display, level, prime);
+      }
+      setChildInheritedAttributes(attributes, display, level, _prime) {
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtr")) {
+            this.replaceChild(this.factory.create("mtr"), child).appendChild(child);
+          }
+        }
+        display = !!(this.attributes.getExplicit("displaystyle") || this.attributes.getDefault("displaystyle"));
+        attributes = this.addInheritedAttributes(attributes, {
+          columnalign: this.attributes.get("columnalign"),
+          rowalign: "center",
+          "data-break-align": this.attributes.get("data-break-align")
+        });
+        const cramped = this.attributes.getExplicit("data-cramped");
+        const ralign = split(this.attributes.get("rowalign"));
+        for (const child of this.childNodes) {
+          attributes.rowalign[1] = ralign.shift() || attributes.rowalign[1];
+          child.setInheritedAttributes(attributes, display, level, !!cramped);
+        }
+      }
+      verifyChildren(options3) {
+        let mtr = null;
+        const factory = this.factory;
+        for (let i2 = 0; i2 < this.childNodes.length; i2++) {
+          const child = this.childNodes[i2];
+          if (child.isKind("mtr")) {
+            mtr = null;
+          } else {
+            const isMtd = child.isKind("mtd");
+            if (mtr) {
+              this.removeChild(child);
+              i2--;
+            } else {
+              mtr = this.replaceChild(factory.create("mtr"), child);
+            }
+            mtr.appendChild(isMtd ? child : factory.create("mtd", {}, [child]));
+            if (!options3["fixMtables"]) {
+              child.parent.removeChild(child);
+              child.parent = this;
+              if (isMtd) {
+                mtr.appendChild(factory.create("mtd"));
+              }
+              const merror = child.mError("Children of " + this.kind + " must be mtr or mlabeledtr", options3, isMtd);
+              mtr.childNodes[mtr.childNodes.length - 1].appendChild(merror);
+            }
+          }
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+    };
+    MmlMtable.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { align: "axis", rowalign: "baseline", columnalign: "center", groupalign: "{left}", alignmentscope: true, columnwidth: "auto", width: "auto", rowspacing: "1ex", columnspacing: ".8em", rowlines: "none", columnlines: "none", frame: "none", framespacing: "0.4em 0.5ex", equalrows: false, equalcolumns: false, displaystyle: false, side: "right", minlabelspacing: "0.8em", "data-break-align": "top" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtr.js
+var MmlMtr;
+var MmlMlabeledtr;
+var init_mtr = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtr.js"() {
+    init_MmlNode();
+    init_Attributes();
+    init_string();
+    MmlMtr = class extends AbstractMmlNode {
+      get kind() {
+        return "mtr";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtd")) {
+            this.replaceChild(this.factory.create("mtd"), child).appendChild(child);
+          }
+        }
+        const calign = split(this.attributes.get("columnalign"));
+        const balign = split(this.attributes.get("data-break-align"));
+        if (this.arity === 1) {
+          calign.unshift(this.parent.attributes.get("side"));
+          balign.unshift("top");
+        }
+        attributes = this.addInheritedAttributes(attributes, {
+          rowalign: this.attributes.get("rowalign"),
+          columnalign: "center",
+          "data-break-align": "top"
+        });
+        for (const child of this.childNodes) {
+          attributes.columnalign[1] = calign.shift() || attributes.columnalign[1];
+          attributes["data-vertical-align"] = [
+            this.kind,
+            balign.shift() || attributes["data-break-align"][1]
+          ];
+          child.setInheritedAttributes(attributes, display, level, prime);
+        }
+      }
+      verifyChildren(options3) {
+        if (this.parent && !this.parent.isKind("mtable")) {
+          this.mError(this.kind + " can only be a child of an mtable", options3, true);
+          return;
+        }
+        for (const child of this.childNodes) {
+          if (!child.isKind("mtd")) {
+            const mtd = this.replaceChild(this.factory.create("mtd"), child);
+            mtd.appendChild(child);
+            if (!options3["fixMtables"]) {
+              child.mError("Children of " + this.kind + " must be mtd", options3);
+            }
+          }
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        for (const child of this.childNodes) {
+          child.setTeXclass(null);
+        }
+        return this;
+      }
+    };
+    MmlMtr.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { rowalign: INHERIT, columnalign: INHERIT, groupalign: INHERIT, "data-break-align": "top" });
+    MmlMlabeledtr = class extends MmlMtr {
+      get kind() {
+        return "mlabeledtr";
+      }
+      get arity() {
+        return 1;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtd.js
+var MmlMtd;
+var init_mtd = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtd.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMtd = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "mtd";
+      }
+      get arity() {
+        return -1;
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "columnalign";
+      }
+      verifyChildren(options3) {
+        if (this.parent && !this.parent.isKind("mtr")) {
+          this.mError(this.kind + " can only be a child of an mtr or mlabeledtr", options3, true);
+          return;
+        }
+        super.verifyChildren(options3);
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.childNodes[0].setTeXclass(null);
+        return this;
+      }
+    };
+    MmlMtd.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { rowspan: 1, columnspan: 1, rowalign: INHERIT, columnalign: INHERIT, groupalign: INHERIT, "data-vertical-align": "top" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maligngroup.js
+var MmlMaligngroup;
+var init_maligngroup = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/maligngroup.js"() {
+    init_MmlNode();
+    init_Attributes();
+    MmlMaligngroup = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "maligngroup";
+      }
+      get isSpacelike() {
+        return true;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
+        super.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MmlMaligngroup.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { groupalign: INHERIT });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/malignmark.js
+var MmlMalignmark;
+var init_malignmark = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/malignmark.js"() {
+    init_MmlNode();
+    MmlMalignmark = class extends AbstractMmlNode {
+      get kind() {
+        return "malignmark";
+      }
+      get arity() {
+        return 0;
+      }
+      get isSpacelike() {
+        return true;
+      }
+    };
+    MmlMalignmark.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { edge: "left" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mglyph.js
+var MmlMglyph;
+var init_mglyph = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mglyph.js"() {
+    init_MmlNode();
+    MmlMglyph = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mglyph";
+      }
+      verifyAttributes(options3) {
+        const { src, fontfamily, index } = this.attributes.getList("src", "fontfamily", "index");
+        if (src === "" && (fontfamily === "" || index === "")) {
+          this.mError("mglyph must have either src or fontfamily and index attributes", options3, true);
+        } else {
+          super.verifyAttributes(options3);
+        }
+      }
+    };
+    MmlMglyph.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), { alt: "", src: "", index: "", width: "auto", height: "auto", valign: "0em" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/semantics.js
+var MmlSemantics;
+var MmlAnnotationXML;
+var MmlAnnotation;
+var init_semantics = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/semantics.js"() {
+    init_MmlNode();
+    MmlSemantics = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "semantics";
+      }
+      get arity() {
+        return 1;
+      }
+      get notParent() {
+        return true;
+      }
+    };
+    MmlSemantics.defaults = Object.assign(Object.assign({}, AbstractMmlBaseNode.defaults), { definitionUrl: null, encoding: null });
+    MmlAnnotationXML = class extends AbstractMmlNode {
+      get kind() {
+        return "annotation-xml";
+      }
+      setChildInheritedAttributes() {
+      }
+    };
+    MmlAnnotationXML.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { definitionUrl: null, encoding: null, cd: "mathmlkeys", name: "", src: null });
+    MmlAnnotation = class extends MmlAnnotationXML {
+      constructor() {
+        super(...arguments);
+        this.properties = {
+          isChars: true
+        };
+      }
+      get kind() {
+        return "annotation";
+      }
+    };
+    MmlAnnotation.defaults = Object.assign({}, MmlAnnotationXML.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/TeXAtom.js
+var TeXAtom;
+var init_TeXAtom = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/TeXAtom.js"() {
+    init_MmlNode();
+    init_mo();
+    TeXAtom = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "TeXAtom";
+      }
+      get arity() {
+        return -1;
+      }
+      get notParent() {
+        return true;
+      }
+      constructor(factory, attributes, children) {
+        super(factory, attributes, children);
+        this.texclass = TEXCLASS.ORD;
+        this.setProperty("texClass", this.texClass);
+      }
+      setTeXclass(prev) {
+        this.childNodes[0].setTeXclass(null);
+        return this.adjustTeXclass(prev);
+      }
+      adjustTeXclass(prev) {
+        return prev;
+      }
+    };
+    TeXAtom.defaults = Object.assign({}, AbstractMmlBaseNode.defaults);
+    TeXAtom.prototype.adjustTeXclass = MmlMo.prototype.adjustTeXclass;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mathchoice.js
+var MathChoice;
+var init_mathchoice = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mathchoice.js"() {
+    init_MmlNode();
+    MathChoice = class extends AbstractMmlBaseNode {
+      get kind() {
+        return "MathChoice";
+      }
+      get arity() {
+        return 4;
+      }
+      get notParent() {
+        return true;
+      }
+      setInheritedAttributes(attributes, display, level, prime) {
+        const selection = display ? 0 : Math.max(0, Math.min(level, 2)) + 1;
+        const child = this.childNodes[selection] || this.factory.create("mrow");
+        this.parent.replaceChild(child, this);
+        child.setInheritedAttributes(attributes, display, level, prime);
+      }
+    };
+    MathChoice.defaults = Object.assign({}, AbstractMmlBaseNode.defaults);
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/HtmlNode.js
+var HtmlNode;
+var init_HtmlNode = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/HtmlNode.js"() {
+    init_MmlNode();
+    HtmlNode = class extends XMLNode {
+      get kind() {
+        return "html";
+      }
+      getHTML() {
+        return this.getXML();
+      }
+      setHTML(html2, adaptor = null) {
+        try {
+          adaptor.getAttribute(html2, "data-mjx-hdw");
+        } catch (_error) {
+          html2 = adaptor.node("span", {}, [html2]);
+        }
+        return this.setXML(html2, adaptor);
+      }
+      getSerializedHTML() {
+        return this.adaptor.outerHTML(this.xml);
+      }
+      textContent() {
+        return this.adaptor.textContent(this.xml);
+      }
+      toString() {
+        const kind = this.adaptor.kind(this.xml);
+        return `HTML=<${kind}>...</${kind}>`;
+      }
+      verifyTree(options3) {
+        if (this.parent && !this.parent.isToken) {
+          this.mError("HTML can only be a child of a token element", options3, true);
+          return;
+        }
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MML.js
+var MML;
+var init_MML = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MML.js"() {
+    init_MmlNode();
+    init_math();
+    init_mi();
+    init_mn();
+    init_mo();
+    init_mtext();
+    init_mspace();
+    init_ms();
+    init_mrow();
+    init_mfrac();
+    init_msqrt();
+    init_mroot();
+    init_mstyle();
+    init_merror();
+    init_mpadded();
+    init_mphantom();
+    init_mfenced();
+    init_menclose();
+    init_maction();
+    init_msubsup();
+    init_munderover();
+    init_mmultiscripts();
+    init_mtable();
+    init_mtr();
+    init_mtd();
+    init_maligngroup();
+    init_malignmark();
+    init_mglyph();
+    init_semantics();
+    init_TeXAtom();
+    init_mathchoice();
+    init_HtmlNode();
+    MML = {
+      [MmlMath.prototype.kind]: MmlMath,
+      [MmlMi.prototype.kind]: MmlMi,
+      [MmlMn.prototype.kind]: MmlMn,
+      [MmlMo.prototype.kind]: MmlMo,
+      [MmlMtext.prototype.kind]: MmlMtext,
+      [MmlMspace.prototype.kind]: MmlMspace,
+      [MmlMs.prototype.kind]: MmlMs,
+      [MmlMrow.prototype.kind]: MmlMrow,
+      [MmlInferredMrow.prototype.kind]: MmlInferredMrow,
+      [MmlMfrac.prototype.kind]: MmlMfrac,
+      [MmlMsqrt.prototype.kind]: MmlMsqrt,
+      [MmlMroot.prototype.kind]: MmlMroot,
+      [MmlMstyle.prototype.kind]: MmlMstyle,
+      [MmlMerror.prototype.kind]: MmlMerror,
+      [MmlMpadded.prototype.kind]: MmlMpadded,
+      [MmlMphantom.prototype.kind]: MmlMphantom,
+      [MmlMfenced.prototype.kind]: MmlMfenced,
+      [MmlMenclose.prototype.kind]: MmlMenclose,
+      [MmlMaction.prototype.kind]: MmlMaction,
+      [MmlMsub.prototype.kind]: MmlMsub,
+      [MmlMsup.prototype.kind]: MmlMsup,
+      [MmlMsubsup.prototype.kind]: MmlMsubsup,
+      [MmlMunder.prototype.kind]: MmlMunder,
+      [MmlMover.prototype.kind]: MmlMover,
+      [MmlMunderover.prototype.kind]: MmlMunderover,
+      [MmlMmultiscripts.prototype.kind]: MmlMmultiscripts,
+      [MmlMprescripts.prototype.kind]: MmlMprescripts,
+      [MmlNone.prototype.kind]: MmlNone,
+      [MmlMtable.prototype.kind]: MmlMtable,
+      [MmlMlabeledtr.prototype.kind]: MmlMlabeledtr,
+      [MmlMtr.prototype.kind]: MmlMtr,
+      [MmlMtd.prototype.kind]: MmlMtd,
+      [MmlMaligngroup.prototype.kind]: MmlMaligngroup,
+      [MmlMalignmark.prototype.kind]: MmlMalignmark,
+      [MmlMglyph.prototype.kind]: MmlMglyph,
+      [MmlSemantics.prototype.kind]: MmlSemantics,
+      [MmlAnnotation.prototype.kind]: MmlAnnotation,
+      [MmlAnnotationXML.prototype.kind]: MmlAnnotationXML,
+      [TeXAtom.prototype.kind]: TeXAtom,
+      [MathChoice.prototype.kind]: MathChoice,
+      [TextNode.prototype.kind]: TextNode,
+      [XMLNode.prototype.kind]: XMLNode,
+      [HtmlNode.prototype.kind]: HtmlNode
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlFactory.js
+var MmlFactory;
+var init_MmlFactory = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlFactory.js"() {
+    init_NodeFactory();
+    init_MML();
+    MmlFactory = class extends AbstractNodeFactory {
+      get MML() {
+        return this.node;
+      }
+    };
+    MmlFactory.defaultNodes = MML;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/Visitor.js
+var AbstractVisitor;
+var init_Visitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/Visitor.js"() {
+    AbstractVisitor = class _AbstractVisitor {
+      static methodName(kind) {
+        return "visit" + (kind.charAt(0).toUpperCase() + kind.substring(1)).replace(/[^a-z0-9_]/gi, "_") + "Node";
+      }
+      constructor(factory) {
+        this.nodeHandlers = /* @__PURE__ */ new Map();
+        for (const kind of factory.getKinds()) {
+          const method = this[_AbstractVisitor.methodName(kind)];
+          if (method) {
+            this.nodeHandlers.set(kind, method);
+          }
+        }
+      }
+      visitTree(tree, ...args) {
+        return this.visitNode(tree, ...args);
+      }
+      visitNode(node, ...args) {
+        const handler = this.nodeHandlers.get(node.kind) || this.visitDefault;
+        return handler.call(this, node, ...args);
+      }
+      visitDefault(node, ...args) {
+        if ("childNodes" in node) {
+          for (const child of node.childNodes) {
+            this.visitNode(child, ...args);
+          }
+        }
+      }
+      setNodeHandler(kind, handler) {
+        this.nodeHandlers.set(kind, handler);
+      }
+      removeNodeHandler(kind) {
+        this.nodeHandlers.delete(kind);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlVisitor.js
+var DATAMJX;
+var MmlVisitor;
+var init_MmlVisitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlVisitor.js"() {
+    init_MmlNode();
+    init_mi();
+    init_MmlFactory();
+    init_Visitor();
+    init_Options();
+    DATAMJX = "data-mjx-";
+    MmlVisitor = class extends AbstractVisitor {
+      constructor(factory = null) {
+        if (!factory) {
+          factory = new MmlFactory();
+        }
+        super(factory);
+      }
+      visitTextNode(_node, ..._args) {
+      }
+      visitXMLNode(_node, ..._args) {
+      }
+      visitHtmlNode(_node, ..._args) {
+      }
+      getKind(node) {
+        const kind = node.kind;
+        return lookup(kind, this.constructor.rename, kind);
+      }
+      getAttributeList(node) {
+        const CLASS = this.constructor;
+        const defaults = lookup(node.kind, CLASS.defaultAttributes, {});
+        const attributes = Object.assign({}, defaults, this.getDataAttributes(node), node.attributes.getAllAttributes());
+        const variants = CLASS.variants;
+        if (Object.hasOwn(attributes, "mathvariant")) {
+          if (Object.hasOwn(variants, attributes.mathvariant)) {
+            attributes.mathvariant = variants[attributes.mathvariant];
+          } else if (node.getProperty("ignore-variant")) {
+            delete attributes.mathvariant;
+          }
+        }
+        return attributes;
+      }
+      getDataAttributes(node) {
+        const data = {};
+        const variant = node.attributes.getExplicit("mathvariant");
+        const variants = this.constructor.variants;
+        if (variant && (node.getProperty("ignore-variant") || Object.hasOwn(variants, variant))) {
+          this.setDataAttribute(data, "variant", variant);
+        }
+        if (node.getProperty("variantForm")) {
+          this.setDataAttribute(data, "alternate", "1");
+        }
+        if (node.getProperty("pseudoscript")) {
+          this.setDataAttribute(data, "pseudoscript", "true");
+        }
+        if (node.getProperty("autoOP") === false) {
+          this.setDataAttribute(data, "auto-op", "false");
+        }
+        const vbox = node.getProperty("vbox");
+        if (vbox) {
+          this.setDataAttribute(data, "vbox", vbox);
+        }
+        const scriptalign = node.getProperty("scriptalign");
+        if (scriptalign) {
+          this.setDataAttribute(data, "script-align", scriptalign);
+        }
+        const accent = node.getProperty("mathaccent");
+        if (accent !== void 0) {
+          if (accent && !node.isMathAccent() || !accent && !node.isMathAccentWithWidth()) {
+            this.setDataAttribute(data, "mathaccent", accent.toString());
+          }
+        }
+        const texclass = node.getProperty("texClass");
+        if (texclass !== void 0) {
+          let setclass = true;
+          if (texclass === TEXCLASS.OP && node.isKind("mi")) {
+            const name = node.getText();
+            setclass = !(name.length > 1 && name.match(MmlMi.operatorName));
+          }
+          if (setclass) {
+            this.setDataAttribute(data, "texclass", texclass < 0 ? "NONE" : TEXCLASSNAMES[texclass]);
+          }
+        }
+        if (node.getProperty("smallmatrix")) {
+          this.setDataAttribute(data, "smallmatrix", "true");
+        }
+        return data;
+      }
+      setDataAttribute(data, name, value) {
+        data[DATAMJX + name] = value;
+      }
+    };
+    MmlVisitor.rename = {
+      TeXAtom: "mrow"
+    };
+    MmlVisitor.variants = {
+      "-tex-calligraphic": "script",
+      "-tex-bold-calligraphic": "bold-script",
+      "-tex-oldstyle": "normal",
+      "-tex-bold-oldstyle": "bold",
+      "-tex-mathit": "italic"
+    };
+    MmlVisitor.defaultAttributes = {
+      math: {
+        xmlns: "http://www.w3.org/1998/Math/MathML"
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/SerializedMmlVisitor.js
+var SerializedMmlVisitor;
+var init_SerializedMmlVisitor = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/SerializedMmlVisitor.js"() {
+    init_MmlVisitor();
+    init_string();
+    SerializedMmlVisitor = class extends MmlVisitor {
+      visitTree(node) {
+        return this.visitNode(node, "");
+      }
+      visitTextNode(node, _space) {
+        return this.quoteHTML(node.getText());
+      }
+      visitXMLNode(node, space) {
+        return space + node.getSerializedXML();
+      }
+      visitHtmlNode(node, _space) {
+        return node.getSerializedHTML();
+      }
+      visitInferredMrowNode(node, space) {
+        const mml = [];
+        for (const child of node.childNodes) {
+          mml.push(this.visitNode(child, space));
+        }
+        return mml.join("\n");
+      }
+      visitAnnotationNode(node, space) {
+        const children = this.childNodeMml(node, "", "");
+        return `${space}<annotation${this.getAttributes(node)}>${children}</annotation>`;
+      }
+      visitDefault(node, space) {
+        const kind = this.getKind(node);
+        const [nl, endspace] = node.isToken || node.childNodes.length === 0 ? ["", ""] : ["\n", space];
+        const children = this.childNodeMml(node, space + "  ", nl);
+        const childNode = children.match(/\S/) ? nl + children + endspace : "";
+        return `${space}<${kind}${this.getAttributes(node)}>${childNode}</${kind}>`;
+      }
+      childNodeMml(node, space, nl) {
+        let mml = "";
+        for (const child of node.childNodes) {
+          mml += this.visitNode(child, space) + nl;
+        }
+        return mml;
+      }
+      getAttributes(node) {
+        const attr = [];
+        const attributes = this.getAttributeList(node);
+        for (const name of Object.keys(attributes)) {
+          const value = String(attributes[name]);
+          if (value === void 0)
+            continue;
+          attr.push(name + '="' + this.quoteHTML(value) + '"');
+        }
+        return attr.length ? " " + attr.join(" ") : "";
+      }
+      quoteHTML(value) {
+        return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\uD800-\uDBFF]./g, this.toEntity).replace(/[\u0080-\uD7FF\uE000-\uFFFF]/g, this.toEntity);
+      }
+      toEntity(c) {
+        return toEntity(c);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/FunctionList.js
+var FunctionList;
+var init_FunctionList = __esm({
+  "node_modules/@mathjax/src/mjs/util/FunctionList.js"() {
+    init_PrioritizedList();
+    FunctionList = class extends PrioritizedList {
+      constructor(list3 = null) {
+        super();
+        if (list3) {
+          this.addList(list3);
+        }
+      }
+      addList(list3) {
+        for (const item of list3) {
+          if (Array.isArray(item)) {
+            this.add(item[0], item[1]);
+          } else {
+            this.add(item);
+          }
+        }
+      }
+      execute(...data) {
+        for (const item of this) {
+          const result = item.item(...data);
+          if (result === false) {
+            return false;
+          }
+        }
+        return true;
+      }
+      asyncExecute(...data) {
+        let i2 = -1;
+        const items = this.items;
+        return new Promise((ok, fail2) => {
+          (function execute() {
+            while (++i2 < items.length) {
+              const result = items[i2].item(...data);
+              if (result instanceof Promise) {
+                result.then(execute).catch((err2) => fail2(err2));
+                return;
+              }
+              if (result === false) {
+                ok(false);
+                return;
+              }
+            }
+            ok(true);
+          })();
+        });
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/InputJax.js
+var AbstractInputJax;
+var init_InputJax = __esm({
+  "node_modules/@mathjax/src/mjs/core/InputJax.js"() {
+    init_Options();
+    init_FunctionList();
+    AbstractInputJax = class {
+      constructor(options3 = {}) {
+        this.adaptor = null;
+        this.mmlFactory = null;
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.preFilters = new FunctionList(this.options.preFilters);
+        this.postFilters = new FunctionList(this.options.postFilters);
       }
       get name() {
         return this.constructor.NAME;
       }
-      handlesDocument(_document) {
-        return false;
+      setAdaptor(adaptor) {
+        this.adaptor = adaptor;
       }
-      create(document, options3) {
-        return new this.documentClass(document, this.adaptor, options3);
+      setMmlFactory(mmlFactory) {
+        this.mmlFactory = mmlFactory;
       }
-    };
-    AbstractHandler.NAME = "generic";
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js
-var HTMLMathItem;
-var init_HTMLMathItem = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathItem.js"() {
-    init_MathItem();
-    HTMLMathItem = class extends AbstractMathItem {
-      get adaptor() {
-        return this.inputJax.adaptor;
+      initialize() {
       }
-      constructor(math, jax, display = true, start = { node: null, n: 0, delim: "" }, end = { node: null, n: 0, delim: "" }) {
-        super(math, jax, display, start, end);
+      reset(..._args) {
       }
-      updateDocument(_html) {
-        if (this.state() < STATE.INSERTED) {
-          if (this.inputJax.processStrings) {
-            let node = this.start.node;
-            if (node === this.end.node) {
-              if (this.end.n && this.end.n < this.adaptor.value(this.end.node).length) {
-                this.adaptor.split(this.end.node, this.end.n);
-              }
-              if (this.start.n) {
-                node = this.adaptor.split(this.start.node, this.start.n);
-              }
-              if (this.adaptor.parent(node)) {
-                this.adaptor.replace(this.typesetRoot, node);
-              }
-            } else {
-              if (this.start.n) {
-                node = this.adaptor.split(node, this.start.n);
-              }
-              while (node !== this.end.node) {
-                const next = this.adaptor.next(node);
-                this.adaptor.remove(node);
-                node = next;
-              }
-              this.adaptor.insert(this.typesetRoot, node);
-              if (this.end.n < this.adaptor.value(node).length) {
-                this.adaptor.split(node, this.end.n);
-              }
-              this.adaptor.remove(node);
-            }
-          } else {
-            this.adaptor.replace(this.typesetRoot, this.start.node);
-          }
-          this.start.node = this.end.node = this.typesetRoot;
-          this.start.n = this.end.n = 0;
-          this.state(STATE.INSERTED);
-        }
-      }
-      updateStyleSheet(document) {
-        document.addStyleSheet();
-      }
-      removeFromDocument(restore = false) {
-        super.removeFromDocument(restore);
-        if (this.state() >= STATE.TYPESET) {
-          const adaptor = this.adaptor;
-          const node = this.start.node;
-          let math = adaptor.text("");
-          if (restore) {
-            const text = this.start.delim + this.math + this.end.delim;
-            if (this.inputJax.processStrings) {
-              math = adaptor.text(text);
-            } else {
-              const doc = adaptor.parse(text, "text/html");
-              math = adaptor.firstChild(adaptor.body(doc));
-            }
-          }
-          if (adaptor.parent(node)) {
-            adaptor.replace(math, node);
-          }
-          this.start.node = this.end.node = math;
-          this.start.n = this.end.n = 0;
-        }
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js
-var HTMLMathList;
-var init_HTMLMathList = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html/HTMLMathList.js"() {
-    init_MathList();
-    HTMLMathList = class extends AbstractMathList {
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js
-var HTMLDomStrings;
-var init_HTMLDomStrings = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDomStrings.js"() {
-    init_Options();
-    HTMLDomStrings = class {
-      constructor(options3 = null) {
-        const CLASS = this.constructor;
-        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
-        this.init();
-        this.getPatterns();
-      }
-      init() {
-        this.strings = [];
-        this.string = "";
-        this.snodes = [];
-        this.nodes = [];
-        this.stack = [];
-      }
-      getPatterns() {
-        const skip = makeArray(this.options["skipHtmlTags"]);
-        const ignore = makeArray(this.options["ignoreHtmlClass"]);
-        const process2 = makeArray(this.options["processHtmlClass"]);
-        this.skipHtmlTags = new RegExp("^(?:" + skip.join("|") + ")$", "i");
-        this.ignoreHtmlClass = new RegExp("(?:^| )(?:" + ignore.join("|") + ")(?: |$)");
-        this.processHtmlClass = new RegExp("(?:^| )(?:" + process2 + ")(?: |$)");
-      }
-      pushString() {
-        if (this.string.match(/\S/)) {
-          this.strings.push(this.string);
-          this.nodes.push(this.snodes);
-        }
-        this.string = "";
-        this.snodes = [];
-      }
-      extendString(node, text) {
-        this.snodes.push([node, text.length]);
-        this.string += text;
-      }
-      handleText(node, ignore) {
-        if (!ignore) {
-          this.extendString(node, this.adaptor.value(node));
-        }
-        return this.adaptor.next(node);
-      }
-      handleTag(node, ignore) {
-        if (!ignore) {
-          const text = this.options["includeHtmlTags"][this.adaptor.kind(node)];
-          if (text instanceof Function) {
-            this.extendString(node, text(node, this.adaptor));
-          } else {
-            this.extendString(node, text);
-          }
-        }
-        return this.adaptor.next(node);
-      }
-      handleContainer(node, ignore) {
-        this.pushString();
-        const cname = this.adaptor.getAttribute(node, "class") || "";
-        const tname = this.adaptor.kind(node) || "";
-        const process2 = this.processHtmlClass.exec(cname);
-        let next = node;
-        if (this.adaptor.firstChild(node) && !this.adaptor.getAttribute(node, "data-MJX") && (process2 || !this.skipHtmlTags.exec(tname))) {
-          if (this.adaptor.next(node)) {
-            this.stack.push([this.adaptor.next(node), ignore]);
-          }
-          next = this.adaptor.firstChild(node);
-          ignore = (ignore || this.ignoreHtmlClass.exec(cname)) && !process2;
-        } else {
-          next = this.adaptor.next(node);
-        }
-        return [next, ignore];
-      }
-      handleOther(node, _ignore) {
-        this.pushString();
-        return this.adaptor.next(node);
-      }
-      find(node) {
-        this.init();
-        const stop = this.adaptor.next(node);
-        let ignore = false;
-        const include = this.options["includeHtmlTags"];
-        while (node && node !== stop) {
-          const kind = this.adaptor.kind(node);
-          if (kind === "#text") {
-            node = this.handleText(node, ignore);
-          } else if (Object.hasOwn(include, kind)) {
-            node = this.handleTag(node, ignore);
-          } else if (kind) {
-            [node, ignore] = this.handleContainer(node, ignore);
-          } else {
-            node = this.handleOther(node, ignore);
-          }
-          if (!node && this.stack.length) {
-            this.pushString();
-            [node, ignore] = this.stack.pop();
-          }
-        }
-        this.pushString();
-        const result = [this.strings, this.nodes];
-        this.init();
-        return result;
-      }
-    };
-    HTMLDomStrings.OPTIONS = {
-      skipHtmlTags: [
-        "script",
-        "noscript",
-        "style",
-        "textarea",
-        "pre",
-        "code",
-        "math",
-        "select",
-        "option",
-        "mjx-container"
-      ],
-      includeHtmlTags: expandable({ br: "\n", wbr: "", "#comment": "" }),
-      ignoreHtmlClass: "mathjax_ignore",
-      processHtmlClass: "mathjax_process"
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js
-var HTMLDocument;
-var init_HTMLDocument = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html/HTMLDocument.js"() {
-    init_MathDocument();
-    init_Options();
-    init_HTMLMathItem();
-    init_HTMLMathList();
-    init_HTMLDomStrings();
-    init_MathItem();
-    newState("STYLES", STATE.INSERTED + 1);
-    HTMLDocument = class extends AbstractMathDocument {
-      constructor(document, adaptor, options3) {
-        const [html2, dom] = separateOptions(options3, HTMLDomStrings.OPTIONS);
-        super(document, adaptor, html2);
-        this.domStrings = this.options["DomStrings"] || new HTMLDomStrings(dom);
-        this.domStrings.adaptor = adaptor;
-        this.styles = [];
-      }
-      findPosition(N, index, delim, nodes) {
-        const adaptor = this.adaptor;
-        const inc = 1 / (nodes[N].length || 1);
-        let i2 = N;
-        for (const [node, n] of nodes[N]) {
-          if (index <= n && adaptor.kind(node) === "#text") {
-            return { i: i2, node, n: Math.max(index, 0), delim };
-          }
-          index -= n;
-          i2 += inc;
-        }
-        return { node: null, n: 0, delim };
-      }
-      mathItem(item, jax, nodes) {
-        const math = item.math;
-        const start = this.findPosition(item.n, item.start.n, item.open, nodes);
-        const end = this.findPosition(item.n, item.end.n, item.close, nodes);
-        return new this.options.MathItem(math, jax, item.display, start, end);
-      }
-      findMath(options3) {
-        if (!this.processed.isSet("findMath")) {
-          this.adaptor.document = this.document;
-          options3 = userOptions({
-            elements: this.options.elements || [this.adaptor.body(this.document)]
-          }, options3);
-          const containers = this.adaptor.getElements(options3.elements, this.document);
-          for (const jax of this.inputJax) {
-            const list3 = jax.processStrings ? this.findMathFromStrings(jax, containers) : this.findMathFromDOM(jax, containers);
-            this.math.merge(list3);
-          }
-          this.processed.set("findMath");
-        }
-        return this;
-      }
-      findMathFromStrings(jax, containers) {
-        const strings = [];
-        const nodes = [];
-        for (const container of containers) {
-          const [slist, nlist] = this.domStrings.find(container);
-          strings.push(...slist);
-          nodes.push(...nlist);
-        }
-        const list3 = new this.options.MathList();
-        for (const math of jax.findMath(strings)) {
-          list3.push(this.mathItem(math, jax, nodes));
-        }
-        return list3;
-      }
-      findMathFromDOM(jax, containers) {
-        const items = [];
-        for (const container of containers) {
-          for (const math of jax.findMath(container)) {
-            items.push(new this.options.MathItem(math.math, jax, math.display, math.start, math.end));
-          }
-        }
-        return new this.options.MathList(...items);
-      }
-      updateDocument() {
-        if (!this.processed.isSet("updateDocument")) {
-          this.addPageElements();
-          this.addStyleSheet();
-          super.updateDocument();
-          this.processed.set("updateDocument");
-        }
-        return this;
-      }
-      addPageElements() {
-        const adaptor = this.adaptor;
-        const body = adaptor.body(this.document);
-        const node = this.documentPageElements();
-        if (node) {
-          const child = adaptor.firstChild(body);
-          if (child) {
-            adaptor.insert(node, child);
-          } else {
-            adaptor.append(body, node);
-          }
-        }
-      }
-      addStyleSheet() {
-        const sheet = this.documentStyleSheet();
-        const adaptor = this.adaptor;
-        if (sheet && !adaptor.parent(sheet)) {
-          const head = adaptor.head(this.document);
-          const styles = this.findSheet(head, adaptor.getAttribute(sheet, "id"));
-          if (styles) {
-            adaptor.replace(sheet, styles);
-          } else {
-            adaptor.append(head, sheet);
-          }
-        }
-      }
-      findSheet(head, id) {
-        if (id) {
-          for (const sheet of this.adaptor.tags(head, "style")) {
-            if (this.adaptor.getAttribute(sheet, "id") === id) {
-              return sheet;
-            }
-          }
-        }
-        return null;
-      }
-      removeFromDocument(restore = false) {
-        if (this.processed.isSet("updateDocument")) {
-          for (const math of this.math) {
-            if (math.state() >= STATE.INSERTED) {
-              math.state(STATE.TYPESET, restore);
-            }
-          }
-        }
-        this.processed.clear("updateDocument");
-        return this;
-      }
-      documentStyleSheet() {
-        return this.outputJax.styleSheet(this);
-      }
-      documentPageElements() {
-        return this.outputJax.pageElements(this);
-      }
-      addStyles(styles) {
-        this.styles.push(styles);
-        if ("insertStyles" in this.outputJax) {
-          this.outputJax.insertStyles(styles);
-        }
-      }
-      getStyles() {
-        return this.styles;
-      }
-    };
-    HTMLDocument.KIND = "HTML";
-    HTMLDocument.OPTIONS = Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS), { renderActions: expandable(Object.assign(Object.assign({}, AbstractMathDocument.OPTIONS.renderActions), { styles: [STATE.STYLES, "", "updateStyleSheet", false] })), MathList: HTMLMathList, MathItem: HTMLMathItem, DomStrings: null });
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js
-var HTMLHandler;
-var init_HTMLHandler = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html/HTMLHandler.js"() {
-    init_Handler();
-    init_HTMLDocument();
-    HTMLHandler = class extends AbstractHandler {
-      constructor() {
-        super(...arguments);
-        this.documentClass = HTMLDocument;
-      }
-      handlesDocument(document) {
-        const adaptor = this.adaptor;
-        if (typeof document === "string") {
-          try {
-            document = adaptor.parse(document, "text/html");
-          } catch (_err) {
-          }
-        }
-        if (document instanceof adaptor.window.Document || document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
-          return true;
-        }
-        return false;
-      }
-      create(document, options3) {
-        const adaptor = this.adaptor;
-        if (typeof document === "string") {
-          document = adaptor.parse(document, "text/html");
-        } else if (document instanceof adaptor.window.HTMLElement || document instanceof adaptor.window.DocumentFragment) {
-          const child = document;
-          document = adaptor.parse("", "text/html");
-          adaptor.append(adaptor.body(document), child);
-        }
-        return super.create(document, options3);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/handlers/html.js
-function RegisterHTMLHandler(adaptor) {
-  const handler = new HTMLHandler(adaptor);
-  mathjax.handlers.register(handler);
-  return handler;
-}
-var init_html = __esm({
-  "node_modules/@mathjax/src/mjs/handlers/html.js"() {
-    init_mathjax();
-    init_HTMLHandler();
-  }
-});
-// node_modules/@mathjax/src/mjs/core/FindMath.js
-var AbstractFindMath;
-var init_FindMath = __esm({
-  "node_modules/@mathjax/src/mjs/core/FindMath.js"() {
-    init_Options();
-    AbstractFindMath = class {
-      constructor(options3) {
-        const CLASS = this.constructor;
-        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
-      }
-    };
-    AbstractFindMath.OPTIONS = {};
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/FindTeX.js
-var FindTeX;
-var init_FindTeX = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/FindTeX.js"() {
-    init_FindMath();
-    init_string();
-    init_MathItem();
-    FindTeX = class extends AbstractFindMath {
-      constructor(options3) {
-        super(options3);
-        this.getPatterns();
-      }
-      getPatterns() {
-        const options3 = this.options;
-        const starts = [];
-        const parts = [];
-        const subparts = [];
-        this.end = {};
-        this.env = this.sub = 0;
-        let i2 = 1;
-        options3["inlineMath"].forEach((delims) => this.addPattern(starts, delims, false));
-        options3["displayMath"].forEach((delims) => this.addPattern(starts, delims, true));
-        if (starts.length) {
-          parts.push(starts.sort(sortLength).join("|"));
-        }
-        if (options3["processEnvironments"]) {
-          parts.push("\\\\begin\\s*\\{([^}]*)\\}");
-          this.env = i2;
-          i2++;
-        }
-        if (options3["processEscapes"]) {
-          subparts.push("\\\\([\\\\$])");
-        }
-        if (options3["processRefs"]) {
-          subparts.push("(\\\\(?:eq)?ref\\s*\\{[^}]*\\})");
-        }
-        if (subparts.length) {
-          parts.push("(" + subparts.join("|") + ")");
-          this.sub = i2;
-        }
-        this.start = new RegExp(parts.join("|"), "g");
-        this.hasPatterns = parts.length > 0;
-      }
-      addPattern(starts, delims, display) {
-        const [open, close] = delims;
-        starts.push(quotePattern(open));
-        this.end[open] = [close, display, this.endPattern(close)];
-      }
-      endPattern(end, endp) {
-        return new RegExp((endp || quotePattern(end)) + "|\\\\(?:[a-zA-Z]|.)|[{}]", "g");
-      }
-      findEnd(text, n, start, end) {
-        const [close, display, pattern] = end;
-        const i2 = pattern.lastIndex = start.index + start[0].length;
-        let match, braces = 0;
-        while (match = pattern.exec(text)) {
-          if ((match[1] || match[0]) === close && braces === 0) {
-            return protoItem(start[0], text.substring(i2, match.index), match[0], n, start.index, match.index + match[0].length, display);
-          } else if (match[0] === "{") {
-            braces++;
-          } else if (match[0] === "}" && braces) {
-            braces--;
-          }
-        }
-        return null;
-      }
-      findMathInString(math, n, text) {
-        let start, match;
-        this.start.lastIndex = 0;
-        while (start = this.start.exec(text)) {
-          if (start[this.env] !== void 0 && this.env) {
-            const end = "\\\\end\\s*(\\{" + quotePattern(start[this.env]) + "\\})";
-            match = this.findEnd(text, n, start, [
-              "{" + start[this.env] + "}",
-              true,
-              this.endPattern(null, end)
-            ]);
-            if (match) {
-              match.math = match.open + match.math + match.close;
-              match.open = match.close = "";
-            }
-          } else if (start[this.sub] !== void 0 && this.sub) {
-            const math2 = start[this.sub];
-            const end = start.index + start[this.sub].length;
-            if (math2.length === 2) {
-              match = protoItem("\\", math2.substring(1), "", n, start.index, end);
-            } else {
-              match = protoItem("", math2, "", n, start.index, end, false);
-            }
-          } else {
-            match = this.findEnd(text, n, start, this.end[start[0]]);
-          }
-          if (match) {
-            math.push(match);
-            this.start.lastIndex = match.end.n;
-          }
-        }
-      }
-      findMath(strings) {
-        const math = [];
-        if (this.hasPatterns) {
-          for (let i2 = 0, m = strings.length; i2 < m; i2++) {
-            this.findMathInString(math, i2, strings[i2]);
-          }
-        }
-        return math;
-      }
-    };
-    FindTeX.OPTIONS = {
-      inlineMath: [
-        ["\\(", "\\)"]
-      ],
-      displayMath: [
-        ["$$", "$$"],
-        ["\\[", "\\]"]
-      ],
-      processEscapes: true,
-      processEnvironments: true,
-      processRefs: true
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js
-var NodeUtil;
-var NodeUtil_default;
-var init_NodeUtil = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/NodeUtil.js"() {
-    init_MmlNode();
-    init_mo();
-    NodeUtil = {
-      attrs: /* @__PURE__ */ new Set([
-        "autoOP",
-        "fnOP",
-        "movesupsub",
-        "subsupOK",
-        "texprimestyle",
-        "useHeight",
-        "variantForm",
-        "withDelims",
-        "mathaccent",
-        "open",
-        "close"
-      ]),
-      createEntity(code) {
-        return String.fromCodePoint(parseInt(code, 16));
-      },
-      getChildren(node) {
-        return node.childNodes;
-      },
-      getText(node) {
-        return node.getText();
-      },
-      appendChildren(node, children) {
-        for (const child of children) {
-          node.appendChild(child);
-        }
-      },
-      setAttribute(node, attribute, value) {
-        node.attributes.set(attribute, value);
-      },
-      setProperty(node, property, value) {
-        node.setProperty(property, value);
-      },
-      setProperties(node, properties) {
-        for (const name of Object.keys(properties)) {
-          const value = properties[name];
-          if (name === "texClass") {
-            node.texClass = value;
-            node.setProperty(name, value);
-          } else if (name === "movablelimits") {
-            node.setProperty("movablelimits", value);
-            if (node.isKind("mo") || node.isKind("mstyle")) {
-              node.attributes.set("movablelimits", value);
-            }
-          } else if (name === "inferred") {
-          } else if (NodeUtil.attrs.has(name)) {
-            node.setProperty(name, value);
-          } else {
-            node.attributes.set(name, value);
-          }
-        }
-      },
-      getProperty(node, property) {
-        return node.getProperty(property);
-      },
-      getAttribute(node, attr) {
-        return node.attributes.get(attr);
-      },
-      removeAttribute(node, attr) {
-        node.attributes.unset(attr);
-      },
-      removeProperties(node, ...properties) {
-        node.removeProperty(...properties);
-      },
-      getChildAt(node, position) {
-        return node.childNodes[position];
-      },
-      setChild(node, position, child) {
-        const children = node.childNodes;
-        children[position] = child;
-        if (child) {
-          child.parent = node;
-        }
-      },
-      copyChildren(oldNode, newNode) {
-        const children = oldNode.childNodes;
-        for (let i2 = 0; i2 < children.length; i2++) {
-          this.setChild(newNode, i2, children[i2]);
-        }
-      },
-      copyAttributes(oldNode, newNode) {
-        newNode.attributes = oldNode.attributes;
-        for (const [prop, value] of Object.entries(oldNode.getAllProperties())) {
-          newNode.setProperty(prop, value);
-        }
-      },
-      isType(node, kind) {
-        return node.isKind(kind);
-      },
-      isEmbellished(node) {
-        return node.isEmbellished;
-      },
-      getTexClass(node) {
-        return node.texClass;
-      },
-      getCoreMO(node) {
-        return node.coreMO();
-      },
-      isNode(item) {
-        return item instanceof AbstractMmlNode || item instanceof AbstractMmlEmptyNode;
-      },
-      isInferred(node) {
-        return node.isInferred;
-      },
-      getForm(node) {
-        if (!node.isKind("mo")) {
-          return null;
-        }
-        const mo = node;
-        const forms = mo.getForms();
-        for (const form of forms) {
-          const symbol = this.getOp(mo, form);
-          if (symbol) {
-            return symbol;
-          }
-        }
-        return null;
-      },
-      getOp(mo, form = "infix") {
-        return MmlMo.OPTABLE[form][mo.getText()] || null;
-      },
-      getMoAttribute(mo, attr) {
-        var _a2, _b2;
-        if (!mo.attributes.isSet(attr)) {
-          for (const form of ["infix", "postfix", "prefix"]) {
-            const value = (_b2 = (_a2 = this.getOp(mo, form)) === null || _a2 === void 0 ? void 0 : _a2[3]) === null || _b2 === void 0 ? void 0 : _b2[attr];
-            if (value !== void 0) {
-              return value;
-            }
-          }
-        }
-        return mo.attributes.get(attr);
-      }
-    };
-    NodeUtil_default = NodeUtil;
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/TexConstants.js
-var TexConstant;
-var init_TexConstants = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/TexConstants.js"() {
-    TexConstant = JSON.parse(`{
- "Variant":{
-  "NORMAL":"normal",
-  "BOLD":"bold",
-  "ITALIC":"italic",
-  "BOLDITALIC":"bold-italic",
-  "DOUBLESTRUCK":"double-struck",
-  "FRAKTUR":"fraktur",
-  "BOLDFRAKTUR":"bold-fraktur",
-  "SCRIPT":"script",
-  "BOLDSCRIPT":"bold-script",
-  "SANSSERIF":"sans-serif",
-  "BOLDSANSSERIF":"bold-sans-serif",
-  "SANSSERIFITALIC":"sans-serif-italic",
-  "SANSSERIFBOLDITALIC":"sans-serif-bold-italic",
-  "MONOSPACE":"monospace",
-  "INITIAL":"inital",
-  "TAILED":"tailed",
-  "LOOPED":"looped",
-  "STRETCHED":"stretched",
-  "CALLIGRAPHIC":"-tex-calligraphic",
-  "BOLDCALLIGRAPHIC":"-tex-bold-calligraphic",
-  "OLDSTYLE":"-tex-oldstyle",
-  "BOLDOLDSTYLE":"-tex-bold-oldstyle",
-  "MATHITALIC":"-tex-mathit"
- },
- "Form":{"PREFIX":"prefix","INFIX":"infix","POSTFIX":"postfix"},
- "LineBreak":{"AUTO":"auto","NEWLINE":"newline","NOBREAK":"nobreak","GOODBREAK":"goodbreak","BADBREAK":"badbreak"},
- "LineBreakStyle":{"BEFORE":"before","AFTER":"after","DUPLICATE":"duplicate","INFIXLINBREAKSTYLE":"infixlinebreakstyle"},
- "IndentAlign":{"LEFT":"left","CENTER":"center","RIGHT":"right","AUTO":"auto","ID":"id","INDENTALIGN":"indentalign"},
- "IndentShift":{"INDENTSHIFT":"indentshift"},
- "LineThickness":{"THIN":"thin","MEDIUM":"medium","THICK":"thick"},
- "Notation":{"LONGDIV":"longdiv","ACTUARIAL":"actuarial","PHASORANGLE":"phasorangle","RADICAL":"radical","BOX":"box","ROUNDEDBOX":"roundedbox","CIRCLE":"circle","LEFT":"left","RIGHT":"right","TOP":"top","BOTTOM":"bottom","UPDIAGONALSTRIKE":"updiagonalstrike","DOWNDIAGONALSTRIKE":"downdiagonalstrike","VERTICALSTRIKE":"verticalstrike","HORIZONTALSTRIKE":"horizontalstrike","NORTHEASTARROW":"northeastarrow","MADRUWB":"madruwb","UPDIAGONALARROW":"updiagonalarrow"},
- "Align":{"TOP":"top","BOTTOM":"bottom","CENTER":"center","BASELINE":"baseline","AXIS":"axis","LEFT":"left","RIGHT":"right"},
- "Lines":{"NONE":"none","SOLID":"solid","DASHED":"dashed"},
- "Side":{"LEFT":"left","RIGHT":"right","LEFTOVERLAP":"leftoverlap","RIGHTOVERLAP":"rightoverlap"},
- "Width":{"AUTO":"auto","FIT":"fit"},
- "Actiontype":{"TOGGLE":"toggle","STATUSLINE":"statusline","TOOLTIP":"tooltip","INPUT":"input"},
- "Overflow":{"LINBREAK":"linebreak","SCROLL":"scroll","ELIDE":"elide","TRUNCATE":"truncate","SCALE":"scale"},
- "Unit":{"EM":"em","EX":"ex","PX":"px","IN":"in","CM":"cm","MM":"mm","PT":"pt","PC":"pc"},
- "Attr":{"LATEX":"data-latex","LATEXITEM":"data-latex-item"}
-}`);
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js
-function _copyExplicit(attrs, node1, node2) {
-  const attr1 = node1.attributes;
-  const attr2 = node2.attributes;
-  attrs.forEach((x2) => {
-    const attr = attr2.getExplicit(x2);
-    if (attr != null) {
-      attr1.set(x2, attr);
-    }
-  });
-}
-function _compareExplicit(node1, node2) {
-  const filter2 = (attr, space) => {
-    const exp = attr.getExplicitNames();
-    return exp.filter((x2) => {
-      return x2 !== space && (x2 !== "stretchy" || attr.getExplicit("stretchy")) && x2 !== "data-latex" && x2 !== "data-latex-item";
-    });
-  };
-  const attr1 = node1.attributes;
-  const attr2 = node2.attributes;
-  const exp1 = filter2(attr1, "lspace");
-  const exp2 = filter2(attr2, "rspace");
-  if (exp1.length !== exp2.length) {
-    return false;
-  }
-  for (const name of exp1) {
-    if (attr1.getExplicit(name) !== attr2.getExplicit(name)) {
-      return false;
-    }
-  }
-  return true;
-}
-function _cleanSubSup(options3, low, up) {
-  const remove = [];
-  for (const mml of options3.getList("m" + low + up)) {
-    const children = mml.childNodes;
-    if (children[mml[low]] && children[mml[up]]) {
-      continue;
-    }
-    const parent = mml.parent;
-    const newNode = children[mml[low]] ? options3.nodeFactory.create("node", "m" + low, [
-      children[mml.base],
-      children[mml[low]]
-    ]) : options3.nodeFactory.create("node", "m" + up, [
-      children[mml.base],
-      children[mml[up]]
-    ]);
-    NodeUtil_default.copyAttributes(mml, newNode);
-    parent.replaceChild(newNode, mml);
-    remove.push(mml);
-  }
-  options3.removeFromList("m" + low + up, remove);
-}
-function _moveLimits(options3, underover, subsup) {
-  const remove = [];
-  for (const mml of options3.getList(underover)) {
-    if (mml.attributes.get("displaystyle")) {
-      continue;
-    }
-    const base = mml.childNodes[mml.base];
-    const mo = base.coreMO();
-    if (base.getProperty("movablelimits") && !mo.attributes.hasExplicit("movablelimits")) {
-      const node = options3.nodeFactory.create("node", subsup, mml.childNodes);
-      NodeUtil_default.copyAttributes(mml, node);
-      mml.parent.replaceChild(node, mml);
-      remove.push(mml);
-    }
-  }
-  options3.removeFromList(underover, remove);
-}
-var FilterUtil;
-var FilterUtil_default;
-var init_FilterUtil = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/FilterUtil.js"() {
-    init_MmlNode();
-    init_NodeUtil();
-    init_TexConstants();
-    FilterUtil = {
-      cleanStretchy(arg) {
-        var _a2;
-        const options3 = arg.data;
-        for (const mo of options3.getList("fixStretchy")) {
-          if (NodeUtil_default.getProperty(mo, "fixStretchy")) {
-            const symbol = NodeUtil_default.getForm(mo);
-            if ((_a2 = symbol === null || symbol === void 0 ? void 0 : symbol[3]) === null || _a2 === void 0 ? void 0 : _a2["stretchy"]) {
-              NodeUtil_default.setAttribute(mo, "stretchy", false);
-            }
-            NodeUtil_default.removeProperties(mo, "fixStretchy");
-          }
-        }
-      },
-      cleanAttributes(arg) {
-        const node = arg.data.root;
-        node.walkTree((mml) => {
-          const keep = new Set((mml.getProperty("keep-attrs") || "").split(/ /));
-          const attribs = mml.attributes;
-          attribs.unset(TexConstant.Attr.LATEXITEM);
-          for (const key of attribs.getExplicitNames()) {
-            if (!keep.has(key) && attribs.get(key) === attribs.getInherited(key)) {
-              attribs.unset(key);
-            }
-          }
-        });
-      },
-      combineRelations(arg) {
-        const remove = [];
-        for (const mo of arg.data.getList("mo")) {
-          if (mo.getProperty("relationsCombined") || !mo.parent || mo.parent && !NodeUtil_default.isType(mo.parent, "mrow") || NodeUtil_default.getTexClass(mo) !== TEXCLASS.REL) {
-            continue;
-          }
-          const mml = mo.parent;
-          let m2;
-          const children = mml.childNodes;
-          const next = children.indexOf(mo) + 1;
-          const variantForm = NodeUtil_default.getProperty(mo, "variantForm");
-          while (next < children.length && (m2 = children[next]) && NodeUtil_default.isType(m2, "mo") && NodeUtil_default.getTexClass(m2) === TEXCLASS.REL) {
-            if (variantForm === NodeUtil_default.getProperty(m2, "variantForm") && _compareExplicit(mo, m2)) {
-              NodeUtil_default.appendChildren(mo, NodeUtil_default.getChildren(m2));
-              _copyExplicit(["stretchy", "rspace"], mo, m2);
-              for (const name of m2.getPropertyNames()) {
-                mo.setProperty(name, m2.getProperty(name));
-              }
-              if (m2.attributes.get("data-latex")) {
-                mo.attributes.set("data-latex", mo.attributes.get("data-latex") + m2.attributes.get("data-latex"));
-              }
-              children.splice(next, 1);
-              remove.push(m2);
-              m2.parent = null;
-              m2.setProperty("relationsCombined", true);
-              mo.setProperty("texClass", TEXCLASS.REL);
-            } else {
-              if (!mo.attributes.hasExplicit("rspace")) {
-                NodeUtil_default.setAttribute(mo, "rspace", "0pt");
-              }
-              if (!m2.attributes.hasExplicit("lspace")) {
-                NodeUtil_default.setAttribute(m2, "lspace", "0pt");
-              }
-              break;
-            }
-          }
-          mo.attributes.setInherited("form", mo.getForms()[0]);
-        }
-        arg.data.removeFromList("mo", remove);
-      },
-      cleanSubSup(arg) {
-        const options3 = arg.data;
-        if (options3.error) {
-          return;
-        }
-        _cleanSubSup(options3, "sub", "sup");
-        _cleanSubSup(options3, "under", "over");
-      },
-      moveLimits(arg) {
-        const options3 = arg.data;
-        _moveLimits(options3, "munderover", "msubsup");
-        _moveLimits(options3, "munder", "msub");
-        _moveLimits(options3, "mover", "msup");
-      },
-      setInherited(arg) {
-        arg.data.root.setInheritedAttributes({}, arg.math["display"], 0, false);
-      },
-      checkScriptlevel(arg) {
-        const options3 = arg.data;
-        const remove = [];
-        for (const mml of options3.getList("mstyle")) {
-          if (mml.childNodes[0].childNodes.length !== 1) {
-            continue;
-          }
-          const attributes = mml.attributes;
-          for (const key of ["displaystyle", "scriptlevel"]) {
-            if (attributes.getExplicit(key) === attributes.getInherited(key)) {
-              attributes.unset(key);
-            }
-          }
-          const names = attributes.getExplicitNames();
-          if (names.filter((key) => key.substring(0, 10) !== "data-latex").length === 0) {
-            const child = mml.childNodes[0].childNodes[0];
-            names.forEach((key) => child.attributes.set(key, attributes.get(key)));
-            mml.parent.replaceChild(child, mml);
-            remove.push(mml);
-          }
-        }
-        options3.removeFromList("mstyle", remove);
-      }
-    };
-    FilterUtil_default = FilterUtil;
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js
-var ConfigurationType;
-var HandlerType;
-var init_HandlerTypes = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js"() {
-    (function(ConfigurationType2) {
-      ConfigurationType2["HANDLER"] = "handler";
-      ConfigurationType2["FALLBACK"] = "fallback";
-      ConfigurationType2["ITEMS"] = "items";
-      ConfigurationType2["TAGS"] = "tags";
-      ConfigurationType2["OPTIONS"] = "options";
-      ConfigurationType2["NODES"] = "nodes";
-      ConfigurationType2["PREPROCESSORS"] = "preprocessors";
-      ConfigurationType2["POSTPROCESSORS"] = "postprocessors";
-      ConfigurationType2["INIT"] = "init";
-      ConfigurationType2["CONFIG"] = "config";
-      ConfigurationType2["PRIORITY"] = "priority";
-      ConfigurationType2["PARSER"] = "parser";
-    })(ConfigurationType || (ConfigurationType = {}));
-    (function(HandlerType2) {
-      HandlerType2["DELIMITER"] = "delimiter";
-      HandlerType2["MACRO"] = "macro";
-      HandlerType2["CHARACTER"] = "character";
-      HandlerType2["ENVIRONMENT"] = "environment";
-    })(HandlerType || (HandlerType = {}));
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js
-function muReplace([value, unit, length4]) {
-  if (unit !== "mu") {
-    return [value, unit, length4];
-  }
-  const em2 = UnitUtil.em(UnitUtil.UNIT_CASES.get(unit) * parseFloat(value));
-  return [em2.slice(0, -2), "em", length4];
-}
-var UnitMap;
-var emPerInch;
-var pxPerInch;
-var UnitUtil;
-var init_UnitUtil = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js"() {
-    UnitMap = class {
-      constructor(map) {
-        this.num = "([-+]?([.,]\\d+|\\d+([.,]\\d*)?))";
-        this.unit = "";
-        this.dimenEnd = /./;
-        this.dimenRest = /./;
-        this.map = new Map(map);
-        this.updateDimen();
-      }
-      updateDimen() {
-        this.unit = `(${Array.from(this.map.keys()).join("|")})`;
-        this.dimenEnd = RegExp("^\\s*" + this.num + "\\s*" + this.unit + "\\s*$");
-        this.dimenRest = RegExp("^\\s*" + this.num + "\\s*" + this.unit + " ?");
-      }
-      set(name, ems) {
-        this.map.set(name, ems);
-        this.updateDimen();
-        return this;
-      }
-      get(name) {
-        return this.map.get(name) || this.map.get("pt");
-      }
-      delete(name) {
-        if (this.map.delete(name)) {
-          this.updateDimen();
-          return true;
-        }
-        return false;
-      }
-    };
-    emPerInch = 7.2;
-    pxPerInch = 72;
-    UnitUtil = {
-      UNIT_CASES: new UnitMap([
-        ["em", 1],
-        ["ex", 0.43],
-        ["pt", 1 / 10],
-        ["pc", 1.2],
-        ["px", emPerInch / pxPerInch],
-        ["in", emPerInch],
-        ["cm", emPerInch / 2.54],
-        ["mm", emPerInch / 25.4],
-        ["mu", 1 / 18]
-      ]),
-      matchDimen(dim, rest = false) {
-        const match = dim.match(rest ? UnitUtil.UNIT_CASES.dimenRest : UnitUtil.UNIT_CASES.dimenEnd);
-        return match ? muReplace([match[1].replace(/,/, "."), match[4], match[0].length]) : [null, null, 0];
-      },
-      dimen2em(dim) {
-        const [value, unit] = UnitUtil.matchDimen(dim);
-        const m = parseFloat(value || "1");
-        const factor = UnitUtil.UNIT_CASES.get(unit);
-        return factor * m;
-      },
-      em(m) {
-        if (Math.abs(m) < 6e-4) {
-          return "0em";
-        }
-        return m.toFixed(3).replace(/\.?0+$/, "") + "em";
-      },
-      trimSpaces(text) {
-        if (typeof text !== "string") {
-          return text;
-        }
-        let TEXT = text.trim();
-        if (TEXT.match(/\\$/) && text.match(/ $/)) {
-          TEXT += " ";
-        }
-        return TEXT;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/Stack.js
-var Stack;
-var init_Stack = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/Stack.js"() {
-    init_NodeUtil();
-    Stack = class {
-      constructor(_factory, _env, inner) {
-        this._factory = _factory;
-        this._env = _env;
-        this.global = {};
-        this.stack = [];
-        this.global = { isInner: inner };
-        this.stack = [this._factory.create("start", this.global)];
-        if (_env) {
-          this.stack[0].env = _env;
-        }
-        this.env = this.stack[0].env;
-      }
-      set env(env) {
-        this._env = env;
-      }
-      get env() {
-        return this._env;
-      }
-      Push(...args) {
-        for (const node of args) {
-          if (!node) {
-            continue;
-          }
-          const item = NodeUtil_default.isNode(node) ? this._factory.create("mml", node) : node;
-          item.global = this.global;
-          const [top, success] = this.stack.length ? this.Top().checkItem(item) : [null, true];
-          if (!success) {
-            continue;
-          }
-          if (top) {
-            this.Pop();
-            this.Push(...top);
-            continue;
-          }
-          if (!item.isKind("null")) {
-            this.stack.push(item);
-          }
-          if (item.env) {
-            if (item.copyEnv) {
-              Object.assign(item.env, this.env);
-            }
-            this.env = item.env;
-          } else {
-            item.env = this.env;
-          }
-        }
-      }
-      Pop() {
-        const item = this.stack.pop();
-        if (!item.isOpen) {
-          delete item.env;
-        }
-        this.env = this.stack.length ? this.Top().env : {};
-        return item;
-      }
-      Top(n = 1) {
-        return this.stack.length < n ? null : this.stack[this.stack.length - n];
-      }
-      Prev(noPop) {
-        const top = this.Top();
-        return noPop ? top.First : top.Pop();
-      }
-      get height() {
-        return this.stack.length;
-      }
-      toString() {
-        return "stack[\n  " + this.stack.join("\n  ") + "\n]";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/TexError.js
-var TexError2;
-var TexError_default;
-var init_TexError = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/TexError.js"() {
-    TexError2 = class _TexError {
-      static processString(str, args) {
-        const parts = str.split(_TexError.pattern);
-        for (let i2 = 1, m = parts.length; i2 < m; i2 += 2) {
-          let c = parts[i2].charAt(0);
-          if (c >= "0" && c <= "9") {
-            parts[i2] = args[parseInt(parts[i2], 10) - 1];
-            if (typeof parts[i2] === "number") {
-              parts[i2] = parts[i2].toString();
-            }
-          } else if (c === "{") {
-            c = parts[i2].substring(1);
-            if (c >= "0" && c <= "9") {
-              parts[i2] = args[parseInt(parts[i2].substring(1, parts[i2].length - 1), 10) - 1];
-              if (typeof parts[i2] === "number") {
-                parts[i2] = parts[i2].toString();
-              }
-            } else {
-              const match = parts[i2].match(/^\{([a-z]+):%(\d+)\|(.*)\}$/);
-              if (match) {
-                parts[i2] = "%" + parts[i2];
-              }
-            }
-          }
-        }
-        return parts.join("");
-      }
-      constructor(id, message, ...rest) {
-        this.id = id;
-        this.message = _TexError.processString(message, rest);
-      }
-    };
-    TexError2.pattern = /%(\d+|\{\d+\}|\{[a-z]+:%\d+(?:\|(?:%\{\d+\}|%.|[^}])*)+\}|.)/g;
-    TexError_default = TexError2;
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/StackItem.js
-var MmlStack;
-var BaseItem;
-var init_StackItem = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/StackItem.js"() {
-    init_TexError();
-    init_TexConstants();
-    MmlStack = class {
-      constructor(_nodes) {
-        this._nodes = _nodes;
-        this.startStr = "";
-        this.startI = 0;
-        this.stopI = 0;
-      }
-      get nodes() {
-        return this._nodes;
-      }
-      Push(...nodes) {
-        this._nodes.push(...nodes);
-      }
-      Pop() {
-        return this._nodes.pop();
-      }
-      get First() {
-        return this._nodes[this.Size() - 1];
-      }
-      set First(node) {
-        this._nodes[this.Size() - 1] = node;
-      }
-      get Last() {
-        return this._nodes[0];
-      }
-      set Last(node) {
-        this._nodes[0] = node;
-      }
-      Peek(n) {
-        if (n == null) {
-          n = 1;
-        }
-        return this._nodes.slice(this.Size() - n);
-      }
-      Size() {
-        return this._nodes.length;
-      }
-      Clear() {
-        this._nodes = [];
-      }
-      toMml(inferred = true, forceRow) {
-        if (this._nodes.length === 1 && !forceRow) {
-          return this.First;
-        }
-        return this.create("node", inferred ? "inferredMrow" : "mrow", this._nodes, {});
-      }
-      create(kind, ...rest) {
-        return this.factory.configuration.nodeFactory.create(kind, ...rest);
-      }
-    };
-    BaseItem = class _BaseItem extends MmlStack {
-      constructor(factory, ...nodes) {
-        super(nodes);
-        this.factory = factory;
-        this.global = {};
-        this._properties = {};
-        if (this.isOpen) {
-          this._env = {};
-        }
-      }
-      get kind() {
-        return "base";
-      }
-      get env() {
-        return this._env;
-      }
-      set env(value) {
-        this._env = value;
-      }
-      get copyEnv() {
+      get processStrings() {
         return true;
       }
-      getProperty(key) {
-        return this._properties[key];
+      findMath(_node, _options) {
+        return [];
       }
-      setProperty(key, value) {
-        this._properties[key] = value;
-        return this;
-      }
-      get isOpen() {
-        return false;
-      }
-      get isClose() {
-        return false;
-      }
-      get isFinal() {
-        return false;
-      }
-      isKind(kind) {
-        return kind === this.kind;
-      }
-      checkItem(item) {
-        if (item.isKind("over") && this.isOpen) {
-          item.setProperty("num", this.toMml(false));
-          this.Clear();
-        }
-        if (item.isKind("cell") && this.isOpen) {
-          if (item.getProperty("linebreak")) {
-            return _BaseItem.fail;
-          }
-          throw new TexError_default("Misplaced", "Misplaced %1", item.getName());
-        }
-        if (item.isClose && this.getErrors(item.kind)) {
-          const [id, message] = this.getErrors(item.kind);
-          throw new TexError_default(id, message, item.getName());
-        }
-        if (!item.isFinal) {
-          return _BaseItem.success;
-        }
-        this.Push(item.First);
-        return _BaseItem.fail;
-      }
-      clearEnv() {
-        for (const id of Object.keys(this.env)) {
-          delete this.env[id];
-        }
-      }
-      setProperties(def2) {
-        Object.assign(this._properties, def2);
-        return this;
-      }
-      getName() {
-        return this.getProperty("name");
-      }
-      toString() {
-        return this.kind + "[" + this.nodes.join("; ") + "]";
-      }
-      getErrors(kind) {
-        const CLASS = this.constructor;
-        return CLASS.errors[kind] || _BaseItem.errors[kind];
-      }
-      addLatexItem(node, prefix = "") {
-        const str = this.startStr.slice(this.startI, this.stopI);
-        if (str) {
-          const tex = prefix ? prefix + str : str;
-          node.attributes.set(TexConstant.Attr.LATEXITEM, tex);
-          if (tex !== "}") {
-            node.attributes.set(TexConstant.Attr.LATEX, tex);
-          }
-        }
+      executeFilters(filters, math, document, data) {
+        const args = { math, document, data };
+        filters.execute(args);
+        return args.data;
       }
     };
-    BaseItem.fail = [null, false];
-    BaseItem.success = [null, true];
-    BaseItem.errors = {
-      end: ["MissingBeginExtraEnd", "Missing \\begin{%1} or extra \\end{%1}"],
-      close: ["ExtraCloseMissingOpen", "Extra close brace or missing open brace"],
-      right: ["MissingLeftExtraRight", "Missing \\left or extra \\right"],
-      middle: ["ExtraMiddle", "Extra \\middle"]
+    AbstractInputJax.NAME = "generic";
+    AbstractInputJax.OPTIONS = {
+      preFilters: [],
+      postFilters: []
     };
   }
 });
-export{init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,TexConstant,TexError_default,UnitUtil,init_NodeUtil,NodeUtil_default,ConfigurationType,init_FindTeX,init_FilterUtil,FindTeX,FilterUtil_default,RegisterHTMLHandler,init_html};
+// node_modules/@mathjax/src/mjs/core/OutputJax.js
+var AbstractOutputJax;
+var init_OutputJax = __esm({
+  "node_modules/@mathjax/src/mjs/core/OutputJax.js"() {
+    init_Options();
+    init_FunctionList();
+    AbstractOutputJax = class {
+      constructor(options3 = {}) {
+        this.adaptor = null;
+        const CLASS = this.constructor;
+        this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), options3);
+        this.preFilters = new FunctionList(this.options.preFilters);
+        this.postFilters = new FunctionList(this.options.postFilters);
+      }
+      get name() {
+        return this.constructor.NAME;
+      }
+      setAdaptor(adaptor) {
+        this.adaptor = adaptor;
+      }
+      initialize() {
+      }
+      reset(..._args) {
+      }
+      getMetrics(_document) {
+      }
+      styleSheet(_document) {
+        return null;
+      }
+      pageElements(_document) {
+        return null;
+      }
+      executeFilters(filters, math, document, data) {
+        const args = { math, document, data };
+        filters.execute(args);
+        return args.data;
+      }
+    };
+    AbstractOutputJax.NAME = "generic";
+    AbstractOutputJax.OPTIONS = {
+      preFilters: [],
+      postFilters: []
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/LinkedList.js
+var END;
+var ListItem;
+var LinkedList;
+var init_LinkedList = __esm({
+  "node_modules/@mathjax/src/mjs/util/LinkedList.js"() {
+    END = /* @__PURE__ */ Symbol();
+    ListItem = class {
+      constructor(data = null) {
+        this.next = null;
+        this.prev = null;
+        this.data = data;
+      }
+    };
+    LinkedList = class _LinkedList {
+      constructor(...args) {
+        this.list = new ListItem(END);
+        this.list.next = this.list.prev = this.list;
+        this.push(...args);
+      }
+      isBefore(a, b) {
+        return a < b;
+      }
+      push(...args) {
+        for (const data of args) {
+          const item = new ListItem(data);
+          item.next = this.list;
+          item.prev = this.list.prev;
+          this.list.prev = item;
+          item.prev.next = item;
+        }
+        return this;
+      }
+      pop() {
+        const item = this.list.prev;
+        if (item.data === END) {
+          return null;
+        }
+        this.list.prev = item.prev;
+        item.prev.next = this.list;
+        item.next = item.prev = null;
+        return item.data;
+      }
+      unshift(...args) {
+        for (const data of args.slice(0).reverse()) {
+          const item = new ListItem(data);
+          item.next = this.list.next;
+          item.prev = this.list;
+          this.list.next = item;
+          item.next.prev = item;
+        }
+        return this;
+      }
+      shift() {
+        const item = this.list.next;
+        if (item.data === END) {
+          return null;
+        }
+        this.list.next = item.next;
+        item.next.prev = this.list;
+        item.next = item.prev = null;
+        return item.data;
+      }
+      remove(...items) {
+        const map = /* @__PURE__ */ new Map();
+        for (const item2 of items) {
+          map.set(item2, true);
+        }
+        let item = this.list.next;
+        while (item.data !== END) {
+          const next = item.next;
+          if (map.has(item.data)) {
+            item.prev.next = item.next;
+            item.next.prev = item.prev;
+            item.next = item.prev = null;
+          }
+          item = next;
+        }
+        return this;
+      }
+      clear() {
+        this.list.next.prev = this.list.prev.next = null;
+        this.list.next = this.list.prev = this.list;
+        return this;
+      }
+      *[Symbol.iterator]() {
+        let current = this.list.next;
+        while (current.data !== END) {
+          yield current.data;
+          current = current.next;
+        }
+      }
+      *reversed() {
+        let current = this.list.prev;
+        while (current.data !== END) {
+          yield current.data;
+          current = current.prev;
+        }
+      }
+      insert(data, isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        const item = new ListItem(data);
+        let cur = this.list.next;
+        while (cur.data !== END && isBefore(cur.data, item.data)) {
+          cur = cur.next;
+        }
+        item.prev = cur.prev;
+        item.next = cur;
+        cur.prev.next = cur.prev = item;
+        return this;
+      }
+      sort(isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        const lists = [];
+        for (const item of this) {
+          lists.push(new _LinkedList(item));
+        }
+        this.list.next = this.list.prev = this.list;
+        while (lists.length > 1) {
+          const l1 = lists.shift();
+          const l2 = lists.shift();
+          l1.merge(l2, isBefore);
+          lists.push(l1);
+        }
+        if (lists.length) {
+          this.list = lists[0].list;
+        }
+        return this;
+      }
+      merge(list3, isBefore = null) {
+        if (isBefore === null) {
+          isBefore = this.isBefore.bind(this);
+        }
+        let lcur = this.list.next;
+        let mcur = list3.list.next;
+        while (lcur.data !== END && mcur.data !== END) {
+          if (isBefore(mcur.data, lcur.data)) {
+            [mcur.prev.next, lcur.prev.next] = [lcur, mcur];
+            [mcur.prev, lcur.prev] = [lcur.prev, mcur.prev];
+            [this.list.prev.next, list3.list.prev.next] = [list3.list, this.list];
+            [this.list.prev, list3.list.prev] = [list3.list.prev, this.list.prev];
+            [lcur, mcur] = [mcur.next, lcur];
+          } else {
+            lcur = lcur.next;
+          }
+        }
+        if (mcur.data !== END) {
+          this.list.prev.next = list3.list.next;
+          list3.list.next.prev = this.list.prev;
+          list3.list.prev.next = this.list;
+          this.list.prev = list3.list.prev;
+          list3.list.next = list3.list.prev = list3.list;
+        }
+        return this;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MathList.js
+var AbstractMathList;
+var init_MathList = __esm({
+  "node_modules/@mathjax/src/mjs/core/MathList.js"() {
+    init_LinkedList();
+    AbstractMathList = class extends LinkedList {
+      isBefore(a, b) {
+        return a.start.i < b.start.i || a.start.i === b.start.i && a.start.n < b.start.n;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/BitField.js
+function BitFieldClass(...names) {
+  const bits2 = class extends BitField {
+  };
+  bits2.allocate(...names);
+  return bits2;
+}
+var BitField;
+var init_BitField = __esm({
+  "node_modules/@mathjax/src/mjs/util/BitField.js"() {
+    BitField = class _BitField {
+      constructor() {
+        this.bits = 0;
+      }
+      static allocate(...names) {
+        for (const name of names) {
+          if (this.has(name)) {
+            throw new Error("Bit already allocated for " + name);
+          }
+          if (this.next === _BitField.MAXBIT) {
+            throw new Error("Maximum number of bits already allocated");
+          }
+          this.names.set(name, this.next);
+          this.next <<= 1;
+        }
+      }
+      static has(name) {
+        return this.names.has(name);
+      }
+      set(name) {
+        this.bits |= this.getBit(name);
+      }
+      clear(name) {
+        this.bits &= ~this.getBit(name);
+      }
+      isSet(name) {
+        return !!(this.bits & this.getBit(name));
+      }
+      reset() {
+        this.bits = 0;
+      }
+      getBit(name) {
+        const bit = this.constructor.names.get(name);
+        if (!bit) {
+          throw new Error("Unknown bit-field name: " + name);
+        }
+        return bit;
+      }
+    };
+    BitField.MAXBIT = 1 << 31;
+    BitField.next = 1;
+    BitField.names = /* @__PURE__ */ new Map();
+  }
+});
+export{init_InputJax,init_OutputJax,init_MathList,init_MmlFactory,init_BitField,AbstractInputJax,AbstractOutputJax,AbstractMathList,MmlFactory,BitFieldClass,init_FunctionList,FunctionList,init_Visitor,AbstractVisitor,init_mrow,MmlMrow,MmlInferredMrow,init_ms,MmlMs,init_merror,MmlMerror,init_mspace,MmlMspace,init_mpadded,MmlMpadded,init_mphantom,MmlMphantom,init_mfrac,MmlMfrac,init_msqrt,MmlMsqrt,init_mroot,MmlMroot,init_mfenced,MmlMfenced,init_msubsup,MmlMsub,MmlMsup,MmlMsubsup,init_munderover,MmlMunder,MmlMover,MmlMunderover,init_mmultiscripts,MmlMmultiscripts,init_mtable,MmlMtable,init_mtr,MmlMtr,MmlMlabeledtr,init_mtd,MmlMtd,init_maction,MmlMaction,init_menclose,MmlMenclose,init_semantics,MmlSemantics,MmlAnnotation,MmlAnnotationXML,init_mglyph,MmlMglyph,init_TeXAtom,TeXAtom,init_HtmlNode,HtmlNode,init_SerializedMmlVisitor,SerializedMmlVisitor};

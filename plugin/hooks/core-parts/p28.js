@@ -1,1622 +1,1647 @@
-import{signedArea2,__esm,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,__export,engine_exports,mathjax,liteAdaptor,RegisterHTMLHandler,MapHandler,MathtoolsUtil,NewcommandUtil,MathtoolsMethods,EmpheqUtil,ParseUtil,TeX,TexError,SVG,MathJaxNewcmFont,rememberLabels,MmlMath,STATE,GlyphError,init_liteAdaptor,init_MathItem,init_math,init_SerializedMmlVisitor,init_html,init_tex,init_MapHandler,init_mathjax,init_svg2,init_LinebreakVisitor,init_svg,init_BaseConfiguration,init_AmsConfiguration,init_NewcommandConfiguration,init_BoldsymbolConfiguration,init_BraketConfiguration,init_CancelConfiguration,init_ColorConfiguration,init_MathtoolsConfiguration,init_PhysicsConfiguration,init_TextMacrosConfiguration,init_UnicodeConfiguration,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_MathtoolsUtil,init_MathtoolsMethods,init_NewcommandUtil,init_EmpheqUtil,init_ParseUtil,init_fonts,init_macros,init_errors,LinebreakVisitor,NOBREAK,SerializedMmlVisitor,_tag,emStrongRDelimAstCore,escapeReplacements,__kittexLate}from'./p27.js';export*from'./p27.js';
-__kittexLate.IDENTITY2=()=>IDENTITY2;__kittexLate.ARG_COUNT=()=>ARG_COUNT;
-function oriented(polygon, sign) {
-  return Math.sign(signedArea2(polygon)) === -sign ? [...polygon].reverse() : polygon;
-}
-function strokeSegment(a, b, width, extend2 = 0) {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  if (len === 0) return [];
-  const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-  const [nx, ny] = [-uy * width / 2, ux * width / 2];
-  const [ex, ey] = [ux * extend2, uy * extend2];
-  return oriented(
-    [
-      [a[0] - ex + nx, a[1] - ey + ny],
-      [b[0] + ex + nx, b[1] + ey + ny],
-      [b[0] + ex - nx, b[1] + ey - ny],
-      [a[0] - ex - nx, a[1] - ey - ny]
-    ],
-    1
-  );
-}
-function disc(c, r, sides2 = 12) {
-  const pts = [];
-  for (let k = 0; k < sides2; k++) {
-    const a = 2 * Math.PI * k / sides2;
-    pts.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]);
+import{__esm,init_HandlerTypes,init_Configuration,init_TokenMap,init_TexError,init_BaseMethods,init_AmsMethods,init_mhchemParser,init_MmlNode,TEXCLASS,mhchemParser,TexError_default,BaseMethods_default,AmsMethods,CommandMap,CharacterMap,Configuration,ConfigurationType,HandlerType,init_TexParser,init_BaseConfiguration,init_NodeUtil,Other,TexParser,NodeUtil_default,init_ParseMethods,EnvironmentMap,ParseMethods_default,MacroMap,init_ParseUtil,ParseUtil,TexConstant,init_TexConstants,TextParser,TextMacrosMethods,init_TextMacrosMethods,init_TextParser,init_svg,init_Direction,MathJaxNewcmFont,__kittexJson19,__kittexJson20,H,__kittexJson21,__kittexJson22,__kittexJson23,__kittexJson24,V,__kittexJson25,__kittexJson26,__kittexJson27,__kittexJson28,__kittexJson29,__kittexJson30,__kittexJson31,__kittexJson32,__kittexJson33,__kittexJson34,__kittexJson35,__kittexJson36,__kittexJson37,__kittexJson38,__kittexJson39,__kittexJson40,__kittexJson41,__kittexJson42,__kittexJson43,__kittexJson44,__kittexJson45,__kittexJson46,__kittexJson47,__kittexJson48,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__kittexLate}from'./p27.js';export*from'./p27.js';
+// node_modules/@mathjax/src/mjs/input/tex/mhchem/MhchemConfiguration.js
+var MhchemUtils;
+var MhchemReplacements;
+var MhchemMethods;
+var mhchemMacros;
+var mhchemChars;
+var MhchemConfiguration;
+var init_MhchemConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/mhchem/MhchemConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TokenMap();
+    init_TexError();
+    init_BaseMethods();
+    init_AmsMethods();
+    init_mhchemParser();
+    init_MmlNode();
+    MhchemUtils = {
+      relmo(parser2, mchar) {
+        const def2 = Object.assign({ stretchy: true, texClass: TEXCLASS.REL, mathvariant: "-mhchem" }, mchar.attributes || {});
+        const node = parser2.create("token", "mo", def2, mchar.char);
+        parser2.Push(node);
+      }
+    };
+    MhchemReplacements = /* @__PURE__ */ new Map([
+      [
+        "\\mhchemx$3[$1]{$2}",
+        /\\underset{\\lower2mu{(.*?)}}{\\overset{(.*?)}{\\long(.*?)}}/g
+      ],
+      ["\\mhchemx$2{$1}", /\\overset{(.*?)}{\\long(.*?)}/g],
+      [
+        "\\mhchemBondTD",
+        /\\rlap\{\\lower\.1em\{-\}\}\\raise\.1em\{\\tripledash\}/g
+      ],
+      [
+        "\\mhchemBondTDD",
+        /\\rlap\{\\lower\.2em\{-\}\}\\rlap\{\\raise\.2em\{\\tripledash\}\}-/g
+      ],
+      [
+        "\\mhchemBondDTD",
+        /\\rlap\{\\lower\.2em\{-\}\}\\rlap\{\\raise.2em\{-\}\}\\tripledash/g
+      ],
+      [
+        (match, arrow) => {
+          const mharrow = `mhchem${arrow}`;
+          return mhchemChars.lookup(mharrow) || mhchemMacros.lookup(mharrow) ? `\\${mharrow}` : match;
+        },
+        /\\(x?(?:long)?(?:left|right|[Ll]eftright|[Rr]ightleft)(?:arrow|harpoons))/g
+      ]
+    ]);
+    MhchemMethods = {
+      Machine(parser2, name, machine) {
+        const arg = parser2.GetArgument(name);
+        let tex;
+        try {
+          tex = mhchemParser.toTex(arg, machine);
+          for (const [name2, pattern] of MhchemReplacements.entries()) {
+            tex = tex.replace(pattern, name2);
+          }
+        } catch (err2) {
+          throw new TexError_default(err2[0], err2[1]);
+        }
+        parser2.string = tex + parser2.string.substring(parser2.i);
+        parser2.i = 0;
+      },
+      Macro: BaseMethods_default.Macro,
+      xArrow: AmsMethods.xArrow
+    };
+    mhchemMacros = new CommandMap("mhchem", {
+      ce: [MhchemMethods.Machine, "ce"],
+      pu: [MhchemMethods.Machine, "pu"],
+      mhchemxrightarrow: [MhchemMethods.xArrow, 58409, 5, 9],
+      mhchemxleftarrow: [MhchemMethods.xArrow, 58408, 9, 5],
+      mhchemxleftrightarrow: [MhchemMethods.xArrow, 58410, 9, 9],
+      mhchemxleftrightarrows: [MhchemMethods.xArrow, 58411, 9, 9],
+      mhchemxrightleftharpoons: [MhchemMethods.xArrow, 58376, 5, 9],
+      mhchemxRightleftharpoons: [MhchemMethods.xArrow, 58377, 5, 9],
+      mhchemxLeftrightharpoons: [MhchemMethods.xArrow, 58378, 9, 11]
+    });
+    mhchemChars = new CharacterMap("mhchem-chars", MhchemUtils.relmo, {
+      tripledash: ["\uE410", { stretchy: false }],
+      mhchemBondTD: ["\uE411", { stretchy: false }],
+      mhchemBondTDD: ["\uE412", { stretchy: false }],
+      mhchemBondDTD: ["\uE413", { stretchy: false }],
+      mhchemlongleftarrow: "\uE428",
+      mhchemlongrightarrow: "\uE429",
+      mhchemlongleftrightarrow: "\uE42A",
+      mhchemlongrightleftharpoons: "\uE408",
+      mhchemlongRightleftharpoons: "\uE409",
+      mhchemlongLeftrightharpoons: "\uE40A",
+      mhchemlongleftrightarrows: "\uE42B",
+      mhchemrightarrow: "\uE42D",
+      mhchemleftarrow: "\uE42C",
+      mhchemleftrightarrow: "\uE42E"
+    });
+    MhchemConfiguration = Configuration.create("mhchem", {
+      [ConfigurationType.HANDLER]: {
+        [HandlerType.MACRO]: ["mhchem", "mhchem-chars"]
+      }
+    });
   }
-  return oriented(pts, 1);
+});
+// node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdMethods.js
+var AmsCdMethods;
+var AmsCdMethods_default;
+var init_AmsCdMethods = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdMethods.js"() {
+    init_TexParser();
+    init_BaseConfiguration();
+    init_MmlNode();
+    init_NodeUtil();
+    AmsCdMethods = {
+      CD(parser2, begin) {
+        parser2.Push(begin);
+        const item = parser2.itemFactory.create("array");
+        const options3 = parser2.configuration.options.amscd;
+        item.setProperties({
+          minw: parser2.stack.env.CD_minw || options3.harrowsize,
+          minh: parser2.stack.env.CD_minh || options3.varrowsize
+        });
+        item.arraydef = {
+          columnalign: "center",
+          columnspacing: options3.colspace,
+          rowspacing: options3.rowspace,
+          displaystyle: true
+        };
+        return item;
+      },
+      arrow(parser2, name) {
+        const i2 = parser2.i;
+        const c = parser2.GetNext();
+        if (!c.match(/[><VA.|=]/)) {
+          parser2.i = i2;
+          return Other(parser2, name);
+        } else {
+          parser2.i++;
+        }
+        let first = parser2.stack.Top();
+        if (!first.isKind("array") || first.Size()) {
+          AmsCdMethods.cell(parser2, name);
+          first = parser2.stack.Top();
+        }
+        const top = first;
+        const arrowRow2 = top.table.length % 2 === 1;
+        let n = (top.row.length + (arrowRow2 ? 0 : 1)) % 2;
+        while (n) {
+          AmsCdMethods.cell(parser2, name);
+          n--;
+        }
+        let mml;
+        const hdef = { minsize: top.getProperty("minw"), stretchy: true };
+        const vdef = {
+          minsize: top.getProperty("minh"),
+          stretchy: true,
+          symmetric: true,
+          lspace: 0,
+          rspace: 0
+        };
+        if (c === "|") {
+          mml = parser2.create("token", "mo", vdef, "∥");
+        } else if (c === "=") {
+          mml = parser2.create("token", "mo", hdef, "=");
+        } else if (c !== ".") {
+          const arrow = {
+            ">": "→",
+            "<": "←",
+            V: "↓",
+            A: "↑"
+          }[c];
+          let a = parser2.GetUpTo(name + c, c);
+          const b = parser2.GetUpTo(name + c, c);
+          if (c === ">" || c === "<") {
+            mml = parser2.create("token", "mo", hdef, arrow);
+            if (!a) {
+              a = "\\kern " + top.getProperty("minw");
+            }
+            const pad2 = { width: "+.67em", lspace: ".33em" };
+            mml = parser2.create("node", "munderover", [mml]);
+            const nodeA = new TexParser(a, parser2.stack.env, parser2.configuration).mml();
+            const mpadded = parser2.create("node", "mpadded", [nodeA], pad2);
+            NodeUtil_default.setAttribute(mpadded, "voffset", ".1em");
+            NodeUtil_default.setChild(mml, mml.over, mpadded);
+            if (b) {
+              const nodeB = new TexParser(b, parser2.stack.env, parser2.configuration).mml();
+              NodeUtil_default.setChild(mml, mml.under, parser2.create("node", "mpadded", [nodeB], pad2));
+            }
+            if (parser2.configuration.options.amscd.hideHorizontalLabels) {
+              mml = parser2.create("node", "mpadded", [mml], {
+                depth: 0,
+                height: ".67em"
+              });
+            }
+          } else {
+            const arrowNode = parser2.create("token", "mo", vdef, arrow);
+            mml = arrowNode;
+            if (a || b) {
+              mml = parser2.create("node", "mrow");
+              if (a) {
+                NodeUtil_default.appendChildren(mml, [
+                  new TexParser("\\scriptstyle\\raise.125em{\\vcenter{\\llap{" + a + "}}}", parser2.stack.env, parser2.configuration).mml()
+                ]);
+              }
+              arrowNode.texClass = TEXCLASS.ORD;
+              NodeUtil_default.appendChildren(mml, [arrowNode]);
+              if (b) {
+                NodeUtil_default.appendChildren(mml, [
+                  new TexParser("\\scriptstyle\\raise.125em{\\vcenter{\\rlap{" + b + "}}}", parser2.stack.env, parser2.configuration).mml()
+                ]);
+              }
+            }
+          }
+        }
+        if (mml) {
+          parser2.Push(mml);
+        }
+        AmsCdMethods.cell(parser2, name);
+      },
+      cell(parser2, name) {
+        const top = parser2.stack.Top();
+        if ((top.table || []).length % 2 === 0 && (top.row || []).length === 0) {
+          parser2.Push(parser2.create("node", "mpadded", [], { height: "8.5pt", depth: "2pt" }));
+        }
+        parser2.Push(parser2.itemFactory.create("cell").setProperties({ isEntry: true, name }));
+      },
+      minCDarrowwidth(parser2, name) {
+        parser2.stack.env.CD_minw = parser2.GetDimen(name);
+      },
+      minCDarrowheight(parser2, name) {
+        parser2.stack.env.CD_minh = parser2.GetDimen(name);
+      }
+    };
+    AmsCdMethods_default = AmsCdMethods;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdMappings.js
+var init_AmsCdMappings = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdMappings.js"() {
+    init_TokenMap();
+    init_ParseMethods();
+    init_AmsCdMethods();
+    new EnvironmentMap("amscd_environment", ParseMethods_default.environment, {
+      CD: AmsCdMethods_default.CD
+    });
+    new CommandMap("amscd_macros", {
+      minCDarrowwidth: AmsCdMethods_default.minCDarrowwidth,
+      minCDarrowheight: AmsCdMethods_default.minCDarrowheight
+    });
+    new MacroMap("amscd_special", { "@": AmsCdMethods_default.arrow });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdConfiguration.js
+var AmsCdConfiguration;
+var init_AmsCdConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/amscd/AmsCdConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_AmsCdMappings();
+    AmsCdConfiguration = Configuration.create("amscd", {
+      [ConfigurationType.HANDLER]: {
+        [HandlerType.CHARACTER]: ["amscd_special"],
+        [HandlerType.MACRO]: ["amscd_macros"],
+        [HandlerType.ENVIRONMENT]: ["amscd_environment"]
+      },
+      [ConfigurationType.OPTIONS]: {
+        amscd: {
+          colspace: "5pt",
+          rowspace: "5pt",
+          harrowsize: "2.75em",
+          varrowsize: "1.75em",
+          hideHorizontalLabels: false
+        }
+      }
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/empheq/EmpheqUtil.js
+var EmpheqUtil;
+var init_EmpheqUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/empheq/EmpheqUtil.js"() {
+    init_ParseUtil();
+    init_TexParser();
+    EmpheqUtil = {
+      splitOptions(text, allowed = null) {
+        return ParseUtil.keyvalOptions(text, allowed, true);
+      },
+      columnCount(table2) {
+        let m = 0;
+        for (const row of table2.childNodes) {
+          const n = row.childNodes.length - (row.isKind("mlabeledtr") ? 1 : 0);
+          if (n > m)
+            m = n;
+        }
+        return m;
+      },
+      cellBlock(tex, table2, parser2, env) {
+        const mpadded = parser2.create("node", "mpadded", [], {
+          height: 0,
+          depth: 0,
+          voffset: "-1height"
+        });
+        const result = new TexParser(tex, parser2.stack.env, parser2.configuration);
+        const mml = result.mml();
+        if (env && result.configuration.tags.label) {
+          result.configuration.tags.currentTag.env = env;
+          result.configuration.tags.getTag(true);
+        }
+        for (const child of mml.isInferred ? mml.childNodes : [mml]) {
+          mpadded.appendChild(child);
+        }
+        mpadded.appendChild(parser2.create("node", "mphantom", [
+          parser2.create("node", "mpadded", [table2], { width: 0 })
+        ]));
+        return mpadded;
+      },
+      topRowTable(original, parser2) {
+        const table2 = ParseUtil.copyNode(original, parser2);
+        table2.setChildren(table2.childNodes.slice(0, 1));
+        table2.attributes.set("align", "baseline 1");
+        return original.factory.create("mphantom", {}, [
+          parser2.create("node", "mpadded", [table2], { width: 0 })
+        ]);
+      },
+      rowspanCell(mtd, tex, table2, parser2, env) {
+        mtd.appendChild(parser2.create("node", "mpadded", [
+          this.cellBlock(tex, ParseUtil.copyNode(table2, parser2), parser2, env),
+          this.topRowTable(table2, parser2)
+        ], { height: 0, depth: 0, voffset: "height" }));
+      },
+      left(table2, original, left, parser2, env = "") {
+        table2.attributes.set("columnalign", "right " + table2.attributes.get("columnalign"));
+        table2.attributes.set("columnspacing", "0em " + table2.attributes.get("columnspacing"));
+        if (table2.childNodes.length === 0) {
+          table2.appendChild(parser2.create("node", "mtr"));
+        }
+        let mtd;
+        for (const row of table2.childNodes.slice(0).reverse()) {
+          mtd = parser2.create("node", "mtd");
+          row.childNodes.unshift(mtd);
+          mtd.parent = row;
+          if (row.isKind("mlabeledtr")) {
+            row.childNodes[0] = row.childNodes[1];
+            row.childNodes[1] = mtd;
+          }
+        }
+        this.rowspanCell(mtd, left, original, parser2, env);
+      },
+      right(table2, original, right, parser2, env = "") {
+        if (table2.childNodes.length === 0) {
+          table2.appendChild(parser2.create("node", "mtr"));
+        }
+        const row = table2.childNodes[0];
+        const m = EmpheqUtil.columnCount(table2) + (row.isKind("mlabeledtr") ? 1 : 0);
+        while (row.childNodes.length < m) {
+          row.appendChild(parser2.create("node", "mtd"));
+        }
+        const mtd = row.appendChild(parser2.create("node", "mtd"));
+        EmpheqUtil.rowspanCell(mtd, right, original, parser2, env);
+        table2.attributes.set("columnalign", (table2.attributes.get("columnalign") || "").split(/ /).slice(0, m).join(" ") + " left");
+        table2.attributes.set("columnspacing", table2.attributes.get("columnspacing").split(/ /).slice(0, m - 1).join(" ") + " 0em");
+      },
+      adjustTable(empheq, parser2) {
+        const left = empheq.getProperty("left");
+        const right = empheq.getProperty("right");
+        if (left || right) {
+          const table2 = empheq.Last;
+          const original = ParseUtil.copyNode(table2, parser2);
+          if (left)
+            this.left(table2, original, left, parser2);
+          if (right)
+            this.right(table2, original, right, parser2);
+        }
+      },
+      allowEnv: {
+        equation: true,
+        align: true,
+        gather: true,
+        flalign: true,
+        alignat: true,
+        multline: true
+      },
+      checkEnv(env) {
+        return Object.hasOwn(this.allowEnv, env.replace(/\*$/, "")) || false;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/empheq/EmpheqConfiguration.js
+var EmpheqMethods;
+var EmpheqConfiguration;
+var init_EmpheqConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/empheq/EmpheqConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TokenMap();
+    init_ParseUtil();
+    init_TexError();
+    init_EmpheqUtil();
+    init_ParseMethods();
+    EmpheqMethods = {
+      Empheq(parser2, begin) {
+        if (parser2.stack.env.closing === begin.getName()) {
+          delete parser2.stack.env.closing;
+          parser2.Push(parser2.itemFactory.create("end").setProperty("name", parser2.stack.global.empheq));
+          parser2.stack.global.empheq = "";
+          const empheq = parser2.stack.Top();
+          EmpheqUtil.adjustTable(empheq, parser2);
+          parser2.Push(parser2.itemFactory.create("end").setProperty("name", "empheq"));
+        } else {
+          ParseUtil.checkEqnEnv(parser2);
+          const opts = parser2.GetBrackets("\\begin{" + begin.getName() + "}") || "";
+          const [env, n] = parser2.GetArgument("\\begin{" + begin.getName() + "}").split(/=/);
+          if (!EmpheqUtil.checkEnv(env)) {
+            throw new TexError_default("EmpheqInvalidEnv", 'Invalid environment "%1" for %2', env, begin.getName());
+          }
+          begin.setProperty("nestStart", true);
+          if (opts) {
+            begin.setProperties(EmpheqUtil.splitOptions(opts, { left: 1, right: 1 }));
+          }
+          parser2.stack.global.empheq = env;
+          parser2.string = "\\begin{" + env + "}" + (n ? "{" + n + "}" : "") + parser2.string.slice(parser2.i);
+          parser2.i = 0;
+          parser2.Push(begin);
+        }
+      },
+      EmpheqMO(parser2, _name, c) {
+        parser2.Push(parser2.create("token", "mo", {}, c));
+      },
+      EmpheqDelim(parser2, name) {
+        const c = parser2.GetDelimiter(name);
+        parser2.Push(parser2.create("token", "mo", { stretchy: true, symmetric: true }, c));
+      }
+    };
+    new EnvironmentMap("empheq-env", ParseMethods_default.environment, {
+      empheq: [EmpheqMethods.Empheq, "empheq"]
+    });
+    new CommandMap("empheq-macros", {
+      empheqlbrace: [EmpheqMethods.EmpheqMO, "{"],
+      empheqrbrace: [EmpheqMethods.EmpheqMO, "}"],
+      empheqlbrack: [EmpheqMethods.EmpheqMO, "["],
+      empheqrbrack: [EmpheqMethods.EmpheqMO, "]"],
+      empheqlangle: [EmpheqMethods.EmpheqMO, "⟨"],
+      empheqrangle: [EmpheqMethods.EmpheqMO, "⟩"],
+      empheqlparen: [EmpheqMethods.EmpheqMO, "("],
+      empheqrparen: [EmpheqMethods.EmpheqMO, ")"],
+      empheqlvert: [EmpheqMethods.EmpheqMO, "|"],
+      empheqrvert: [EmpheqMethods.EmpheqMO, "|"],
+      empheqlVert: [EmpheqMethods.EmpheqMO, "‖"],
+      empheqrVert: [EmpheqMethods.EmpheqMO, "‖"],
+      empheqlfloor: [EmpheqMethods.EmpheqMO, "⌊"],
+      empheqrfloor: [EmpheqMethods.EmpheqMO, "⌋"],
+      empheqlceil: [EmpheqMethods.EmpheqMO, "⌈"],
+      empheqrceil: [EmpheqMethods.EmpheqMO, "⌉"],
+      empheqbiglbrace: [EmpheqMethods.EmpheqMO, "{"],
+      empheqbigrbrace: [EmpheqMethods.EmpheqMO, "}"],
+      empheqbiglbrack: [EmpheqMethods.EmpheqMO, "["],
+      empheqbigrbrack: [EmpheqMethods.EmpheqMO, "]"],
+      empheqbiglangle: [EmpheqMethods.EmpheqMO, "⟨"],
+      empheqbigrangle: [EmpheqMethods.EmpheqMO, "⟩"],
+      empheqbiglparen: [EmpheqMethods.EmpheqMO, "("],
+      empheqbigrparen: [EmpheqMethods.EmpheqMO, ")"],
+      empheqbiglvert: [EmpheqMethods.EmpheqMO, "|"],
+      empheqbigrvert: [EmpheqMethods.EmpheqMO, "|"],
+      empheqbiglVert: [EmpheqMethods.EmpheqMO, "‖"],
+      empheqbigrVert: [EmpheqMethods.EmpheqMO, "‖"],
+      empheqbiglfloor: [EmpheqMethods.EmpheqMO, "⌊"],
+      empheqbigrfloor: [EmpheqMethods.EmpheqMO, "⌋"],
+      empheqbiglceil: [EmpheqMethods.EmpheqMO, "⌈"],
+      empheqbigrceil: [EmpheqMethods.EmpheqMO, "⌉"],
+      empheql: EmpheqMethods.EmpheqDelim,
+      empheqr: EmpheqMethods.EmpheqDelim,
+      empheqbigl: EmpheqMethods.EmpheqDelim,
+      empheqbigr: EmpheqMethods.EmpheqDelim
+    });
+    EmpheqConfiguration = Configuration.create("empheq", {
+      [ConfigurationType.HANDLER]: {
+        [HandlerType.MACRO]: ["empheq-macros"],
+        [HandlerType.ENVIRONMENT]: ["empheq-env"]
+      }
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/centernot/CenternotConfiguration.js
+function CenterOver(parser2, name) {
+  const arg = "{" + parser2.GetArgument(name) + "}";
+  const over = parser2.ParseArg(name);
+  const base = new TexParser(arg, parser2.stack.env, parser2.configuration).mml();
+  const mml = parser2.create("node", "TeXAtom", [
+    new TexParser(arg, parser2.stack.env, parser2.configuration).mml(),
+    parser2.create("node", "mpadded", [
+      parser2.create("node", "mpadded", [over], {
+        width: 0,
+        lspace: "-.5width"
+      }),
+      parser2.create("node", "mphantom", [base])
+    ], { width: 0, lspace: "-.5width" })
+  ]);
+  parser2.configuration.addNode("centerOver", base);
+  parser2.Push(mml);
 }
-function ellipse(cx, cy, rx, ry, sides2 = 48) {
-  const pts = [];
-  for (let k = 0; k < sides2; k++) {
-    const a = 2 * Math.PI * k / sides2;
-    pts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]);
+function filterCenterOver({ data }) {
+  for (const base of data.getList("centerOver")) {
+    const texClass = NodeUtil_default.getTexClass(base.childNodes[0].childNodes[0]);
+    if (texClass !== null) {
+      NodeUtil_default.setProperties(base.parent.parent.parent.parent.parent.parent, {
+        texClass
+      });
+    }
+  }
+}
+var CenternotConfiguration;
+var init_CenternotConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/centernot/CenternotConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TexParser();
+    init_NodeUtil();
+    init_TokenMap();
+    init_BaseMethods();
+    new CommandMap("centernot", {
+      centerOver: CenterOver,
+      centernot: [BaseMethods_default.Macro, "\\centerOver{#1}{{⧸}}", 1]
+    });
+    CenternotConfiguration = Configuration.create("centernot", {
+      [ConfigurationType.HANDLER]: { macro: ["centernot"] },
+      [ConfigurationType.POSTPROCESSORS]: [filterCenterOver]
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/gensymb/GensymbConfiguration.js
+function mathcharUnit(parser2, mchar) {
+  const def2 = mchar.attributes || {};
+  def2.mathvariant = TexConstant.Variant.NORMAL;
+  def2.class = "MathML-Unit";
+  const node = parser2.create("token", "mi", def2, mchar.char);
+  parser2.Push(node);
+}
+var GensymbConfiguration;
+var init_GensymbConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/gensymb/GensymbConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TexConstants();
+    init_TokenMap();
+    new CharacterMap("gensymb-symbols", mathcharUnit, {
+      ohm: "Ω",
+      degree: "°",
+      celsius: "℃",
+      perthousand: "‰",
+      micro: "µ"
+    });
+    GensymbConfiguration = Configuration.create("gensymb", {
+      [ConfigurationType.HANDLER]: { [HandlerType.MACRO]: ["gensymb-symbols"] }
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/upgreek/UpgreekConfiguration.js
+function mathchar0miNormal(parser2, mchar) {
+  const def2 = mchar.attributes || {};
+  def2.mathvariant = TexConstant.Variant.NORMAL;
+  const node = parser2.create("token", "mi", def2, mchar.char);
+  parser2.Push(node);
+}
+var UpgreekConfiguration;
+var init_UpgreekConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/upgreek/UpgreekConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TokenMap();
+    init_TexConstants();
+    new CharacterMap("upgreek", mathchar0miNormal, JSON.parse(`{
+ "upalpha":"α","upbeta":"β","upgamma":"γ","updelta":"δ","upepsilon":"ϵ","upzeta":"ζ","upeta":"η","uptheta":"θ","upiota":"ι","upkappa":"κ","uplambda":"λ","upmu":"μ","upnu":"ν","upxi":"ξ","upomicron":"ο",
+ "uppi":"π","uprho":"ρ","upsigma":"σ","uptau":"τ","upupsilon":"υ","upphi":"ϕ","upchi":"χ","uppsi":"ψ","upomega":"ω","upvarepsilon":"ε","upvartheta":"ϑ","upvarpi":"ϖ","upvarrho":"ϱ","upvarsigma":"ς",
+ "upvarphi":"φ","Upgamma":"Γ","Updelta":"Δ","Uptheta":"Θ","Uplambda":"Λ","Upxi":"Ξ","Uppi":"Π","Upsigma":"Σ","Upupsilon":"Υ","Upphi":"Φ","Uppsi":"Ψ","Upomega":"Ω"
+}`));
+    UpgreekConfiguration = Configuration.create("upgreek", {
+      [ConfigurationType.HANDLER]: { [HandlerType.MACRO]: ["upgreek"] }
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/textcomp/TextcompMappings.js
+function Insert(parser2, name, c, font) {
+  if (parser2 instanceof TextParser) {
+    if (!font) {
+      TextMacrosMethods.Insert(parser2, name, c);
+      return;
+    }
+    parser2.saveText();
+  }
+  parser2.Push(ParseUtil.internalText(parser2, c, font ? { mathvariant: font } : {}));
+}
+var init_TextcompMappings = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/textcomp/TextcompMappings.js"() {
+    init_TokenMap();
+    init_TexConstants();
+    init_TextMacrosMethods();
+    init_ParseUtil();
+    init_TextParser();
+    new CommandMap("textcomp-macros", {
+      textasciicircum: [Insert, "^"],
+      textasciitilde: [Insert, "~"],
+      textasteriskcentered: [Insert, "*"],
+      textbackslash: [Insert, "\\"],
+      textbar: [Insert, "|"],
+      textbraceleft: [Insert, "{"],
+      textbraceright: [Insert, "}"],
+      textbullet: [Insert, "•"],
+      textdagger: [Insert, "†"],
+      textdaggerdbl: [Insert, "‡"],
+      textellipsis: [Insert, "…"],
+      textemdash: [Insert, "—"],
+      textendash: [Insert, "–"],
+      textexclamdown: [Insert, "¡"],
+      textgreater: [Insert, ">"],
+      textless: [Insert, "<"],
+      textordfeminine: [Insert, "ª"],
+      textordmasculine: [Insert, "º"],
+      textparagraph: [Insert, "¶"],
+      textperiodcentered: [Insert, "·"],
+      textquestiondown: [Insert, "¿"],
+      textquotedblleft: [Insert, "“"],
+      textquotedblright: [Insert, "”"],
+      textquoteleft: [Insert, "‘"],
+      textquoteright: [Insert, "’"],
+      textsection: [Insert, "§"],
+      textunderscore: [Insert, "_"],
+      textvisiblespace: [Insert, "␣"],
+      textacutedbl: [Insert, "˝"],
+      textasciiacute: [Insert, "´"],
+      textasciibreve: [Insert, "˘"],
+      textasciicaron: [Insert, "ˇ"],
+      textasciidieresis: [Insert, "¨"],
+      textasciimacron: [Insert, "¯"],
+      textgravedbl: [Insert, "˵"],
+      texttildelow: [Insert, "˷"],
+      textbaht: [Insert, "฿"],
+      textcent: [Insert, "¢"],
+      textcolonmonetary: [Insert, "₡"],
+      textcurrency: [Insert, "¤"],
+      textdollar: [Insert, "$"],
+      textdong: [Insert, "₫"],
+      texteuro: [Insert, "€"],
+      textflorin: [Insert, "ƒ"],
+      textguarani: [Insert, "₲"],
+      textlira: [Insert, "₤"],
+      textnaira: [Insert, "₦"],
+      textpeso: [Insert, "₱"],
+      textsterling: [Insert, "£"],
+      textwon: [Insert, "₩"],
+      textyen: [Insert, "¥"],
+      textcircledP: [Insert, "℗"],
+      textcompwordmark: [Insert, "\u200C"],
+      textcopyleft: [Insert, "🄯"],
+      textcopyright: [Insert, "©"],
+      textregistered: [Insert, "®"],
+      textservicemark: [Insert, "℠"],
+      texttrademark: [Insert, "™"],
+      textbardbl: [Insert, "‖"],
+      textbigcircle: [Insert, "◯"],
+      textblank: [Insert, "␢"],
+      textbrokenbar: [Insert, "¦"],
+      textdiscount: [Insert, "⁒"],
+      textestimated: [Insert, "℮"],
+      textinterrobang: [Insert, "‽"],
+      textinterrobangdown: [Insert, "⸘"],
+      textmusicalnote: [Insert, "♪"],
+      textnumero: [Insert, "№"],
+      textopenbullet: [Insert, "◦"],
+      textpertenthousand: [Insert, "‱"],
+      textperthousand: [Insert, "‰"],
+      textrecipe: [Insert, "℞"],
+      textreferencemark: [Insert, "※"],
+      textlangle: [Insert, "〈"],
+      textrangle: [Insert, "〉"],
+      textlbrackdbl: [Insert, "⟦"],
+      textrbrackdbl: [Insert, "⟧"],
+      textlquill: [Insert, "⁅"],
+      textrquill: [Insert, "⁆"],
+      textcelsius: [Insert, "℃"],
+      textdegree: [Insert, "°"],
+      textdiv: [Insert, "÷"],
+      textdownarrow: [Insert, "↓"],
+      textfractionsolidus: [Insert, "⁄"],
+      textleftarrow: [Insert, "←"],
+      textlnot: [Insert, "¬"],
+      textmho: [Insert, "℧"],
+      textminus: [Insert, "−"],
+      textmu: [Insert, "µ"],
+      textohm: [Insert, "Ω"],
+      textonehalf: [Insert, "½"],
+      textonequarter: [Insert, "¼"],
+      textonesuperior: [Insert, "¹"],
+      textpm: [Insert, "±"],
+      textrightarrow: [Insert, "→"],
+      textsurd: [Insert, "√"],
+      textthreequarters: [Insert, "¾"],
+      textthreesuperior: [Insert, "³"],
+      texttimes: [Insert, "×"],
+      texttwosuperior: [Insert, "²"],
+      textuparrow: [Insert, "↑"],
+      textborn: [Insert, "*"],
+      textdied: [Insert, "†"],
+      textdivorced: [Insert, "⚮"],
+      textmarried: [Insert, "⚭"],
+      textcentoldstyle: [Insert, "¢", TexConstant.Variant.OLDSTYLE],
+      textdollaroldstyle: [Insert, "$", TexConstant.Variant.OLDSTYLE],
+      textzerooldstyle: [Insert, "0", TexConstant.Variant.OLDSTYLE],
+      textoneoldstyle: [Insert, "1", TexConstant.Variant.OLDSTYLE],
+      texttwooldstyle: [Insert, "2", TexConstant.Variant.OLDSTYLE],
+      textthreeoldstyle: [Insert, "3", TexConstant.Variant.OLDSTYLE],
+      textfouroldstyle: [Insert, "4", TexConstant.Variant.OLDSTYLE],
+      textfiveoldstyle: [Insert, "5", TexConstant.Variant.OLDSTYLE],
+      textsixoldstyle: [Insert, "6", TexConstant.Variant.OLDSTYLE],
+      textsevenoldstyle: [Insert, "7", TexConstant.Variant.OLDSTYLE],
+      texteightoldstyle: [Insert, "8", TexConstant.Variant.OLDSTYLE],
+      textnineoldstyle: [Insert, "9", TexConstant.Variant.OLDSTYLE]
+    });
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/textcomp/TextcompConfiguration.js
+var TextcompConfiguration;
+var init_TextcompConfiguration = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/textcomp/TextcompConfiguration.js"() {
+    init_HandlerTypes();
+    init_Configuration();
+    init_TextcompMappings();
+    Configuration.create("text-textcomp", {
+      [ConfigurationType.PARSER]: "text",
+      [ConfigurationType.HANDLER]: { [HandlerType.MACRO]: ["textcomp-macros"] }
+    });
+    TextcompConfiguration = Configuration.create("textcomp", {
+      [ConfigurationType.HANDLER]: { macro: ["textcomp-macros"] },
+      config(_config, jax) {
+        const textmacros = jax.parseOptions.packageData.get("textmacros");
+        if (textmacros) {
+          textmacros.parseOptions.options.textmacros.packages.push("text-textcomp");
+          textmacros.textConf.add("text-textcomp", jax, {});
+        }
+      }
+    });
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/accents.js
+var init_accents = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/accents.js"() {
+    init_svg();
+    init_Direction();
+    MathJaxNewcmFont.dynamicSetup("", "accents", JSON.parse(__kittexJson19 + __kittexJson20), {
+      785: {
+        dir: H,
+        sizes: [0.376, 0.658, 0.784, 0.937, 1.12, 1.341, 1.604, 1.92]
+      },
+      812: {
+        dir: H,
+        sizes: [0.366, 0.644, 0.768, 0.919, 1.1, 1.32, 1.581, 1.896]
+      },
+      813: {
+        dir: H,
+        sizes: [0.366, 0.644, 0.768, 0.919, 1.1, 1.32, 1.581, 1.896]
+      },
+      814: {
+        dir: H,
+        sizes: [0.376, 0.658, 0.784, 0.937, 1.12, 1.341, 1.604, 1.92]
+      },
+      815: {
+        dir: H,
+        sizes: [0.376, 0.658, 0.784, 0.937, 1.12, 1.341, 1.604, 1.92]
+      },
+      816: {
+        dir: H,
+        sizes: [0.37, 0.652, 0.778, 0.931, 1.115, 1.335, 1.599, 1.915]
+      },
+      818: {
+        dir: H,
+        sizes: [0.392, 0.568],
+        stretch: [0, 818],
+        stretchv: [0, 1],
+        HDW: [-0.103, 0.143, 0],
+        hd: [-0.103, 0.143]
+      },
+      819: {
+        dir: H,
+        sizes: [0.392, 0.568],
+        stretch: [0, 819],
+        stretchv: [0, 1],
+        HDW: [-0.103, 0.293, 0],
+        hd: [-0.103, 0.293]
+      },
+      831: {
+        dir: H,
+        sizes: [0.392, 0.568],
+        stretch: [0, 831],
+        stretchv: [0, 1],
+        HDW: [0.82, -0.63, 0],
+        hd: [0.82, -0.63]
+      },
+      8425: {
+        dir: H,
+        sizes: [0.36, 0.735, 1.11, 1.485, 1.86, 2.235, 2.61, 2.985],
+        schar: [8425, 9140],
+        stretch: [9140, 9140, 9140],
+        stretchv: [3, 1, 4],
+        HDW: [0.772, -0.504, 0],
+        hd: [0.772, -0.706]
+      },
+      845: {
+        dir: H,
+        sizes: [0.47, 0.715],
+        stretch: [8430, 845, 8431],
+        stretchv: [3, 1, 4],
+        HDW: [-0.091, 0.281, 0],
+        hd: [-0.171, 0.201]
+      }
+    });
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/arrows.js
+var init_arrows = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/arrows.js"() {
+    init_svg();
+    init_Direction();
+    MathJaxNewcmFont.dynamicSetup("", "arrows", JSON.parse(__kittexJson21 + __kittexJson22 + __kittexJson23 + __kittexJson24), {
+      10145: {
+        dir: H,
+        sizes: [0.977, 1.423],
+        variants: [0, 2],
+        stretch: [0, 11013, 11020],
+        stretchv: [0, 1, 4],
+        HDW: [0.469, -0.031, 0.977],
+        hd: [0.349, -0.151]
+      },
+      10237: {
+        c: 10502,
+        dir: H,
+        sizes: [0.991, 1.437],
+        variants: [0, 0],
+        schar: [10502, 10237],
+        stretch: [8656, 8656, 10502],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.021, 0.991],
+        hd: [0.369, -0.131]
+      },
+      10238: {
+        c: 10503,
+        dir: H,
+        sizes: [0.991, 1.437],
+        variants: [0, 0],
+        schar: [10503, 10238],
+        stretch: [10503, 8656, 8658],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.021, 0.991],
+        hd: [0.369, -0.131]
+      },
+      10502: {
+        dir: H,
+        sizes: [0.991, 1.437],
+        variants: [0, 0],
+        schar: [10502, 10237],
+        stretch: [8656, 8656, 10502],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.021, 0.991],
+        hd: [0.369, -0.131]
+      },
+      10503: {
+        dir: H,
+        sizes: [0.991, 1.437],
+        variants: [0, 0],
+        schar: [10503, 10238],
+        stretch: [10503, 8656, 8658],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.021, 0.991],
+        hd: [0.369, -0.131]
+      },
+      10572: {
+        dir: V,
+        sizes: [0.911],
+        stretch: [10572, 10572, 10572],
+        stretchv: [3, 1, 4],
+        HDW: [0.706, 0.206, 0.616]
+      },
+      10573: {
+        dir: V,
+        sizes: [0.911],
+        stretch: [10573, 10572, 10573],
+        stretchv: [3, 1, 4],
+        HDW: [0.706, 0.206, 0.616]
+      },
+      10575: {
+        dir: V,
+        sizes: [0.922],
+        stretch: [10572, 10572, 10573],
+        stretchv: [3, 1, 4],
+        HDW: [0.828, 0.095, 0.616]
+      },
+      10577: {
+        dir: V,
+        sizes: [0.922],
+        stretch: [10573, 10572, 10572],
+        stretchv: [3, 1, 4],
+        HDW: [0.828, 0.095, 0.616]
+      },
+      10588: {
+        dir: V,
+        sizes: [0.909],
+        stretch: [10572, 10572, 8613],
+        stretchv: [3, 1, 4],
+        HDW: [0.705, 0.205, 0.616]
+      },
+      10589: {
+        dir: V,
+        sizes: [0.909],
+        stretch: [8615, 10572, 10573],
+        stretchv: [3, 1, 4],
+        HDW: [0.705, 0.205, 0.616]
+      },
+      10592: {
+        dir: V,
+        sizes: [0.909],
+        stretch: [10573, 10572, 8613],
+        stretchv: [3, 1, 4],
+        HDW: [0.705, 0.205, 0.616]
+      },
+      10593: {
+        dir: V,
+        sizes: [0.909],
+        stretch: [8615, 10572, 10572],
+        stretchv: [3, 1, 4],
+        HDW: [0.705, 0.205, 0.616]
+      },
+      11012: {
+        dir: H,
+        sizes: [1.062, 1.508],
+        variants: [0, 2],
+        stretch: [8678, 8678, 8680],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.02, 1.062],
+        hd: [0.369, -0.131]
+      },
+      11013: {
+        dir: H,
+        sizes: [0.977, 1.423],
+        variants: [0, 2],
+        stretch: [11013, 11013],
+        stretchv: [3, 1],
+        HDW: [0.469, -0.031, 0.977],
+        hd: [0.349, -0.151]
+      },
+      11014: {
+        dir: V,
+        sizes: [0.866, 1.312],
+        variants: [0, 2],
+        stretch: [11014, 11014],
+        stretchv: [3, 1],
+        HDW: [0.672, 0.193, 0.612]
+      },
+      11015: {
+        dir: V,
+        sizes: [0.866, 1.312],
+        variants: [0, 2],
+        stretch: [0, 11014, 11015],
+        stretchv: [0, 1, 4],
+        HDW: [0.693, 0.172, 0.612]
+      },
+      11020: {
+        dir: H,
+        sizes: [1.022, 1.468],
+        variants: [0, 2],
+        stretch: [0, 11013, 11020],
+        stretchv: [0, 1, 4],
+        HDW: [0.469, -0.031, 1.022],
+        hd: [0.349, -0.151]
+      },
+      11021: {
+        dir: V,
+        sizes: [0.845, 1.291],
+        variants: [0, 2],
+        stretch: [11014, 11014, 11015],
+        stretchv: [3, 1, 4],
+        HDW: [0.672, 0.172, 0.612]
+      },
+      11057: {
+        dir: H,
+        sizes: [0.997, 1.463],
+        variants: [0, 2],
+        stretch: [11057, 8694],
+        stretchv: [3, 1],
+        HDW: [0.99, 0.49, 0.997],
+        hd: [0.751, 0.251]
+      },
+      8607: {
+        dir: V,
+        sizes: [0.903, 1.349],
+        variants: [0, 2],
+        stretch: [8607, 8593],
+        stretchv: [3, 1],
+        HDW: [0.689, 0.213, 0.5]
+      },
+      8609: {
+        dir: V,
+        sizes: [0.903, 1.349],
+        variants: [0, 2],
+        stretch: [0, 8593, 8609],
+        stretchv: [0, 1, 4],
+        HDW: [0.713, 0.189, 0.5]
+      },
+      8613: {
+        dir: V,
+        sizes: [0.863, 1.329],
+        variants: [0, 2],
+        stretch: [8593, 8593, 8613],
+        stretchv: [3, 1, 4],
+        HDW: [0.679, 0.183, 0.5]
+      },
+      8615: {
+        dir: V,
+        sizes: [0.863, 1.329],
+        variants: [0, 2],
+        stretch: [8615, 8593, 8595],
+        stretchv: [3, 1, 4],
+        HDW: [0.683, 0.179, 0.5]
+      },
+      8621: {
+        dir: H,
+        sizes: [0.996, 1.442],
+        variants: [0, 2]
+      },
+      8622: {
+        dir: H,
+        sizes: [0.996, 1.442],
+        variants: [0, 2],
+        stretch: [8602, 8592, 8603, 8602],
+        stretchv: [3, 1, 4, 1],
+        HDW: [0.51, 0.01, 0.996],
+        hd: [0.274, -0.226]
+      },
+      8624: {
+        dir: V,
+        sizes: [0.859, 1.169],
+        variants: [0, 2]
+      },
+      8625: {
+        dir: V,
+        sizes: [0.859, 1.169],
+        variants: [0, 2]
+      },
+      8626: {
+        dir: V,
+        sizes: [0.859, 1.169],
+        variants: [0, 2]
+      },
+      8627: {
+        dir: V,
+        sizes: [0.859, 1.169],
+        variants: [0, 2]
+      },
+      8662: {
+        dir: V,
+        sizes: [0.955, 1.421],
+        variants: [0, 2]
+      },
+      8663: {
+        dir: V,
+        sizes: [0.955, 1.421],
+        variants: [0, 2]
+      },
+      8664: {
+        dir: V,
+        sizes: [0.955, 1.421],
+        variants: [0, 2]
+      },
+      8665: {
+        dir: V,
+        sizes: [0.955, 1.421],
+        variants: [0, 2]
+      },
+      8668: {
+        dir: H,
+        sizes: [0.997, 1.463],
+        variants: [0, 0],
+        schar: [8668, 11059]
+      },
+      8669: {
+        dir: H,
+        sizes: [0.997, 1.463],
+        variants: [0, 0],
+        schar: [8669, 10239]
+      },
+      8678: {
+        dir: H,
+        sizes: [1.05, 1.496],
+        variants: [0, 2],
+        stretch: [8678, 8678, 8678],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.02, 1.05],
+        hd: [0.369, -0.131]
+      },
+      8679: {
+        dir: V,
+        sizes: [0.939, 1.385],
+        variants: [0, 2],
+        stretch: [8679, 8679, 8679],
+        stretchv: [3, 1, 4],
+        HDW: [0.725, 0.213, 0.652]
+      },
+      8680: {
+        dir: H,
+        sizes: [1.05, 1.496],
+        variants: [0, 2],
+        stretch: [8680, 8678, 8680],
+        stretchv: [3, 1, 4],
+        HDW: [0.52, 0.02, 1.05],
+        hd: [0.369, -0.131]
+      },
+      8681: {
+        dir: V,
+        sizes: [0.939, 1.385],
+        variants: [0, 2],
+        stretch: [8681, 8679, 8681],
+        stretchv: [3, 1, 4],
+        HDW: [0.713, 0.225, 0.652]
+      },
+      8691: {
+        dir: V,
+        sizes: [0.951, 1.397],
+        variants: [0, 2],
+        stretch: [8679, 8679, 8681],
+        stretchv: [3, 1, 4],
+        HDW: [0.725, 0.225, 0.652]
+      }
+    });
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/calligraphic.js
+var init_calligraphic = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/calligraphic.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "calligraphic", JSON.parse(__kittexJson25));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/double-struck.js
+var init_double_struck2 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/double-struck.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "double-struck", JSON.parse(__kittexJson26));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/fraktur.js
+var init_fraktur2 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/fraktur.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "fraktur", JSON.parse(__kittexJson27 + __kittexJson28));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/latin.js
+var init_latin = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/latin.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "latin", JSON.parse(__kittexJson29 + __kittexJson30 + __kittexJson31 + __kittexJson32 + __kittexJson33 + __kittexJson34));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/math.js
+var init_math4 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/math.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "math", JSON.parse(__kittexJson35 + __kittexJson36 + __kittexJson37 + __kittexJson38));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/monospace.js
+var init_monospace2 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/monospace.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "monospace", JSON.parse(__kittexJson39 + __kittexJson40));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/sans-serif.js
+var init_sans_serif2 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/sans-serif.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "sans-serif", JSON.parse(__kittexJson41 + __kittexJson42 + __kittexJson43 + __kittexJson44));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/script.js
+var init_script2 = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/script.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "script", JSON.parse(__kittexJson45 + __kittexJson46));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/shapes.js
+var init_shapes = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/shapes.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "shapes", JSON.parse(__kittexJson47 + __kittexJson48));
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/symbols.js
+var init_symbols = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/symbols.js"() {
+    init_svg();
+    init_Direction();
+    MathJaxNewcmFont.dynamicSetup("", "symbols", JSON.parse(__kittexJson49 + __kittexJson50 + __kittexJson51), {
+      8215: {
+        dir: H,
+        stretch: [0, 8215],
+        HDW: [-0.103, 0.293, 0.504],
+        hd: [-0.103, 0.293]
+      }
+    });
+  }
+});
+// node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/variants.js
+var init_variants = __esm({
+  "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/variants.js"() {
+    init_svg();
+    MathJaxNewcmFont.dynamicSetup("", "variants", JSON.parse(__kittexJson52));
+  }
+});
+// core/src/typeset/fonts.ts
+var init_fonts = __esm({
+  "core/src/typeset/fonts.ts"() {
+    "use strict";
+    init_accents();
+    init_arrows();
+    init_calligraphic();
+    init_double_struck2();
+    init_fraktur2();
+    init_latin();
+    init_math4();
+    init_monospace2();
+    init_sans_serif2();
+    init_script2();
+    init_shapes();
+    init_symbols();
+    init_variants();
+  }
+});
+// core/src/typeset/macros.ts
+function expand(parser2, tex) {
+  parser2.string = ParseUtil.addArgs(parser2, tex, parser2.string.slice(parser2.i));
+  parser2.i = 0;
+  ParseUtil.checkMaxMacros(parser2);
+}
+function rememberLabels(labels, limit) {
+  for (const [label, info] of Object.entries(labels)) {
+    if (!info || info.tag === "???") continue;
+    remembered.delete(label);
+    remembered.set(label, info.tag);
+  }
+  while (remembered.size > limit) remembered.delete(remembered.keys().next().value);
+}
+function reference(parser2, name, eqref) {
+  const label = parser2.GetArgument(name).trim();
+  const tags = parser2.tags;
+  const known = tags.labels[label] ?? tags.allLabels[label];
+  const tag3 = known && known.tag !== "???" ? known.tag : remembered.get(label) ?? label;
+  const text = eqref ? `(${tag3})` : tag3;
+  parser2.Push(parser2.create("node", "mrow", ParseUtil.internalMath(parser2, text)));
+}
+function smallCaps(parser2, name) {
+  const text = parser2.GetArgument(name);
+  if (/[\\{}$]/.test(text)) return expand(parser2, `\\text{${text}}`);
+  const runs = text.match(/[a-z]+|[^a-z]+/g) ?? [];
+  expand(parser2, runs.map((run2) => /^[a-z]/.test(run2) ? `\\text{\\footnotesize ${run2.toUpperCase()}}` : `\\text{${run2}}`).join(""));
+}
+function siNumber(text) {
+  const m = /^\s*([+-]?[\d.,]*)\s*(?:\+-\s*([\d.,]+)\s*)?(?:[eE]\s*([+-]?\d+))?\s*$/.exec(text);
+  if (!m || m[1] === "" && m[3] === void 0) return text;
+  let out = m[1].replace(/^-/, "-").replace(/,/g, ".");
+  if (m[2] !== void 0) out = `(${out} \\pm ${m[2]})`;
+  if (m[3] !== void 0) out += `${out === "" ? "" : " \\times "}10^{${m[3].replace(/^\+/, "")}}`;
+  return out;
+}
+function siUnits(text) {
+  if (!text.includes("\\")) return `\\mathrm{${text.replace(/\./g, "\\,").replace(/~/g, "\\,")}}`;
+  const parts = [];
+  let prefix = "";
+  let per = false;
+  let pre = 1;
+  const tokens = text.match(/\\[A-Za-z]+|\{[^{}]*\}|[^\\\s{}]+/g) ?? [];
+  for (let i2 = 0; i2 < tokens.length; i2++) {
+    const token2 = tokens[i2];
+    const cs = token2.startsWith("\\") ? token2.slice(1) : void 0;
+    if (cs === void 0) {
+      parts.push({ symbol: `\\mathrm{${token2.replace(/^\{|\}$/g, "")}}`, power: per ? -1 : 1 });
+      per = false;
+    } else if (cs in PREFIXES) {
+      prefix += PREFIXES[cs];
+    } else if (cs === "per") {
+      per = true;
+    } else if (cs === "square") {
+      pre = 2;
+    } else if (cs === "cubic") {
+      pre = 3;
+    } else if (cs === "squared" || cs === "cubed") {
+      const last = parts.at(-1);
+      if (last) last.power *= cs === "squared" ? 2 : 3;
+    } else if (cs === "tothe" || cs === "raiseto") {
+      const n = Number((tokens[++i2] ?? "").replace(/^\{|\}$/g, ""));
+      const last = parts.at(-1);
+      if (cs === "tothe" && last && Number.isFinite(n)) last.power *= n;
+      else if (Number.isFinite(n)) pre = n;
+    } else {
+      const unit = UNITS2[cs];
+      let symbol;
+      if (unit === void 0) symbol = `\\${cs}`;
+      else if (/^(?:\{|\\%|\\prime)/.test(unit)) symbol = unit;
+      else symbol = `\\mathrm{${prefix}${unit}}`;
+      parts.push({ symbol, power: (per ? -1 : 1) * pre });
+      prefix = "";
+      per = false;
+      pre = 1;
+    }
+  }
+  return parts.map((part) => part.power === 1 ? part.symbol : `${part.symbol}^{${part.power}}`).join("\\,");
+}
+function si(parser2, name, withNumber) {
+  parser2.GetBrackets(name);
+  const number = withNumber ? siNumber(parser2.GetArgument(name)) : "";
+  const units = siUnits(parser2.GetArgument(name));
+  expand(parser2, withNumber ? `{${number}\\,${units}}` : `{${units}}`);
+}
+function num(parser2, name) {
+  parser2.GetBrackets(name);
+  expand(parser2, `{${siNumber(parser2.GetArgument(name))}}`);
+}
+function relation(parser2, mchar) {
+  parser2.Push(parser2.create("token", "mo", { stretchy: false, texClass: TEXCLASS.REL }, mchar.char));
+}
+var remembered;
+var PREFIXES;
+var UNITS2;
+var ARROW_CHARS;
+var ARROW_MACROS;
+var MACROS;
+var KittexConfiguration;
+var KittexTextConfiguration;
+var init_macros = __esm({
+  "core/src/typeset/macros.ts"() {
+    "use strict";
+    init_Configuration();
+    init_ParseUtil();
+    init_TokenMap();
+    init_ParseMethods();
+    init_BaseMethods();
+    init_AmsMethods();
+    init_MmlNode();
+    remembered = /* @__PURE__ */ new Map();
+    PREFIXES = JSON.parse(`{
+ "yocto":"y","zepto":"z","atto":"a","femto":"f","pico":"p","nano":"n","micro":"\\\\mu","milli":"m","centi":"c","deci":"d","deca":"da","deka":"da","hecto":"h","kilo":"k","mega":"M","giga":"G","tera":"T",
+ "peta":"P","exa":"E","zetta":"Z","yotta":"Y"
+}`);
+    UNITS2 = JSON.parse(`{
+ "meter":"m","metre":"m","second":"s","gram":"g","kilogram":"kg","ampere":"A","kelvin":"K","mole":"mol","candela":"cd","newton":"N","joule":"J","watt":"W","pascal":"Pa","hertz":"Hz","coulomb":"C",
+ "volt":"V","ohm":"\\\\Omega","farad":"F","tesla":"T","henry":"H","weber":"Wb","siemens":"S","becquerel":"Bq","gray":"Gy","sievert":"Sv","lumen":"lm","lux":"lx","radian":"rad","steradian":"sr",
+ "katal":"kat","liter":"L","litre":"L","minute":"min","hour":"h","day":"d","electronvolt":"eV","dalton":"Da","bar":"bar","angstrom":"\\\\unicode{x212B}","atomicmassunit":"u","astronomicalunit":"au",
+ "degreeCelsius":"{}^{\\\\circ}\\\\mathrm{C}","celsius":"{}^{\\\\circ}\\\\mathrm{C}","degree":"{}^{\\\\circ}","arcminute":"\\\\prime","arcsecond":"\\\\prime\\\\prime","percent":"\\\\%","decibel":"dB","bel":"B",
+ "neper":"Np","byte":"B","bit":"bit"
+}`);
+    ARROW_CHARS = {
+      mhchemlongleftarrow: "⟵",
+      mhchemlongrightarrow: "⟶",
+      mhchemlongleftrightarrow: "⟷",
+      mhchemlongrightleftharpoons: "⇌",
+      mhchemlongRightleftharpoons: "⇌",
+      mhchemlongLeftrightharpoons: "⇋",
+      mhchemlongleftrightarrows: "⇄",
+      mhchemrightarrow: "→",
+      mhchemleftarrow: "←",
+      mhchemleftrightarrow: "↔"
+    };
+    ARROW_MACROS = {
+      mhchemxrightarrow: [AmsMethods.xArrow, 8594, 5, 10],
+      mhchemxleftarrow: [AmsMethods.xArrow, 8592, 10, 5],
+      mhchemxleftrightarrow: [AmsMethods.xArrow, 8596, 10, 10],
+      mhchemxleftrightarrows: [AmsMethods.xArrow, 8644, 10, 10],
+      mhchemxrightleftharpoons: [AmsMethods.xArrow, 8652, 10, 10],
+      mhchemxRightleftharpoons: [AmsMethods.xArrow, 8652, 10, 10],
+      mhchemxLeftrightharpoons: [AmsMethods.xArrow, 8651, 10, 10]
+    };
+    MACROS = {
+      ref: [reference, false],
+      eqref: [reference, true],
+      textsc: smallCaps,
+      SI: [si, true],
+      si: [si, false],
+      num,
+      // A slash through the letter (centernot's \centerOver), not \not's slash beside it.
+      slashed: [BaseMethods_default.Macro, "\\centerOver{#1}{/}", 1],
+      bm: [BaseMethods_default.Macro, "\\boldsymbol{#1}", 1],
+      mathbbm: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
+      mathbbmss: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
+      mathds: [BaseMethods_default.Macro, "\\mathbb{#1}", 1],
+      // LaTeX's own, which work in math there: \emph as italic text, \ensuremath as its argument.
+      emph: [BaseMethods_default.Macro, "\\textit{#1}", 1],
+      ensuremath: [BaseMethods_default.Macro, "{#1}", 1],
+      ...ARROW_MACROS
+    };
+    new CommandMap("kittex-macros", MACROS);
+    new CharacterMap("kittex-chars", ParseMethods_default.mathchar0mo, {
+      varointclockwise: ["∲", { largeop: true, symmetric: true }],
+      ointctrclockwise: ["∳", { largeop: true, symmetric: true }],
+      varointctrclockwise: ["∳", { largeop: true, symmetric: true }],
+      ointclockwise: ["∲", { largeop: true, symmetric: true }]
+    });
+    new CharacterMap("kittex-arrows", relation, ARROW_CHARS);
+    KittexConfiguration = Configuration.create("kittex", {
+      handler: { macro: ["kittex-chars", "kittex-arrows", "kittex-macros"] },
+      priority: 1
+    });
+    new CommandMap("kittex-text-macros", { ref: [reference, false], eqref: [reference, true] });
+    Configuration.create("text-kittex", { parser: "text", handler: { macro: ["kittex-text-macros"] }, priority: 0 });
+    KittexTextConfiguration = Configuration.create("kittex-text", {
+      config(_config, jax) {
+        const textmacros = jax.parseOptions.packageData.get("textmacros");
+        if (!textmacros) return;
+        textmacros.parseOptions.options.textmacros.packages.push("text-kittex");
+        textmacros.textConf.add("text-kittex", jax, {});
+      }
+    });
+  }
+});
+// core/src/typeset/geometry.ts
+function multiply2(m, n) {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5]
+  ];
+}
+function apply2(m, x2, y) {
+  return [m[0] * x2 + m[2] * y + m[4], m[1] * x2 + m[3] * y + m[5]];
+}
+function translate2(x2, y) {
+  return [1, 0, 0, 1, x2, y];
+}
+function scale(sx, sy) {
+  return [sx, 0, 0, sy, 0, 0];
+}
+function isAxisAligned(m) {
+  return m[1] === 0 && m[2] === 0 || m[0] === 0 && m[3] === 0;
+}
+function mapBox(m, [x0, y0, x1, y1]) {
+  const [ax, ay] = apply2(m, x0, y0);
+  const [bx, by] = apply2(m, x1, y1);
+  return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
+}
+function intersect(a, b) {
+  return [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])];
+}
+function parseTransform(text) {
+  let m = (__kittexLate.IDENTITY2?.());
+  const re = /(\w+)\s*\(([^)]*)\)/g;
+  for (let match = re.exec(text); match; match = re.exec(text)) {
+    const name = match[1];
+    const v = (match[2].trim().match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+    let t;
+    switch (name) {
+      case "translate":
+        t = translate2(v[0] ?? 0, v[1] ?? 0);
+        break;
+      case "scale":
+        t = scale(v[0] ?? 1, v[1] ?? v[0] ?? 1);
+        break;
+      case "matrix":
+        if (v.length !== 6) throw new Error(`bad matrix(${match[2]})`);
+        t = v;
+        break;
+      case "rotate": {
+        const a = (v[0] ?? 0) * Math.PI / 180;
+        const [cx, cy] = [v[1] ?? 0, v[2] ?? 0];
+        const r = [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0];
+        t = multiply2(translate2(cx, cy), multiply2(r, translate2(-cx, -cy)));
+        break;
+      }
+      case "skewX":
+        t = [1, 0, Math.tan((v[0] ?? 0) * Math.PI / 180), 1, 0, 0];
+        break;
+      case "skewY":
+        t = [1, Math.tan((v[0] ?? 0) * Math.PI / 180), 0, 1, 0, 0];
+        break;
+      default:
+        throw new Error(`unsupported transform ${name}()`);
+    }
+    m = multiply2(m, t);
+  }
+  return m;
+}
+function parsePath(d) {
+  const tokens = d.match(/[a-df-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? [];
+  const out = [];
+  let i2 = 0;
+  let cmd = "";
+  let [x2, y, sx, sy] = [0, 0, 0, 0];
+  let [cx, cy] = [0, 0];
+  let last = "";
+  while (i2 < tokens.length) {
+    const token2 = tokens[i2];
+    if (/[a-z]/i.test(token2)) {
+      cmd = token2;
+      i2++;
+      if (cmd === "z" || cmd === "Z") {
+        out.push({ c: "Z" });
+        [x2, y] = [sx, sy];
+        last = "Z";
+        continue;
+      }
+    } else if (!cmd) {
+      throw new Error("path data does not start with a command");
+    }
+    const upper = cmd.toUpperCase();
+    const n = (__kittexLate.ARG_COUNT?.())[upper];
+    if (n === void 0) throw new Error(`unsupported path command ${cmd}`);
+    const v = tokens.slice(i2, i2 + n).map(Number);
+    if (v.length < n || v.some(Number.isNaN)) throw new Error("truncated path data");
+    i2 += n;
+    const rel = cmd !== upper;
+    const ax = (k) => v[k] + (rel ? x2 : 0);
+    const ay = (k) => v[k] + (rel ? y : 0);
+    switch (upper) {
+      case "M":
+        ;
+        [x2, y] = [ax(0), ay(1)];
+        [sx, sy] = [x2, y];
+        out.push({ c: "M", x: x2, y });
+        cmd = rel ? "l" : "L";
+        break;
+      case "L":
+        ;
+        [x2, y] = [ax(0), ay(1)];
+        out.push({ c: "L", x: x2, y });
+        break;
+      case "H":
+        x2 = v[0] + (rel ? x2 : 0);
+        out.push({ c: "L", x: x2, y });
+        break;
+      case "V":
+        y = v[0] + (rel ? y : 0);
+        out.push({ c: "L", x: x2, y });
+        break;
+      case "C":
+      case "S": {
+        const [x1, y1] = upper === "C" ? [ax(0), ay(1)] : last === "C" ? [2 * x2 - cx, 2 * y - cy] : [x2, y];
+        const k = upper === "C" ? 2 : 0;
+        const [x22, y2, ex, ey] = [ax(k), ay(k + 1), ax(k + 2), ay(k + 3)];
+        out.push({ c: "C", x1, y1, x2: x22, y2, x: ex, y: ey });
+        [cx, cy, x2, y] = [x22, y2, ex, ey];
+        last = "C";
+        continue;
+      }
+      case "Q":
+      case "T": {
+        const [qx, qy] = upper === "Q" ? [ax(0), ay(1)] : last === "Q" ? [2 * x2 - cx, 2 * y - cy] : [x2, y];
+        const k = upper === "Q" ? 2 : 0;
+        const [ex, ey] = [ax(k), ay(k + 1)];
+        out.push({ c: "C", x1: x2 + 2 / 3 * (qx - x2), y1: y + 2 / 3 * (qy - y), x2: ex + 2 / 3 * (qx - ex), y2: ey + 2 / 3 * (qy - ey), x: ex, y: ey });
+        [cx, cy, x2, y] = [qx, qy, ex, ey];
+        last = "Q";
+        continue;
+      }
+      case "A":
+        ;
+        [x2, y] = [ax(5), ay(6)];
+        out.push({ c: "L", x: x2, y });
+        break;
+    }
+    last = upper;
+  }
+  return out;
+}
+function flatten(segments, m = (__kittexLate.IDENTITY2?.()), steps = 8) {
+  const lines2 = [];
+  let current;
+  let [x2, y, sx, sy] = [0, 0, 0, 0];
+  for (const s of segments) {
+    if (s.c === "M") {
+      current = { points: [apply2(m, s.x, s.y)], closed: false };
+      lines2.push(current);
+      [x2, y, sx, sy] = [s.x, s.y, s.x, s.y];
+      continue;
+    }
+    if (!current) {
+      current = { points: [apply2(m, x2, y)], closed: false };
+      lines2.push(current);
+    }
+    if (s.c === "Z") {
+      current.closed = true;
+      current = void 0;
+      [x2, y] = [sx, sy];
+    } else if (s.c === "L") {
+      current.points.push(apply2(m, s.x, s.y));
+      [x2, y] = [s.x, s.y];
+    } else {
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps;
+        const u = 1 - t;
+        const px2 = u * u * u * x2 + 3 * u * u * t * s.x1 + 3 * u * t * t * s.x2 + t * t * t * s.x;
+        const py = u * u * u * y + 3 * u * u * t * s.y1 + 3 * u * t * t * s.y2 + t * t * t * s.y;
+        current.points.push(apply2(m, px2, py));
+      }
+      ;
+      [x2, y] = [s.x, s.y];
+    }
+  }
+  return lines2;
+}
+function clipPolygon(polygon, [x0, y0, x1, y1]) {
+  let pts = polygon;
+  const edges = [
+    [(p) => p[0] >= x0, (a, b) => lerpAt(a, b, 0, x0)],
+    [(p) => p[0] <= x1, (a, b) => lerpAt(a, b, 0, x1)],
+    [(p) => p[1] >= y0, (a, b) => lerpAt(a, b, 1, y0)],
+    [(p) => p[1] <= y1, (a, b) => lerpAt(a, b, 1, y1)]
+  ];
+  for (const [inside, cross] of edges) {
+    if (pts.length === 0) break;
+    const next = [];
+    for (let i2 = 0; i2 < pts.length; i2++) {
+      const a = pts[(i2 + pts.length - 1) % pts.length];
+      const b = pts[i2];
+      if (inside(b)) {
+        if (!inside(a)) next.push(cross(a, b));
+        next.push(b);
+      } else if (inside(a)) {
+        next.push(cross(a, b));
+      }
+    }
+    pts = next;
   }
   return pts;
 }
-function polygonsToPath(polygons) {
-  let d = "";
-  for (const p of polygons) {
-    if (p.length < 3) continue;
-    d += p.map(([x2, y], i2) => `${i2 ? "L" : "M"}${fmt2(x2)} ${fmt2(y)}`).join("") + "Z";
-  }
-  return d;
+function lerpAt(a, b, axis, value) {
+  const t = (value - a[axis]) / (b[axis] - a[axis]);
+  return axis === 0 ? [value, a[1] + t * (b[1] - a[1])] : [a[0] + t * (b[0] - a[0]), value];
 }
-function fmt2(n) {
-  return String(Math.round(n * 1e5) / 1e5);
+function signedArea2(polygon) {
+  let area2 = 0;
+  for (let i2 = 0; i2 < polygon.length; i2++) {
+    const [ax, ay] = polygon[i2];
+    const [bx, by] = polygon[(i2 + 1) % polygon.length];
+    area2 += ax * by - bx * ay;
+  }
+  return area2 / 2;
 }
-var IDENTITY2;
-var ARG_COUNT;
-var init_geometry = __esm({
-  "core/src/typeset/geometry.ts"() {
-    "use strict";
-    IDENTITY2 = [1, 0, 0, 1, 0, 0];
-    ARG_COUNT = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0 };
-  }
-});
-// core/src/typeset/walk.ts
-function walkSvg(adaptor, svg, options3) {
-  const ops = [];
-  const { emPx } = options3;
-  const width = length2(adaptor.getAttribute(svg, "width"), options3.width * emPx, options3.exEm * emPx);
-  const height2 = length2(adaptor.getAttribute(svg, "height"), 0, options3.exEm * emPx);
-  const viewBox2 = numbers(adaptor.getAttribute(svg, "viewBox"));
-  let m;
-  let vw;
-  let vh;
-  if (viewBox2.length === 4) {
-    m = scale(1 / 1e3, 1 / 1e3);
-    [vw, vh] = [viewBox2[2], viewBox2[3]];
-  } else {
-    m = [1 / emPx, 0, 0, 1 / emPx, 0, -options3.height];
-    [vw, vh] = [width, height2];
-  }
-  walkChildren(adaptor, svg, { m, clip: null, vw, vh }, ops);
-  return ops;
-}
-function walkChildren(adaptor, node, state, ops) {
-  for (const child of adaptor.childNodes(node)) {
-    if (!("kind" in child) || child.kind === "#text" || child.kind === "#comment") continue;
-    walk(adaptor, child, state, ops);
-  }
-}
-function walk(adaptor, el, parent, ops) {
-  const kind = adaptor.kind(el);
-  const transform = adaptor.getAttribute(el, "transform");
-  const state = transform ? { ...parent, m: multiply2(parent.m, parseTransform(transform)) } : parent;
-  switch (kind) {
-    case "g":
-    case "a":
-      walkChildren(adaptor, el, state, ops);
-      return;
-    case "svg":
-      walkChildren(adaptor, el, nestedViewport(adaptor, el, state), ops);
-      return;
-    // Shapes are filled unless fill="none", and stroked when they have a stroke
-    // width (the root sets stroke-width 0; glyphs' CSS "blacker" stroke is left
-    // to the rasterizer's weight).
-    case "path": {
-      const d = adaptor.getAttribute(el, "d");
-      if (!d) return;
-      if (!isUnfilled(adaptor, el)) {
-        if (state.clip) emitPolygons(flatten(parsePath(d)).map((l) => l.points), state, ops);
-        else ops.push({ type: "path", d, transform: state.m });
-      }
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(strokePath(d, stroke), state, ops);
-      return;
-    }
-    case "rect": {
-      if (adaptor.getAttribute(el, "data-bgcolor") != null) return;
-      const x2 = num2(adaptor.getAttribute(el, "x"));
-      const y = num2(adaptor.getAttribute(el, "y"));
-      const w = num2(adaptor.getAttribute(el, "width"));
-      const h = num2(adaptor.getAttribute(el, "height"));
-      if (!isUnfilled(adaptor, el) && w > 0 && h > 0) emitRect([x2, y, x2 + w, y + h], state, ops);
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(frame(x2, y, w, h, stroke), state, ops);
-      return;
-    }
-    case "line": {
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke <= 0) return;
-      const a = [num2(adaptor.getAttribute(el, "x1")), num2(adaptor.getAttribute(el, "y1"))];
-      const b = [num2(adaptor.getAttribute(el, "x2")), num2(adaptor.getAttribute(el, "y2"))];
-      const dashes = dashArray(adaptor, el, stroke);
-      const square = adaptor.getAttribute(el, "stroke-linecap") === "square";
-      emitPolygons(dashes ? dashedSegment(a, b, stroke, dashes) : [strokeSegment(a, b, stroke, square ? stroke / 2 : 0)], state, ops);
-      return;
-    }
-    case "ellipse":
-    case "circle": {
-      const cx = num2(adaptor.getAttribute(el, "cx"));
-      const cy = num2(adaptor.getAttribute(el, "cy"));
-      const rx = num2(adaptor.getAttribute(el, kind === "circle" ? "r" : "rx"));
-      const ry = kind === "circle" ? rx : num2(adaptor.getAttribute(el, "ry"));
-      if (!isUnfilled(adaptor, el)) emitPolygons([ellipse(cx, cy, rx, ry)], state, ops);
-      const t = strokeWidth(adaptor, el) / 2;
-      if (t > 0) {
-        const ring = [oriented(ellipse(cx, cy, rx + t, ry + t), 1), oriented(ellipse(cx, cy, Math.max(0, rx - t), Math.max(0, ry - t)), -1)];
-        emitPolygons(ring, state, ops);
-      }
-      return;
-    }
-    case "polygon":
-    case "polyline": {
-      const v = numbers(adaptor.getAttribute(el, "points"));
-      const pts = [];
-      for (let i2 = 0; i2 + 1 < v.length; i2 += 2) pts.push([v[i2], v[i2 + 1]]);
-      if (!isUnfilled(adaptor, el)) emitPolygons([pts], state, ops);
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(strokePolyline(pts, kind === "polygon", stroke), state, ops);
-      return;
-    }
-    case "title":
-    case "desc":
-    case "defs":
-    case "style":
-      return;
-    case "text": {
-      const text = textContent(adaptor, el);
-      if (text.trim() === "") return;
-      const code = [...text].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`).join(" ");
-      throw new MissingGlyphError(`no glyph for "${text}" (${code}) in the bundled font`);
-    }
-    default:
-      throw new UndrawableError(`cannot draw <${kind}>`);
-  }
-}
-function nestedViewport(adaptor, el, parent) {
-  const x2 = length2(adaptor.getAttribute(el, "x"), parent.vw, 0);
-  const y = length2(adaptor.getAttribute(el, "y"), parent.vh, 0);
-  const w = length2(adaptor.getAttribute(el, "width") ?? "100%", parent.vw, 0);
-  const h = length2(adaptor.getAttribute(el, "height") ?? "100%", parent.vh, 0);
-  const viewBox2 = numbers(adaptor.getAttribute(el, "viewBox"));
-  let inner = translate2(x2, y);
-  let [vw, vh] = [w, h];
-  if (viewBox2.length === 4) {
-    inner = viewBoxMatrix([x2, y, w, h], viewBox2, adaptor.getAttribute(el, "preserveAspectRatio"));
-    [vw, vh] = [viewBox2[2], viewBox2[3]];
-  }
-  let clip = parent.clip;
-  const overflow = adaptor.getAttribute(el, "overflow") ?? adaptor.getStyle(el, "overflow");
-  const visible = overflow === "visible" || adaptor.getAttribute(el, "data-table") != null || adaptor.getAttribute(el, "data-labels") != null;
-  if (!visible && isAxisAligned(parent.m)) {
-    const box = mapBox(parent.m, [x2, y, x2 + w, y + h]);
-    clip = clip ? intersect(clip, box) : box;
-  }
-  return { m: multiply2(parent.m, inner), clip, vw, vh };
-}
-function viewBoxMatrix([x2, y, w, h], [vx, vy, vw, vh], par) {
-  let sx = vw ? w / vw : 1;
-  let sy = vh ? h / vh : 1;
-  const [align = "xMidYMid", mode = "meet"] = (par ?? "").trim().split(/\s+/).filter(Boolean);
-  let tx = x2 - vx * sx;
-  let ty = y - vy * sy;
-  if (align !== "none") {
-    const s = mode === "slice" ? Math.max(sx, sy) : Math.min(sx, sy);
-    [sx, sy] = [s, s];
-    const xAlign = align.slice(0, 4);
-    const yAlign = align.slice(4);
-    const dx = w - vw * s;
-    const dy = h - vh * s;
-    tx = x2 - vx * s + (xAlign === "xMid" ? dx / 2 : xAlign === "xMax" ? dx : 0);
-    ty = y - vy * s + (yAlign === "YMid" ? dy / 2 : yAlign === "YMax" ? dy : 0);
-  }
-  return [sx, 0, 0, sy, tx, ty];
-}
-function emitRect(box, state, ops) {
-  if (isAxisAligned(state.m)) {
-    let r = mapBox(state.m, box);
-    if (state.clip) r = intersect(r, state.clip);
-    if (r[2] > r[0] && r[3] > r[1]) ops.push({ type: "rect", x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1] });
-    return;
-  }
-  const [x0, y0, x1, y1] = box;
-  emitPolygons(
-    [
-      [
-        [x0, y0],
-        [x1, y0],
-        [x1, y1],
-        [x0, y1]
-      ]
-    ],
-    state,
-    ops
-  );
-}
-function emitPolygons(polygons, state, ops) {
-  let mapped = polygons.map((p) => p.map(([x2, y]) => apply2(state.m, x2, y)));
-  if (state.clip) {
-    const clip = state.clip;
-    mapped = mapped.map((p) => clipPolygon(p, clip));
-  }
-  const d = polygonsToPath(mapped);
-  if (d) ops.push({ type: "path", d, transform: [1, 0, 0, 1, 0, 0] });
-}
-function frame(x2, y, w, h, t) {
-  const o = t / 2;
-  const outer = [
-    [x2 - o, y - o],
-    [x2 + w + o, y - o],
-    [x2 + w + o, y + h + o],
-    [x2 - o, y + h + o]
-  ];
-  if (w - t <= 0 || h - t <= 0) return [oriented(outer, 1)];
-  const inner = [
-    [x2 + o, y + o],
-    [x2 + w - o, y + o],
-    [x2 + w - o, y + h - o],
-    [x2 + o, y + h - o]
-  ];
-  return [oriented(outer, 1), oriented(inner, -1)];
-}
-function strokePath(d, width) {
-  return flatten(parsePath(d)).flatMap((line) => strokePolyline(line.points, line.closed, width));
-}
-function strokePolyline(points, closed, width) {
-  const out = [];
-  const n = points.length;
-  for (let i2 = 0; i2 + 1 < n; i2++) out.push(strokeSegment(points[i2], points[i2 + 1], width));
-  if (closed && n > 2) out.push(strokeSegment(points[n - 1], points[0], width));
-  for (const p of points) out.push(disc(p, width / 2));
-  return out.filter((p) => p.length > 2);
-}
-function isUnfilled(adaptor, el) {
-  return (adaptor.getAttribute(el, "fill") ?? adaptor.getStyle(el, "fill")) === "none" || isTableRule(adaptor, el);
-}
-function strokeWidth(adaptor, el) {
-  const value = adaptor.getAttribute(el, "stroke-width") ?? adaptor.getStyle(el, "stroke-width");
-  if (value) return num2(value);
-  if (isTableRule(adaptor, el)) {
-    const thickness = adaptor.getAttribute(el, "stroke-thickness");
-    return thickness ? num2(thickness) : TABLE_RULE;
-  }
-  return 0;
-}
-function isTableRule(adaptor, el) {
-  return adaptor.getAttribute(el, "data-line") != null || adaptor.getAttribute(el, "data-frame") != null;
-}
-function dashArray(adaptor, el, stroke) {
-  const explicit = adaptor.getAttribute(el, "stroke-dasharray");
-  const classes = adaptor.getAttribute(el, "class") ?? "";
-  if (explicit) {
-    const v = numbers(explicit);
-    if (v.length === 1 && v[0] > 0) return [v[0], v[0]];
-    if (v.length >= 2 && v[0] + v[1] > 0) return [v[0], v[1]];
-    return null;
-  }
-  if (/\bmjx-dashed\b/.test(classes)) return [2 * stroke, 2 * stroke];
-  if (/\bmjx-dotted\b/.test(classes)) return [0, 2 * stroke];
-  return null;
-}
-function dashedSegment(a, b, width, [dash, gap2]) {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const period = dash + gap2;
-  if (len === 0 || period <= 0) return [];
-  const at = (t) => [a[0] + (b[0] - a[0]) * t / len, a[1] + (b[1] - a[1]) * t / len];
-  const out = [];
-  for (let t = 0; t < len && out.length < 1e3; t += period) {
-    if (dash === 0) out.push(disc(at(t), width / 2, 8));
-    else out.push(strokeSegment(at(t), at(Math.min(len, t + dash)), width));
-  }
-  return out.filter((p) => p.length > 2);
-}
-function textContent(adaptor, node) {
-  if ("kind" in node && node.kind === "#text") return adaptor.value(node) ?? "";
-  return (adaptor.childNodes(node) ?? []).map((child) => textContent(adaptor, child)).join("");
-}
-function length2(value, percentBase, exEm) {
-  if (value === null || value === void 0 || value === "") return 0;
-  const match = /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(%|ex|em|px)?\s*$/i.exec(value);
-  if (!match) return 0;
-  const n = Number(match[1]);
-  switch (match[2]) {
-    case "%":
-      return n / 100 * percentBase;
-    case "ex":
-      return n * exEm;
-    default:
-      return n;
-  }
-}
-function num2(value) {
-  const n = value ? Number.parseFloat(value) : 0;
-  return Number.isFinite(n) ? n : 0;
-}
-function numbers(value) {
-  return (value?.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number);
-}
-var UndrawableError;
-var MissingGlyphError;
-var TABLE_RULE;
-var init_walk = __esm({
-  "core/src/typeset/walk.ts"() {
-    "use strict";
-    init_geometry();
-    UndrawableError = class extends Error {
-    };
-    MissingGlyphError = class extends UndrawableError {
-    };
-    TABLE_RULE = 70;
-  }
-});
-// core/src/typeset/engine.ts
-__export(engine_exports, {
-  prepare: () => prepare,
-  texToMathML: () => texToMathML,
-  typesetOnce: () => typesetOnce
-});
-function prepare() {
-  engine ??= createEngine();
-}
-function createEngine() {
-  mathjax.asyncLoad = () => void 0;
-  mathjax.asyncIsSynchronous = true;
-  const adaptor = liteAdaptor();
-  RegisterHTMLHandler(adaptor);
-  for (const [name, macros] of PHYSICS_OVERRIDES) {
-    const map = MapHandler.getMap(name);
-    for (const macro of macros) map?.map.delete(macro);
-  }
-  MathtoolsUtil.addPairedDelims = (parser2, cs, args) => NewcommandUtil.addMacro(parser2, cs, MathtoolsMethods.PairedDelimiters, args);
-  EmpheqUtil.splitOptions = (text, allowed) => ParseUtil.keyvalOptions(text, allowed, false);
-  const tex = new TeX({
-    packages: PACKAGES,
-    maxMacros: MAX_MACROS,
-    maxBuffer: MAX_BUFFER,
-    tags: "none",
-    formatError: (_jax, error) => {
-      throw new TexError(error.message);
-    }
-  });
-  const svg = new SVG({
-    fontData: MathJaxNewcmFont,
-    fontCache: "none",
-    displayOverflow: "overflow",
-    linebreaks: { inline: false, LinebreakVisitor: SpaceFirstLinebreaks }
-  });
-  const doc = mathjax.document("", { InputJax: tex, OutputJax: svg });
-  svg.font.loadDynamicFilesSync();
-  const tables = svg.font;
-  for (const variant of Object.values(tables.variant)) {
-    for (const key of Object.keys(variant.chars)) {
-      const char = variant.chars[Number(key)];
-      if (char && !Array.isArray(char)) delete variant.chars[Number(key)];
-    }
-  }
-  for (const key of Object.keys(tables.delimiters)) {
-    const delimiter = tables.delimiters[Number(key)];
-    if (delimiter && typeof delimiter === "object" && !("dir" in delimiter)) delete tables.delimiters[Number(key)];
-  }
-  const definitions = ["new-Delimiter", "new-Command", "new-Environment"].map((name) => {
-    const map = MapHandler.getMap(name).map;
-    return [map, new Map(map)];
-  });
-  return { adaptor, tex, doc, definitions, exEm: svg.font.params.x_height, visitor: new CompactMmlVisitor() };
-}
-function ready(tex) {
-  engine ??= createEngine();
-  if (tex.trim() === "") throw new TexError("empty formula");
-  if (tex.length > MAX_LENGTH) throw new TexError(`formula longer than ${MAX_LENGTH} characters`);
-  for (const [map, initial] of engine.definitions) {
-    map.clear();
-    for (const [key, value] of initial) map.set(key, value);
-  }
-  rememberLabels(engine.tex.parseOptions.tags.allLabels, MAX_LABELS);
-  engine.tex.reset();
-  return engine;
-}
-function typesetOnce(tex, options3) {
-  const { adaptor, doc, exEm } = ready(tex);
-  const lineWidth = options3.lineWidth !== void 0 && options3.lineWidth > 0 ? options3.lineWidth : 0;
-  const breaking = options3.display && lineWidth > 0;
-  const containerWidth = lineWidth || 1e3;
-  MmlMath.defaults.scriptminsize = options3.display ? SCRIPT_MIN_SIZE : INLINE_SCRIPT_MIN_SIZE;
-  const output = doc.outputJax;
-  output.options.displayOverflow = breaking ? "linebreak" : "overflow";
-  let container;
-  try {
-    container = doc.convert(tex, {
-      display: options3.display,
-      em: EM_PX,
-      ex: EM_PX * exEm,
-      containerWidth: containerWidth * EM_PX
-    });
-  } catch (error) {
-    throw asTexError(error);
-  }
-  const svg = adaptor.firstChild(container);
-  if (!svg || adaptor.kind(svg) !== "svg") throw new TexError("MathJax produced no SVG");
-  const fullWidth = !adaptor.getAttribute(svg, "viewBox");
-  const viewBox2 = (adaptor.getAttribute(svg, fullWidth ? "data-mjx-viewBox" : "viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
-  if (viewBox2.length !== 4 || viewBox2.some((n) => !Number.isFinite(n))) throw new TexError("MathJax produced an SVG without a viewBox");
-  const [, vy, vw, vh] = viewBox2;
-  const height2 = -vy / 1e3;
-  const depth = (vh + vy) / 1e3;
-  try {
-    if (!fullWidth) return { width: vw / 1e3, height: height2, depth, ops: walkSvg(adaptor, svg, { exEm, emPx: EM_PX, width: vw / 1e3, height: height2 }) };
-    const minWidth = Number.parseFloat(adaptor.getStyle(svg, "min-width") || "0") * exEm;
-    if (lineWidth || minWidth) {
-      const width = Math.max(lineWidth, minWidth);
-      return { width, height: height2, depth, ops: walkSvg(adaptor, svg, { exEm, emPx: EM_PX, width, height: height2 }) };
-    }
-    const ops = walkSvg(adaptor, svg, { exEm, emPx: EM_PX, width: containerWidth, height: height2 });
-    return { width: Math.max(0, ...ops.map(rightEdge)), height: height2, depth, ops };
-  } catch (error) {
-    throw asTexError(error);
-  }
-}
-function rightEdge(op) {
-  if (op.type === "rect") return op.x + op.width;
-  let right = -Infinity;
-  for (const line of flatten(parsePath(op.d), op.transform, 2)) for (const [x2] of line.points) right = Math.max(right, x2);
-  return right;
-}
-function texToMathML(tex, options3) {
-  const { doc, visitor } = ready(tex);
-  let root2;
-  try {
-    root2 = doc.convert(tex, { display: options3.display, end: STATE.CONVERT });
-  } catch (error) {
-    throw asTexError(error);
-  }
-  return `<math display="${options3.display ? "block" : "inline"}"${visitor.visitTree(root2).slice("<math".length)}`;
-}
-function asTexError(error) {
-  if (error instanceof TexError) return error;
-  if (error instanceof MissingGlyphError) return new GlyphError(error.message);
-  if (error instanceof UndrawableError) return new TexError(error.message);
-  if (error instanceof RangeError) return new TexError(`formula too complex (${error.message})`);
-  const message = error instanceof Error ? error.message : String(error);
-  return new TexError(message.replace(/\n.*/s, "") || "MathJax failed");
-}
-var MAX_LENGTH;
-var MAX_MACROS;
-var MAX_BUFFER;
-var EM_PX;
-var PACKAGES;
-var PHYSICS_OVERRIDES;
-var SCRIPT_MIN_SIZE;
-var INLINE_SCRIPT_MIN_SIZE;
-var MAX_LABELS;
-var SpaceFirstLinebreaks;
-var engine;
-var CompactMmlVisitor;
-var init_engine = __esm({
-  "core/src/typeset/engine.ts"() {
-    "use strict";
-    init_liteAdaptor();
-    init_MathItem();
-    init_math();
-    init_SerializedMmlVisitor();
-    init_html();
-    init_tex();
-    init_MapHandler();
-    init_mathjax();
-    init_svg2();
-    init_LinebreakVisitor();
-    init_svg();
-    init_BaseConfiguration();
-    init_AmsConfiguration();
-    init_NewcommandConfiguration();
-    init_BoldsymbolConfiguration();
-    init_BraketConfiguration();
-    init_CancelConfiguration();
-    init_ColorConfiguration();
-    init_MathtoolsConfiguration();
-    init_PhysicsConfiguration();
-    init_TextMacrosConfiguration();
-    init_UnicodeConfiguration();
-    init_MhchemConfiguration();
-    init_AmsCdConfiguration();
-    init_EmpheqConfiguration();
-    init_CenternotConfiguration();
-    init_GensymbConfiguration();
-    init_UpgreekConfiguration();
-    init_TextcompConfiguration();
-    init_MathtoolsUtil();
-    init_MathtoolsMethods();
-    init_NewcommandUtil();
-    init_EmpheqUtil();
-    init_ParseUtil();
-    init_fonts();
-    init_macros();
-    init_errors();
-    init_geometry();
-    init_walk();
-    MAX_LENGTH = 4096;
-    MAX_MACROS = 1e3;
-    MAX_BUFFER = 5 * 1024;
-    EM_PX = 16;
-    PACKAGES = [
-      "base",
-      "ams",
-      "newcommand",
-      "boldsymbol",
-      "braket",
-      "cancel",
-      "color",
-      "mathtools",
-      "physics",
-      "textmacros",
-      "unicode",
-      "mhchem",
-      "amscd",
-      "empheq",
-      "centernot",
-      "gensymb",
-      "upgreek",
-      "textcomp",
-      "kittex",
-      "kittex-text"
-    ];
-    PHYSICS_OVERRIDES = [
-      ["Physics-vector-macros", ["div"]],
-      ["Physics-expressions-macros", ["Re", "Im"]]
-    ];
-    SCRIPT_MIN_SIZE = ".7em";
-    INLINE_SCRIPT_MIN_SIZE = ".4em";
-    MAX_LABELS = 256;
-    SpaceFirstLinebreaks = class extends LinebreakVisitor {
-      constructor(factory) {
-        super(factory);
-        const factors = this.FACTORS;
-        const space = factors.space;
-        factors.space = (p, node) => {
-          const penalty = space(p, node);
-          return penalty < NOBREAK && node.getBBox().w >= 0.9 ? penalty - 2e3 : penalty;
-        };
-      }
-    };
-    CompactMmlVisitor = class extends SerializedMmlVisitor {
-      visitTree(node) {
-        return this.visitNode(node, "");
-      }
-      visitInferredMrowNode(node, _space) {
-        return node.childNodes.map((child) => this.visitNode(child, "")).join("");
-      }
-      visitDefault(node, _space) {
-        const kind = this.getKind(node);
-        return `<${kind}${this.getAttributes(node)}>${this.childNodeMml(node, "", "")}</${kind}>`;
-      }
-      getAttributes(node) {
-        const attributes = this.getAttributeList(node);
-        let out = "";
-        for (const name of Object.keys(attributes)) {
-          if (name.startsWith("data-latex") || name === "display" && node.isKind("math")) continue;
-          const value = attributes[name];
-          if (value === void 0) continue;
-          out += ` ${name}="${this.quoteHTML(String(value))}"`;
-        }
-        return out;
-      }
-    };
-  }
-});
-// node_modules/marked/lib/marked.esm.js
-function _getDefaults() {
-  return {
-    async: false,
-    breaks: false,
-    extensions: null,
-    gfm: true,
-    hooks: null,
-    pedantic: false,
-    renderer: null,
-    silent: false,
-    tokenizer: null,
-    walkTokens: null
-  };
-}
-var _defaults = _getDefaults();
-function changeDefaults(newDefaults) {
-  _defaults = newDefaults;
-}
-var noopTest = { exec: () => null };
-function edit(regex, opt = "") {
-  let source = typeof regex === "string" ? regex : regex.source;
-  const obj = {
-    replace: (name, val) => {
-      let valSource = typeof val === "string" ? val : val.source;
-      valSource = valSource.replace(other.caret, "$1");
-      source = source.replace(name, valSource);
-      return obj;
-    },
-    getRegex: () => {
-      return new RegExp(source, opt);
-    }
-  };
-  return obj;
-}
-var other = {
-  codeRemoveIndent: /^(?: {1,4}| {0,3}\t)/gm,
-  outputLinkReplace: /\\([\[\]])/g,
-  indentCodeCompensation: /^(\s+)(?:```)/,
-  beginningSpace: /^\s+/,
-  endingHash: /#$/,
-  startingSpaceChar: /^ /,
-  endingSpaceChar: / $/,
-  nonSpaceChar: /[^ ]/,
-  newLineCharGlobal: /\n/g,
-  tabCharGlobal: /\t/g,
-  multipleSpaceGlobal: /\s+/g,
-  blankLine: /^[ \t]*$/,
-  doubleBlankLine: /\n[ \t]*\n[ \t]*$/,
-  blockquoteStart: /^ {0,3}>/,
-  blockquoteSetextReplace: /\n {0,3}((?:=+|-+) *)(?=\n|$)/g,
-  blockquoteSetextReplace2: /^ {0,3}>[ \t]?/gm,
-  listReplaceTabs: /^\t+/,
-  listReplaceNesting: /^ {1,4}(?=( {4})*[^ ])/g,
-  listIsTask: /^\[[ xX]\] /,
-  listReplaceTask: /^\[[ xX]\] +/,
-  anyLine: /\n.*\n/,
-  hrefBrackets: /^<(.*)>$/,
-  tableDelimiter: /[:|]/,
-  tableAlignChars: /^\||\| *$/g,
-  tableRowBlankLine: /\n[ \t]*$/,
-  tableAlignRight: /^ *-+: *$/,
-  tableAlignCenter: /^ *:-+: *$/,
-  tableAlignLeft: /^ *:-+ *$/,
-  startATag: /^<a /i,
-  endATag: /^<\/a>/i,
-  startPreScriptTag: /^<(pre|code|kbd|script)(\s|>)/i,
-  endPreScriptTag: /^<\/(pre|code|kbd|script)(\s|>)/i,
-  startAngleBracket: /^</,
-  endAngleBracket: />$/,
-  pedanticHrefTitle: /^([^'"]*[^\s])\s+(['"])(.*)\2/,
-  unicodeAlphaNumeric: /[\p{L}\p{N}]/u,
-  escapeTest: /[&<>"']/,
-  escapeReplace: /[&<>"']/g,
-  escapeTestNoEncode: /[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/,
-  escapeReplaceNoEncode: /[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/g,
-  unescapeTest: /&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/ig,
-  caret: /(^|[^\[])\^/g,
-  percentDecode: /%25/g,
-  findPipe: /\|/g,
-  splitPipe: / \|/,
-  slashPipe: /\\\|/g,
-  carriageReturn: /\r\n|\r/g,
-  spaceLine: /^ +$/gm,
-  notSpaceStart: /^\S*/,
-  endingNewline: /\n$/,
-  listItemRegex: (bull) => new RegExp(`^( {0,3}${bull})((?:[	 ][^\\n]*)?(?:\\n|$))`),
-  nextBulletRegex: (indent) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}(?:[*+-]|\\d{1,9}[.)])((?:[ 	][^\\n]*)?(?:\\n|$))`),
-  hrRegex: (indent) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}((?:- *){3,}|(?:_ *){3,}|(?:\\* *){3,})(?:\\n+|$)`),
-  fencesBeginRegex: (indent) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}(?:\`\`\`|~~~)`),
-  headingBeginRegex: (indent) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}#`),
-  htmlBeginRegex: (indent) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}<(?:[a-z].*>|!--)`, "i")
-};
-var newline = /^(?:[ \t]*(?:\n|$))+/;
-var blockCode = /^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/;
-var fences = /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/;
-var hr = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/;
-var heading = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/;
-var bullet = /(?:[*+-]|\d{1,9}[.)])/;
-var lheading = edit(/^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/).replace(/bull/g, bullet).replace(/blockCode/g, /(?: {4}| {0,3}\t)/).replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g, / {0,3}>/).replace(/heading/g, / {0,3}#{1,6}/).replace(/html/g, / {0,3}<[^\n>]+>\n/).getRegex();
-var _paragraph = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/;
-var blockText = /^[^\n]+/;
-var _blockLabel = /(?!\s*\])(?:\\.|[^\[\]\\])+/;
-var def = edit(/^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/).replace("label", _blockLabel).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex();
-var list = edit(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g, bullet).getRegex();
-var _comment = /<!--(?:-?>|[\s\S]*?(?:-->|$))/;
-var html = edit("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$))", "i").replace("comment", _comment).replace("tag", _tag).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex();
-var paragraph = edit(_paragraph).replace("hr", hr).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("|table", "").replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", _tag).getRegex();
-var blockquote = edit(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", paragraph).getRegex();
-var blockNormal = {
-  blockquote,
-  code: blockCode,
-  def,
-  fences,
-  heading,
-  hr,
-  html,
-  lheading,
-  list,
-  newline,
-  paragraph,
-  table: noopTest,
-  text: blockText
-};
-var gfmTable = edit("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", hr).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", "(?: {4}| {0,3}	)[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", _tag).getRegex();
-var blockGfm = {
-  ...blockNormal,
-  table: gfmTable,
-  paragraph: edit(_paragraph).replace("hr", hr).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", gfmTable).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", _tag).getRegex()
-};
-var blockPedantic = {
-  ...blockNormal,
-  html: edit(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", _comment).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),
-  def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,
-  heading: /^(#{1,6})(.*)(?:\n+|$)/,
-  fences: noopTest,
-  // fences not supported
-  lheading: /^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
-  paragraph: edit(_paragraph).replace("hr", hr).replace("heading", " *#{1,6} *[^\n]").replace("lheading", lheading).replace("|table", "").replace("blockquote", " {0,3}>").replace("|fences", "").replace("|list", "").replace("|html", "").replace("|tag", "").getRegex()
-};
-var escape$1 = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/;
-var inlineCode = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/;
-var br = /^( {2,}|\\)\n(?!\s*$)/;
-var inlineText = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/;
-var _punctuation = /[\p{P}\p{S}]/u;
-var _punctuationOrSpace = /[\s\p{P}\p{S}]/u;
-var _notPunctuationOrSpace = /[^\s\p{P}\p{S}]/u;
-var punctuation = edit(/^((?![*_])punctSpace)/, "u").replace(/punctSpace/g, _punctuationOrSpace).getRegex();
-var _punctuationGfmStrongEm = /(?!~)[\p{P}\p{S}]/u;
-var _punctuationOrSpaceGfmStrongEm = /(?!~)[\s\p{P}\p{S}]/u;
-var _notPunctuationOrSpaceGfmStrongEm = /(?:[^\s\p{P}\p{S}]|~)/u;
-var blockSkip = /\[[^[\]]*?\]\((?:\\.|[^\\\(\)]|\((?:\\.|[^\\\(\)])*\))*\)|`[^`]*?`|<[^<>]*?>/g;
-var emStrongLDelimCore = /^(?:\*+(?:((?!\*)punct)|[^\s*]))|^_+(?:((?!_)punct)|([^\s_]))/;
-var emStrongLDelim = edit(emStrongLDelimCore, "u").replace(/punct/g, _punctuation).getRegex();
-var emStrongLDelimGfm = edit(emStrongLDelimCore, "u").replace(/punct/g, _punctuationGfmStrongEm).getRegex();
-var emStrongRDelimAst = edit(emStrongRDelimAstCore, "gu").replace(/notPunctSpace/g, _notPunctuationOrSpace).replace(/punctSpace/g, _punctuationOrSpace).replace(/punct/g, _punctuation).getRegex();
-var emStrongRDelimAstGfm = edit(emStrongRDelimAstCore, "gu").replace(/notPunctSpace/g, _notPunctuationOrSpaceGfmStrongEm).replace(/punctSpace/g, _punctuationOrSpaceGfmStrongEm).replace(/punct/g, _punctuationGfmStrongEm).getRegex();
-var emStrongRDelimUnd = edit("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)punctSpace(_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)", "gu").replace(/notPunctSpace/g, _notPunctuationOrSpace).replace(/punctSpace/g, _punctuationOrSpace).replace(/punct/g, _punctuation).getRegex();
-var anyPunctuation = edit(/\\(punct)/, "gu").replace(/punct/g, _punctuation).getRegex();
-var autolink = edit(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex();
-var _inlineComment = edit(_comment).replace("(?:-->|$)", "-->").getRegex();
-var tag = edit("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment", _inlineComment).replace("attribute", /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex();
-var _inlineLabel = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/;
-var link = edit(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/).replace("label", _inlineLabel).replace("href", /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/).replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex();
-var reflink = edit(/^!?\[(label)\]\[(ref)\]/).replace("label", _inlineLabel).replace("ref", _blockLabel).getRegex();
-var nolink = edit(/^!?\[(ref)\](?:\[\])?/).replace("ref", _blockLabel).getRegex();
-var reflinkSearch = edit("reflink|nolink(?!\\()", "g").replace("reflink", reflink).replace("nolink", nolink).getRegex();
-var inlineNormal = {
-  _backpedal: noopTest,
-  // only used for GFM url
-  anyPunctuation,
-  autolink,
-  blockSkip,
-  br,
-  code: inlineCode,
-  del: noopTest,
-  emStrongLDelim,
-  emStrongRDelimAst,
-  emStrongRDelimUnd,
-  escape: escape$1,
-  link,
-  nolink,
-  punctuation,
-  reflink,
-  reflinkSearch,
-  tag,
-  text: inlineText,
-  url: noopTest
-};
-var inlinePedantic = {
-  ...inlineNormal,
-  link: edit(/^!?\[(label)\]\((.*?)\)/).replace("label", _inlineLabel).getRegex(),
-  reflink: edit(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label", _inlineLabel).getRegex()
-};
-var inlineGfm = {
-  ...inlineNormal,
-  emStrongRDelimAst: emStrongRDelimAstGfm,
-  emStrongLDelim: emStrongLDelimGfm,
-  url: edit(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/, "i").replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),
-  _backpedal: /(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,
-  del: /^(~~?)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/,
-  text: /^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|https?:\/\/|ftp:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/
-};
-var inlineBreaks = {
-  ...inlineGfm,
-  br: edit(br).replace("{2,}", "*").getRegex(),
-  text: edit(inlineGfm.text).replace("\\b_", "\\b_| {2,}\\n").replace(/\{2,\}/g, "*").getRegex()
-};
-var block = {
-  normal: blockNormal,
-  gfm: blockGfm,
-  pedantic: blockPedantic
-};
-var inline = {
-  normal: inlineNormal,
-  gfm: inlineGfm,
-  breaks: inlineBreaks,
-  pedantic: inlinePedantic
-};
-var getEscapeReplacement = (ch) => escapeReplacements[ch];
-function escape(html2, encode) {
-  if (encode) {
-    if (other.escapeTest.test(html2)) {
-      return html2.replace(other.escapeReplace, getEscapeReplacement);
-    }
-  } else {
-    if (other.escapeTestNoEncode.test(html2)) {
-      return html2.replace(other.escapeReplaceNoEncode, getEscapeReplacement);
-    }
-  }
-  return html2;
-}
-function cleanUrl(href) {
-  try {
-    href = encodeURI(href).replace(other.percentDecode, "%");
-  } catch {
-    return null;
-  }
-  return href;
-}
-function splitCells(tableRow, count) {
-  const row = tableRow.replace(other.findPipe, (match, offset, str) => {
-    let escaped = false;
-    let curr = offset;
-    while (--curr >= 0 && str[curr] === "\\")
-      escaped = !escaped;
-    if (escaped) {
-      return "|";
-    } else {
-      return " |";
-    }
-  }), cells2 = row.split(other.splitPipe);
-  let i2 = 0;
-  if (!cells2[0].trim()) {
-    cells2.shift();
-  }
-  if (cells2.length > 0 && !cells2.at(-1)?.trim()) {
-    cells2.pop();
-  }
-  if (count) {
-    if (cells2.length > count) {
-      cells2.splice(count);
-    } else {
-      while (cells2.length < count)
-        cells2.push("");
-    }
-  }
-  for (; i2 < cells2.length; i2++) {
-    cells2[i2] = cells2[i2].trim().replace(other.slashPipe, "|");
-  }
-  return cells2;
-}
-function rtrim(str, c, invert2) {
-  const l = str.length;
-  if (l === 0) {
-    return "";
-  }
-  let suffLen = 0;
-  while (suffLen < l) {
-    const currChar = str.charAt(l - suffLen - 1);
-    if (currChar === c && true) {
-      suffLen++;
-    } else {
-      break;
-    }
-  }
-  return str.slice(0, l - suffLen);
-}
-function findClosingBracket(str, b) {
-  if (str.indexOf(b[1]) === -1) {
-    return -1;
-  }
-  let level = 0;
-  for (let i2 = 0; i2 < str.length; i2++) {
-    if (str[i2] === "\\") {
-      i2++;
-    } else if (str[i2] === b[0]) {
-      level++;
-    } else if (str[i2] === b[1]) {
-      level--;
-      if (level < 0) {
-        return i2;
-      }
-    }
-  }
-  return -1;
-}
-function outputLink(cap2, link2, raw, lexer2, rules) {
-  const href = link2.href;
-  const title = link2.title || null;
-  const text = cap2[1].replace(rules.other.outputLinkReplace, "$1");
-  if (cap2[0].charAt(0) !== "!") {
-    lexer2.state.inLink = true;
-    const token2 = {
-      type: "link",
-      raw,
-      href,
-      title,
-      text,
-      tokens: lexer2.inlineTokens(text)
-    };
-    lexer2.state.inLink = false;
-    return token2;
-  }
-  return {
-    type: "image",
-    raw,
-    href,
-    title,
-    text
-  };
-}
-function indentCodeCompensation(raw, text, rules) {
-  const matchIndentToCode = raw.match(rules.other.indentCodeCompensation);
-  if (matchIndentToCode === null) {
-    return text;
-  }
-  const indentToCode = matchIndentToCode[1];
-  return text.split("\n").map((node) => {
-    const matchIndentInNode = node.match(rules.other.beginningSpace);
-    if (matchIndentInNode === null) {
-      return node;
-    }
-    const [indentInNode] = matchIndentInNode;
-    if (indentInNode.length >= indentToCode.length) {
-      return node.slice(indentToCode.length);
-    }
-    return node;
-  }).join("\n");
-}
-var _Tokenizer = class {
-  options;
-  rules;
-  // set by the lexer
-  lexer;
-  // set by the lexer
-  constructor(options3) {
-    this.options = options3 || _defaults;
-  }
-  space(src) {
-    const cap2 = this.rules.block.newline.exec(src);
-    if (cap2 && cap2[0].length > 0) {
-      return {
-        type: "space",
-        raw: cap2[0]
-      };
-    }
-  }
-  code(src) {
-    const cap2 = this.rules.block.code.exec(src);
-    if (cap2) {
-      const text = cap2[0].replace(this.rules.other.codeRemoveIndent, "");
-      return {
-        type: "code",
-        raw: cap2[0],
-        codeBlockStyle: "indented",
-        text: !this.options.pedantic ? rtrim(text, "\n") : text
-      };
-    }
-  }
-  fences(src) {
-    const cap2 = this.rules.block.fences.exec(src);
-    if (cap2) {
-      const raw = cap2[0];
-      const text = indentCodeCompensation(raw, cap2[3] || "", this.rules);
-      return {
-        type: "code",
-        raw,
-        lang: cap2[2] ? cap2[2].trim().replace(this.rules.inline.anyPunctuation, "$1") : cap2[2],
-        text
-      };
-    }
-  }
-  heading(src) {
-    const cap2 = this.rules.block.heading.exec(src);
-    if (cap2) {
-      let text = cap2[2].trim();
-      if (this.rules.other.endingHash.test(text)) {
-        const trimmed2 = rtrim(text, "#");
-        if (this.options.pedantic) {
-          text = trimmed2.trim();
-        } else if (!trimmed2 || this.rules.other.endingSpaceChar.test(trimmed2)) {
-          text = trimmed2.trim();
-        }
-      }
-      return {
-        type: "heading",
-        raw: cap2[0],
-        depth: cap2[1].length,
-        text,
-        tokens: this.lexer.inline(text)
-      };
-    }
-  }
-  hr(src) {
-    const cap2 = this.rules.block.hr.exec(src);
-    if (cap2) {
-      return {
-        type: "hr",
-        raw: rtrim(cap2[0], "\n")
-      };
-    }
-  }
-  blockquote(src) {
-    const cap2 = this.rules.block.blockquote.exec(src);
-    if (cap2) {
-      let lines2 = rtrim(cap2[0], "\n").split("\n");
-      let raw = "";
-      let text = "";
-      const tokens = [];
-      while (lines2.length > 0) {
-        let inBlockquote = false;
-        const currentLines = [];
-        let i2;
-        for (i2 = 0; i2 < lines2.length; i2++) {
-          if (this.rules.other.blockquoteStart.test(lines2[i2])) {
-            currentLines.push(lines2[i2]);
-            inBlockquote = true;
-          } else if (!inBlockquote) {
-            currentLines.push(lines2[i2]);
-          } else {
-            break;
-          }
-        }
-        lines2 = lines2.slice(i2);
-        const currentRaw = currentLines.join("\n");
-        const currentText = currentRaw.replace(this.rules.other.blockquoteSetextReplace, "\n    $1").replace(this.rules.other.blockquoteSetextReplace2, "");
-        raw = raw ? `${raw}
-${currentRaw}` : currentRaw;
-        text = text ? `${text}
-${currentText}` : currentText;
-        const top = this.lexer.state.top;
-        this.lexer.state.top = true;
-        this.lexer.blockTokens(currentText, tokens, true);
-        this.lexer.state.top = top;
-        if (lines2.length === 0) {
-          break;
-        }
-        const lastToken = tokens.at(-1);
-        if (lastToken?.type === "code") {
-          break;
-        } else if (lastToken?.type === "blockquote") {
-          const oldToken = lastToken;
-          const newText = oldToken.raw + "\n" + lines2.join("\n");
-          const newToken = this.blockquote(newText);
-          tokens[tokens.length - 1] = newToken;
-          raw = raw.substring(0, raw.length - oldToken.raw.length) + newToken.raw;
-          text = text.substring(0, text.length - oldToken.text.length) + newToken.text;
-          break;
-        } else if (lastToken?.type === "list") {
-          const oldToken = lastToken;
-          const newText = oldToken.raw + "\n" + lines2.join("\n");
-          const newToken = this.list(newText);
-          tokens[tokens.length - 1] = newToken;
-          raw = raw.substring(0, raw.length - lastToken.raw.length) + newToken.raw;
-          text = text.substring(0, text.length - oldToken.raw.length) + newToken.raw;
-          lines2 = newText.substring(tokens.at(-1).raw.length).split("\n");
-          continue;
-        }
-      }
-      return {
-        type: "blockquote",
-        raw,
-        tokens,
-        text
-      };
-    }
-  }
-  list(src) {
-    let cap2 = this.rules.block.list.exec(src);
-    if (cap2) {
-      let bull = cap2[1].trim();
-      const isordered = bull.length > 1;
-      const list3 = {
-        type: "list",
-        raw: "",
-        ordered: isordered,
-        start: isordered ? +bull.slice(0, -1) : "",
-        loose: false,
-        items: []
-      };
-      bull = isordered ? `\\d{1,9}\\${bull.slice(-1)}` : `\\${bull}`;
-      if (this.options.pedantic) {
-        bull = isordered ? bull : "[*+-]";
-      }
-      const itemRegex = this.rules.other.listItemRegex(bull);
-      let endsWithBlankLine = false;
-      while (src) {
-        let endEarly = false;
-        let raw = "";
-        let itemContents = "";
-        if (!(cap2 = itemRegex.exec(src))) {
-          break;
-        }
-        if (this.rules.block.hr.test(src)) {
-          break;
-        }
-        raw = cap2[0];
-        src = src.substring(raw.length);
-        let line = cap2[2].split("\n", 1)[0].replace(this.rules.other.listReplaceTabs, (t) => " ".repeat(3 * t.length));
-        let nextLine = src.split("\n", 1)[0];
-        let blankLine = !line.trim();
-        let indent = 0;
-        if (this.options.pedantic) {
-          indent = 2;
-          itemContents = line.trimStart();
-        } else if (blankLine) {
-          indent = cap2[1].length + 1;
-        } else {
-          indent = cap2[2].search(this.rules.other.nonSpaceChar);
-          indent = indent > 4 ? 1 : indent;
-          itemContents = line.slice(indent);
-          indent += cap2[1].length;
-        }
-        if (blankLine && this.rules.other.blankLine.test(nextLine)) {
-          raw += nextLine + "\n";
-          src = src.substring(nextLine.length + 1);
-          endEarly = true;
-        }
-        if (!endEarly) {
-          const nextBulletRegex = this.rules.other.nextBulletRegex(indent);
-          const hrRegex = this.rules.other.hrRegex(indent);
-          const fencesBeginRegex = this.rules.other.fencesBeginRegex(indent);
-          const headingBeginRegex = this.rules.other.headingBeginRegex(indent);
-          const htmlBeginRegex = this.rules.other.htmlBeginRegex(indent);
-          while (src) {
-            const rawLine = src.split("\n", 1)[0];
-            let nextLineWithoutTabs;
-            nextLine = rawLine;
-            if (this.options.pedantic) {
-              nextLine = nextLine.replace(this.rules.other.listReplaceNesting, "  ");
-              nextLineWithoutTabs = nextLine;
-            } else {
-              nextLineWithoutTabs = nextLine.replace(this.rules.other.tabCharGlobal, "    ");
-            }
-            if (fencesBeginRegex.test(nextLine)) {
-              break;
-            }
-            if (headingBeginRegex.test(nextLine)) {
-              break;
-            }
-            if (htmlBeginRegex.test(nextLine)) {
-              break;
-            }
-            if (nextBulletRegex.test(nextLine)) {
-              break;
-            }
-            if (hrRegex.test(nextLine)) {
-              break;
-            }
-            if (nextLineWithoutTabs.search(this.rules.other.nonSpaceChar) >= indent || !nextLine.trim()) {
-              itemContents += "\n" + nextLineWithoutTabs.slice(indent);
-            } else {
-              if (blankLine) {
-                break;
-              }
-              if (line.replace(this.rules.other.tabCharGlobal, "    ").search(this.rules.other.nonSpaceChar) >= 4) {
-                break;
-              }
-              if (fencesBeginRegex.test(line)) {
-                break;
-              }
-              if (headingBeginRegex.test(line)) {
-                break;
-              }
-              if (hrRegex.test(line)) {
-                break;
-              }
-              itemContents += "\n" + nextLine;
-            }
-            if (!blankLine && !nextLine.trim()) {
-              blankLine = true;
-            }
-            raw += rawLine + "\n";
-            src = src.substring(rawLine.length + 1);
-            line = nextLineWithoutTabs.slice(indent);
-          }
-        }
-        if (!list3.loose) {
-          if (endsWithBlankLine) {
-            list3.loose = true;
-          } else if (this.rules.other.doubleBlankLine.test(raw)) {
-            endsWithBlankLine = true;
-          }
-        }
-        let istask = null;
-        let ischecked;
-        if (this.options.gfm) {
-          istask = this.rules.other.listIsTask.exec(itemContents);
-          if (istask) {
-            ischecked = istask[0] !== "[ ] ";
-            itemContents = itemContents.replace(this.rules.other.listReplaceTask, "");
-          }
-        }
-        list3.items.push({
-          type: "list_item",
-          raw,
-          task: !!istask,
-          checked: ischecked,
-          loose: false,
-          text: itemContents,
-          tokens: []
-        });
-        list3.raw += raw;
-      }
-      const lastItem = list3.items.at(-1);
-      if (lastItem) {
-        lastItem.raw = lastItem.raw.trimEnd();
-        lastItem.text = lastItem.text.trimEnd();
-      } else {
-        return;
-      }
-      list3.raw = list3.raw.trimEnd();
-      for (let i2 = 0; i2 < list3.items.length; i2++) {
-        this.lexer.state.top = false;
-        list3.items[i2].tokens = this.lexer.blockTokens(list3.items[i2].text, []);
-        if (!list3.loose) {
-          const spacers = list3.items[i2].tokens.filter((t) => t.type === "space");
-          const hasMultipleLineBreaks = spacers.length > 0 && spacers.some((t) => this.rules.other.anyLine.test(t.raw));
-          list3.loose = hasMultipleLineBreaks;
-        }
-      }
-      if (list3.loose) {
-        for (let i2 = 0; i2 < list3.items.length; i2++) {
-          list3.items[i2].loose = true;
-        }
-      }
-      return list3;
-    }
-  }
-  html(src) {
-    const cap2 = this.rules.block.html.exec(src);
-    if (cap2) {
-      const token2 = {
-        type: "html",
-        block: true,
-        raw: cap2[0],
-        pre: cap2[1] === "pre" || cap2[1] === "script" || cap2[1] === "style",
-        text: cap2[0]
-      };
-      return token2;
-    }
-  }
-  def(src) {
-    const cap2 = this.rules.block.def.exec(src);
-    if (cap2) {
-      const tag3 = cap2[1].toLowerCase().replace(this.rules.other.multipleSpaceGlobal, " ");
-      const href = cap2[2] ? cap2[2].replace(this.rules.other.hrefBrackets, "$1").replace(this.rules.inline.anyPunctuation, "$1") : "";
-      const title = cap2[3] ? cap2[3].substring(1, cap2[3].length - 1).replace(this.rules.inline.anyPunctuation, "$1") : cap2[3];
-      return {
-        type: "def",
-        tag: tag3,
-        raw: cap2[0],
-        href,
-        title
-      };
-    }
-  }
-  table(src) {
-    const cap2 = this.rules.block.table.exec(src);
-    if (!cap2) {
-      return;
-    }
-    if (!this.rules.other.tableDelimiter.test(cap2[2])) {
-      return;
-    }
-    const headers = splitCells(cap2[1]);
-    const aligns = cap2[2].replace(this.rules.other.tableAlignChars, "").split("|");
-    const rows = cap2[3]?.trim() ? cap2[3].replace(this.rules.other.tableRowBlankLine, "").split("\n") : [];
-    const item = {
-      type: "table",
-      raw: cap2[0],
-      header: [],
-      align: [],
-      rows: []
-    };
-    if (headers.length !== aligns.length) {
-      return;
-    }
-    for (const align of aligns) {
-      if (this.rules.other.tableAlignRight.test(align)) {
-        item.align.push("right");
-      } else if (this.rules.other.tableAlignCenter.test(align)) {
-        item.align.push("center");
-      } else if (this.rules.other.tableAlignLeft.test(align)) {
-        item.align.push("left");
-      } else {
-        item.align.push(null);
-      }
-    }
-    for (let i2 = 0; i2 < headers.length; i2++) {
-      item.header.push({
-        text: headers[i2],
-        tokens: this.lexer.inline(headers[i2]),
-        header: true,
-        align: item.align[i2]
-      });
-    }
-    for (const row of rows) {
-      item.rows.push(splitCells(row, item.header.length).map((cell, i2) => {
-        return {
-          text: cell,
-          tokens: this.lexer.inline(cell),
-          header: false,
-          align: item.align[i2]
-        };
-      }));
-    }
-    return item;
-  }
-  lheading(src) {
-    const cap2 = this.rules.block.lheading.exec(src);
-    if (cap2) {
-      return {
-        type: "heading",
-        raw: cap2[0],
-        depth: cap2[2].charAt(0) === "=" ? 1 : 2,
-        text: cap2[1],
-        tokens: this.lexer.inline(cap2[1])
-      };
-    }
-  }
-  paragraph(src) {
-    const cap2 = this.rules.block.paragraph.exec(src);
-    if (cap2) {
-      const text = cap2[1].charAt(cap2[1].length - 1) === "\n" ? cap2[1].slice(0, -1) : cap2[1];
-      return {
-        type: "paragraph",
-        raw: cap2[0],
-        text,
-        tokens: this.lexer.inline(text)
-      };
-    }
-  }
-  text(src) {
-    const cap2 = this.rules.block.text.exec(src);
-    if (cap2) {
-      return {
-        type: "text",
-        raw: cap2[0],
-        text: cap2[0],
-        tokens: this.lexer.inline(cap2[0])
-      };
-    }
-  }
-  escape(src) {
-    const cap2 = this.rules.inline.escape.exec(src);
-    if (cap2) {
-      return {
-        type: "escape",
-        raw: cap2[0],
-        text: cap2[1]
-      };
-    }
-  }
-  tag(src) {
-    const cap2 = this.rules.inline.tag.exec(src);
-    if (cap2) {
-      if (!this.lexer.state.inLink && this.rules.other.startATag.test(cap2[0])) {
-        this.lexer.state.inLink = true;
-      } else if (this.lexer.state.inLink && this.rules.other.endATag.test(cap2[0])) {
-        this.lexer.state.inLink = false;
-      }
-      if (!this.lexer.state.inRawBlock && this.rules.other.startPreScriptTag.test(cap2[0])) {
-        this.lexer.state.inRawBlock = true;
-      } else if (this.lexer.state.inRawBlock && this.rules.other.endPreScriptTag.test(cap2[0])) {
-        this.lexer.state.inRawBlock = false;
-      }
-      return {
-        type: "html",
-        raw: cap2[0],
-        inLink: this.lexer.state.inLink,
-        inRawBlock: this.lexer.state.inRawBlock,
-        block: false,
-        text: cap2[0]
-      };
-    }
-  }
-  link(src) {
-    const cap2 = this.rules.inline.link.exec(src);
-    if (cap2) {
-      const trimmedUrl = cap2[2].trim();
-      if (!this.options.pedantic && this.rules.other.startAngleBracket.test(trimmedUrl)) {
-        if (!this.rules.other.endAngleBracket.test(trimmedUrl)) {
-          return;
-        }
-        const rtrimSlash = rtrim(trimmedUrl.slice(0, -1), "\\");
-        if ((trimmedUrl.length - rtrimSlash.length) % 2 === 0) {
-          return;
-        }
-      } else {
-        const lastParenIndex = findClosingBracket(cap2[2], "()");
-        if (lastParenIndex > -1) {
-          const start = cap2[0].indexOf("!") === 0 ? 5 : 4;
-          const linkLen = start + cap2[1].length + lastParenIndex;
-          cap2[2] = cap2[2].substring(0, lastParenIndex);
-          cap2[0] = cap2[0].substring(0, linkLen).trim();
-          cap2[3] = "";
-        }
-      }
-      let href = cap2[2];
-      let title = "";
-      if (this.options.pedantic) {
-        const link2 = this.rules.other.pedanticHrefTitle.exec(href);
-        if (link2) {
-          href = link2[1];
-          title = link2[3];
-        }
-      } else {
-        title = cap2[3] ? cap2[3].slice(1, -1) : "";
-      }
-      href = href.trim();
-      if (this.rules.other.startAngleBracket.test(href)) {
-        if (this.options.pedantic && !this.rules.other.endAngleBracket.test(trimmedUrl)) {
-          href = href.slice(1);
-        } else {
-          href = href.slice(1, -1);
-        }
-      }
-      return outputLink(cap2, {
-        href: href ? href.replace(this.rules.inline.anyPunctuation, "$1") : href,
-        title: title ? title.replace(this.rules.inline.anyPunctuation, "$1") : title
-      }, cap2[0], this.lexer, this.rules);
-    }
-  }
-  reflink(src, links) {
-    let cap2;
-    if ((cap2 = this.rules.inline.reflink.exec(src)) || (cap2 = this.rules.inline.nolink.exec(src))) {
-      const linkString = (cap2[2] || cap2[1]).replace(this.rules.other.multipleSpaceGlobal, " ");
-      const link2 = links[linkString.toLowerCase()];
-      if (!link2) {
-        const text = cap2[0].charAt(0);
-        return {
-          type: "text",
-          raw: text,
-          text
-        };
-      }
-      return outputLink(cap2, link2, cap2[0], this.lexer, this.rules);
-    }
-  }
-  emStrong(src, maskedSrc, prevChar = "") {
-    let match = this.rules.inline.emStrongLDelim.exec(src);
-    if (!match)
-      return;
-    if (match[3] && prevChar.match(this.rules.other.unicodeAlphaNumeric))
-      return;
-    const nextChar = match[1] || match[2] || "";
-    if (!nextChar || !prevChar || this.rules.inline.punctuation.exec(prevChar)) {
-      const lLength = [...match[0]].length - 1;
-      let rDelim, rLength, delimTotal = lLength, midDelimTotal = 0;
-      const endReg = match[0][0] === "*" ? this.rules.inline.emStrongRDelimAst : this.rules.inline.emStrongRDelimUnd;
-      endReg.lastIndex = 0;
-      maskedSrc = maskedSrc.slice(-1 * src.length + lLength);
-      while ((match = endReg.exec(maskedSrc)) != null) {
-        rDelim = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
-        if (!rDelim)
-          continue;
-        rLength = [...rDelim].length;
-        if (match[3] || match[4]) {
-          delimTotal += rLength;
-          continue;
-        } else if (match[5] || match[6]) {
-          if (lLength % 3 && !((lLength + rLength) % 3)) {
-            midDelimTotal += rLength;
-            continue;
-          }
-        }
-        delimTotal -= rLength;
-        if (delimTotal > 0)
-          continue;
-        rLength = Math.min(rLength, rLength + delimTotal + midDelimTotal);
-        const lastCharLength = [...match[0]][0].length;
-        const raw = src.slice(0, lLength + match.index + lastCharLength + rLength);
-        if (Math.min(lLength, rLength) % 2) {
-          const text2 = raw.slice(1, -1);
-          return {
-            type: "em",
-            raw,
-            text: text2,
-            tokens: this.lexer.inlineTokens(text2)
-          };
-        }
-        const text = raw.slice(2, -2);
-        return {
-          type: "strong",
-          raw,
-          text,
-          tokens: this.lexer.inlineTokens(text)
-        };
-      }
-    }
-  }
-  codespan(src) {
-    const cap2 = this.rules.inline.code.exec(src);
-    if (cap2) {
-      let text = cap2[2].replace(this.rules.other.newLineCharGlobal, " ");
-      const hasNonSpaceChars = this.rules.other.nonSpaceChar.test(text);
-      const hasSpaceCharsOnBothEnds = this.rules.other.startingSpaceChar.test(text) && this.rules.other.endingSpaceChar.test(text);
-      if (hasNonSpaceChars && hasSpaceCharsOnBothEnds) {
-        text = text.substring(1, text.length - 1);
-      }
-      return {
-        type: "codespan",
-        raw: cap2[0],
-        text
-      };
-    }
-  }
-  br(src) {
-    const cap2 = this.rules.inline.br.exec(src);
-    if (cap2) {
-      return {
-        type: "br",
-        raw: cap2[0]
-      };
-    }
-  }
-  del(src) {
-    const cap2 = this.rules.inline.del.exec(src);
-    if (cap2) {
-      return {
-        type: "del",
-        raw: cap2[0],
-        text: cap2[2],
-        tokens: this.lexer.inlineTokens(cap2[2])
-      };
-    }
-  }
-  autolink(src) {
-    const cap2 = this.rules.inline.autolink.exec(src);
-    if (cap2) {
-      let text, href;
-      if (cap2[2] === "@") {
-        text = cap2[1];
-        href = "mailto:" + text;
-      } else {
-        text = cap2[1];
-        href = text;
-      }
-      return {
-        type: "link",
-        raw: cap2[0],
-        text,
-        href,
-        tokens: [
-          {
-            type: "text",
-            raw: text,
-            text
-          }
-        ]
-      };
-    }
-  }
-  url(src) {
-    let cap2;
-    if (cap2 = this.rules.inline.url.exec(src)) {
-      let text, href;
-      if (cap2[2] === "@") {
-        text = cap2[0];
-        href = "mailto:" + text;
-      } else {
-        let prevCapZero;
-        do {
-          prevCapZero = cap2[0];
-          cap2[0] = this.rules.inline._backpedal.exec(cap2[0])?.[0] ?? "";
-        } while (prevCapZero !== cap2[0]);
-        text = cap2[0];
-        if (cap2[1] === "www.") {
-          href = "http://" + cap2[0];
-        } else {
-          href = cap2[0];
-        }
-      }
-      return {
-        type: "link",
-        raw: cap2[0],
-        text,
-        href,
-        tokens: [
-          {
-            type: "text",
-            raw: text,
-            text
-          }
-        ]
-      };
-    }
-  }
-  inlineText(src) {
-    const cap2 = this.rules.inline.text.exec(src);
-    if (cap2) {
-      const escaped = this.lexer.state.inRawBlock;
-      return {
-        type: "text",
-        raw: cap2[0],
-        text: cap2[0],
-        escaped
-      };
-    }
-  }
-};
-export{_defaults,_Tokenizer,other,block,inline,escape,cleanUrl,_getDefaults,changeDefaults,init_engine};
+export{signedArea2,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,EmpheqUtil,rememberLabels,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_EmpheqUtil,init_fonts,init_macros};
