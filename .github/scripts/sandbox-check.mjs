@@ -116,6 +116,18 @@ try {
   if (drawn.rows !== pictureBox.rows) fail('renderPicture drew other rows than measurePicture gave')
   console.log(`picture: ${picture.ops.length} shapes, ${drawn.columns}x${drawn.rows} cells, ${drawn.png.length} B png, read ${readMs.toFixed(1)} ms, drawn ${(performance.now() - t).toFixed(1)} ms`)
   if (out) writeFileSync(join(out, 'picture.png'), drawn.png)
+  // Image files: a progressive JPEG (jpeg-js) and an interlaced palette PNG decoded, scaled and encoded.
+  for (const name of ['quad-progressive.jpg', 'interlaced-palette4.png']) {
+    t = performance.now()
+    const bytes = Uint8Array.from(readFileSync(join('core/test/image/fixtures', name)))
+    const header = kittex.imageHeader(bytes)
+    const bitmap = kittex.decodeImage(bytes)
+    if (!header || header.width !== bitmap.width || header.height !== bitmap.height) fail(`${name}: imageHeader and decodeImage disagree on the size`)
+    const png = kittex.encodeRgbaPng(kittex.scaleBitmap(bitmap, 5, 3))
+    const back = kittex.decodeImage(png)
+    if (back.width !== 5 || back.height !== 3) fail(`${name}: the scaled PNG is ${back.width}x${back.height}, not 5x3`)
+    console.log(`image: ${name} ${header?.format} ${bitmap.width}x${bitmap.height} -> 5x3, ${png.length} B png, ${(performance.now() - t).toFixed(1)} ms`)
+  }
   if (kittex.unsafeTex('\\immediate\\write18{id}') === undefined) fail('unsafeTex let \\write18 through')
 } catch (error) {
   fail(error?.stack ?? String(error))
