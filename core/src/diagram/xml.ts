@@ -9,7 +9,12 @@ export interface XmlElement {
   name: string
   attrs: Record<string, string>
   children: XmlElement[]
+  /** A `<style>` element's character data (CDATA included), the only text kept: everything else drawn is in attributes. */
+  text?: string
 }
+
+/** Characters of style sheet text one document may hold, at most (more is refused). */
+const MAX_STYLE_TEXT = 256 * 1024
 
 /** Elements nested deeper than this are refused (dvisvgm nests a group per TikZ scope, and per pgfplots patch). */
 const MAX_DEPTH = 20_000
@@ -27,6 +32,12 @@ export class XmlError extends Error {}
 export function parseXml(source: string): XmlElement {
   let pos = 0
   let count = 0
+  let styleText = 0
+  const keep = (el: XmlElement, text: string) => {
+    styleText += text.length
+    if (styleText > MAX_STYLE_TEXT) fail('style sheet too long')
+    el.text = (el.text ?? '') + text
+  }
 
   const fail = (what: string): never => {
     throw new XmlError(`XML: ${what} at ${pos}`)
@@ -99,6 +110,13 @@ export function parseXml(source: string): XmlElement {
       const lt = source.indexOf('<', pos)
       const top = open[open.length - 1]!
       if (lt < 0) fail(`unclosed <${top.name}>`)
+      if (top.name === 'style') {
+        keep(top, decode(source.slice(pos, lt)))
+        if (source.startsWith('<![CDATA[', lt)) {
+          const end = source.indexOf(']]>', lt)
+          if (end >= 0) keep(top, source.slice(lt + 9, end))
+        }
+      }
       pos = lt
       if (skipMarkup()) continue
       if (source[pos + 1] === '/') {
