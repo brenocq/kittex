@@ -1,6 +1,7 @@
 import decode from 'jpeg-js/lib/decoder.js'
 import { type Bitmap, checkSize, ImageError } from './bitmap.js'
 import { jpegInfo } from './header.js'
+import { checkScans } from './jpeg-scans.js'
 
 /*
  * JPEG -> straight RGBA through jpeg-js (baseline and progressive, gray,
@@ -14,6 +15,7 @@ export function decodeJpeg(bytes: Uint8Array, maxPixels: number): Bitmap {
   const info = jpegInfo(bytes)
   if (!info) throw new ImageError('JPEG has no frame header')
   checkSize(info.width, info.height, maxPixels)
+  checkScans(bytes)
   let decoded
   try {
     decoded = decode(bytes, { useTArray: true, formatAsRGBA: true, maxResolutionInMP: maxPixels / 1e6 })
