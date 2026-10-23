@@ -2731,15 +2731,17 @@ export const DIAGRAM_INSTRUCTIONS =
 
 /**
  * What kittex adds to its instructions where it draws image files (images
- * drawn, display math as images), TeX or not: how to show one, and that
- * there is nothing to check first. `pdf`: PDF files are drawn here too (the
- * local TeX converts them).
+ * drawn, display math as images), TeX or not: how to show one, that the
+ * Read tool is not it (a model asked to show an image reaches for Read, which
+ * shows the image to the model alone), and that there is nothing to check
+ * first. `pdf`: PDF files are drawn here too (the local TeX converts them).
  */
 export function imageInstructions(pdf: boolean): string {
   return (
-    `Image files can be shown here too: when the user asks to see an image, or a picture helps (a plot a script just saved, a figure in the project), ` +
+    `Image files can be shown here too: when the user asks to see or be shown an image file, or a picture helps (a plot a script just saved, a figure in the project), ` +
     'write `\\includegraphics[width=0.8\\linewidth]{/absolute/path/to/file}` alone in a ```latex code block, and kittex draws the file ' +
     `(PNG, JPEG, SVG${pdf ? ' or the first page of a PDF' : ''}) in its place, as wide as the option asks. ` +
+    'That block is how an image is shown to the user: the Read tool shows it to you alone, so "show me this image" means the block, not Read. ' +
     "Don't open, read or verify the file first: a file that can't be drawn leaves the block as code with the reason under it."
   )
 }
