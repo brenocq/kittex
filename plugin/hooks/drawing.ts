@@ -131,10 +131,15 @@ export function reservedOptions(options: PlanOptions, renderEnv: RenderEnv): Pla
 /** How each picture's image is drawn again at fewer pixels (fitPictures). */
 export const pictureRedraws = new WeakMap<RenderedImage, (density: number) => RenderedImage>()
 
-/** A diagram's image `rows` tall (its own when not given), for the landing: as TexBook has it, or null / { error } (see PlanOptions.diagram). */
-export function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number, tex = true): RenderedImage | { error: string } | null {
+/**
+ * A diagram's image `rows` tall (its own when not given), for the landing: as
+ * TexBook has it, or null / { error } (see PlanOptions.diagram). An image
+ * block's relative path resolves against `cwd`, its reply's own working
+ * directory where kept (ImageBook.place).
+ */
+export function diagramImage(source: string, kind: DiagramKind, env: PictureEnv, rows?: number, tex = true, cwd?: string): RenderedImage | { error: string } | null {
   const file = imageSpecOf(source, kind)
-  if (file) return fileImage(file, env, rows)
+  if (file) return fileImage(imageBook.place(file, cwd), env, rows)
   if (!tex) return null
   const job = diagramJob(source, kind)
   if (!job) return null

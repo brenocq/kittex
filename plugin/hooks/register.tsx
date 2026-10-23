@@ -141,6 +141,8 @@ interface Streaming {
   linked: boolean
   /** Its final flush came. */
   done: boolean
+  /** The working directory its image blocks' relative paths resolve against (kept in its block). */
+  cwd?: string
 }
 
 /** Per message, a gate per flush index that opens once that flush's rewrite is done (see the MessageDisplay hook). */
@@ -486,7 +488,8 @@ async function rewriteFlush($: Engine, e: { message_id: string; delta: string; f
       // Relative paths in this reply's image blocks are the session's working directory's as it is now (a /cd since).
       if (streamEnv.imageFiles) imageBook.cwd = await $.session.cwd().catch(() => imageBook.cwd)
       // Diagrams are held for TeX where it draws them (a block streaming when TeX is found keeps its code), image blocks for their files.
-      entry = { stream: new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true || streamEnv.imageFiles === true })), source: '', shown: 0, stored: false, linked: false, done: false }
+      const cwd = streamEnv.imageFiles ? imageBook.cwd : undefined
+      entry = { stream: new MessageStream(createLineScanner({ diagrams: streamEnv.tex?.block === true || streamEnv.imageFiles === true })), source: '', shown: 0, stored: false, linked: false, done: false, ...(cwd !== undefined ? { cwd } : {}) }
       streams.delete(e.message_id)
       streams.set(e.message_id, entry)
       for (const id of streams.keys()) if (streams.size > STREAM_LIMIT) streams.delete(id)
@@ -575,9 +578,15 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
     const texOn = e.surface === 'terminal' && texUse(env, math).tex?.block === true
     // Image blocks where kittex draws image files (TeX or not).
     const filesOn = e.surface === 'terminal' && imageUse(env, math).imageFiles === true
+    // A plan holding an image file's drawing (or its note) is never kept on disk: nothing in its key follows the
+    // file, which a script may rewrite or delete before the next --resume; the book looks at the file each session.
+    let fileDrawn = false
     if (texOn || filesOn) {
       const pictureEnv = pictureEnvFor(env, columns)
-      planOptions.diagram = (source, kind, rows) => diagramImage(source, kind, pictureEnv, rows, texOn)
+      planOptions.diagram = (source, kind, rows) => {
+        fileDrawn ||= filesOn && imageSpecOf(source, kind) !== undefined
+        return diagramImage(source, kind, pictureEnv, rows, texOn, found.block?.cwd)
+      }
     }
     // A block read back as LaTeX (a resumed session) may be on disk already
     // (cache.ts); one off screen in the fullscreen layout (`onScreen` null:
@@ -624,7 +633,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
           const known = imageBook.known(spec)
           return known !== undefined && (known.ok || known.lasting)
         })
-      if (key && !offScreen && final) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
+      if (key && !offScreen && final && !fileDrawn) keepEntry(key, plan, (path, text) => $.fs.write(path, text))
     }
     if (!plan.changed) return below(e)
     if (e.surface !== 'terminal' || plan.pieces.every(piece => piece.kind === 'prose' && !piece.inline?.length)) {
@@ -1292,7 +1301,8 @@ async function storeCells($: Engine, cell: CellSize | undefined, seen: number | 
  */
 async function storeBlock($: Engine, id: string, entry: Streaming, records: readonly PreviewRecord[], raw?: number): Promise<void> {
   await updateBlock($, id, block => {
-    const kept: StreamedBlock = { records: [...(block?.records ?? []), ...records] }
+    const cwd = block?.cwd ?? entry.cwd
+    const kept: StreamedBlock = { records: [...(block?.records ?? []), ...records], ...(cwd !== undefined ? { cwd } : {}) }
     const at = raw ?? block?.raw
     return at === undefined ? kept : { ...kept, raw: at }
   })

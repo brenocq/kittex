@@ -82,6 +82,17 @@ export class ImageBook {
     return resolveImagePath(spec.path, this.cwd, this.home) ?? `unplaced:${spec.path}`
   }
 
+  /**
+   * A block's spec with its path resolved against `cwd`, the working directory
+   * its reply streamed in (kept with the reply), so redrawing that reply after
+   * a /cd still shows its own file. As given where `cwd` is unknown or the
+   * path can't be placed: then it resolves against the book's.
+   */
+  place(spec: ImageSpec, cwd: string | undefined): ImageSpec {
+    const path = cwd === undefined ? undefined : resolveImagePath(spec.path, cwd, this.home)
+    return path === undefined ? spec : { ...spec, path }
+  }
+
   /** What a block's file gave, when it was read in this process; a passing failure included. */
   known(spec: ImageSpec): ImageOutcome | undefined {
     const key = this.key(spec)

@@ -25,7 +25,8 @@ const GRADIENT_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAADwAAAAeCAIAAAD/+uoYAAAA7UlEQVR42u3OQUcDAACG4fewQ4cOUTSKolhsLBaLRbHY2GgUi42iKIqiWBRFsbFRbBSNRVEsNhZFsbFYFIuiKBaNoujQocMO9Su6fc8vePiFGoYf6r6p/6Lhg6Y3jK+0Vmh/ovOBrjssZbqv6SnRW6Qvz8A5g6e4c3gz+NKMHDK6TzDF+C6T20zHmd1kPspimKV1VlZZW2YjRGSB2BxbMySm2JkgOcZegAM/R8McD5H1cOLizMlFPwUHl3aubNxYuTVzb+Kxg+c2XlqoNvPeyCdKK6200korrbTSSiuttNJKK6200korrbTS/5X+AztqAWI5zjdaAAAAAElFTkSuQmCC'
 const GRADIENT = fromBase64(GRADIENT_B64)
 /** A 60 × 30 PNG, all green: the same plot written again. */
-const GREEN = fromBase64('iVBORw0KGgoAAAANSUhEUgAAADwAAAAeCAIAAAD/+uoYAAAAMklEQVR42u3OQQkAAAgAseufzFim8CEMFmA1/SMtLS0tLS0tLS0tLS0tLS0tLS0tfWUBcAF+jIsC4Z4AAAAASUVORK5CYII=')
+const GREEN_B64 = 'iVBORw0KGgoAAAANSUhEUgAAADwAAAAeCAIAAAD/+uoYAAAAMklEQVR42u3OQQkAAAgAseufzFim8CEMFmA1/SMtLS0tLS0tLS0tLS0tLS0tLS0tfWUBcAF+jIsC4Z4AAAAASUVORK5CYII='
+const GREEN = fromBase64(GREEN_B64)
 
 const PLOT = '\\includegraphics[width=0.5\\linewidth]{out/plot.png}'
 const FENCE = '```latex\n' + PLOT + '\n```'
@@ -338,16 +339,52 @@ describe('image blocks in a session', () => {
     return [...own, ...(element.children ?? []).flatMap(sources)]
   }
 
+  /** Streams `text` a line a flush as message `id`; what the engine shows of it. */
+  async function streamReply($: Engine, id: string, text: string): Promise<string> {
+    const deltas = text.split(/(?<=\n)/)
+    let shown = ''
+    for (const [index, delta] of deltas.entries()) {
+      const result = await $.classic.MessageDisplay({ turn_id: 't', message_id: id, index, final: index === deltas.length - 1, delta })
+      shown += result.displayContent ?? delta
+    }
+    return shown
+  }
+
+  /** Image files the test rewrites (by absolute path), the cache's files kept as text, and a working directory the test moves. */
+  function serveDisk(on: On, images: Map<string, { base64: string; mtimeMs: number }>, where: { cwd: string }): void {
+    const cache = new Map<string, string>()
+    on('fs.stat', ($, e) => {
+      const file = images.get(e.path)
+      if (!file) throw new Error(`ENOENT: ${e.path}`)
+      return { value: { kind: 'file' as const, size: fromBase64(file.base64).length, mtimeMs: file.mtimeMs, isLink: false, realPath: e.path } }
+    })
+    on('fs.read', ($, e) => {
+      const file = images.get(e.path)
+      if (file) return { value: { base64: file.base64 } } as never
+      const text = cache.get(e.path)
+      return (text === undefined ? { deny: 'ENOENT: no such file' } : { value: text }) as never
+    })
+    on('fs.write', ($, e) => {
+      cache.set(e.path, e.text)
+      return { value: undefined }
+    })
+    on('session.cwd', () => ({ value: where.cwd }))
+  }
+
+  /** The RGBA at the centre of a drawn Image. */
+  function centre(base64: string): number[] {
+    const drawn = source(fromBase64(base64))
+    if (drawn.kind !== 'bitmap') throw new Error('not a bitmap')
+    const { width, height, rgba } = drawn.bitmap
+    const at = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4
+    return [...rgba.subarray(at, at + 4)]
+  }
+
   test('a streamed image block lands as an Image of the file', async ($, on) => {
     serveFiles(on, { '/w/out/plot.png': GRADIENT_B64 })
     await startSession($, on)
     await init()
-    const text = `Here:\n\n${FENCE}\n\nDone.\n`
-    let shown = ''
-    for (const [index, delta] of text.split(/(?<=\n)/).entries()) {
-      const result = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index, final: index === text.split(/(?<=\n)/).length - 1, delta })
-      shown += result.displayContent ?? delta
-    }
+    const shown = await streamReply($, 'm', `Here:\n\n${FENCE}\n\nDone.\n`)
     expect(shown).not.toContain('```')
     const images = sources(await (await mount($, shown)).drawn())
     expect(images).toHaveLength(1)
@@ -361,6 +398,40 @@ describe('image blocks in a session', () => {
     await init()
     const images = sources(await (await mount($, `Here:\n\n${FENCE}\n`)).drawn())
     expect(images).toHaveLength(1)
+  })
+
+  test('the next --resume draws the file as it is then, not a drawing of it the image cache kept', async ($, on) => {
+    const images = new Map([['/w/out/plot.png', { base64: GRADIENT_B64, mtimeMs: 1 }]])
+    serveDisk(on, images, { cwd: '/w' })
+    await startSession($, on, { ...KITTY, XDG_CACHE_HOME: '/cache' })
+    await init()
+    const text = `Here:\n\n${FENCE}\n`
+    const before = sources(await (await mount($, text)).drawn())
+    expect(before).toHaveLength(1)
+    expect(centre(before[0]!)).not.toEqual([0, 200, 0, 255])
+    // A script draws the plot again, then the conversation is resumed: a new session reads the reply back.
+    images.set('/w/out/plot.png', { base64: GREEN_B64, mtimeMs: 2 })
+    await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+    const after = sources(await (await mount($, text)).drawn())
+    expect(after).toHaveLength(1)
+    expect(centre(after[0]!)).toEqual([0, 200, 0, 255])
+  })
+
+  test("an earlier reply's image block keeps the directory it streamed in: drawn again after a /cd, it shows the same file", async ($, on) => {
+    const where = { cwd: '/w' }
+    serveDisk(on, new Map([['/w/out/plot.png', { base64: GRADIENT_B64, mtimeMs: 1 }], ['/v/out/plot.png', { base64: GREEN_B64, mtimeMs: 1 }]]), where)
+    await startSession($, on)
+    await init()
+    const shown = await streamReply($, 'm1', `Here:\n\n${FENCE}\n\nDone.\n`)
+    const before = sources(await (await mount($, shown)).drawn())
+    expect(before).toHaveLength(1)
+    // The session moves to /v, which holds a plot of its own name, and the next reply streams there.
+    where.cwd = '/v'
+    await streamReply($, 'm2', 'Moved.\n')
+    const after = sources(await (await mount($, shown)).drawn())
+    expect(after).toHaveLength(1)
+    expect(centre(after[0]!)).toEqual(centre(before[0]!))
+    expect(centre(after[0]!)).not.toEqual([0, 200, 0, 255])
   })
 
   test('the instructions tell the model how to show a file, PDF left out without TeX', async ($, on) => {
