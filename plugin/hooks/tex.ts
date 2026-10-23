@@ -38,7 +38,7 @@ import {
   unsafeTex,
   XmlError,
 } from './core.js'
-import type { Confinement, Picture, TexDocument, TypesetResult } from './core.js'
+import type { Confinement, PdfConverter, Picture, TexDocument, TypesetResult } from './core.js'
 
 /** What a compile gave: the picture, or why there is none. */
 export type TexOutcome =
@@ -82,11 +82,11 @@ export interface TexSetup {
    */
   postscript?: true
   /**
-   * True where a trial conversion of a tiny PDF (TRIAL_PDF) drew it, as
-   * pdfPicture converts: dvisvgm --pdf, with Ghostscript inside bubblewrap,
-   * else with mutool alone (pdfRefusal). Absent: PDFs are not drawn here.
+   * The converter whose trial conversion of a tiny PDF (TRIAL_PDF) drew it,
+   * the first of pdfConverters: mutool, else dvisvgm with Ghostscript inside
+   * bubblewrap. Absent: PDFs are not drawn here.
    */
-  pdf?: true
+  pdf?: PdfConverter
   /** With bubblewrap: what its namespace must still show (the TeX trees and programs it hides) and the PATH jobs run with. */
   sandbox?: Sandbox
 }
@@ -169,40 +169,33 @@ export async function probeTex(host: TexHost, options: { tmpdir: string | undefi
     ...(help !== undefined && !takesLibgs(help) && runsPostScript(first(dvisvgm), extended) ? { postscript: true as const } : {}),
     ...(sandbox?.ok ? { sandbox: sandbox.sandbox } : {}),
   }
-  if ((await probePdf(host, setup)).ok) setup.pdf = true
+  const pdf = await probePdf(host, setup)
+  if (pdf.ok) setup.pdf = pdf.converter
   return setup
 }
 
 // ─── PDF images ──────────────────────────────────────────────────────────────
 
 /**
- * Why this host's PDFs are not converted, whatever the trial says, or
- * undefined. dvisvgm runs a PDF through Ghostscript without -dSAFER (see
- * core/src/diagram/tex.ts), so Ghostscript reads a PDF only inside
- * bubblewrap; elsewhere it is turned off with `--libgs`, which a dvisvgm with
- * Ghostscript built in refuses (setup.libgs false).
+ * The converters this host may try, in order: mutool everywhere, then
+ * dvisvgm with Ghostscript only inside bubblewrap, since dvisvgm runs
+ * Ghostscript without -dSAFER (see core/src/diagram/tex.ts).
  */
-export function pdfRefusal(setup: Pick<TexSetup, 'confinement' | 'libgs'>): string | undefined {
-  if (setup.confinement.bwrap || setup.libgs !== false) return undefined
-  return "this dvisvgm has Ghostscript built in, which reads a PDF unsafely, and there is no bubblewrap to confine it"
+export function pdfConverters(setup: Pick<TexSetup, 'confinement'>): PdfConverter[] {
+  return setup.confinement.bwrap ? ['mutool', 'ghostscript'] : ['mutool']
 }
 
-/** Whether a conversion may load Ghostscript: only in bubblewrap's namespace. */
-function pdfGhostscript(setup: Pick<TexSetup, 'confinement'>): boolean {
-  return setup.confinement.bwrap !== undefined
-}
-
-/** dvisvgm on the PDF already in the job directory `dir`, confined as TeX's jobs are, read into a Picture. */
-async function convertPdf(host: TexHost, setup: TexSetup, dir: string, timeoutMs: number): Promise<TexOutcome> {
+/** `converter` on the PDF already in the job directory `dir`, confined as TeX's jobs are, read into a Picture. */
+async function convertPdf(host: TexHost, setup: TexSetup, converter: PdfConverter, dir: string, timeoutMs: number): Promise<TexOutcome> {
   const jail = sandboxed(setup)
   let svg
   try {
-    svg = await host.run(confined(pdfArgv(dir, pdfGhostscript(setup)), dir, setup.confinement, jail.binds), { cwd: dir, env: { ...texEnvironment(dir), ...jail.env }, timeoutMs: Math.max(1, timeoutMs) })
+    svg = await host.run(confined(pdfArgv(converter, dir), dir, setup.confinement, jail.binds), { cwd: dir, env: { ...texEnvironment(dir), ...jail.env }, timeoutMs: Math.max(1, timeoutMs) })
   } catch {
     return { ok: false, error: `the PDF took longer than ${(timeoutMs / 1000).toFixed(0)} s`, lasting: false }
   }
   if (svg.exitCode !== 0 || svg.isStdoutTruncated || !svg.stdout.includes('<svg')) {
-    return { ok: false, error: svg.isStdoutTruncated ? 'the picture is too large' : firstLine(svg.stderr) || 'dvisvgm failed', lasting: true }
+    return { ok: false, error: svg.isStdoutTruncated ? 'the picture is too large' : firstLine(svg.stderr) || `${converter === 'mutool' ? 'mutool' : 'dvisvgm'} failed`, lasting: true }
   }
   try {
     return { ok: true, picture: texPicture(svg.stdout, { baseline: 'bottom', fontSize: 10 }) }
@@ -227,13 +220,12 @@ async function inJob(host: TexHost, setup: Pick<TexSetup, 'tmpdir'>, body: (dir:
 /**
  * The first page of the PDF at `path` (absolute) as a Picture, in em at 10 pt
  * (its natural size), within `timeoutMs`: copied into a job directory under
- * the job's limits, checked to be a PDF, converted (convertPdf). Refused
- * where setup.pdf isn't set, which pdfRefusal and the trial decide.
+ * the job's limits, checked to be a PDF, converted by setup.pdf (convertPdf).
+ * Refused where the trial set no converter.
  */
 export async function pdfPicture(host: TexHost, setup: TexSetup, path: string, timeoutMs: number): Promise<TexOutcome> {
-  const refused = pdfRefusal(setup)
-  if (refused !== undefined) return { ok: false, error: `PDF not drawn: ${refused}`, lasting: true }
-  if (!setup.pdf) return { ok: false, error: 'PDF not drawn: dvisvgm converts no PDF here (it needs mutool, or Ghostscript 9.50 or later inside bubblewrap)', lasting: true }
+  const converter = setup.pdf
+  if (converter === undefined) return { ok: false, error: 'PDF not drawn: nothing converts PDF here (it needs mutool, or Ghostscript 9.50 to 10.0 inside bubblewrap)', lasting: true }
   if (!path.startsWith('/') || path.includes('\n')) return { ok: false, error: 'PDF not drawn: its path is not absolute', lasting: true }
   const deadline = Date.now() + timeoutMs
   const late: TexOutcome = { ok: false, error: `the PDF took longer than ${(timeoutMs / 1000).toFixed(0)} s`, lasting: false }
@@ -243,28 +235,38 @@ export async function pdfPicture(host: TexHost, setup: TexSetup, path: string, t
     const copied = await host.run(pdfCopyArgv(path, dir, setup.confinement), { cwd: dir, timeoutMs: Math.max(1, Math.min(left(), PDF_COPY_MS)) }).catch(() => undefined)
     if (!copied) return late
     if (copied.exitCode !== 0) return { ok: false, error: `PDF not drawn: ${firstLine(copied.stderr) || 'it could not be read'}`, lasting: false }
-    // Only a PDF goes to the converter (Ghostscript would run a PostScript file as a program).
+    // Only a PDF goes to the converter (Ghostscript would run a PostScript file as a program, and mutool opens other formats too).
     const head = await host.run(['head', '-c', '1024', '--', `${dir}/${PDF_NAME}`], { timeoutMs: PROBE_MS }).catch(() => undefined)
     if (!head?.stdout.includes('%PDF-')) return { ok: false, error: 'PDF not drawn: the file is not a PDF', lasting: true }
     if (left() < 50) return late
-    return convertPdf(host, setup, dir, left())
+    return convertPdf(host, setup, converter, dir, left())
   })
 }
 
 /** How long copying a PDF into its job may take (it stops at MAX_OUTPUT_BYTES anyway). */
 const PDF_COPY_MS = 10_000
 
-/** The trial conversion (TRIAL_PDF, as pdfPicture converts): ok when it draws, else why not; refused without a run where pdfRefusal refuses. */
-export async function probePdf(host: TexHost, setup: TexSetup): Promise<{ ok: true } | { ok: false; error: string }> {
-  const refused = pdfRefusal(setup)
-  if (refused !== undefined) return { ok: false, error: refused }
-  const outcome = await inJob(host, setup, async dir => {
-    await host.write(`${dir}/${PDF_NAME}`, TRIAL_PDF)
-    return convertPdf(host, setup, dir, PROBE_MS)
-  }).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
-  if (!outcome.ok) return { ok: false, error: outcome.error }
-  return outcome.picture.ops.some(op => op.type === 'fill' && op.paint.color.b === 255) ? { ok: true } : { ok: false, error: 'the trial PDF drew nothing' }
+/**
+ * The trial conversion (TRIAL_PDF, as pdfPicture converts) with each of
+ * pdfConverters in turn: the first that draws it, else why each did not.
+ */
+export async function probePdf(host: TexHost, setup: TexSetup): Promise<{ ok: true; converter: PdfConverter } | { ok: false; error: string }> {
+  const errors: string[] = []
+  for (const converter of pdfConverters(setup)) {
+    const outcome = await inJob(host, setup, async dir => {
+      await host.write(`${dir}/${PDF_NAME}`, TRIAL_PDF)
+      return convertPdf(host, setup, converter, dir, PROBE_MS)
+    }).catch((error: unknown): TexOutcome => ({ ok: false, error: String(error), lasting: false }))
+    const error = !outcome.ok ? outcome.error : outcome.picture.ops.some(op => op.type === 'fill' && op.paint.color.b === 255) ? undefined : 'the trial PDF drew nothing'
+    if (error === undefined) return { ok: true, converter }
+    errors.push(error)
+  }
+  if (errors.length === 1) return { ok: false, error: errors[0]! }
+  return { ok: false, error: pdfConverters(setup).map((converter, i) => `${PDF_CONVERTER_NAMES[converter]}: ${errors[i]}`).join('; ') }
 }
+
+/** How the doctor and the trial's errors name each converter. */
+export const PDF_CONVERTER_NAMES: Record<PdfConverter, string> = { mutool: 'mutool', ghostscript: 'dvisvgm with Ghostscript' }
 
 /**
  * Whether a dvisvgm without --libgs hands PostScript specials to Ghostscript

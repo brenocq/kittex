@@ -1731,7 +1731,7 @@ async function instructions(env: KittexEnv | null, math: MathOptions): Promise<s
   // Only where TeX itself is there (an earlier session's cache alone draws what it holds, nothing new).
   if (env && texBook.ready && texUse(env, math).tex?.block) parts.push(DIAGRAM_INSTRUCTIONS)
   // Image files wherever kittex draws them; PDFs where the local TeX converts them (the probe's trial PDF drew).
-  if (env && imageUse(env, math).imageFiles) parts.push(imageInstructions(texBook.ready && texBook.setup?.pdf === true))
+  if (env && imageUse(env, math).imageFiles) parts.push(imageInstructions(texBook.ready && texBook.setup?.pdf !== undefined))
   return parts.join(' ')
 }
 

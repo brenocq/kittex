@@ -585,27 +585,32 @@ export function dvisvgmArgv(dir: string): string[] {
 
 /*
  * A PDF a reply includes (\includegraphics{figure.pdf}) is drawn from its
- * first page: dvisvgm --pdf turns it into SVG (glyphs as paths), read like a
- * TeX picture. The PDF is untrusted input, so it is copied into a job
- * directory of its own and converted there under the job's confinement.
- * dvisvgm hands a PDF to Ghostscript when it can load one, and starts it with
- * -dDELAYSAFER and never makes it safe (PSInterpreter.cpp), so a PDF can reach
- * everything Ghostscript's interpreter can (files, pipes). Without
- * bubblewrap's namespace, Ghostscript is turned off (`--libgs` naming no
- * library, as dvisvgmArgv does) and dvisvgm converts with mutool, which runs
- * nothing a document asks for.
+ * first page, turned into SVG with glyphs as paths and read like a TeX
+ * picture. The PDF is untrusted input, so it is copied into a job directory of
+ * its own and converted there under the job's confinement.
+ *
+ * mutool (MuPDF) converts it wherever it runs: it draws every kind of font,
+ * and runs nothing a document asks for. dvisvgm --pdf is no substitute for
+ * it: with mutool as its backend it takes glyph outlines from the embedded
+ * font programs, and a Type 3 font (matplotlib's default) has none, so every
+ * label of a plot comes out blank.
+ *
+ * Where mutool fails, dvisvgm --pdf with Ghostscript (before 10.01) is the
+ * fallback, and only inside bubblewrap's namespace: dvisvgm starts Ghostscript
+ * with -dDELAYSAFER and never makes it safe (PSInterpreter.cpp), so a PDF can
+ * reach everything Ghostscript's interpreter can (files, pipes).
  */
 
 /** The job's copy of the PDF being converted. */
 export const PDF_NAME = 'kittex-image.pdf'
 
-/**
- * dvisvgm on the job's PDF: its first page, glyphs as paths, SVG on stdout,
- * nothing cached; without `ghostscript`, Ghostscript never loaded (mutool
- * converts, or nothing does).
- */
-export function pdfArgv(dir: string, ghostscript: boolean): string[] {
-  return ['dvisvgm', '--pdf', '--page=1', '--no-fonts', '--cache=none', `--tmpdir=${dir}`, ...(ghostscript ? [] : [`--libgs=${dir}/no-ghostscript`]), '--stdout', '--verbosity=1', PDF_NAME]
+/** What turns a PDF into SVG: mutool draw, or dvisvgm --pdf with Ghostscript (only inside bubblewrap). */
+export type PdfConverter = 'mutool' | 'ghostscript'
+
+/** The converter's command on the job's PDF: its first page as SVG on stdout, glyphs as paths, nothing cached. */
+export function pdfArgv(converter: PdfConverter, dir: string): string[] {
+  if (converter === 'mutool') return ['mutool', 'draw', '-q', '-F', 'svg', '-O', 'text=path', '-o', '-', PDF_NAME, '1']
+  return ['dvisvgm', '--pdf', '--page=1', '--no-fonts', '--cache=none', `--tmpdir=${dir}`, '--stdout', '--verbosity=1', PDF_NAME]
 }
 
 /** Copying the PDF at `path` (absolute) into the job's directory, under the job's limits but outside its namespace, which hides the PDF. */

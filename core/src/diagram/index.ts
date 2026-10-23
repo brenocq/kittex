@@ -37,6 +37,7 @@ export {
   unsafeTex,
   type Confinement,
   type DiagramLang,
+  type PdfConverter,
   type TexDocument,
 } from './tex.js'
 export { XmlError } from './xml.js'

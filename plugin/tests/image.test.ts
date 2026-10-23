@@ -374,7 +374,7 @@ describe('image blocks in a session', () => {
   })
 
   test('where the local TeX converts PDF: the instructions offer PDFs, and a PDF block is drawn from its first page', async ($, on) => {
-    // dvisvgm --pdf's page: 50 × 40 pt, a blue square.
+    // mutool's page: 50 × 40 pt, a blue square.
     const page = '<svg xmlns="http://www.w3.org/2000/svg" width="50pt" height="40pt" viewBox="0 0 50 40"><path d="M10 10H40V30H10Z" fill="#00f"/></svg>'
     serveFiles(on, { '/w/fig.pdf': btoa('%PDF-1.7\n%...\n') })
     const converted: string[][] = []
@@ -384,7 +384,7 @@ describe('image blocks in a session', () => {
       if ((argv[0] === 'latex' || argv[0] === 'dvisvgm') && argv[1] === '--version') return { exitCode: 0, stdout: `${argv[0]} 1.0\n` }
       if (argv.includes('mktemp')) return { exitCode: 0, stdout: '/tmp/kittex-tex.PdFpDfPdFp\n' }
       if (argv.includes('head')) return { exitCode: 0, stdout: '%PDF-1.7\n%...\n' }
-      if (argv.includes('dvisvgm') && argv.includes('--pdf')) {
+      if (argv.includes('mutool') && argv.includes('draw')) {
         converted.push([...argv])
         return { exitCode: 0, stdout: page }
       }

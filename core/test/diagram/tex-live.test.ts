@@ -8,8 +8,10 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { bwrapProbe, confined, pdfArgv, pdfCopyArgv, TRIAL_PDF, MAX_OUTPUT_BYTES, ulimitProbe, countNumbers, diagramDocument, dvisvgmArgv, FORMAT_SOURCE, formatArgv, JOB_NAME, LATEX_ARGV, latexArgv, mathDocument, MAX_PATH_DATA, MAX_PICTURE_NUMBERS, texEnvironment, texError, texPicture, unsafeTex } from '../../src/diagram/index.ts'
-import type { Confinement, DiagramLang, TexDocument } from '../../src/diagram/index.ts'
+import type { Confinement, DiagramLang, PdfConverter, TexDocument } from '../../src/diagram/index.ts'
 import { measurePicture, renderPicture } from '../../src/index.ts'
+import { rasterizePicture } from '../../src/raster/index.ts'
+import type { Picture } from '../../src/types.ts'
 
 const has = (command: string) => spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0
 const TEX = has('latex') && has('dvisvgm')
@@ -201,16 +203,16 @@ describe.skipIf(!TEX)('the local TeX', () => {
   })
 })
 
-/** The trial PDF, copied into a job and converted as plugin/hooks/tex.ts's pdfPicture does (Ghostscript only in bubblewrap); its stdout and status. */
-function convertTrialPdf(): { status: number | null; svg: string; stderr: string } {
+/** `pdf`, copied into a job and converted by `converter` as plugin/hooks/tex.ts's pdfPicture does; its stdout and status. */
+function convertPdf(converter: PdfConverter, pdf: string | Uint8Array = TRIAL_PDF): { status: number | null; svg: string; stderr: string } {
   const source = mkdtempSync(join(tmpdir(), 'kittex-pdf-source.'))
   const dir = mkdtempSync(join(tmpdir(), 'kittex-tex.'))
   try {
-    writeFileSync(join(source, 'figure.pdf'), TRIAL_PDF)
+    writeFileSync(join(source, 'figure.pdf'), pdf)
     const [cp, ...cpArgs] = pdfCopyArgv(join(source, 'figure.pdf'), dir, confinement)
     if (spawnSync(cp!, cpArgs, { cwd: dir }).status !== 0) return { status: -1, svg: '', stderr: 'copy failed' }
-    const [cmd, ...args] = confined(pdfArgv(dir, confinement.bwrap !== undefined), dir, confinement)
-    const run = spawnSync(cmd!, args, { cwd: dir, env: { ...process.env, ...texEnvironment(dir) }, timeout: 20_000, encoding: 'utf8' })
+    const [cmd, ...args] = confined(pdfArgv(converter, dir), dir, confinement)
+    const run = spawnSync(cmd!, args, { cwd: dir, env: { ...process.env, ...texEnvironment(dir) }, timeout: 20_000, encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES })
     return { status: run.status, svg: run.stdout ?? '', stderr: run.stderr ?? '' }
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -218,16 +220,49 @@ function convertTrialPdf(): { status: number | null; svg: string; stderr: string
   }
 }
 
-// Where dvisvgm has a PDF converter (mutool, or Ghostscript inside bubblewrap); skipped elsewhere, as on a Mac with neither.
-const PDF = TEX && convertTrialPdf().status === 0
+/** The share of a picture's pixels in a band (fractions of its width and height) dark enough to be black text on its white page. */
+function darkShare(picture: Picture, band: { x0: number; x1: number; y0: number; y1: number }): number {
+  const raster = rasterizePicture(picture, { emPx: 20, cellWidth: 10, cellHeight: 20, maxColumns: 200, maxRows: 100, color: c => c })
+  let dark = 0
+  let all = 0
+  for (let y = Math.floor(band.y0 * raster.heightPx); y < Math.floor(band.y1 * raster.heightPx); y++) {
+    for (let x = Math.floor(band.x0 * raster.widthPx); x < Math.floor(band.x1 * raster.widthPx); x++) {
+      const i = (y * raster.widthPx + x) * 4
+      all++
+      if (raster.rgba[i + 3]! > 128 && raster.rgba[i]! < 100 && raster.rgba[i + 1]! < 100 && raster.rgba[i + 2]! < 100) dark++
+    }
+  }
+  return dark / all
+}
 
-describe.skipIf(!PDF)('PDF images through the local dvisvgm', () => {
-  test('the trial PDF comes back as its page: 50 × 40 pt, a blue rectangle 30 × 20 pt', () => {
-    const { svg } = convertTrialPdf()
+const MUTOOL = spawnSync('mutool', ['-v'], { stdio: 'ignore' }).status === 0
+// dvisvgm with Ghostscript, the fallback: only inside bubblewrap, and only where its Ghostscript reads PDF (before 10.01).
+const GHOSTSCRIPT = TEX && confinement.bwrap !== undefined && convertPdf('ghostscript').status === 0
+
+describe.each([
+  ['mutool', MUTOOL],
+  ['ghostscript', GHOSTSCRIPT],
+] as const)('PDF images through the local %s', (converter, present) => {
+  test.skipIf(!present)('the trial PDF comes back as its page: 50 × 40 pt, a blue rectangle 30 × 20 pt', () => {
+    const { svg, stderr } = convertPdf(converter)
+    expect(stderr).toBe('')
     const picture = texPicture(svg, { baseline: 'bottom', fontSize: 10 })
     const em = 72.27 / 72 / 10
     expect(picture.width).toBeCloseTo(50 * em, 2)
     expect(picture.height).toBeCloseTo(40 * em, 2)
     expect(picture.ops.some(op => op.type === 'fill' && op.paint.color.b === 255 && op.paint.color.r === 0)).toBe(true)
+  })
+
+  // matplotlib 3.11's default PDF (pdf.fonttype 3): a 5 × 3.5 in line plot with a title, axis labels, tick labels and a
+  // legend, its text in Type 3 fonts, which dvisvgm's own mutool backend drops. The axes span 45 to 324 bp across and
+  // 27.72 to 221.76 bp up the 360 × 252 bp page: the title is above them, the tick labels left of and below them.
+  test.skipIf(!present)("a matplotlib figure keeps its text: the title above the axes, the tick labels beside and below", () => {
+    const { svg } = convertPdf(converter, readFileSync(new URL('fixtures/matplotlib-type3.pdf', import.meta.url)))
+    const picture = texPicture(svg, { baseline: 'bottom', fontSize: 10 })
+    expect(picture.width).toBeCloseTo(360 * (72.27 / 72 / 10), 2)
+    const title = darkShare(picture, { x0: 0.3, x1: 0.7, y0: 0, y1: 0.1 })
+    const left = darkShare(picture, { x0: 0, x1: 0.1, y0: 0.15, y1: 0.85 })
+    const below = darkShare(picture, { x0: 0.15, x1: 0.85, y0: 0.92, y1: 1 })
+    expect({ title: title > 0.02, left: left > 0.02, below: below > 0.02 }).toEqual({ title: true, left: true, below: true })
   })
 })

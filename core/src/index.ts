@@ -44,7 +44,7 @@ export {
   unsafeTex,
   XmlError,
 } from './diagram/index.js'
-export type { Adapted, Confinement, DiagramLang, PaperColors, TexDocument } from './diagram/index.js'
+export type { Adapted, Confinement, DiagramLang, PaperColors, PdfConverter, TexDocument } from './diagram/index.js'
 export {
   cellProbe,
   cellProbeRan,
