@@ -9,8 +9,13 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { init, measureDisplay } from '../hooks/core.js'
-import { DIAGRAM_INSTRUCTIONS, INSTRUCTED_LIMIT, instructionsKey, instructionsNeeded, MATH_INSTRUCTIONS, PREVIEW_PAD, recordInstructed, renderEnvFor, SECTION_ID, UPDATED_INSTRUCTIONS } from '../hooks/math.ts'
+import { DIAGRAM_INSTRUCTIONS, imageInstructions, INSTRUCTED_LIMIT, instructionsKey, instructionsNeeded, MATH_INSTRUCTIONS, PREVIEW_PAD, recordInstructed, renderEnvFor, SECTION_ID, UPDATED_INSTRUCTIONS } from '../hooks/math.ts'
 import { CELL, COLUMNS, COMPOSE, KITTY, kittyEnv, startSession, test } from './support.ts'
+
+/** The instructions in kitty without TeX: the math, and how to show an image file (no PDF without TeX). */
+const BASE = `${MATH_INSTRUCTIONS} ${imageInstructions(false)}`
+/** …and with TeX: the diagram line between them. */
+const WITH_TEX = `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS} ${imageInstructions(false)}`
 
 const TEX = 'e^{i\\pi} + 1 = 0'
 
@@ -64,7 +69,7 @@ describe('a new session in the same process', () => {
       switchSession()
       await $.classic.SessionStart({ source })
       const { sections } = await $.prompt.compose(COMPOSE)
-      expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`)
+      expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(WITH_TEX)
     })
   }
 
@@ -73,7 +78,7 @@ describe('a new session in the same process', () => {
     await startSession($, on)
     switchSession()
     const { sections } = await $.prompt.compose(COMPOSE)
-    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(MATH_INSTRUCTIONS)
+    expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(BASE)
   })
 
   test('a reply streamed after /clear is previewed and lands as an image', async ($, on) => {
@@ -105,7 +110,7 @@ describe('a new session in the same process', () => {
     on('classic.SessionStart', () => ({}))
     await startSession($, on, KITTY, 'dark', CELL, withTex)
     const submit = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
-    const all = `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`
+    const all = WITH_TEX
     expect((await submit('first')).context).toEqual([all])
     switchSession()
     await $.classic.SessionStart({ source: 'clear' })
@@ -144,13 +149,13 @@ const facts = {
 }
 
 describe("a conversation whose system prompt holds older instructions, or none", () => {
-  const ALL = `${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`
+  const ALL = WITH_TEX
 
   test('a new conversation is composed with them: no context, and it is recorded', { plugins: [facts] }, async ($, on) => {
     const world = host(on)
     await startSession($, on)
     expect(await submit($, 'first')).toEqual([])
-    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(MATH_INSTRUCTIONS) })
+    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(BASE) })
     world.messages = 2
     expect(await submit($, 'second')).toEqual([])
   })
@@ -169,7 +174,7 @@ describe("a conversation whose system prompt holds older instructions, or none",
   })
 
   test('recorded with older ones (kittex upgraded or reloaded, TeX found since): the next prompt brings them up to date', { plugins: [facts] }, async ($, on) => {
-    const world = host(on, { messages: 4, store: { instructed: { one: instructionsKey(MATH_INSTRUCTIONS) } } })
+    const world = host(on, { messages: 4, store: { instructed: { one: instructionsKey(BASE) } } })
     await startSession($, on, KITTY, 'dark', CELL, withTex)
     expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${ALL}`])
     expect((world.store.get('instructed') as Record<string, string>).one).toBe(instructionsKey(ALL))
@@ -185,7 +190,7 @@ describe("a conversation whose system prompt holds older instructions, or none",
     await $.classic.SessionStart({ source: 'clear' })
     world.messages = 0
     expect(await submit($, 'after clear')).toEqual([])
-    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(MATH_INSTRUCTIONS), two: instructionsKey(MATH_INSTRUCTIONS) })
+    expect(world.store.get('instructed')).toEqual({ one: instructionsKey(BASE), two: instructionsKey(BASE) })
   })
 
   test('another conversation resumed from inside the session: its own record decides', { plugins: [facts] }, async ($, on) => {
@@ -195,7 +200,7 @@ describe("a conversation whose system prompt holds older instructions, or none",
     world.session = 'other'
     world.messages = 6
     await $.classic.SessionStart({ source: 'resume' })
-    expect(await submit($, 'in the resumed one')).toEqual([`${UPDATED_INSTRUCTIONS} ${MATH_INSTRUCTIONS}`])
+    expect(await submit($, 'in the resumed one')).toEqual([`${UPDATED_INSTRUCTIONS} ${BASE}`])
   })
 
   test('a prompt that does not enter records nothing', { plugins: [facts] }, async ($, on) => {
@@ -206,8 +211,8 @@ describe("a conversation whose system prompt holds older instructions, or none",
   })
 
   test('the record: newest last, bounded, keyed by the text', () => {
-    expect(instructionsKey(MATH_INSTRUCTIONS)).toMatch(/^[0-9a-f]{8}$/)
-    expect(instructionsKey(MATH_INSTRUCTIONS)).not.toBe(instructionsKey(`${MATH_INSTRUCTIONS} ${DIAGRAM_INSTRUCTIONS}`))
+    expect(instructionsKey(BASE)).toMatch(/^[0-9a-f]{8}$/)
+    expect(instructionsKey(BASE)).not.toBe(instructionsKey(WITH_TEX))
     let record = {}
     for (let i = 0; i < INSTRUCTED_LIMIT + 5; i++) record = recordInstructed(record, `s${i}`, 'k')
     expect(Object.keys(record)).toHaveLength(INSTRUCTED_LIMIT)

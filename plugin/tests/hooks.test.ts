@@ -11,6 +11,7 @@ import {
   COPY_LABEL,
   HELD_DISPLAY,
   MARKDOWN_TAIL,
+  imageInstructions,
   MATH_INSTRUCTIONS,
   PIECE_TOP,
   PREVIEW_PAD,
@@ -22,6 +23,8 @@ import {
 import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
+/** The instructions in kitty without TeX: the math, and how to show an image file. */
+const INSTRUCTIONS = `${MATH_INSTRUCTIONS} ${imageInstructions(false)}`
 const REPLY = `Euler's identity:\n\n$$${TEX}$$\n\nis beautiful.`
 
 function mountReply($: Engine, text: string, surface: 'terminal' | 'desktop' = 'terminal', isFirstOfReply = true) {
@@ -321,7 +324,7 @@ describe('instructions to the model', () => {
   test('prompt.compose adds the kittex:math section on a terminal', { plugins: [facts] }, async ($, on) => {
     await startSession($, on)
     const composed = await $.prompt.compose(COMPOSE)
-    expect(composed.sections).toEqual([INTRO, { id: SECTION_ID, text: MATH_INSTRUCTIONS, scope: 'session' }])
+    expect(composed.sections).toEqual([INTRO, { id: SECTION_ID, text: INSTRUCTIONS, scope: 'session' }])
     for (const phrase of ['no space just inside the dollars', 'with a blank line before and after', 'Put dollar amounts and shell variables in code spans', '(/btw)']) {
       expect(MATH_INSTRUCTIONS).toContain(phrase)
     }
@@ -339,14 +342,14 @@ describe('instructions to the model', () => {
   test('when a policy drops the section, the first prompt of each conversation carries it', { plugins: [policy] }, async ($, on) => {
     answerSubmit(on)
     await startSession($, on)
-    expect((await submit($, 'first')).context).toEqual([MATH_INSTRUCTIONS])
+    expect((await submit($, 'first')).context).toEqual([INSTRUCTIONS])
     expect((await submit($, 'second')).context ?? []).toEqual([])
 
     await $.classic.SessionStart({ source: 'clear' })
-    expect((await submit($, 'after clear')).context).toEqual([MATH_INSTRUCTIONS])
+    expect((await submit($, 'after clear')).context).toEqual([INSTRUCTIONS])
     expect((await submit($, 'again')).context ?? []).toEqual([])
 
     await $.classic.SessionStart({ source: 'compact' })
-    expect((await submit($, 'after compaction')).context).toEqual([MATH_INSTRUCTIONS])
+    expect((await submit($, 'after compaction')).context).toEqual([INSTRUCTIONS])
   })
 })

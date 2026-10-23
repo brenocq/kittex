@@ -18,6 +18,7 @@ import {
   measureDisplayResult,
   measureInline,
   measureInlineResult,
+  measureImage,
   measurePicture,
   MAX_PICTURE_ROWS,
   MAX_TEX_LENGTH,
@@ -34,8 +35,9 @@ import {
   fontCell,
   mathEmPx,
 } from './core.js'
-import type { BlockPart, CellSize, InkPlace, InlineEnv, LineScanner, LinkMode, PictureEnv, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace, TexDocument } from './core.js'
+import type { BlockPart, CellBox, CellSize, ImageSpec, InkPlace, InlineEnv, LineScanner, LinkMode, PictureEnv, ProseBlock, ProseLayout, RenderedImage, RenderEnv, Segment, SourceSpan, SpanPlace, TexDocument } from './core.js'
 import type { KittexBlock, KittexEnv, KittexPreview } from '../types'
+import { imageBook, imageSpecOf } from './image.ts'
 import { diagramJob, diagramLabel, mathJob, texBook, texResult } from './tex.ts'
 import type { DiagramKind } from './tex.ts'
 
@@ -568,6 +570,8 @@ export type StreamEnv = KittexEnv & {
    * it refuses (`inline`). Absent: neither.
    */
   tex?: TexUse
+  /** Image blocks (a ```latex block holding one \includegraphics) are drawn as the file they name: images drawn, display math as images. */
+  imageFiles?: boolean
 }
 
 /** Whether a math segment is of a kind these options leave as written. */
@@ -976,6 +980,8 @@ export interface StreamRewrite {
    * their outcomes are known.
    */
   pending?: TexDocument[]
+  /** Image blocks whose files the stream waits for (ImageBook), held the same way. */
+  images?: ImageSpec[]
 }
 
 /**
@@ -1485,6 +1491,8 @@ export class MessageStream {
   private shown = 0
   /** Segments completed but held back (see holdFrom). */
   private held: Segment[] = []
+  /** When the stream started: it looks at each image block's file again (ImageBook.checkedSince), so a plot written since shows. */
+  private readonly started = Date.now()
 
   constructor(scanner: LineScanner = createLineScanner()) {
     this.scanner = scanner
@@ -1522,15 +1530,25 @@ export class MessageStream {
       if (QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', display.start - 1) + 1, display.start))) from = last.start
     }
     if (from !== undefined) [segments, this.held] = splitAt(segments, from)
-    // A segment TeX has yet to draw holds it and everything after it (shown once TeX answers or gives up).
+    // A segment TeX has yet to draw, or an image block whose file this stream hasn't looked at, holds it and
+    // everything after it (shown once TeX or the file answers, or gives up).
     const pending: TexDocument[] = []
-    // A diagram in a blockquote stays as written: no TeX for it.
+    const images: ImageSpec[] = []
+    // A diagram in a blockquote stays as written: no TeX (nor file) for it.
     const quoted = (segment: Segment) => QUOTE_LEAD.test(this.pushed.slice(this.pushed.lastIndexOf('\n', segment.start - 1) + 1, segment.start))
-    const wait = env.tex ? segments.findIndex(segment => !(segment.kind === 'math' && segment.diagram !== undefined && quoted(segment)) && texPending(segment, env, pending)) : -1
+    const waits = (segment: Segment) =>
+      !(segment.kind === 'math' && segment.diagram !== undefined && quoted(segment)) && (imagePending(segment, env, this.started, images) || (env.tex !== undefined && texPending(segment, env, pending)))
+    const wait = env.tex || env.imageFiles ? segments.findIndex(waits) : -1
     if (wait >= 0) {
-      // The later ones TeX will be asked for too: compiled side by side, not one per resume.
+      // The later ones TeX (or the book) will be asked for too: side by side, not one per resume.
       for (const segment of segments.slice(wait + 1)) {
-        const document = segment.kind === 'math' && !(segment.diagram !== undefined && quoted(segment)) ? texDocument(segment, env) : undefined
+        if (segment.kind !== 'math' || (segment.diagram !== undefined && quoted(segment))) continue
+        const image = imageWanted(segment, env)
+        if (image) {
+          if (!imageBook.checkedSince(image, this.started) && !images.some(one => imageBook.key(one) === imageBook.key(image))) images.push(image)
+          continue
+        }
+        const document = env.tex ? texDocument(segment, env) : undefined
         if (document && !texBook.known(document) && !pending.some(one => one.text === document.text)) pending.push(document)
       }
       // Held from the start of its line: what is written now ends at a line's end, as a flush does, so the
@@ -1545,7 +1563,7 @@ export class MessageStream {
       this.held = [...held, ...segments.slice(wait), ...this.held]
       segments = now
     }
-    const waiting = pending.length > 0 ? { pending } : {}
+    const waiting = { ...(pending.length > 0 ? { pending } : {}), ...(images.length > 0 ? { images } : {}) }
     if (segments.length === 0) return { text: HELD_DISPLAY, records: [], ...waiting }
     this.shown = segments[segments.length - 1]!.end
     return { ...rewriteSegments(segments, env, this.writer, this.plan), ...waiting }
@@ -2143,7 +2161,8 @@ function planOnce(text: string, records: readonly PreviewRecord[], options: Plan
     if (drawn === null) return writer.text(segment.raw)
     changed = true
     if ('error' in drawn) return void writer.block([...segment.raw.split('\n'), '', put({ kind: 'note', text: notRenderedText(drawn.error, maxColumns) })])
-    markBlock(diagramPlaceholder(diagramLabel(segment.tex), drawn.rows, maxColumns, segment.tex, drawn.columns), { tex: segment.tex, columns: maxColumns, rows: drawn.rows, diagram: segment.diagram! })
+    const label = imageSpecOf(segment.tex, segment.diagram!) ? IMAGE_LABEL : diagramLabel(segment.tex)
+    markBlock(diagramPlaceholder(label, drawn.rows, maxColumns, segment.tex, drawn.columns), { tex: segment.tex, columns: maxColumns, rows: drawn.rows, diagram: segment.diagram! })
   }
 
   // Prose between the previews found: a streamed block's is never scanned again, except where its stream gave up.
@@ -2711,6 +2730,24 @@ export const DIAGRAM_INSTRUCTIONS =
   'tool. Keep sample counts moderate (about 100 for a curve, 25×25 for a surface) so each picture compiles in a second or two.'
 
 /**
+ * What kittex adds to its instructions where it draws image files (images
+ * drawn, display math as images), TeX or not: how to show one, and that
+ * there is nothing to check first. `pdf`: PDF files are drawn here too (the
+ * local TeX converts them).
+ */
+export function imageInstructions(pdf: boolean): string {
+  return (
+    `Image files can be shown here too: when the user asks to see an image, or a picture helps (a plot a script just saved, a figure in the project), ` +
+    'write `\\includegraphics[width=0.8\\linewidth]{/absolute/path/to/file}` alone in a ```latex code block, and kittex draws the file ' +
+    `(PNG, JPEG, SVG${pdf ? ' or the first page of a PDF' : ''}) in its place, as wide as the option asks. ` +
+    "Don't open, read or verify the file first: a file that can't be drawn leaves the block as code with the reason under it."
+  )
+}
+
+/** The word an image block's placeholder shows while it waits to land. */
+export const IMAGE_LABEL = 'image'
+
+/**
  * What a conversation's model was last given of kittex's instructions, by
  * session id (in $.store): a key of the text (instructionsKey). Its system
  * prompt is composed at the conversation's first request and again after
@@ -2724,7 +2761,7 @@ export type InstructedSessions = Readonly<Record<string, string>>
 export const INSTRUCTED_LIMIT = 200
 
 /** What a prompt's context opens with when it brings a conversation's instructions up to date. */
-export const UPDATED_INSTRUCTIONS = "kittex's instructions have changed; these replace any earlier ones about math and diagrams in this conversation:"
+export const UPDATED_INSTRUCTIONS = "kittex's instructions have changed; these replace any earlier ones about math, diagrams and images in this conversation:"
 
 /** A short key of an instructions text (32-bit FNV-1a, hex): what a conversation is recorded as holding. */
 export function instructionsKey(text: string): string {
@@ -2776,6 +2813,20 @@ function texPending(segment: Segment, env: StreamEnv, pending: TexDocument[]): b
   return true
 }
 
+/** The image a segment shows in a stream with these options: an image block, where image files are drawn; undefined for anything else. */
+function imageWanted(segment: Segment, env: StreamEnv): ImageSpec | undefined {
+  if (segment.kind !== 'math' || segment.diagram === undefined || !env.imageFiles || !env.images || env.math?.block === 'unicode' || leftRaw(segment, env.math)) return undefined
+  return imageSpecOf(segment.tex, segment.diagram)
+}
+
+/** Whether a segment waits for its image file: an image block whose file this stream (started at `since`) hasn't looked at; added to `images`. */
+function imagePending(segment: Segment, env: StreamEnv, since: number, images: ImageSpec[]): boolean {
+  const spec = imageWanted(segment, env)
+  if (!spec || imageBook.checkedSince(spec, since)) return false
+  images.push(spec)
+  return true
+}
+
 /**
  * The document TeX would draw a segment as, in a stream with these options:
  * a diagram that draws something, or math MathJax refuses (not merely too
@@ -2784,7 +2835,7 @@ function texPending(segment: Segment, env: StreamEnv, pending: TexDocument[]): b
 export function texDocument(segment: Segment, env: StreamEnv): TexDocument | undefined {
   if (segment.kind !== 'math' || !env.tex || !env.images || leftRaw(segment, env.math)) return undefined
   if (segment.diagram !== undefined) {
-    if (!env.tex.block || env.math?.block === 'unicode') return undefined
+    if (!env.tex.block || env.math?.block === 'unicode' || imageWanted(segment, env)) return undefined
     const job = diagramJob(segment.tex, segment.diagram)
     return job && 'document' in job ? job.document : undefined
   }
@@ -2878,11 +2929,12 @@ export function relaxedUnicode(tex: string): string | null {
  */
 function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWriter, plan: StreamPlan, records: PreviewRecord[]): void {
   const kind = segment.diagram!
-  const drawn = env.images && env.tex?.block && env.math?.block !== 'unicode' && writer.quoteDepth() === 0
+  const image = imageWanted(segment, env)
+  const drawn = env.images && (image !== undefined || env.tex?.block) && env.math?.block !== 'unicode' && writer.quoteDepth() === 0
   // In a list item, followed or not, as the landing finds it (nestedAt): it draws no picture there.
   const head = writer.recent().slice(plan.anchor)
   const nested = drawn && (nestedAt(head, head.length) || itemIndent(head, proseWidthFor(env), linkModeOf(env)) !== undefined)
-  const job = drawn && !nested ? diagramJob(segment.tex, kind) : undefined
+  const job = drawn && !nested ? (image ? { image } : diagramJob(segment.tex, kind)) : undefined
   if (!job) return writer.text(segment.raw)
   const { maxColumns } = renderEnvFor(env)
   const failed = (reason: string) => {
@@ -2891,6 +2943,26 @@ function writeDiagram(segment: MathSegment, env: StreamEnv, writer: MarkdownWrit
     plan.cut(writer.recent().length)
   }
   if ('refused' in job) return failed(job.refused)
+  if ('image' in job) {
+    const known = imageBook.known(job.image)
+    if (!known || (!known.ok && !known.lasting)) {
+      // Not read in time (a PDF still converting): shown as written, and left so when its block lands.
+      imageBook.markShownAsSource(job.image)
+      return writer.text(segment.raw)
+    }
+    if (!known.ok) return failed(known.error)
+    const pictureEnv = pictureEnvFor(env)
+    let box: CellBox
+    try {
+      box = measureImage(known.source, job.image, pictureEnv)
+    } catch (error) {
+      if (!(error instanceof TexError)) throw error
+      return failed(reasonOf(error))
+    }
+    const preview = writer.block(diagramPlaceholder(IMAGE_LABEL, box.rows, pictureEnv.maxColumns, segment.tex, box.columns))
+    records.push({ preview, tex: segment.tex, rows: box.rows, diagram: kind })
+    return
+  }
   const outcome = texBook.known(job.document)
   if (!outcome || (!outcome.ok && !outcome.lasting)) {
     // Too slow (or no TeX after all): shown as written, and left so when its block lands.
