@@ -137,6 +137,12 @@ function host(on: On, start: { session?: string; messages?: number; store?: Reco
   return world
 }
 
+/** The summary row a compaction appends (the engine's own, not a plugin's note); this world stores nothing beneath, so the append itself fails. */
+const compactionRow = ($: Engine, agentId?: string) =>
+  $.session
+    .append({ message: { type: 'user', role: 'user', content: [{ type: 'text', text: 'This session is being continued from a previous conversation.' }] }, door: 'compaction', origin: { kind: 'engine' }, uuid: crypto.randomUUID(), ...(agentId === undefined ? {} : { agentId }) })
+    .catch(() => undefined)
+
 const submit = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } }).then(entered => entered.context ?? [])
 
 /** A plugin above kittex that fills the facts a test's prompt.compose call leaves out (the engine fills them from the session). */
@@ -191,6 +197,19 @@ describe("a conversation whose system prompt holds older instructions, or none",
     world.messages = 0
     expect(await submit($, 'after clear')).toEqual([])
     expect(world.store.get('instructed')).toEqual({ one: instructionsKey(BASE), two: instructionsKey(BASE) })
+  })
+
+  test('where a policy skips SessionStart and session.compact, the compaction row alone brings the instructions back, once', { plugins: [policy] }, async ($, on) => {
+    const world = host(on, { messages: 4 })
+    await startSession($, on)
+    expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${BASE}`])
+    expect(await submit($, 'second')).toEqual([])
+    await compactionRow($, 'sub-agent')
+    expect(await submit($, 'after a subagent compacted')).toEqual([])
+    await compactionRow($)
+    world.messages = 2
+    expect(await submit($, 'after compaction')).toEqual([BASE])
+    expect(await submit($, 'next')).toEqual([])
   })
 
   test('another conversation resumed from inside the session: its own record decides', { plugins: [facts] }, async ($, on) => {

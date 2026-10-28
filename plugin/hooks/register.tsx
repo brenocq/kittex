@@ -400,6 +400,15 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // The compaction's own rows: where a policy plugin skips both hooks above,
+  // these still reach kittex, and the summary has replaced the turn that
+  // carried the instructions as context.
+  on('session.append', { door: 'compaction' }, async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined) composesFresh = true
+    return result
+  })
+
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
   on('classic.MessageDisplay', async ($, e, next) => {
