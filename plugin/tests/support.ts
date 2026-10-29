@@ -104,6 +104,7 @@ export async function startSession(
     value: [{ key: 'theme', label: 'Theme', kind: 'choice', value: theme, provider: { plugin: 'engine', tier: 'core' }, isLocked: false }],
   }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   on('prompt.compose', () => ({ sections: [INTRO] }))
   on('classic.MessageDisplay', () => ({}))
   // The engine's drawing of a reply's text: each one a round trip from kittex's hook (counted).
@@ -114,6 +115,18 @@ export async function startSession(
   })
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   return { cellProbes: () => cellProbes, screen, renders: () => renders }
+}
+
+/** The conversation ends in the same process: a /clear starts a new one, a /resume takes another's place. */
+export function endConversation($: Engine, reason: 'clear' | 'resume') {
+  return $.session.end({ reason, sessionId: 'ending', resume: { id: 'ending' } })
+}
+
+/** The summary row a compaction appends (the engine's own, not a plugin's note); this world stores nothing beneath, so the append itself fails. */
+export function compactionRow($: Engine, agentId?: string) {
+  return $.session
+    .append({ message: { type: 'user', role: 'user', content: [{ type: 'text', text: 'This session is being continued from a previous conversation.' }] }, door: 'compaction', origin: { kind: 'engine' }, uuid: crypto.randomUUID(), ...(agentId === undefined ? {} : { agentId }) })
+    .catch(() => undefined)
 }
 
 /**

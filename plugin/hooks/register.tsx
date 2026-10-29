@@ -377,32 +377,18 @@ export const register: Register = (on, options) => {
   })
 
   // A new conversation in the same process: /clear, and a compaction (which
-  // drops the turn that carried the instructions). The hooks only observe: a
-  // failure (here and at the other gating sites) lets the event go on as is.
+  // drops the turn that carried the instructions); another conversation
+  // resumed holds what it was composed with (recorded, or not). kittex reads
+  // these from session.end and the compaction's own row, not classic.SessionStart
+  // or session.compact: a policy plugin (cc-plugin-sec-default) skips those two
+  // and prints a notice for each. The hooks only observe: a failure (here and
+  // at the other gating sites) lets the event go on as is.
   on('session.end', ($, e, next) => {
     if (e.reason === 'clear') composesFresh = true
+    if (e.reason === 'resume') composesFresh = false
     return next(e)
   })
 
-  on('classic.SessionStart', async ($, e, next) => {
-    const result = await next(e)
-    // A new session's state starts empty: kittex.env is stored again for it (readEnv).
-    await readEnv($, true).catch(() => null)
-    if (e.source === 'clear' || e.source === 'compact') composesFresh = true
-    // Another conversation resumed: it holds what it was composed with (recorded, or not).
-    if (e.source === 'resume') composesFresh = false
-    return result
-  })
-
-  on('session.compact', async ($, e, next) => {
-    const result = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined) composesFresh = true
-    return result
-  })
-
-  // The compaction's own rows: where a policy plugin skips both hooks above,
-  // these still reach kittex, and the summary has replaced the turn that
-  // carried the instructions as context.
   on('session.append', { door: 'compaction' }, async ($, e, next) => {
     const result = await next(e)
     if (e.agentId === undefined) composesFresh = true

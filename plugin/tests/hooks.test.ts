@@ -20,7 +20,7 @@ import {
   replyColumns,
   SECTION_ID,
 } from '../hooks/math.ts'
-import { COLUMNS, COMPOSE, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
+import { COLUMNS, COMPOSE, compactionRow, endConversation, INTRO, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 const TEX = 'e^{i\\pi} + 1 = 0'
 /** The instructions in kitty without TeX: the math, and how to show an image file. */
@@ -318,7 +318,6 @@ describe('instructions to the model', () => {
 
   function answerSubmit(on: import('claude-code').On) {
     on('prompt.submit', ($, e) => ({ text: e.text, context: e.context }))
-    on('classic.SessionStart', () => ({}))
   }
 
   test('prompt.compose adds the kittex:math section on a terminal', { plugins: [facts] }, async ($, on) => {
@@ -345,11 +344,11 @@ describe('instructions to the model', () => {
     expect((await submit($, 'first')).context).toEqual([INSTRUCTIONS])
     expect((await submit($, 'second')).context ?? []).toEqual([])
 
-    await $.classic.SessionStart({ source: 'clear' })
+    await endConversation($, 'clear')
     expect((await submit($, 'after clear')).context).toEqual([INSTRUCTIONS])
     expect((await submit($, 'again')).context ?? []).toEqual([])
 
-    await $.classic.SessionStart({ source: 'compact' })
+    await compactionRow($)
     expect((await submit($, 'after compaction')).context).toEqual([INSTRUCTIONS])
   })
 })

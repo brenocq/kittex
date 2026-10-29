@@ -10,7 +10,7 @@ import type { On } from 'claude-code'
 
 import { init, measureDisplay } from '../hooks/core.js'
 import { DIAGRAM_INSTRUCTIONS, imageInstructions, INSTRUCTED_LIMIT, instructionsKey, instructionsNeeded, MATH_INSTRUCTIONS, PREVIEW_PAD, recordInstructed, renderEnvFor, SECTION_ID, UPDATED_INSTRUCTIONS } from '../hooks/math.ts'
-import { CELL, COLUMNS, COMPOSE, KITTY, kittyEnv, startSession, test } from './support.ts'
+import { CELL, COLUMNS, COMPOSE, compactionRow, endConversation, KITTY, kittyEnv, startSession, test } from './support.ts'
 
 /** The instructions in kitty without TeX: the math, and how to show an image file (no PDF without TeX). */
 const BASE = `${MATH_INSTRUCTIONS} ${imageInstructions(false)}`
@@ -64,10 +64,9 @@ describe('a new session in the same process', () => {
   for (const source of ['clear', 'resume'] as const) {
     test(`after ${source === 'clear' ? '/clear' : '/resume'}, the next request still carries the section, with its diagram line`, async ($, on) => {
       const switchSession = newSessions(on)
-      on('classic.SessionStart', () => ({}))
       await startSession($, on, KITTY, 'dark', CELL, withTex)
+      await endConversation($, source)
       switchSession()
-      await $.classic.SessionStart({ source })
       const { sections } = await $.prompt.compose(COMPOSE)
       expect(sections.find(one => one.id === SECTION_ID)?.text).toBe(WITH_TEX)
     })
@@ -83,11 +82,10 @@ describe('a new session in the same process', () => {
 
   test('a reply streamed after /clear is previewed and lands as an image', async ($, on) => {
     const switchSession = newSessions(on)
-    on('classic.SessionStart', () => ({}))
     await startSession($, on)
     await init()
+    await endConversation($, 'clear')
     switchSession()
-    await $.classic.SessionStart({ source: 'clear' })
     const landed = await stream($, 'm1', ["Euler's identity:\n", '$$\n', `${TEX}\n`, '$$\n', 'is beautiful.'])
     expect(landed).not.toContain('$$')
     expect(landed).toContain(PREVIEW_PAD)
@@ -107,13 +105,12 @@ describe('a new session in the same process', () => {
   test('where a policy drops the section, the first prompt after /clear carries the instructions, diagram line included', { plugins: [policy] }, async ($, on) => {
     const switchSession = newSessions(on)
     on('prompt.submit', ($, e) => ({ text: e.text, context: e.context }))
-    on('classic.SessionStart', () => ({}))
     await startSession($, on, KITTY, 'dark', CELL, withTex)
     const submit = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
     const all = WITH_TEX
     expect((await submit('first')).context).toEqual([all])
+    await endConversation($, 'clear')
     switchSession()
-    await $.classic.SessionStart({ source: 'clear' })
     expect((await submit('after clear')).context).toEqual([all])
     expect((await submit('again')).context ?? []).toEqual([])
   })
@@ -133,15 +130,8 @@ function host(on: On, start: { session?: string; messages?: number; store?: Reco
     return { value: undefined }
   })
   on('prompt.submit', ($, e) => (start.drop ? { drop: 'blocked by a settings hook' } : { text: e.text, context: e.context }))
-  on('classic.SessionStart', () => ({}))
   return world
 }
-
-/** The summary row a compaction appends (the engine's own, not a plugin's note); this world stores nothing beneath, so the append itself fails. */
-const compactionRow = ($: Engine, agentId?: string) =>
-  $.session
-    .append({ message: { type: 'user', role: 'user', content: [{ type: 'text', text: 'This session is being continued from a previous conversation.' }] }, door: 'compaction', origin: { kind: 'engine' }, uuid: crypto.randomUUID(), ...(agentId === undefined ? {} : { agentId }) })
-    .catch(() => undefined)
 
 const submit = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } }).then(entered => entered.context ?? [])
 
@@ -190,16 +180,16 @@ describe("a conversation whose system prompt holds older instructions, or none",
   test('after /clear or compaction the system prompt is composed anew: no context, even where the conversation had older ones', { plugins: [facts] }, async ($, on) => {
     const world = host(on, { messages: 4, store: { instructed: { one: 'older' } } })
     await startSession($, on)
-    await $.classic.SessionStart({ source: 'compact' })
+    await compactionRow($)
     expect(await submit($, 'after compaction')).toEqual([])
+    await endConversation($, 'clear')
     world.session = 'two'
-    await $.classic.SessionStart({ source: 'clear' })
     world.messages = 0
     expect(await submit($, 'after clear')).toEqual([])
     expect(world.store.get('instructed')).toEqual({ one: instructionsKey(BASE), two: instructionsKey(BASE) })
   })
 
-  test('where a policy skips SessionStart and session.compact, the compaction row alone brings the instructions back, once', { plugins: [policy] }, async ($, on) => {
+  test('where a policy drops the section, the compaction row brings the instructions back, once', { plugins: [policy] }, async ($, on) => {
     const world = host(on, { messages: 4 })
     await startSession($, on)
     expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${BASE}`])
@@ -216,9 +206,11 @@ describe("a conversation whose system prompt holds older instructions, or none",
     const world = host(on)
     await startSession($, on)
     expect(await submit($, 'first')).toEqual([])
+    // A /clear first: the resume still undoes its "composed anew".
+    await endConversation($, 'clear')
+    await endConversation($, 'resume')
     world.session = 'other'
     world.messages = 6
-    await $.classic.SessionStart({ source: 'resume' })
     expect(await submit($, 'in the resumed one')).toEqual([`${UPDATED_INSTRUCTIONS} ${BASE}`])
   })
 
