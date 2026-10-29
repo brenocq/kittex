@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset } from '../../src/typeset/index.js'
+import type { DrawOp } from '../../src/types.js'
 import { inkBox } from './ink.js'
 
 beforeAll(() => initTypeset())
@@ -73,13 +74,62 @@ describe('metrics', () => {
     expect(bar.width).toBeGreaterThan(0.5)
   })
 
-  test('colours are ignored', () => {
+})
+
+describe('colour', () => {
+  const red = { r: 255, g: 0, b: 0 }
+  const blue = { r: 0, g: 0, b: 255 }
+  const shape = (op: DrawOp) => (op.type === 'path' ? op.d : `${op.type} ${op.x} ${op.y} ${op.width} ${op.height}`)
+
+  test('\\color and \\textcolor colour their glyphs and leave the shapes and the rest alone', () => {
     const plain = typeset('x+y', inline)
-    const coloured = typeset(String.raw`\color{red}{x}+\textcolor{blue}{y}`, inline)
+    const coloured = typeset(String.raw`{\color{red}x}+\textcolor{blue}{y}`, inline)
     expect(coloured.width).toBeCloseTo(plain.width, 6)
-    expect(coloured.ops.map(op => (op.type === 'path' ? op.d : op.type))).toEqual(plain.ops.map(op => (op.type === 'path' ? op.d : op.type)))
-    // \colorbox's background is not drawn as ink.
-    expect(typeset(String.raw`\colorbox{yellow}{x}`, inline).ops.every(op => op.type === 'path')).toBe(true)
+    expect(coloured.ops.map(shape)).toEqual(plain.ops.map(shape))
+    expect(coloured.ops.map(op => op.color)).toEqual([red, undefined, blue])
+    expect(plain.ops.every(op => !('color' in op) && !('backdrop' in op) && !('background' in op))).toBe(true)
+  })
+
+  test('the colour is inherited by fraction bars, radicals and table rules', () => {
+    const green = { r: 0, g: 128, b: 0 }
+    for (const tex of [String.raw`\color{green}{\frac{a}{\sqrt{b}}}`, String.raw`\color{green}{\begin{array}{c|c} a & b \\ \hline c & d \end{array}}`]) {
+      const { ops } = typeset(tex, display)
+      expect(ops.length).toBeGreaterThan(4)
+      expect(ops.map(op => op.color)).toEqual(ops.map(() => green))
+    }
+  })
+
+  test('named xcolor colours and the rgb, RGB and gray models', () => {
+    const colour = (tex: string) => typeset(tex, inline).ops[0]?.color
+    expect(colour(String.raw`\textcolor{Apricot}{x}`)).toEqual({ r: 0xfb, g: 0xb9, b: 0x82 })
+    expect(colour(String.raw`\textcolor[rgb]{0.2,0.4,1}{x}`)).toEqual({ r: 0x33, g: 0x66, b: 0xff })
+    expect(colour(String.raw`\textcolor[RGB]{10,200,30}{x}`)).toEqual({ r: 10, g: 200, b: 30 })
+    expect(colour(String.raw`\textcolor[gray]{0.5}{x}`)).toEqual({ r: 0x7f, g: 0x7f, b: 0x7f })
+    expect(colour(String.raw`\definecolor{mine}{RGB}{1,2,3}\textcolor{mine}{x}`)).toEqual({ r: 1, g: 2, b: 3 })
+  })
+
+  test('a colour the SVG cannot show (xcolor mixing) stays the terminal ink, as a browser would draw it', () => {
+    expect(typeset(String.raw`\textcolor{red!50}{x}`, inline).ops[0]?.color).toBeUndefined()
+  })
+
+  test('\\colorbox draws its background first and its content over it', () => {
+    const { ops } = typeset(String.raw`\colorbox{yellow}{x}`, inline)
+    const [box, ...ink] = ops
+    expect(box).toMatchObject({ type: 'rect', background: true, color: { r: 255, g: 255, b: 0 } })
+    expect(ink.length).toBeGreaterThan(0)
+    expect(ink.every(op => op.color === undefined && op.background === undefined)).toBe(true)
+    expect(ink.map(op => op.backdrop)).toEqual(ink.map(() => ({ r: 255, g: 255, b: 0 })))
+    // Ink after the box is not on it.
+    const after = typeset(String.raw`\colorbox{yellow}{x}y`, inline).ops
+    expect(after.at(-1)?.backdrop).toBeUndefined()
+  })
+
+  test('\\fcolorbox draws its frame in the frame colour around the background', () => {
+    const { ops } = typeset(String.raw`\fcolorbox{red}{blue}{q}`, inline)
+    expect(ops[0]).toMatchObject({ background: true, color: blue })
+    const frame = ops.filter(op => op.color && !op.background)
+    expect(frame.length).toBeGreaterThan(0)
+    expect(frame.every(op => op.color?.r === 255 && op.backdrop === undefined)).toBe(true)
   })
 })
 
