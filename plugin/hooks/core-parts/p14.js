@@ -1,4 +1,912 @@
-import{TEXCLASS,__esm,init_MmlNode,AbstractMmlTokenNode}from'./p13.js';export*from'./p13.js';
+import{__esm,init_Attributes,Attributes,INHERIT}from'./p13.js';export*from'./p13.js';
+// node_modules/@mathjax/src/mjs/core/Tree/Node.js
+var AbstractNode;
+var AbstractEmptyNode;
+var init_Node = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/Node.js"() {
+    AbstractNode = class {
+      constructor(factory, properties = {}, children = []) {
+        this.factory = factory;
+        this.parent = null;
+        this.properties = {};
+        this.childNodes = [];
+        for (const name of Object.keys(properties)) {
+          this.setProperty(name, properties[name]);
+        }
+        if (children.length) {
+          this.setChildren(children);
+        }
+      }
+      get kind() {
+        return "unknown";
+      }
+      setProperty(name, value) {
+        this.properties[name] = value;
+      }
+      getProperty(name) {
+        return this.properties[name];
+      }
+      getPropertyNames() {
+        return Object.keys(this.properties);
+      }
+      getAllProperties() {
+        return this.properties;
+      }
+      removeProperty(...names) {
+        for (const name of names) {
+          delete this.properties[name];
+        }
+      }
+      isKind(kind) {
+        return this.factory.nodeIsKind(this, kind);
+      }
+      setChildren(children) {
+        this.childNodes = [];
+        for (const child of children) {
+          this.appendChild(child);
+        }
+      }
+      appendChild(child) {
+        this.childNodes.push(child);
+        child.parent = this;
+        return child;
+      }
+      replaceChild(newChild, oldChild) {
+        const i2 = this.childIndex(oldChild);
+        if (i2 !== null) {
+          this.childNodes[i2] = newChild;
+          newChild.parent = this;
+          if (oldChild.parent === this) {
+            oldChild.parent = null;
+          }
+        }
+        return newChild;
+      }
+      removeChild(child) {
+        const i2 = this.childIndex(child);
+        if (i2 !== null) {
+          this.childNodes.splice(i2, 1);
+          child.parent = null;
+        }
+        return child;
+      }
+      childIndex(node) {
+        const i2 = this.childNodes.indexOf(node);
+        return i2 === -1 ? null : i2;
+      }
+      copy() {
+        const node = this.factory.create(this.kind);
+        node.properties = Object.assign({}, this.properties);
+        for (const child of this.childNodes || []) {
+          if (child) {
+            node.appendChild(child.copy());
+          }
+        }
+        return node;
+      }
+      findNodes(kind) {
+        const nodes = [];
+        this.walkTree((node) => {
+          if (node.isKind(kind)) {
+            nodes.push(node);
+          }
+        });
+        return nodes;
+      }
+      walkTree(func, data) {
+        func(this, data);
+        for (const child of this.childNodes) {
+          if (child) {
+            child.walkTree(func, data);
+          }
+        }
+        return data;
+      }
+      toString() {
+        return this.kind + "(" + this.childNodes.join(",") + ")";
+      }
+    };
+    AbstractEmptyNode = class extends AbstractNode {
+      setChildren(_children) {
+      }
+      appendChild(child) {
+        return child;
+      }
+      replaceChild(_newChild, oldChild) {
+        return oldChild;
+      }
+      childIndex(_node) {
+        return null;
+      }
+      walkTree(func, data) {
+        func(this, data);
+        return data;
+      }
+      toString() {
+        return this.kind;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNode.js
+var TEXCLASS;
+var TEXCLASSNAMES;
+var TEXSPACELENGTH;
+var TEXSPACE;
+var MATHVARIANTS;
+var indentAttributes;
+var AbstractMmlNode;
+var AbstractMmlTokenNode;
+var AbstractMmlLayoutNode;
+var AbstractMmlBaseNode;
+var AbstractMmlEmptyNode;
+var TextNode;
+var XMLNode;
+var init_MmlNode = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNode.js"() {
+    init_Attributes();
+    init_Node();
+    TEXCLASS = {
+      ORD: 0,
+      OP: 1,
+      BIN: 2,
+      REL: 3,
+      OPEN: 4,
+      CLOSE: 5,
+      PUNCT: 6,
+      INNER: 7,
+      NONE: -1
+    };
+    TEXCLASSNAMES = [
+      "ORD",
+      "OP",
+      "BIN",
+      "REL",
+      "OPEN",
+      "CLOSE",
+      "PUNCT",
+      "INNER"
+    ];
+    TEXSPACELENGTH = [
+      "",
+      "thinmathspace",
+      "mediummathspace",
+      "thickmathspace"
+    ];
+    TEXSPACE = JSON.parse(`[[0,-1,2,3,0,0,0,1],[-1,-1,0,3,0,0,0,1],[2,2,0,0,2,0,0,2],[3,3,0,0,3,0,0,3],[0,0,0,0,0,0,0,0],[0,-1,2,3,0,0,0,1],[1,1,0,1,1,1,1,1],[1,-1,2,3,1,0,1,1]]`);
+    MATHVARIANTS = /* @__PURE__ */ new Set([
+      "normal",
+      "bold",
+      "italic",
+      "bold-italic",
+      "double-struck",
+      "fraktur",
+      "bold-fraktur",
+      "script",
+      "bold-script",
+      "sans-serif",
+      "bold-sans-serif",
+      "sans-serif-italic",
+      "sans-serif-bold-italic",
+      "monospace",
+      "inital",
+      "tailed",
+      "looped",
+      "stretched"
+    ]);
+    indentAttributes = [
+      "indentalign",
+      "indentalignfirst",
+      "indentshift",
+      "indentshiftfirst"
+    ];
+    AbstractMmlNode = class _AbstractMmlNode extends AbstractNode {
+      constructor(factory, attributes = {}, children = []) {
+        super(factory);
+        this.prevClass = null;
+        this.prevLevel = null;
+        this.texclass = null;
+        if (this.arity < 0) {
+          this.childNodes = [factory.create("inferredMrow")];
+          this.childNodes[0].parent = this;
+        }
+        this.setChildren(children);
+        this.attributes = new Attributes(factory.getNodeClass(this.kind).defaults, factory.getNodeClass("math").defaults);
+        this.attributes.setList(attributes);
+      }
+      copy(keepIds = false) {
+        const node = this.factory.create(this.kind);
+        node.properties = Object.assign({}, this.properties);
+        if (this.attributes) {
+          const attributes = this.attributes.getAllAttributes();
+          for (const name of Object.keys(attributes)) {
+            if (name !== "id" || keepIds) {
+              node.attributes.set(name, attributes[name]);
+            }
+          }
+        }
+        if (this.childNodes && this.childNodes.length) {
+          let children = this.childNodes;
+          if (children.length === 1 && children[0].isInferred) {
+            children = children[0].childNodes;
+          }
+          for (const child of children) {
+            if (child) {
+              node.appendChild(child.copy());
+            } else {
+              node.childNodes.push(null);
+            }
+          }
+        }
+        return node;
+      }
+      get texClass() {
+        return this.texclass;
+      }
+      set texClass(texClass) {
+        this.texclass = texClass;
+      }
+      get isToken() {
+        return false;
+      }
+      get isEmbellished() {
+        return false;
+      }
+      get isSpacelike() {
+        return false;
+      }
+      get linebreakContainer() {
+        return false;
+      }
+      get linebreakAlign() {
+        return "data-align";
+      }
+      get isEmpty() {
+        for (const child of this.childNodes) {
+          if (child && !child.isEmpty)
+            return false;
+        }
+        return true;
+      }
+      get arity() {
+        return Infinity;
+      }
+      get isInferred() {
+        return false;
+      }
+      get Parent() {
+        let parent = this.parent;
+        while (parent && parent.notParent) {
+          parent = parent.Parent;
+        }
+        return parent;
+      }
+      get notParent() {
+        return false;
+      }
+      setChildren(children) {
+        if (this.arity < 0) {
+          return this.childNodes[0].setChildren(children);
+        }
+        return super.setChildren(children);
+      }
+      appendChild(child) {
+        if (this.arity < 0) {
+          this.childNodes[0].appendChild(child);
+          return child;
+        }
+        if (child.isInferred) {
+          if (this.arity === Infinity) {
+            child.childNodes.forEach((node) => super.appendChild(node));
+            return child;
+          }
+          const original = child;
+          child = this.factory.create("mrow");
+          child.setChildren(original.childNodes);
+          child.attributes = original.attributes;
+          for (const name of original.getPropertyNames()) {
+            child.setProperty(name, original.getProperty(name));
+          }
+        }
+        return super.appendChild(child);
+      }
+      replaceChild(newChild, oldChild) {
+        if (this.arity < 0) {
+          this.childNodes[0].replaceChild(newChild, oldChild);
+          return newChild;
+        }
+        return super.replaceChild(newChild, oldChild);
+      }
+      core() {
+        return this;
+      }
+      coreMO() {
+        return this;
+      }
+      coreIndex() {
+        return 0;
+      }
+      childPosition() {
+        let child = null;
+        let parent = this.parent;
+        while (parent && parent.notParent) {
+          child = parent;
+          parent = parent.parent;
+        }
+        child = child || this;
+        if (parent) {
+          let i2 = 0;
+          for (const node of parent.childNodes) {
+            if (node === child) {
+              return i2;
+            }
+            i2++;
+          }
+        }
+        return null;
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        return this.texClass != null ? this : prev;
+      }
+      updateTeXclass(core) {
+        if (core) {
+          this.prevClass = core.prevClass;
+          this.prevLevel = core.prevLevel;
+          core.prevClass = core.prevLevel = null;
+          this.texClass = core.texClass;
+        }
+      }
+      getPrevClass(prev) {
+        if (prev) {
+          this.prevClass = prev.texClass;
+          this.prevLevel = prev.attributes.get("scriptlevel");
+        }
+      }
+      texSpacing() {
+        const prevClass = this.prevClass != null ? this.prevClass : TEXCLASS.NONE;
+        const texClass = this.texClass || TEXCLASS.ORD;
+        if (prevClass === TEXCLASS.NONE || texClass === TEXCLASS.NONE) {
+          return "";
+        }
+        const space = TEXSPACE[prevClass][texClass];
+        if ((this.prevLevel > 0 || this.attributes.get("scriptlevel") > 0) && space >= 0) {
+          return "";
+        }
+        return TEXSPACELENGTH[Math.abs(space)];
+      }
+      hasSpacingAttributes() {
+        return this.isEmbellished && this.coreMO().hasSpacingAttributes();
+      }
+      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
+        var _a2, _b2, _c;
+        const defaults = this.attributes.getAllDefaults();
+        for (const key of Object.keys(attributes)) {
+          if (Object.hasOwn(defaults, key) || Object.hasOwn(_AbstractMmlNode.alwaysInherit, key)) {
+            const [node, value] = attributes[key];
+            if (!((_b2 = (_a2 = _AbstractMmlNode.noInherit[node]) === null || _a2 === void 0 ? void 0 : _a2[this.kind]) === null || _b2 === void 0 ? void 0 : _b2[key])) {
+              this.attributes.setInherited(key, value);
+            }
+          }
+          if ((_c = _AbstractMmlNode.stopInherit[this.kind]) === null || _c === void 0 ? void 0 : _c[key]) {
+            attributes = Object.assign({}, attributes);
+            delete attributes[key];
+          }
+        }
+        const displaystyle = this.attributes.getExplicit("displaystyle");
+        if (displaystyle === void 0) {
+          this.attributes.setInherited("displaystyle", display);
+        }
+        const scriptlevel = this.attributes.getExplicit("scriptlevel");
+        if (scriptlevel === void 0) {
+          this.attributes.setInherited("scriptlevel", level);
+        }
+        if (prime) {
+          this.setProperty("texprimestyle", prime);
+        }
+        const arity = this.arity;
+        if (arity >= 0 && arity !== Infinity && (arity === 1 && this.childNodes.length === 0 || arity !== 1 && this.childNodes.length !== arity)) {
+          if (arity < this.childNodes.length) {
+            this.childNodes = this.childNodes.slice(0, arity);
+          } else {
+            while (this.childNodes.length < arity) {
+              this.appendChild(this.factory.create("mrow"));
+            }
+          }
+        }
+        if (this.linebreakContainer && !this.isEmbellished) {
+          const align = this.linebreakAlign;
+          if (align) {
+            const indentalign = this.attributes.get(align) || "left";
+            attributes = this.addInheritedAttributes(attributes, {
+              indentalign,
+              indentshift: "0",
+              indentalignfirst: indentalign,
+              indentshiftfirst: "0",
+              indentalignlast: "indentalign",
+              indentshiftlast: "indentshift"
+            });
+          }
+        }
+        this.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        for (const child of this.childNodes) {
+          child.setInheritedAttributes(attributes, display, level, prime);
+        }
+      }
+      addInheritedAttributes(current, attributes) {
+        const updated = Object.assign({}, current);
+        for (const name of Object.keys(attributes)) {
+          if (name !== "displaystyle" && name !== "scriptlevel" && name !== "style") {
+            updated[name] = [this.kind, attributes[name]];
+          }
+        }
+        return updated;
+      }
+      inheritAttributesFrom(node) {
+        const attributes = node.attributes;
+        const display = attributes.get("displaystyle");
+        const scriptlevel = attributes.get("scriptlevel");
+        const defaults = !attributes.isSet("mathsize") ? {} : { mathsize: ["math", attributes.get("mathsize")] };
+        const prime = node.getProperty("texprimestyle") || false;
+        this.setInheritedAttributes(defaults, display, scriptlevel, prime);
+      }
+      verifyTree(options3 = null) {
+        if (options3 === null) {
+          return;
+        }
+        this.verifyAttributes(options3);
+        const arity = this.arity;
+        if (options3["checkArity"]) {
+          if (arity >= 0 && arity !== Infinity && (arity === 1 && this.childNodes.length === 0 || arity !== 1 && this.childNodes.length !== arity)) {
+            this.mError('Wrong number of children for "' + this.kind + '" node', options3, true);
+          }
+        }
+        this.verifyChildren(options3);
+      }
+      verifyAttributes(options3) {
+        if (options3.checkAttributes) {
+          const attributes = this.attributes;
+          const bad = [];
+          for (const name of attributes.getExplicitNames()) {
+            if (name.substring(0, 5) !== "data-" && attributes.getDefault(name) === void 0 && !name.match(/^(?:class|style|id|(?:xlink:)?href)$/)) {
+              bad.push(name);
+            }
+          }
+          if (bad.length) {
+            this.mError("Unknown attributes for " + this.kind + " node: " + bad.join(", "), options3);
+          }
+        }
+        if (options3.checkMathvariants) {
+          const variant = this.attributes.getExplicit("mathvariant");
+          if (variant && !MATHVARIANTS.has(variant) && !this.getProperty("ignore-variant")) {
+            this.mError(`Invalid mathvariant: ${variant}`, options3, true);
+          }
+        }
+      }
+      verifyChildren(options3) {
+        for (const child of this.childNodes) {
+          child.verifyTree(options3);
+        }
+      }
+      mError(message, options3, short = false) {
+        if (this.parent && this.parent.isKind("merror")) {
+          return null;
+        }
+        const merror = this.factory.create("merror");
+        merror.attributes.set("data-mjx-message", message);
+        if (options3.fullErrors || short) {
+          const mtext = this.factory.create("mtext");
+          const text = this.factory.create("text");
+          text.setText(options3.fullErrors ? message : this.kind);
+          mtext.appendChild(text);
+          merror.appendChild(mtext);
+          this.parent.replaceChild(merror, this);
+          if (!options3.fullErrors) {
+            merror.attributes.set("title", message);
+          }
+        } else {
+          this.parent.replaceChild(merror, this);
+          merror.appendChild(this);
+        }
+        return merror;
+      }
+    };
+    AbstractMmlNode.defaults = {
+      mathbackground: INHERIT,
+      mathcolor: INHERIT,
+      mathsize: INHERIT,
+      dir: INHERIT
+    };
+    AbstractMmlNode.noInherit = JSON.parse(`{
+ "mstyle":{"mpadded":{"width":true,"height":true,"depth":true,"lspace":true,"voffset":true},"mtable":{"width":true,"height":true,"depth":true,"align":true}},
+ "maligngroup":{"mrow":{"groupalign":true},"mtable":{"groupalign":true}},
+ "mtr":{"msqrt":{"data-vertical-align":true},"mroot":{"data-vertical-align":true}},
+ "mlabeledtr":{"msqrt":{"data-vertical-align":true},"mroot":{"data-vertical-align":true}}
+}`);
+    AbstractMmlNode.stopInherit = {
+      mtd: { columnalign: true, rowalign: true, groupalign: true }
+    };
+    AbstractMmlNode.alwaysInherit = {
+      scriptminsize: true,
+      scriptsizemultiplier: true,
+      infixlinebreakstyle: true
+    };
+    AbstractMmlNode.verifyDefaults = {
+      checkArity: true,
+      checkAttributes: false,
+      checkMathvariants: true,
+      fullErrors: false,
+      fixMmultiscripts: true,
+      fixMtables: true
+    };
+    AbstractMmlTokenNode = class extends AbstractMmlNode {
+      get isToken() {
+        return true;
+      }
+      get isEmpty() {
+        for (const child of this.childNodes) {
+          if (!(child instanceof TextNode) || child.getText().length) {
+            return false;
+          }
+        }
+        return true;
+      }
+      getText() {
+        let text = "";
+        for (const child of this.childNodes) {
+          if (child instanceof TextNode) {
+            text += child.getText();
+          } else if ("textContent" in child) {
+            text += child.textContent();
+          }
+        }
+        return text;
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        for (const child of this.childNodes) {
+          if (child instanceof AbstractMmlNode) {
+            child.setInheritedAttributes(attributes, display, level, prime);
+          }
+        }
+      }
+      walkTree(func, data) {
+        func(this, data);
+        for (const child of this.childNodes) {
+          if (child instanceof AbstractMmlNode) {
+            child.walkTree(func, data);
+          }
+        }
+        return data;
+      }
+    };
+    AbstractMmlTokenNode.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { mathvariant: "normal", mathsize: INHERIT });
+    AbstractMmlLayoutNode = class extends AbstractMmlNode {
+      get isSpacelike() {
+        return this.childNodes[0].isSpacelike;
+      }
+      get isEmbellished() {
+        return this.childNodes[0].isEmbellished;
+      }
+      get arity() {
+        return -1;
+      }
+      core() {
+        return this.childNodes[0];
+      }
+      coreMO() {
+        return this.childNodes[0].coreMO();
+      }
+      setTeXclass(prev) {
+        prev = this.childNodes[0].setTeXclass(prev);
+        this.updateTeXclass(this.childNodes[0]);
+        return prev;
+      }
+    };
+    AbstractMmlLayoutNode.defaults = AbstractMmlNode.defaults;
+    AbstractMmlBaseNode = class extends AbstractMmlNode {
+      get isEmbellished() {
+        return this.childNodes[0].isEmbellished;
+      }
+      core() {
+        return this.childNodes[0];
+      }
+      coreMO() {
+        return this.childNodes[0].coreMO();
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        this.texClass = TEXCLASS.ORD;
+        const base = this.childNodes[0];
+        let result = null;
+        if (base) {
+          if (this.isEmbellished || base.isKind("mi")) {
+            result = base.setTeXclass(prev);
+            this.updateTeXclass(this.core());
+          } else {
+            base.setTeXclass(null);
+            if (base.isKind("TeXAtom")) {
+              this.texClass = base.texClass;
+            }
+          }
+        }
+        for (const child of this.childNodes.slice(1)) {
+          if (child) {
+            child.setTeXclass(null);
+          }
+        }
+        return result || this;
+      }
+    };
+    AbstractMmlBaseNode.defaults = AbstractMmlNode.defaults;
+    AbstractMmlEmptyNode = class extends AbstractEmptyNode {
+      get isToken() {
+        return false;
+      }
+      get isEmpty() {
+        return true;
+      }
+      get isEmbellished() {
+        return false;
+      }
+      get isSpacelike() {
+        return false;
+      }
+      get linebreakContainer() {
+        return false;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      get arity() {
+        return 0;
+      }
+      get isInferred() {
+        return false;
+      }
+      get notParent() {
+        return false;
+      }
+      get Parent() {
+        return this.parent;
+      }
+      get texClass() {
+        return TEXCLASS.NONE;
+      }
+      get prevClass() {
+        return TEXCLASS.NONE;
+      }
+      get prevLevel() {
+        return 0;
+      }
+      hasSpacingAttributes() {
+        return false;
+      }
+      get attributes() {
+        return null;
+      }
+      core() {
+        return this;
+      }
+      coreMO() {
+        return this;
+      }
+      coreIndex() {
+        return 0;
+      }
+      childPosition() {
+        return 0;
+      }
+      setTeXclass(prev) {
+        return prev;
+      }
+      texSpacing() {
+        return "";
+      }
+      setInheritedAttributes(_attributes, _display, _level, _prime) {
+      }
+      inheritAttributesFrom(_node) {
+      }
+      verifyTree(_options) {
+      }
+      mError(_message, _options, _short = false) {
+        return null;
+      }
+    };
+    TextNode = class extends AbstractMmlEmptyNode {
+      constructor() {
+        super(...arguments);
+        this.text = "";
+      }
+      get kind() {
+        return "text";
+      }
+      getText() {
+        return this.text;
+      }
+      setText(text) {
+        this.text = text;
+        return this;
+      }
+      copy() {
+        return this.factory.create(this.kind).setText(this.getText());
+      }
+      toString() {
+        return this.text;
+      }
+    };
+    XMLNode = class extends AbstractMmlEmptyNode {
+      constructor() {
+        super(...arguments);
+        this.xml = null;
+        this.adaptor = null;
+      }
+      get kind() {
+        return "XML";
+      }
+      getXML() {
+        return this.xml;
+      }
+      setXML(xml, adaptor = null) {
+        this.xml = xml;
+        this.adaptor = adaptor;
+        return this;
+      }
+      getSerializedXML() {
+        return this.adaptor.serializeXML(this.xml);
+      }
+      copy() {
+        return this.factory.create(this.kind).setXML(this.adaptor.clone(this.xml));
+      }
+      toString() {
+        return "XML data";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/math.js
+var MmlMath;
+var init_math = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/math.js"() {
+    init_MmlNode();
+    MmlMath = class extends AbstractMmlLayoutNode {
+      get kind() {
+        return "math";
+      }
+      get linebreakContainer() {
+        return true;
+      }
+      get linebreakAlign() {
+        return "";
+      }
+      setChildInheritedAttributes(attributes, display, level, prime) {
+        if (this.attributes.get("mode") === "display") {
+          this.attributes.setInherited("display", "block");
+        }
+        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
+        display = !!this.attributes.get("displaystyle") || !this.attributes.get("displaystyle") && this.attributes.get("display") === "block";
+        this.attributes.setInherited("displaystyle", display);
+        level = this.attributes.get("scriptlevel") || this.constructor.defaults["scriptlevel"];
+        super.setChildInheritedAttributes(attributes, display, level, prime);
+      }
+      verifyTree(options3 = null) {
+        super.verifyTree(options3);
+        if (this.parent) {
+          this.mError("Improper nesting of math tags", options3, true);
+        }
+      }
+    };
+    MmlMath.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { mathvariant: "normal", mathsize: "normal", mathcolor: "", mathbackground: "transparent", dir: "ltr", scriptlevel: 0, displaystyle: false, display: "inline", maxwidth: "", overflow: "linebreak", altimg: "", "altimg-width": "", "altimg-height": "", "altimg-valign": "", alttext: "", cdgroup: "", scriptsizemultiplier: 1 / Math.sqrt(2), scriptminsize: ".4em", infixlinebreakstyle: "before", lineleading: "100%", linebreakmultchar: "\u2062", indentshift: "auto", indentalign: "auto", indenttarget: "", indentalignfirst: "indentalign", indentshiftfirst: "indentshift", indentalignlast: "indentalign", indentshiftlast: "indentshift" });
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mi.js
+var MmlMi;
+var init_mi = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mi.js"() {
+    init_MmlNode();
+    MmlMi = class _MmlMi extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mi";
+      }
+      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
+        super.setInheritedAttributes(attributes, display, level, prime);
+        const text = this.getText();
+        if (text.match(_MmlMi.singleCharacter) && !attributes.mathvariant) {
+          this.attributes.setInherited("mathvariant", "italic");
+        }
+      }
+      setTeXclass(prev) {
+        this.getPrevClass(prev);
+        const name = this.getText();
+        if (name.length > 1 && name.match(_MmlMi.operatorName) && this.attributes.get("mathvariant") === "normal" && this.getProperty("autoOP") === void 0 && this.getProperty("texClass") === void 0) {
+          this.texClass = TEXCLASS.OP;
+          this.setProperty("autoOP", true);
+        }
+        return this;
+      }
+    };
+    MmlMi.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
+    MmlMi.operatorName = /^[a-z][a-z0-9]*$/i;
+    MmlMi.singleCharacter = /^[\uD800-\uDBFF]?.[\u0300-\u036F\u1AB0-\u1ABE\u1DC0-\u1DFF\u20D0-\u20EF]*$/;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/Factory.js
+var AbstractFactory;
+var init_Factory = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/Factory.js"() {
+    AbstractFactory = class {
+      constructor(nodes = null) {
+        this.defaultKind = "unknown";
+        this.nodeMap = /* @__PURE__ */ new Map();
+        this.node = {};
+        if (nodes === null) {
+          nodes = this.constructor.defaultNodes;
+        }
+        for (const kind of Object.keys(nodes)) {
+          this.setNodeClass(kind, nodes[kind]);
+        }
+      }
+      create(kind, ...args) {
+        return (this.node[kind] || this.node[this.defaultKind])(...args);
+      }
+      setNodeClass(kind, nodeClass) {
+        this.nodeMap.set(kind, nodeClass);
+        const KIND = this.nodeMap.get(kind);
+        this.node[kind] = (...args) => {
+          return new KIND(this, ...args);
+        };
+      }
+      getNodeClass(kind) {
+        return this.nodeMap.get(kind);
+      }
+      deleteNodeClass(kind) {
+        this.nodeMap.delete(kind);
+        delete this.node[kind];
+      }
+      nodeIsKind(node, kind) {
+        return node instanceof this.getNodeClass(kind);
+      }
+      getKinds() {
+        return Array.from(this.nodeMap.keys());
+      }
+    };
+    AbstractFactory.defaultNodes = {};
+  }
+});
+// node_modules/@mathjax/src/mjs/core/Tree/NodeFactory.js
+var AbstractNodeFactory;
+var init_NodeFactory = __esm({
+  "node_modules/@mathjax/src/mjs/core/Tree/NodeFactory.js"() {
+    init_Factory();
+    AbstractNodeFactory = class extends AbstractFactory {
+      create(kind, properties = {}, children = []) {
+        return this.node[kind](properties, children);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mn.js
+var MmlMn;
+var init_mn = __esm({
+  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mn.js"() {
+    init_MmlNode();
+    MmlMn = class extends AbstractMmlTokenNode {
+      constructor() {
+        super(...arguments);
+        this.texclass = TEXCLASS.ORD;
+      }
+      get kind() {
+        return "mn";
+      }
+    };
+    MmlMn.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
+  }
+});
 // node_modules/@mathjax/src/mjs/core/MmlTree/OperatorDictionary.js
 function OPDEF(lspace, rspace, texClass = TEXCLASS.BIN, properties = null) {
   return [lspace, rspace, texClass, properties];
@@ -1395,346 +2303,4 @@ var init_OperatorDictionary = __esm({
     };
   }
 });
-// node_modules/@mathjax/src/mjs/util/string.js
-function sortLength(a, b) {
-  return a.length !== b.length ? b.length - a.length : a === b ? 0 : a < b ? -1 : 1;
-}
-function quotePattern(text) {
-  return text.replace(/([\^$(){}.+*?\-|[\]:\\])/g, "\\$1");
-}
-function unicodeChars(text) {
-  return Array.from(text).map((c) => c.codePointAt(0));
-}
-function unicodeString(data) {
-  return String.fromCodePoint(...data);
-}
-function isPercent(x2) {
-  return !!x2.match(/%\s*$/);
-}
-function split(x2) {
-  return x2.trim().split(/\s+/);
-}
-function replaceUnicode(text) {
-  return text.replace(/\\U(?:([0-9A-Fa-f]{4})|\{\s*([0-9A-Fa-f]{1,6})\s*\})|\\./g, (m, h1, h2) => m === "\\\\" ? "\\" : String.fromCodePoint(parseInt(h1 || h2, 16)));
-}
-function toEntity(c) {
-  return `&#x${c.codePointAt(0).toString(16).toUpperCase()};`;
-}
-var init_string = __esm({
-  "node_modules/@mathjax/src/mjs/util/string.js"() {
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mo.js
-var MmlMo;
-var init_mo = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mo.js"() {
-    init_MmlNode();
-    init_OperatorDictionary();
-    init_string();
-    MmlMo = class extends AbstractMmlTokenNode {
-      constructor() {
-        super(...arguments);
-        this._texClass = null;
-        this.lspace = 5 / 18;
-        this.rspace = 5 / 18;
-      }
-      get texClass() {
-        if (this._texClass === null) {
-          return this.getOperatorDef(this.getText())[2];
-        }
-        return this._texClass;
-      }
-      set texClass(value) {
-        this._texClass = value;
-      }
-      get kind() {
-        return "mo";
-      }
-      get isEmbellished() {
-        return true;
-      }
-      coreParent() {
-        let embellished = null;
-        let parent = this;
-        const math = this.factory.getNodeClass("math");
-        while (parent && parent.isEmbellished && parent.coreMO() === this && !(parent instanceof math)) {
-          embellished = parent;
-          parent = parent.parent;
-        }
-        return embellished || this;
-      }
-      coreText(parent) {
-        if (!parent) {
-          return "";
-        }
-        if (parent.isEmbellished) {
-          return parent.coreMO().getText();
-        }
-        while (((parent.isKind("mrow") || parent.isKind("TeXAtom") || parent.isKind("mstyle") || parent.isKind("mphantom")) && parent.childNodes.length === 1 || parent.isKind("munderover")) && parent.childNodes[0]) {
-          parent = parent.childNodes[0];
-        }
-        return parent.isToken ? parent.getText() : "";
-      }
-      hasSpacingAttributes() {
-        return this.attributes.isSet("lspace") || this.attributes.isSet("rspace");
-      }
-      get isAccent() {
-        let accent = false;
-        const node = this.coreParent().parent;
-        if (node) {
-          const key = node.isKind("mover") ? node.childNodes[node.over].coreMO() ? "accent" : "" : node.isKind("munder") ? node.childNodes[node.under].coreMO() ? "accentunder" : "" : node.isKind("munderover") ? this === node.childNodes[node.over].coreMO() ? "accent" : this === node.childNodes[node.under].coreMO() ? "accentunder" : "" : "";
-          if (key) {
-            const value = node.attributes.getExplicit(key);
-            accent = value !== void 0 ? accent : this.attributes.get("accent");
-          }
-        }
-        return accent;
-      }
-      setTeXclass(prev) {
-        const { form, fence } = this.attributes.getList("form", "fence");
-        if (this.getProperty("texClass") === void 0 && this.hasSpacingAttributes()) {
-          return null;
-        }
-        if (fence && this.texClass === TEXCLASS.REL) {
-          if (form === "prefix") {
-            this.texClass = TEXCLASS.OPEN;
-          }
-          if (form === "postfix") {
-            this.texClass = TEXCLASS.CLOSE;
-          }
-        }
-        return this.adjustTeXclass(prev);
-      }
-      adjustTeXclass(prev) {
-        const texClass = this.texClass;
-        let prevClass = this.prevClass;
-        if (texClass === TEXCLASS.NONE) {
-          return prev;
-        }
-        if (prev) {
-          if (prev.getProperty("autoOP") && (texClass === TEXCLASS.BIN || texClass === TEXCLASS.REL)) {
-            prevClass = prev.texClass = TEXCLASS.ORD;
-          }
-          prevClass = this.prevClass = prev.texClass || TEXCLASS.ORD;
-          this.prevLevel = this.attributes.getInherited("scriptlevel");
-        } else {
-          prevClass = this.prevClass = TEXCLASS.NONE;
-        }
-        if (texClass === TEXCLASS.BIN && (prevClass === TEXCLASS.NONE || prevClass === TEXCLASS.BIN || prevClass === TEXCLASS.OP || prevClass === TEXCLASS.REL || prevClass === TEXCLASS.OPEN || prevClass === TEXCLASS.PUNCT)) {
-          this.texClass = TEXCLASS.ORD;
-        } else if (prevClass === TEXCLASS.BIN && (texClass === TEXCLASS.REL || texClass === TEXCLASS.CLOSE || texClass === TEXCLASS.PUNCT)) {
-          prev.texClass = this.prevClass = TEXCLASS.ORD;
-        } else if (texClass === TEXCLASS.BIN) {
-          let child = null;
-          let parent = this.parent;
-          while (parent && parent.parent && parent.isEmbellished && (parent.childNodes.length === 1 || !parent.isKind("mrow") && parent.core() === child)) {
-            child = parent;
-            parent = parent.parent;
-          }
-          child = child || this;
-          if (parent.childNodes[parent.childNodes.length - 1] === child) {
-            this.texClass = TEXCLASS.ORD;
-          }
-        }
-        return this;
-      }
-      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
-        super.setInheritedAttributes(attributes, display, level, prime);
-        const mo = this.getText();
-        this.checkOperatorTable(mo);
-        this.checkPseudoScripts(mo);
-        this.checkPrimes(mo);
-        this.checkMathAccent(mo);
-      }
-      getOperatorDef(mo) {
-        const [form1, form2, form3] = this.handleExplicitForm(this.getForms());
-        this.attributes.setInherited("form", form1);
-        const CLASS = this.constructor;
-        const OPTABLE2 = CLASS.OPTABLE;
-        const def2 = OPTABLE2[form1][mo] || OPTABLE2[form2][mo] || OPTABLE2[form3][mo];
-        if (def2) {
-          return def2;
-        }
-        this.setProperty("noDictDef", true);
-        const limits = this.attributes.get("movablelimits");
-        const isOP = !!mo.match(CLASS.opPattern);
-        if ((isOP || limits) && this.getProperty("texClass") === void 0) {
-          return OPDEF(1, 2, TEXCLASS.OP);
-        }
-        const range = getRange(mo);
-        const [l, r] = CLASS.MMLSPACING[range[2]];
-        return OPDEF(l, r, range[2]);
-      }
-      checkOperatorTable(mo) {
-        const def2 = this.getOperatorDef(mo);
-        if (this.getProperty("texClass") === void 0) {
-          this.texClass = def2[2];
-        }
-        for (const name of Object.keys(def2[3] || {})) {
-          this.attributes.setInherited(name, def2[3][name]);
-        }
-        this.lspace = def2[0] / 18;
-        this.rspace = def2[1] / 18;
-      }
-      getForms() {
-        let core = null;
-        let parent = this.parent;
-        let Parent = this.Parent;
-        while (Parent && Parent.isEmbellished) {
-          core = parent;
-          parent = Parent.parent;
-          Parent = Parent.Parent;
-        }
-        core = core || this;
-        if (parent && parent.isKind("mrow") && parent.nonSpaceLength() !== 1) {
-          if (parent.firstNonSpace() === core) {
-            return ["prefix", "infix", "postfix"];
-          }
-          if (parent.lastNonSpace() === core) {
-            return ["postfix", "infix", "prefix"];
-          }
-        }
-        return ["infix", "prefix", "postfix"];
-      }
-      handleExplicitForm(forms) {
-        if (this.attributes.isSet("form")) {
-          const form = this.attributes.get("form");
-          forms = [form].concat(forms.filter((name) => name !== form));
-        }
-        return forms;
-      }
-      checkPseudoScripts(mo) {
-        const PSEUDOSCRIPTS = this.constructor.pseudoScripts;
-        if (!mo.match(PSEUDOSCRIPTS))
-          return;
-        const parent = this.coreParent().Parent;
-        const isPseudo = !parent || !(parent.isKind("msubsup") && !parent.isKind("msub"));
-        this.setProperty("pseudoscript", isPseudo);
-        if (isPseudo) {
-          this.attributes.setInherited("lspace", 0);
-          this.attributes.setInherited("rspace", 0);
-        }
-      }
-      checkPrimes(mo) {
-        const PRIMES = this.constructor.primes;
-        if (!mo.match(PRIMES))
-          return;
-        const REMAP = this.constructor.remapPrimes;
-        const primes = unicodeString(unicodeChars(mo).map((c) => REMAP[c]));
-        this.setProperty("primes", primes);
-      }
-      checkMathAccent(mo) {
-        const parent = this.Parent;
-        if (this.getProperty("mathaccent") !== void 0 || !parent || !parent.isKind("munderover")) {
-          return;
-        }
-        const [base, under, over] = parent.childNodes;
-        if (base.isEmbellished && base.coreMO() === this)
-          return;
-        const isUnder = !!(under && under.isEmbellished && under.coreMO() === this);
-        const isOver = !!(over && over.isEmbellished && under.coreMO() === this);
-        if (!isUnder && !isOver)
-          return;
-        if (this.isMathAccent(mo)) {
-          this.setProperty("mathaccent", true);
-        } else if (this.isMathAccentWithWidth(mo)) {
-          this.setProperty("mathaccent", false);
-        }
-      }
-      isMathAccent(mo = this.getText()) {
-        const MATHACCENT = this.constructor.mathaccents;
-        return !!mo.match(MATHACCENT);
-      }
-      isMathAccentWithWidth(mo = this.getText()) {
-        const MATHACCENT = this.constructor.mathaccentsWithWidth;
-        return !!mo.match(MATHACCENT);
-      }
-    };
-    MmlMo.defaults = Object.assign(Object.assign({}, AbstractMmlTokenNode.defaults), JSON.parse(`{
- "form":"infix","fence":false,"separator":false,"lspace":"thickmathspace","rspace":"thickmathspace","stretchy":false,"symmetric":false,"maxsize":"infinity","minsize":"0em","largeop":false,
- "movablelimits":false,"accent":false,"linebreak":"auto","lineleading":"100%","linebreakstyle":"before","indentalign":"auto","indentshift":"0","indenttarget":"","indentalignfirst":"indentalign",
- "indentshiftfirst":"indentshift","indentalignlast":"indentalign","indentshiftlast":"indentshift"
-}`));
-    MmlMo.MMLSPACING = MMLSPACING;
-    MmlMo.OPTABLE = OPTABLE;
-    MmlMo.pseudoScripts = new RegExp([
-      "^[\"'*`",
-      "ª",
-      "°",
-      "²-´",
-      "¹",
-      "º",
-      "‘-‟",
-      "′-‷⁗",
-      "⁰ⁱ",
-      "⁴-ⁿ",
-      "₀-₎",
-      "]+$"
-    ].join(""));
-    MmlMo.primes = new RegExp([
-      `^["'`,
-      "‘-‟",
-      "]+$"
-    ].join(""));
-    MmlMo.opPattern = /^[a-zA-Z]{2,}$/;
-    MmlMo.remapPrimes = {
-      34: 8243,
-      39: 8242,
-      8216: 8245,
-      8217: 8242,
-      8218: 8242,
-      8219: 8245,
-      8220: 8246,
-      8221: 8243,
-      8222: 8243,
-      8223: 8246
-    };
-    MmlMo.mathaccents = new RegExp([
-      "^[",
-      "´\u0301ˊ",
-      "`\u0300ˋ",
-      "¨\u0308",
-      "~\u0303˜",
-      "¯\u0304ˉ",
-      "˘\u0306",
-      "ˇ\u030C",
-      "^\u0302ˆ",
-      "\u20D0\u20D1",
-      "\u20D6\u20D7\u20E1",
-      "˙\u0307",
-      "˚\u030A",
-      "\u20DB",
-      "\u20DC",
-      "]$"
-    ].join(""));
-    MmlMo.mathaccentsWithWidth = new RegExp([
-      "^[",
-      "←→↔",
-      "⏜⏝",
-      "⏞⏟",
-      "]$"
-    ].join(""));
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtext.js
-var MmlMtext;
-var init_mtext = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mtext.js"() {
-    init_MmlNode();
-    MmlMtext = class _MmlMtext extends AbstractMmlTokenNode {
-      constructor() {
-        super(...arguments);
-        this.texclass = TEXCLASS.ORD;
-      }
-      get kind() {
-        return "mtext";
-      }
-      get isSpacelike() {
-        return !!this.getText().match(/^\s*$/) && !this.attributes.hasOneOf(_MmlMtext.NONSPACELIKE);
-      }
-    };
-    MmlMtext.NONSPACELIKE = ["style", "mathbackground", "background"];
-    MmlMtext.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
-  }
-});
-export{init_string,split,init_mo,MmlMo,init_mtext,MmlMtext,toEntity,sortLength,quotePattern,replaceUnicode,getRange,init_OperatorDictionary,OPTABLE,unicodeChars,isPercent};
+export{init_MmlNode,init_OperatorDictionary,AbstractMmlTokenNode,TEXCLASS,OPDEF,getRange,MMLSPACING,OPTABLE,AbstractMmlNode,AbstractMmlBaseNode,AbstractMmlLayoutNode,indentAttributes,XMLNode,init_math,init_mi,init_mn,MmlMath,MmlMi,MmlMn,TextNode,init_NodeFactory,AbstractNodeFactory,TEXCLASSNAMES,AbstractMmlEmptyNode,init_Factory,AbstractFactory};

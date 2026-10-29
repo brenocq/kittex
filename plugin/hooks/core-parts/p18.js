@@ -1,5 +1,190 @@
-import{__esm,init_TokenMap,init_PrioritizedList,init_FunctionList,PrioritizedList,FunctionList,CharacterMap,init_HandlerTypes,init_Options,init_Tags,ConfigurationType,HandlerType,TagsFactory,defaultOptions,userOptions,init_Entities,init_MmlNode,init_TexError,init_ParseUtil,init_UnitUtil,init_NodeUtil,init_StackItem,init_Styles,init_TexConstants,BaseItem,NodeUtil_default,TexError_default,ParseUtil,TexConstant,TEXCLASS,entities,TRBL,UnitUtil,TexParser,init_TexParser,init_mo,init_string,MmlMo,replaceUnicode,lookup,Label,__kittexLate}from'./p17.js';export*from'./p17.js';
-__kittexLate.init_MapHandler=()=>init_MapHandler;__kittexLate.MapHandler=()=>MapHandler;
+import{__esm,init_PrioritizedList,init_FunctionList,PrioritizedList,FunctionList,init_HandlerTypes,init_Options,init_Tags,ConfigurationType,HandlerType,TagsFactory,defaultOptions,userOptions,init_Entities,init_MmlNode,init_TexError,init_ParseUtil,init_UnitUtil,init_NodeUtil,init_StackItem,init_Styles,init_TexConstants,BaseItem,NodeUtil_default,TexError_default,ParseUtil,TexConstant,TEXCLASS,entities,TRBL,UnitUtil,TexParser,init_TexParser,init_mo,init_string,MmlMo,replaceUnicode,lookup,Label}from'./p17.js';export*from'./p17.js';
+// node_modules/@mathjax/src/mjs/input/tex/Token.js
+var Token;
+var Macro;
+var init_Token = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Token.js"() {
+    Token = class {
+      constructor(_token, _char, _attributes) {
+        this._token = _token;
+        this._char = _char;
+        this._attributes = _attributes;
+      }
+      get token() {
+        return this._token;
+      }
+      get char() {
+        return this._char;
+      }
+      get attributes() {
+        return this._attributes;
+      }
+    };
+    Macro = class {
+      constructor(_token, _func, _args = []) {
+        this._token = _token;
+        this._func = _func;
+        this._args = _args;
+      }
+      get token() {
+        return this._token;
+      }
+      get func() {
+        return this._func;
+      }
+      get args() {
+        return this._args;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TokenMap.js
+function parseResult(result) {
+  return result === void 0 ? true : result;
+}
+var AbstractTokenMap;
+var RegExpMap;
+var AbstractParseMap;
+var CharacterMap;
+var DelimiterMap;
+var MacroMap;
+var CommandMap;
+var EnvironmentMap;
+var init_TokenMap = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TokenMap.js"() {
+    init_Token();
+    init_MapHandler();
+    AbstractTokenMap = class {
+      constructor(_name, _parser) {
+        this._name = _name;
+        this._parser = _parser;
+        MapHandler.register(this);
+      }
+      get name() {
+        return this._name;
+      }
+      parserFor(token2) {
+        return this.contains(token2) ? this.parser : null;
+      }
+      parse([env, token2]) {
+        const parser2 = this.parserFor(token2);
+        const mapped = this.lookup(token2);
+        return parser2 && mapped ? parseResult(parser2(env, mapped)) : null;
+      }
+      set parser(parser2) {
+        this._parser = parser2;
+      }
+      get parser() {
+        return this._parser;
+      }
+    };
+    RegExpMap = class extends AbstractTokenMap {
+      constructor(name, parser2, _regExp) {
+        super(name, parser2);
+        this._regExp = _regExp;
+      }
+      contains(token2) {
+        return this._regExp.test(token2);
+      }
+      lookup(token2) {
+        return this.contains(token2) ? token2 : null;
+      }
+    };
+    AbstractParseMap = class extends AbstractTokenMap {
+      constructor() {
+        super(...arguments);
+        this.map = /* @__PURE__ */ new Map();
+      }
+      lookup(token2) {
+        return this.map.get(token2);
+      }
+      contains(token2) {
+        return this.map.has(token2);
+      }
+      add(token2, object) {
+        this.map.set(token2, object);
+      }
+      remove(token2) {
+        this.map.delete(token2);
+      }
+    };
+    CharacterMap = class extends AbstractParseMap {
+      constructor(name, parser2, json) {
+        super(name, parser2);
+        for (const key of Object.keys(json)) {
+          const value = json[key];
+          const [char, attrs] = typeof value === "string" ? [value, null] : value;
+          const character = new Token(key, char, attrs);
+          this.add(key, character);
+        }
+      }
+    };
+    DelimiterMap = class extends CharacterMap {
+      parse([env, token2]) {
+        return super.parse([env, "\\" + token2]);
+      }
+    };
+    MacroMap = class extends AbstractParseMap {
+      constructor(name, json, functionMap = {}) {
+        super(name, null);
+        const getMethod = (func) => typeof func === "string" ? functionMap[func] : func;
+        for (const [key, value] of Object.entries(json)) {
+          let func;
+          let args;
+          if (Array.isArray(value)) {
+            func = getMethod(value[0]);
+            args = value.slice(1);
+          } else {
+            func = getMethod(value);
+            args = [];
+          }
+          const character = new Macro(key, func, args);
+          this.add(key, character);
+        }
+      }
+      parserFor(token2) {
+        const macro = this.lookup(token2);
+        return macro ? macro.func : null;
+      }
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const parser2 = this.parserFor(token2);
+        if (!macro || !parser2) {
+          return null;
+        }
+        return parseResult(parser2(env, macro.token, ...macro.args));
+      }
+    };
+    CommandMap = class extends MacroMap {
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const parser2 = this.parserFor(token2);
+        if (!macro || !parser2) {
+          return null;
+        }
+        const saveCommand = env.currentCS;
+        env.currentCS = "\\" + token2;
+        const result = parser2(env, "\\" + macro.token, ...macro.args);
+        env.currentCS = saveCommand;
+        return parseResult(result);
+      }
+    };
+    EnvironmentMap = class extends MacroMap {
+      constructor(name, parser2, json, functionMap = {}) {
+        super(name, json, functionMap);
+        this.parser = parser2;
+      }
+      parse([env, token2]) {
+        const macro = this.lookup(token2);
+        const envParser = this.parserFor(token2);
+        if (!macro || !envParser) {
+          return null;
+        }
+        return parseResult(this.parser(env, macro.token, envParser, macro.args));
+      }
+    };
+  }
+});
 // node_modules/@mathjax/src/mjs/input/tex/MapHandler.js
 var maps;
 var MapHandler;
@@ -2381,4 +2566,4 @@ var init_BaseMethods = __esm({
     BaseMethods_default = BaseMethods;
   }
 });
-export{init_BaseMethods,init_lengths,em,MATHSPACE,BaseMethods_default,MapHandler,init_Configuration,init_MapHandler,init_BaseItems,Configuration,StartItem,StopItem,OpenItem,CloseItem,NullItem,PrimeItem,SubsupItem,OverItem,LeftItem,Middle,RightItem,BreakItem,BeginItem,EndItem,StyleItem,PositionItem,CellItem,MmlItem,FnItem,NotItem,NonscriptItem,DotsItem,ArrayItem,EqnArrayItem,EquationItem,MstyleItem,ParserConfiguration,BIGDIMEN,percent,length2em,px,SubHandler,splitAlignArray};
+export{init_TokenMap,init_BaseMethods,init_lengths,em,MATHSPACE,RegExpMap,MacroMap,BaseMethods_default,CharacterMap,DelimiterMap,CommandMap,EnvironmentMap,MapHandler,init_Configuration,init_MapHandler,init_BaseItems,Configuration,StartItem,StopItem,OpenItem,CloseItem,NullItem,PrimeItem,SubsupItem,OverItem,LeftItem,Middle,RightItem,BreakItem,BeginItem,EndItem,StyleItem,PositionItem,CellItem,MmlItem,FnItem,NotItem,NonscriptItem,DotsItem,ArrayItem,EqnArrayItem,EquationItem,MstyleItem,ParserConfiguration,BIGDIMEN,percent,length2em,px,init_Token,Token,Macro,SubHandler,splitAlignArray};

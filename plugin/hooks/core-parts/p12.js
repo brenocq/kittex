@@ -1,4 +1,1016 @@
-import{__commonJS,__esm}from'./p11.js';export*from'./p11.js';
+import{__esm,textChars,MAX_TEXT_CHARS,textSetter,setText,parseStylesheet,RuleIndex,FONT_PROPERTIES,fontOf,flattenSubpaths,NAMED_COLORS,init_path,init_css,init_svg_text,INITIAL_FONT,__commonJS}from'./p11.js';export*from'./p11.js';
+// core/src/diagram/xml.ts
+function parseXml(source) {
+  let pos = 0;
+  let count = 0;
+  let styleText2 = 0;
+  const keep = (el, text) => {
+    styleText2 += text.length;
+    if (styleText2 > MAX_STYLE_TEXT) fail2("style sheet too long");
+    el.text = (el.text ?? "") + text;
+  };
+  const fail2 = (what) => {
+    throw new XmlError(`XML: ${what} at ${pos}`);
+  };
+  const skipSpace = () => {
+    SPACE.lastIndex = pos;
+    SPACE.exec(source);
+    pos = SPACE.lastIndex;
+  };
+  const readName = () => {
+    NAME.lastIndex = pos;
+    const match = NAME.exec(source);
+    if (!match) fail2("name expected");
+    pos = NAME.lastIndex;
+    return match[0];
+  };
+  const skipPast = (end) => {
+    const at = source.indexOf(end, pos);
+    if (at < 0) fail2(`unclosed ${end}`);
+    pos = at + end.length;
+  };
+  const skipMarkup = () => {
+    if (source.startsWith("<!--", pos)) skipPast("-->");
+    else if (source.startsWith("<?", pos)) skipPast("?>");
+    else if (source.startsWith("<![CDATA[", pos)) skipPast("]]>");
+    else if (source.startsWith("<!", pos)) skipPast(">");
+    else return false;
+    return true;
+  };
+  const openTag = () => {
+    if (++count > MAX_ELEMENTS) fail2("too many elements");
+    pos++;
+    const name = readName();
+    const attrs = /* @__PURE__ */ Object.create(null);
+    for (; ; ) {
+      skipSpace();
+      const c = source[pos];
+      if (c === "/" && source[pos + 1] === ">") {
+        pos += 2;
+        return { el: { name, attrs, children: [] }, closed: true };
+      }
+      if (c === ">") {
+        pos++;
+        return { el: { name, attrs, children: [] }, closed: false };
+      }
+      if (c === void 0) fail2("unclosed tag");
+      const key = readName();
+      skipSpace();
+      if (source[pos] !== "=") fail2("= expected");
+      pos++;
+      skipSpace();
+      const quote = source[pos];
+      if (quote !== '"' && quote !== "'") fail2("quote expected");
+      const end = source.indexOf(quote, pos + 1);
+      if (end < 0) fail2("unclosed attribute");
+      attrs[key] = decode(source.slice(pos + 1, end));
+      pos = end + 1;
+    }
+  };
+  const element = () => {
+    const first = openTag();
+    if (first.closed) return first.el;
+    const open = [first.el];
+    for (; ; ) {
+      const lt = source.indexOf("<", pos);
+      const top = open[open.length - 1];
+      if (lt < 0) fail2(`unclosed <${top.name}>`);
+      if (top.name === "style") {
+        keep(top, decode(source.slice(pos, lt)));
+        if (source.startsWith("<![CDATA[", lt)) {
+          const end = source.indexOf("]]>", lt);
+          if (end >= 0) keep(top, source.slice(lt + 9, end));
+        }
+      } else if (top.content !== void 0) {
+        const data = decode(source.slice(pos, lt));
+        if (data !== "") top.content.push(data);
+        if (source.startsWith("<![CDATA[", lt)) {
+          const end = source.indexOf("]]>", lt);
+          if (end >= 0 && end > lt + 9) top.content.push(source.slice(lt + 9, end));
+        }
+      }
+      pos = lt;
+      if (skipMarkup()) continue;
+      if (source[pos + 1] === "/") {
+        pos += 2;
+        const closing = readName();
+        if (closing !== top.name) fail2(`</${closing}> closes <${top.name}>`);
+        skipSpace();
+        if (source[pos] !== ">") fail2("> expected");
+        pos++;
+        open.pop();
+        if (open.length === 0) return top;
+        continue;
+      }
+      const child = openTag();
+      top.children.push(child.el);
+      if (top.content !== void 0) top.content.push(child.el);
+      if (top.content !== void 0 || child.el.name === "text") child.el.content = [];
+      if (child.closed) continue;
+      if (open.length >= MAX_DEPTH) fail2("nested too deep");
+      open.push(child.el);
+    }
+  };
+  for (; ; ) {
+    skipSpace();
+    if (pos >= source.length) fail2("no root element");
+    if (source[pos] !== "<") fail2("< expected");
+    if (skipMarkup()) continue;
+    const root2 = element();
+    return root2;
+  }
+}
+function decode(value) {
+  if (!value.includes("&")) return value;
+  return value.replace(/&(#x[0-9A-Fa-f]{1,6}|#[0-9]{1,7}|[A-Za-z]+);/g, (whole, ref) => {
+    if (ref[0] === "#") {
+      const code = ref[1] === "x" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return code > 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
+    }
+    return ENTITIES[ref] ?? whole;
+  });
+}
+var MAX_STYLE_TEXT;
+var MAX_DEPTH;
+var MAX_ELEMENTS;
+var ENTITIES;
+var NAME;
+var SPACE;
+var XmlError;
+var init_xml = __esm({
+  "core/src/diagram/xml.ts"() {
+    "use strict";
+    MAX_STYLE_TEXT = 256 * 1024;
+    MAX_DEPTH = 2e4;
+    MAX_ELEMENTS = 2e5;
+    ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+    NAME = /[A-Za-z_:][-A-Za-z0-9_.:]*/y;
+    SPACE = /[ \t\r\n]*/y;
+    XmlError = class extends Error {
+    };
+  }
+});
+// core/src/diagram/svg.ts
+function readSvg(source, options3) {
+  const root2 = parseXml(source);
+  if (root2.name !== "svg") throw new SvgError("not an SVG document");
+  const box2 = viewBox(root2, options3.userUnit === "document");
+  const ids = /* @__PURE__ */ new Map();
+  const all = [];
+  const pending = [root2];
+  for (let el = pending.pop(); el; el = pending.pop()) {
+    all.push(el);
+    const id = el.attrs.id;
+    if (id !== void 0 && !ids.has(id)) ids.set(id, el);
+    for (let i2 = el.children.length - 1; i2 >= 0; i2--) pending.push(el.children[i2]);
+  }
+  applyStyleSheets(all);
+  const [sx, sy] = options3.userUnit === "document" ? documentScale(root2, box2) : [1, 1];
+  const ex = options3.emPerUnit * sx;
+  const ey = options3.emPerUnit * sy;
+  const baselineY = options3.baseline === "origin" ? 0 : box2.y + box2.height;
+  const toEm = [ex, 0, 0, ey, -box2.x * ex, -baselineY * ey];
+  const ops = [];
+  const clips = [];
+  const clipIds = /* @__PURE__ */ new Map();
+  const counted = /* @__PURE__ */ new Map();
+  let numbers2 = 0;
+  const account = (d) => {
+    if (d.length > MAX_PATH_DATA) throw new SvgError(`picture too complex (a path of ${d.length} characters)`);
+    let n = counted.get(d);
+    if (n === void 0) {
+      n = countNumbers(d);
+      counted.set(d, n);
+    }
+    numbers2 += n;
+    if (numbers2 > MAX_PICTURE_NUMBERS) throw new SvgError(`picture too complex (more than ${MAX_PICTURE_NUMBERS} path coordinates)`);
+  };
+  const push = (op) => {
+    if (ops.length >= MAX_PICTURE_OPS) throw new SvgError("picture too complex");
+    account(op.d);
+    ops.push(op);
+  };
+  const paintOf = (source2, opacity, style) => {
+    if (source2 === null || !(opacity > 0)) return null;
+    if ("ref" in source2) {
+      const resolved = referencedPaint(source2.ref, ids, style.color);
+      if (!resolved) return null;
+      return { color: resolved.color, opacity: opacity * resolved.opacity };
+    }
+    const alpha = source2.alpha ?? 1;
+    if (!(alpha > 0)) return null;
+    return { color: { r: source2.r, g: source2.g, b: source2.b }, opacity: opacity * alpha };
+  };
+  const draw = (d, ctm, style, glyph, canFill = true) => {
+    if (d.trim() === "") return;
+    const transform = multiply(toEm, ctm);
+    const server = canFill && style.fill !== null && "ref" in style.fill ? style.fill.ref : void 0;
+    const opacity = style.fillOpacity * style.opacity;
+    const served = server !== void 0 && opacity > 0 && !glyph && serverFill(server, d, ctm, style, opacity);
+    const fill = canFill && !served ? paintOf(style.fill, opacity, style) : null;
+    if (fill) push({ type: "fill", d, transform, rule: style.fillRule, paint: fill, ...glyph ? { glyph: true } : {}, ...style.clip !== void 0 ? { clip: style.clip } : {} });
+    const stroke = paintOf(style.stroke, style.strokeOpacity * style.opacity, style);
+    if (stroke && style.strokeWidth > 0) {
+      const strokeStyle = { width: style.strokeWidth, cap: style.cap, join: style.join, miterLimit: style.miterLimit };
+      if (style.dash) {
+        strokeStyle.dash = style.dash;
+        strokeStyle.dashOffset = style.dashOffset;
+      }
+      push({ type: "stroke", d, transform, style: strokeStyle, paint: stroke, ...style.clip !== void 0 ? { clip: style.clip } : {} });
+    }
+  };
+  const clipFor = (ref, ctm, within2) => {
+    const el = ids.get(ref);
+    if (!el || el.name !== "clipPath") return within2;
+    const key = `${ref}
+${ctm.join(",")}
+${within2 ?? ""}`;
+    const known = clipIds.get(key);
+    if (known !== void 0) return known;
+    const own = multiply(ctm, transformOf(el.attrs.transform));
+    const paths = [];
+    const gather = (node, m, depth2) => {
+      if (depth2 > MAX_USE_DEPTH) throw new SvgError("clip path nested too deep");
+      const local = multiply(m, transformOf(node.attrs.transform));
+      const rule = (declared(node, "clip-rule") ?? "nonzero") === "evenodd" ? "evenodd" : "nonzero";
+      if (node.name === "use") {
+        const target = ids.get(hrefOf(node) ?? "");
+        if (target) gather(target, multiply(local, translation(node)), depth2 + 1);
+        return;
+      }
+      const d = shapePath(node);
+      if (d !== void 0) {
+        account(d);
+        paths.push({ d, transform: multiply(toEm, local), rule });
+        return;
+      }
+      if (node.name === "g") for (const child of node.children) gather(child, local, depth2 + 1);
+    };
+    for (const child of el.children) gather(child, own, 0);
+    clips.push({ paths, ...within2 !== void 0 ? { within: within2 } : {} });
+    const index = clips.length - 1;
+    clipIds.set(key, index);
+    return index;
+  };
+  let serverClips = 0;
+  let patternDepth = 0;
+  const shapeClip = (d, ctm, rule, within2) => {
+    account(d);
+    clips.push({ paths: [{ d, transform: multiply(toEm, ctm), rule }], ...within2 !== void 0 ? { within: within2 } : {} });
+    serverClips++;
+    return clips.length - 1;
+  };
+  const serverFill = (ref, d, ctm, style, opacity) => {
+    const el = ids.get(ref);
+    if (!el || serverClips >= MAX_SERVER_CLIPS) return false;
+    if (el.name === "linearGradient" || el.name === "radialGradient") return gradientFill(el, d, ctm, style, opacity);
+    if (el.name === "pattern") return patternFill(el, d, ctm, style, opacity);
+    return false;
+  };
+  const gradientFill = (el, d, ctm, style, opacity) => {
+    const stops = gradientStops(el, ids, 0);
+    const box3 = pathBox(d);
+    if (stops.length < 2 || !box3) return false;
+    const attr = (name) => inheritedAttr(el, name, ids);
+    const bounding = (attr("gradientUnits") ?? "objectBoundingBox") !== "userSpaceOnUse";
+    if (bounding && !(box3.width > 0 && box3.height > 0)) return false;
+    const units = bounding ? [box3.width, 0, 0, box3.height, box3.x, box3.y] : IDENTITY;
+    const space = multiply(units, transformOf(attr("gradientTransform")));
+    const back = invert(space);
+    if (!back) return false;
+    const corners = [
+      apply(back, box3.x, box3.y),
+      apply(back, box3.x + box3.width, box3.y),
+      apply(back, box3.x, box3.y + box3.height),
+      apply(back, box3.x + box3.width, box3.y + box3.height)
+    ];
+    const coord = (name, fallback) => {
+      const value = attr(name);
+      const n = value === void 0 ? NaN : value.endsWith("%") ? parseFloat(value) / 100 : parseFloat(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const bands = gradientBands(stops);
+    const opaque = stops.every((stop) => stop.paint.opacity >= 1);
+    const shapes = [];
+    if (el.name === "linearGradient") {
+      const x1 = coord("x1", bounding ? 0 : box3.x);
+      const y1 = coord("y1", bounding ? 0 : box3.y);
+      const x2 = coord("x2", bounding ? 1 : box3.x + box3.width);
+      const y2 = coord("y2", bounding ? 0 : box3.y);
+      const vx = x2 - x1;
+      const vy = y2 - y1;
+      const length22 = vx * vx + vy * vy;
+      if (!(length22 > 0)) return false;
+      const ts = corners.map(([x3, y]) => ((x3 - x1) * vx + (y - y1) * vy) / length22);
+      const ss = corners.map(([x3, y]) => ((y - y1) * vx - (x3 - x1) * vy) / length22);
+      const tMin = Math.min(0, ...ts) - 0.01;
+      const tMax = Math.max(1, ...ts) + 0.01;
+      const sMin = Math.min(...ss) - 0.01;
+      const sMax = Math.max(...ss) + 0.01;
+      const at = (t, s) => `${fmt(x1 + t * vx - s * vy)} ${fmt(y1 + t * vy + s * vx)}`;
+      bands.forEach((band, k) => {
+        const from = k === 0 ? tMin : band.from;
+        const to = opaque || k === bands.length - 1 ? tMax : band.to;
+        shapes.push({ d: `M${at(from, sMin)}L${at(to, sMin)}L${at(to, sMax)}L${at(from, sMax)}Z`, paint: band.paint, rule: "nonzero" });
+      });
+    } else {
+      const cx = coord("cx", bounding ? 0.5 : box3.x + box3.width / 2);
+      const cy = coord("cy", bounding ? 0.5 : box3.y + box3.height / 2);
+      const r = coord("r", bounding ? 0.5 : Math.hypot(box3.width, box3.height) / 2);
+      const fx = coord("fx", cx);
+      const fy = coord("fy", cy);
+      if (!(r > 0)) return false;
+      const circle2 = (t) => {
+        const x2 = fx + t * (cx - fx);
+        const y = fy + t * (cy - fy);
+        const rt = Math.max(t * r, 1e-6);
+        return `M${fmt(x2 + rt)} ${fmt(y)}A${fmt(rt)} ${fmt(rt)} 0 1 1 ${fmt(x2 - rt)} ${fmt(y)}A${fmt(rt)} ${fmt(rt)} 0 1 1 ${fmt(x2 + rt)} ${fmt(y)}Z`;
+      };
+      const xs = [...corners.map(([x2]) => x2), cx - r, cx + r];
+      const ys = [...corners.map(([, y]) => y), cy - r, cy + r];
+      const x0 = Math.min(...xs) - 0.01;
+      const x1 = Math.max(...xs) + 0.01;
+      const y0 = Math.min(...ys) - 0.01;
+      const y1 = Math.max(...ys) + 0.01;
+      const outside = `M${fmt(x0)} ${fmt(y0)}H${fmt(x1)}V${fmt(y1)}H${fmt(x0)}Z`;
+      const last = bands[bands.length - 1].paint;
+      if (opaque) {
+        shapes.push({ d: outside, paint: last, rule: "nonzero" });
+        for (let k = bands.length - 1; k >= 0; k--) shapes.push({ d: circle2(bands[k].to), paint: bands[k].paint, rule: "nonzero" });
+      } else {
+        shapes.push({ d: outside + circle2(1), paint: last, rule: "evenodd" });
+        for (const band of bands) shapes.push({ d: band.from > 0 ? circle2(band.to) + circle2(band.from) : circle2(band.to), paint: band.paint, rule: "evenodd" });
+      }
+    }
+    const clip = shapeClip(d, ctm, style.fillRule, style.clip);
+    const transform = multiply(toEm, multiply(ctm, space));
+    for (const shape of shapes) push({ type: "fill", d: shape.d, transform, rule: shape.rule, paint: { color: shape.paint.color, opacity: shape.paint.opacity * opacity }, clip });
+    return true;
+  };
+  const patternFill = (el, d, ctm, style, opacity) => {
+    const content = patternContent(el, ids);
+    const box3 = pathBox(d);
+    if (content.length === 0 || !box3 || patternDepth > 0) return false;
+    const attr = (name) => inheritedAttr(el, name, ids);
+    if (attr("viewBox") !== void 0) return false;
+    const number = (name) => {
+      const value = attr(name);
+      const n = value === void 0 ? 0 : value.endsWith("%") ? parseFloat(value) / 100 : parseFloat(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+    let x2 = number("x");
+    let y = number("y");
+    let w = number("width");
+    let h = number("height");
+    if ((attr("patternUnits") ?? "objectBoundingBox") !== "userSpaceOnUse") {
+      x2 = box3.x + x2 * box3.width;
+      y = box3.y + y * box3.height;
+      w *= box3.width;
+      h *= box3.height;
+    }
+    if (!(w > 0 && h > 0)) return false;
+    const tileSpace = transformOf(attr("patternTransform"));
+    const back = invert(tileSpace);
+    if (!back) return false;
+    const corners = [apply(back, box3.x, box3.y), apply(back, box3.x + box3.width, box3.y), apply(back, box3.x, box3.y + box3.height), apply(back, box3.x + box3.width, box3.y + box3.height)];
+    const i0 = Math.floor((Math.min(...corners.map(([cx]) => cx)) - x2) / w) - 1;
+    const i1 = Math.ceil((Math.max(...corners.map(([cx]) => cx)) - x2) / w) + 1;
+    const j0 = Math.floor((Math.min(...corners.map(([, cy]) => cy)) - y) / h) - 1;
+    const j1 = Math.ceil((Math.max(...corners.map(([, cy]) => cy)) - y) / h) + 1;
+    const perTile = shapesIn(content, ids);
+    const total = (i1 - i0 + 1) * (j1 - j0 + 1) * perTile;
+    if (!(perTile > 0) || !(total <= MAX_PATTERN_OPS) || ops.length + total > MAX_PICTURE_OPS / 2) return false;
+    const contentUnits = attr("patternContentUnits") === "objectBoundingBox" ? [box3.width, 0, 0, box3.height, 0, 0] : IDENTITY;
+    const inherited = { ...styleOf(el, INITIAL), clip: shapeClip(d, ctm, style.fillRule, style.clip), opacity };
+    const frames = [];
+    for (let j = j1; j >= j0; j--) {
+      for (let i2 = i1; i2 >= i0; i2--) {
+        const m = multiply(ctm, multiply(tileSpace, multiply([1, 0, 0, 1, x2 + i2 * w, y + j * h], contentUnits)));
+        for (let k = content.length - 1; k >= 0; k--) frames.push({ el: content[k], ctm: m, inherited, root: false, glyph: false, uses: 0 });
+      }
+    }
+    patternDepth++;
+    try {
+      walk2(frames);
+    } finally {
+      patternDepth--;
+    }
+    return true;
+  };
+  const typesetter = options3.text;
+  let setter;
+  let textCount = 0;
+  const fonts = /* @__PURE__ */ new Map();
+  const spanOf = (style, hidden) => ({ font: style.font, paint: paintOf(style.fill, style.fillOpacity * style.opacity, style), hidden, style });
+  const childSpan = (el, parent) => {
+    if (declared(el, "display") === "none") return void 0;
+    const style = styleOf(el, parent.style);
+    fonts.set(el, style.font);
+    const visibility = declared(el, "visibility");
+    return spanOf(style, visibility === void 0 || visibility === "inherit" ? parent.hidden : visibility !== "visible");
+  };
+  const drawText = (el, ctm, style, hidden, typeset2) => {
+    fonts.set(el, style.font);
+    let chars;
+    try {
+      chars = textChars(el, spanOf(style, hidden), childSpan);
+    } catch (error) {
+      if (error instanceof RangeError) throw new SvgError(`picture too complex (${error.message})`);
+      throw error;
+    }
+    textCount += chars.length;
+    if (textCount > MAX_TEXT_CHARS) throw new SvgError(`picture too complex (more than ${MAX_TEXT_CHARS} characters of text)`);
+    setter ??= textSetter(typeset2);
+    const transform = multiply(toEm, ctm);
+    for (const fill of setText(chars, setter, (owner) => (fonts.get(owner) ?? style.font).size)) {
+      push({ type: "fill", d: fill.d, transform: multiply(transform, fill.transform), rule: "nonzero", paint: fill.paint, glyph: true, ...style.clip !== void 0 ? { clip: style.clip } : {} });
+    }
+  };
+  let visits = 0;
+  const walk2 = (stack2) => {
+    while (stack2.length > 0) {
+      const { el, ctm, inherited, root: isRoot, glyph, uses } = stack2.pop();
+      if (++visits > MAX_VISITS) throw new SvgError("picture too complex");
+      if (SKIPPED.has(el.name)) continue;
+      const refused = isRoot ? void 0 : REFUSED.get(el.name);
+      if (refused !== void 0) throw new SvgError(refused);
+      if (declared(el, "display") === "none") continue;
+      const m = el.name === "svg" ? ctm : multiply(ctm, transformOf(el.attrs.transform));
+      const style = styleOf(el, inherited);
+      const clipRef = urlOf(declared(el, "clip-path"));
+      if (clipRef !== void 0) style.clip = clipFor(clipRef, m, inherited.clip);
+      if (declared(el, "mask") !== void 0 && declared(el, "mask") !== "none") throw new SvgError("masks are not drawn");
+      const hidden = declared(el, "visibility") === "hidden";
+      switch (el.name) {
+        case "svg":
+        case "g":
+        case "a":
+          for (let k = el.children.length - 1; k >= 0; k--) stack2.push({ el: el.children[k], ctm: m, inherited: style, root: false, glyph, uses });
+          continue;
+        case "switch": {
+          const chosen = el.children.find((child) => child.name !== "foreignObject" && (child.attrs.requiredExtensions ?? "").trim() === "");
+          if (chosen) stack2.push({ el: chosen, ctm: m, inherited: style, root: false, glyph, uses });
+          continue;
+        }
+        case "text":
+          if (typesetter !== void 0) drawText(el, m, style, hidden || declared(el, "visibility") === "collapse", typesetter);
+          continue;
+        case "use": {
+          const id = hrefOf(el);
+          const target = id === void 0 ? void 0 : ids.get(id);
+          if (!target || target === el) continue;
+          if (uses >= MAX_USE_DEPTH || useDepth(el, ids) > MAX_USE_DEPTH) throw new SvgError("use nested too deep");
+          const isGlyph = target.name === "path" && /^g\d*-/.test(id ?? "");
+          stack2.push({ el: target.name === "symbol" ? { ...target, name: "g" } : target, ctm: multiply(m, translation(el)), inherited: style, root: false, glyph: glyph || isGlyph, uses: uses + 1 });
+          continue;
+        }
+        default: {
+          const d = shapePath(el);
+          if (d === void 0 || hidden) continue;
+          draw(d, m, style, glyph, el.name !== "line");
+        }
+      }
+    }
+  };
+  walk2([{ el: root2, ctm: IDENTITY, inherited: { ...INITIAL }, root: true, glyph: false, uses: 0 }]);
+  const height2 = (baselineY - box2.y) * ey;
+  const depth = (box2.y + box2.height - baselineY) * ey;
+  return { width: box2.width * ex, height: Math.max(0, height2), depth: Math.max(0, depth), ops, clips };
+}
+function applyStyleSheets(elements2) {
+  const rules = [];
+  for (const el of elements2) {
+    if (el.name !== "style" || el.text === void 0) continue;
+    const type = el.attrs.type?.trim().toLowerCase();
+    if (type === void 0 || type === "" || type === "text/css") rules.push(...parseStylesheet(el.text, rules.length));
+  }
+  if (rules.length === 0) return;
+  const index = new RuleIndex(rules);
+  const parents = /* @__PURE__ */ new Map();
+  for (const el of elements2) for (const child of el.children) parents.set(child, el);
+  const parentOf = (el) => parents.get(el);
+  let folded = 0;
+  for (const el of elements2) {
+    let declarations;
+    try {
+      declarations = index.declarationsFor(el, parentOf);
+    } catch (error) {
+      if (error instanceof RangeError) throw new SvgError("picture too complex (its style sheet)");
+      throw error;
+    }
+    if (declarations === "") continue;
+    folded += declarations.length;
+    if (folded > MAX_FOLDED_STYLE) throw new SvgError("picture too complex (its style sheet)");
+    el.attrs.style = el.attrs.style === void 0 ? declarations : `${declarations};${el.attrs.style}`;
+  }
+}
+function bigPoints(value) {
+  const match = value === void 0 ? null : /^\s*(\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|q)?\s*$/i.exec(value);
+  if (!match) return void 0;
+  const n = Number(match[1]) * BP_PER[(match[2] ?? "px").toLowerCase()];
+  return Number.isFinite(n) && n > 0 ? n : void 0;
+}
+function documentScale(root2, box2) {
+  const width = bigPoints(root2.attrs.width);
+  const height2 = bigPoints(root2.attrs.height);
+  const sx = width === void 0 ? void 0 : width / box2.width;
+  const sy = height2 === void 0 ? void 0 : height2 / box2.height;
+  let scale2;
+  if (sx === void 0 || sy === void 0) {
+    const s = sx ?? sy ?? BP_PER.px;
+    scale2 = [s, s];
+  } else if (/^\s*none\b/.test(root2.attrs.preserveAspectRatio ?? "")) {
+    scale2 = [sx, sy];
+  } else {
+    const s = Math.min(sx, sy);
+    scale2 = [s, s];
+  }
+  if (!scale2.every((s) => Number.isFinite(s) && s > 0 && Number.isFinite(s * Math.max(box2.width, box2.height)))) throw new SvgError("the picture has no drawable size");
+  return scale2;
+}
+function countNumbers(d) {
+  let n = 0;
+  let inNumber = false;
+  let dot = false;
+  let exponent = false;
+  for (let i2 = 0; i2 < d.length; i2++) {
+    const c = d.charCodeAt(i2);
+    if (c >= 48 && c <= 57) {
+      if (!inNumber) {
+        n++;
+        inNumber = true;
+        dot = false;
+        exponent = false;
+      }
+    } else if (c === 46) {
+      if (!inNumber || dot || exponent) {
+        n++;
+        inNumber = true;
+        exponent = false;
+      }
+      dot = true;
+    } else if ((c === 101 || c === 69) && inNumber && !exponent) {
+      exponent = true;
+    } else if ((c === 43 || c === 45) && inNumber && exponent && (d.charCodeAt(i2 - 1) === 101 || d.charCodeAt(i2 - 1) === 69)) {
+    } else {
+      inNumber = false;
+    }
+  }
+  return n;
+}
+function viewBox(root2, document) {
+  const numbers2 = (root2.attrs.viewBox ?? "").trim().split(/[\s,]+/).map(Number);
+  if (numbers2.length === 4 && numbers2.every(Number.isFinite) && numbers2[2] > 0 && numbers2[3] > 0) {
+    const [x2, y, width2, height3] = numbers2;
+    return { x: x2, y, width: width2, height: height3 };
+  }
+  const pixels = (value) => {
+    const bp = bigPoints(value);
+    return bp === void 0 ? void 0 : bp / BP_PER.px;
+  };
+  const width = document ? pixels(root2.attrs.width) : length(root2.attrs.width);
+  const height2 = document ? pixels(root2.attrs.height) : length(root2.attrs.height);
+  if (width && height2 && width > 0 && height2 > 0) return { x: 0, y: 0, width, height: height2 };
+  throw new SvgError("the picture is empty");
+}
+function length(value) {
+  if (value === void 0) return void 0;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : void 0;
+}
+function hrefOf(el) {
+  const href = el.attrs["xlink:href"] ?? el.attrs.href;
+  return href?.startsWith("#") ? href.slice(1) : void 0;
+}
+function useDepth(el, ids) {
+  let depth = 0;
+  let at = el;
+  const seen = /* @__PURE__ */ new Set();
+  while (at && at.name === "use") {
+    if (seen.has(at)) return Infinity;
+    seen.add(at);
+    depth++;
+    const id = hrefOf(at);
+    at = id === void 0 ? void 0 : ids.get(id);
+  }
+  return depth;
+}
+function translation(el) {
+  return [1, 0, 0, 1, length(el.attrs.x) ?? 0, length(el.attrs.y) ?? 0];
+}
+function declared(el, name) {
+  const style = el.attrs.style;
+  if (style !== void 0) {
+    let found;
+    for (const declaration of style.split(";")) {
+      const colon = declaration.indexOf(":");
+      if (colon > 0 && declaration.slice(0, colon).trim() === name) found = declaration.slice(colon + 1).trim();
+    }
+    if (found !== void 0) return found;
+  }
+  const value = el.attrs[name];
+  return value === void 0 ? void 0 : value.trim();
+}
+function styleOf(el, inherited) {
+  const style = { ...inherited };
+  const color = declared(el, "color");
+  if (color !== void 0 && color !== "inherit") style.color = parseColor(color, inherited.color) ?? inherited.color;
+  const paint2 = (value, current) => {
+    if (value === void 0 || value === "inherit") return current;
+    if (value === "none") return null;
+    const ref = urlOf(value);
+    if (ref !== void 0) return { ref };
+    if (value === "currentColor") return style.color;
+    return parseTint(value, style.color) ?? current;
+  };
+  style.fill = paint2(declared(el, "fill"), inherited.fill);
+  style.stroke = paint2(declared(el, "stroke"), inherited.stroke);
+  const number = (name, current) => {
+    const value = declared(el, name);
+    if (value === void 0 || value === "inherit") return current;
+    const n = value.endsWith("%") ? parseFloat(value) / 100 : parseFloat(value);
+    return Number.isFinite(n) ? n : current;
+  };
+  style.fillOpacity = clamp01(number("fill-opacity", inherited.fillOpacity));
+  style.strokeOpacity = clamp01(number("stroke-opacity", inherited.strokeOpacity));
+  style.opacity = inherited.opacity * clamp01(number("opacity", 1));
+  style.strokeWidth = Math.max(0, number("stroke-width", inherited.strokeWidth));
+  style.miterLimit = Math.max(1, number("stroke-miterlimit", inherited.miterLimit));
+  style.dashOffset = number("stroke-dashoffset", inherited.dashOffset);
+  const rule = declared(el, "fill-rule");
+  if (rule === "evenodd" || rule === "nonzero") style.fillRule = rule;
+  const cap2 = declared(el, "stroke-linecap");
+  if (cap2 === "butt" || cap2 === "round" || cap2 === "square") style.cap = cap2;
+  const join2 = declared(el, "stroke-linejoin");
+  if (join2 === "miter" || join2 === "round" || join2 === "bevel") style.join = join2;
+  else if (join2 === "miter-clip" || join2 === "arcs") style.join = "miter";
+  const css = el.attrs.style;
+  if (FONT_PROPERTIES.some((name) => el.attrs[name] !== void 0) || css !== void 0 && /font|text-|baseline|space/.test(css)) {
+    style.font = fontOf((name) => declared(el, name), inherited.font);
+  }
+  const dash = declared(el, "stroke-dasharray");
+  if (dash !== void 0 && dash !== "inherit") {
+    const lengths = dash === "none" ? [] : dash.split(/[\s,]+/).filter(Boolean).map(Number);
+    const valid = lengths.length > 0 && lengths.every((n) => Number.isFinite(n) && n >= 0) && lengths.some((n) => n > 0);
+    style.dash = valid ? lengths.length % 2 === 1 ? [...lengths, ...lengths] : lengths : void 0;
+  }
+  return style;
+}
+function urlOf(value) {
+  const match = value === void 0 ? null : /^url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(value);
+  return match ? match[1] : void 0;
+}
+function referencedPaint(id, ids, current) {
+  const el = ids.get(id);
+  if (!el) return null;
+  if (el.name === "linearGradient" || el.name === "radialGradient") {
+    const stops = gradientStops(el, ids, 0);
+    if (stops.length === 0) return null;
+    if (stops.length === 1) return stops[0].paint;
+    let weight = 0;
+    let r = 0, g = 0, b = 0, a = 0;
+    for (let i2 = 0; i2 + 1 < stops.length; i2++) {
+      const w = Math.max(0, stops[i2 + 1].offset - stops[i2].offset);
+      for (const stop of [stops[i2], stops[i2 + 1]]) {
+        r += stop.paint.color.r * w;
+        g += stop.paint.color.g * w;
+        b += stop.paint.color.b * w;
+        a += stop.paint.opacity * w;
+      }
+      weight += 2 * w;
+    }
+    if (!(weight > 0)) return stops[0].paint;
+    return { color: { r: Math.round(r / weight), g: Math.round(g / weight), b: Math.round(b / weight) }, opacity: a / weight };
+  }
+  if (el.name === "pattern") {
+    const first = firstColor(el, current);
+    return first ? { color: first, opacity: PATTERN_OPACITY } : null;
+  }
+  return null;
+}
+function gradientStops(el, ids, depth) {
+  const stops = el.children.filter((child) => child.name === "stop").map((stop) => {
+    const raw = declared(stop, "offset") ?? "0";
+    const offset = clamp01(raw.endsWith("%") ? parseFloat(raw) / 100 : parseFloat(raw) || 0);
+    const tint2 = parseTint(declared(stop, "stop-color") ?? "black", BLACK) ?? BLACK;
+    const opacity = clamp01(parseFloat(declared(stop, "stop-opacity") ?? "1")) * (tint2.alpha ?? 1);
+    return { offset, paint: { color: { r: tint2.r, g: tint2.g, b: tint2.b }, opacity } };
+  });
+  if (stops.length > 0 || depth > MAX_USE_DEPTH) return stops;
+  const parent = ids.get(hrefOf(el) ?? "");
+  return parent ? gradientStops(parent, ids, depth + 1) : [];
+}
+function firstColor(el, current) {
+  for (const child of el.children) {
+    for (const name of ["fill", "stroke"]) {
+      const value = declared(child, name);
+      if (value && value !== "none" && urlOf(value) === void 0) {
+        const color = value === "currentColor" ? current : parseColor(value, current);
+        if (color) return color;
+      }
+    }
+    const nested = firstColor(child, current);
+    if (nested) return nested;
+  }
+  return void 0;
+}
+function inheritedAttr(el, name, ids) {
+  let at = el;
+  for (let depth = 0; at && depth <= MAX_USE_DEPTH; depth++) {
+    const value = at.attrs[name];
+    if (value !== void 0) return value.trim();
+    at = ids.get(hrefOf(at) ?? "");
+  }
+  return void 0;
+}
+function patternContent(el, ids) {
+  let at = el;
+  for (let depth = 0; at && depth <= MAX_USE_DEPTH; depth++) {
+    if (at.children.length > 0) return at.children;
+    at = ids.get(hrefOf(at) ?? "");
+  }
+  return [];
+}
+function shapesIn(nodes, ids, depth = 0) {
+  if (depth > MAX_USE_DEPTH) return 1e3;
+  let n = 0;
+  for (const node of nodes) {
+    if (SKIPPED.has(node.name)) continue;
+    if (node.name === "use") {
+      const target = ids.get(hrefOf(node) ?? "");
+      if (target) n += target.name === "g" || target.name === "symbol" ? shapesIn(target.children, ids, depth + 1) : shapesIn([target], ids, depth + 1);
+    } else if (shapePath(node) !== void 0) n += 2;
+    else n += shapesIn(node.children, ids, depth + 1);
+    if (n >= 1e3) return 1e3;
+  }
+  return n;
+}
+function gradientBands(stops) {
+  const cuts = [.../* @__PURE__ */ new Set([0, 1, ...stops.map((stop) => stop.offset), ...Array.from({ length: GRADIENT_BANDS }, (_, k) => k / GRADIENT_BANDS)])].sort((a, b) => a - b);
+  const bands = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const from = cuts[k];
+    const to = cuts[k + 1];
+    if (!(to > from)) continue;
+    const paint2 = colorAt(stops, (from + to) / 2);
+    const before = bands[bands.length - 1];
+    if (before && sameRgb(before.paint.color, paint2.color) && Math.abs(before.paint.opacity - paint2.opacity) < 2e-3) before.to = to;
+    else bands.push({ from, to, paint: paint2 });
+  }
+  return bands;
+}
+function colorAt(stops, t) {
+  let previous = stops[0];
+  if (t <= previous.offset) return previous.paint;
+  for (const stop of stops.slice(1)) {
+    const offset = Math.max(stop.offset, previous.offset);
+    if (t <= offset) {
+      const f = offset > previous.offset ? (t - previous.offset) / (offset - previous.offset) : 1;
+      const mix = (a2, b2) => Math.round(a2 + (b2 - a2) * f);
+      const a = previous.paint;
+      const b = stop.paint;
+      return { color: { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b) }, opacity: a.opacity + (b.opacity - a.opacity) * f };
+    }
+    previous = { offset, paint: stop.paint };
+  }
+  return previous.paint;
+}
+function pathBox(d) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const subpath of flattenSubpaths(d, IDENTITY, 0.01)) {
+    const p = subpath.points;
+    for (let i2 = 0; i2 + 1 < p.length; i2 += 2) {
+      if (p[i2] < x0) x0 = p[i2];
+      if (p[i2] > x1) x1 = p[i2];
+      if (p[i2 + 1] < y0) y0 = p[i2 + 1];
+      if (p[i2 + 1] > y1) y1 = p[i2 + 1];
+    }
+  }
+  return x1 >= x0 && y1 >= y0 && Number.isFinite(x1 - x0 + y1 - y0) ? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } : void 0;
+}
+function fmt(v) {
+  return (Math.round(v * 1e5) / 1e5).toFixed(5).replace(/\.?0+$/, "");
+}
+function shapePath(el) {
+  const a = el.attrs;
+  const n = (v) => length(v) ?? 0;
+  switch (el.name) {
+    case "path":
+      return a.d ?? "";
+    case "rect": {
+      const w = n(a.width);
+      const h = n(a.height);
+      if (!(w > 0 && h > 0)) return "";
+      const x2 = n(a.x);
+      const y = n(a.y);
+      let rx = length(a.rx);
+      let ry = length(a.ry);
+      if (rx === void 0) rx = ry;
+      if (ry === void 0) ry = rx;
+      rx = Math.min(Math.max(0, rx ?? 0), w / 2);
+      ry = Math.min(Math.max(0, ry ?? 0), h / 2);
+      if (!(rx > 0 && ry > 0)) return `M${x2} ${y}H${x2 + w}V${y + h}H${x2}Z`;
+      return `M${x2 + rx} ${y}H${x2 + w - rx}A${rx} ${ry} 0 0 1 ${x2 + w} ${y + ry}V${y + h - ry}A${rx} ${ry} 0 0 1 ${x2 + w - rx} ${y + h}H${x2 + rx}A${rx} ${ry} 0 0 1 ${x2} ${y + h - ry}V${y + ry}A${rx} ${ry} 0 0 1 ${x2 + rx} ${y}Z`;
+    }
+    case "circle":
+    case "ellipse": {
+      const cx = n(a.cx);
+      const cy = n(a.cy);
+      const rx = el.name === "circle" ? n(a.r) : n(a.rx);
+      const ry = el.name === "circle" ? n(a.r) : n(a.ry);
+      if (!(rx > 0 && ry > 0)) return "";
+      return `M${cx + rx} ${cy}A${rx} ${ry} 0 1 1 ${cx - rx} ${cy}A${rx} ${ry} 0 1 1 ${cx + rx} ${cy}Z`;
+    }
+    case "line":
+      return `M${n(a.x1)} ${n(a.y1)}L${n(a.x2)} ${n(a.y2)}`;
+    case "polyline":
+    case "polygon": {
+      const points = (a.points ?? "").trim().split(/[\s,]+/).filter(Boolean).map(Number);
+      if (points.length < 4 || points.some((v) => !Number.isFinite(v))) return "";
+      let d = `M${points[0]} ${points[1]}`;
+      for (let i2 = 2; i2 + 1 < points.length; i2 += 2) d += `L${points[i2]} ${points[i2 + 1]}`;
+      return el.name === "polygon" ? d + "Z" : d;
+    }
+    default:
+      return void 0;
+  }
+}
+function multiply(p, q) {
+  return [
+    p[0] * q[0] + p[2] * q[1],
+    p[1] * q[0] + p[3] * q[1],
+    p[0] * q[2] + p[2] * q[3],
+    p[1] * q[2] + p[3] * q[3],
+    p[0] * q[4] + p[2] * q[5] + p[4],
+    p[1] * q[4] + p[3] * q[5] + p[5]
+  ];
+}
+function transformOf(value) {
+  if (value === void 0 || value.trim() === "") return IDENTITY;
+  let m = IDENTITY;
+  const pattern = /\s*(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)\s*,?/gy;
+  let at = 0;
+  for (let match = pattern.exec(value); match; match = pattern.exec(value)) {
+    at = pattern.lastIndex;
+    const args = match[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    if (args.some((v) => !Number.isFinite(v))) throw new SvgError(`unreadable transform ${match[0]}`);
+    m = multiply(m, single(match[1], args));
+  }
+  if (value.slice(at).trim() !== "") throw new SvgError(`unreadable transform ${value}`);
+  return m;
+}
+function single(kind, args) {
+  const [a = 0, b, c] = args;
+  switch (kind) {
+    case "matrix":
+      if (args.length !== 6) throw new SvgError("matrix() takes six numbers");
+      return args;
+    case "translate":
+      return [1, 0, 0, 1, a, b ?? 0];
+    case "scale":
+      return [a, 0, 0, b ?? a, 0, 0];
+    case "rotate": {
+      const r = a * Math.PI / 180;
+      const cos = Math.cos(r);
+      const sin = Math.sin(r);
+      const rot = [cos, sin, -sin, cos, 0, 0];
+      if (b === void 0 || c === void 0) return rot;
+      return multiply(multiply([1, 0, 0, 1, b, c], rot), [1, 0, 0, 1, -b, -c]);
+    }
+    case "skewX":
+      return [1, 0, Math.tan(a * Math.PI / 180), 1, 0, 0];
+    case "skewY":
+      return [1, Math.tan(a * Math.PI / 180), 0, 1, 0, 0];
+    default:
+      return IDENTITY;
+  }
+}
+function invert(m) {
+  const [a, b, c, d, e, f] = m;
+  const det = a * d - b * c;
+  if (!(Math.abs(det) > 1e-12)) return void 0;
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+}
+function apply(m, x2, y) {
+  return [m[0] * x2 + m[2] * y + m[4], m[1] * x2 + m[3] * y + m[5]];
+}
+function parseColor(value, current) {
+  const tint2 = parseTint(value, current);
+  return tint2 && { r: tint2.r, g: tint2.g, b: tint2.b };
+}
+function parseTint(value, current) {
+  const v = value.trim().toLowerCase();
+  if (v === "currentcolor") return current;
+  const pair = /^light-dark\((.*)\)$/.exec(v);
+  if (pair) {
+    const first = /^((?:[^,(]|\([^)]*\))*),/.exec(pair[1]);
+    return first ? parseTint(first[1], current) : void 0;
+  }
+  if (v === "transparent") return { r: 0, g: 0, b: 0, alpha: 0 };
+  const byte = (x2) => Math.min(255, Math.max(0, Math.round(x2)));
+  const withAlpha = (rgb, alpha) => {
+    if (alpha === void 0 || alpha >= 1) return rgb;
+    return Number.isFinite(alpha) ? { ...rgb, alpha: Math.max(0, alpha) } : void 0;
+  };
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(v);
+  if (hex) {
+    const digits2 = hex[1];
+    const full = digits2.length <= 4 ? [...digits2].map((d) => d + d).join("") : digits2;
+    const channel = (at) => parseInt(full.slice(at, at + 2), 16);
+    return withAlpha({ r: channel(0), g: channel(2), b: channel(4) }, full.length === 8 ? channel(6) / 255 : void 0);
+  }
+  const fn = /^(rgba?|hsla?)\(([^)]*)\)$/.exec(v);
+  if (fn) {
+    const parts = fn[2].split(/[\s,/]+/).filter(Boolean);
+    if (parts.length < 3 || parts.length > 4) return void 0;
+    const fraction = (p) => p.endsWith("%") ? parseFloat(p) / 100 : parseFloat(p);
+    const alpha = parts[3] === void 0 ? void 0 : fraction(parts[3]);
+    if (fn[1].startsWith("rgb")) {
+      const [r, g, b] = parts.slice(0, 3).map((p) => p.endsWith("%") ? fraction(p) * 255 : parseFloat(p));
+      if (![r, g, b].every(Number.isFinite)) return void 0;
+      return withAlpha({ r: byte(r), g: byte(g), b: byte(b) }, alpha);
+    }
+    const h = parseFloat(parts[0].replace(/deg$/, ""));
+    const s = Math.min(1, Math.max(0, fraction(parts[1])));
+    const l = Math.min(1, Math.max(0, fraction(parts[2])));
+    if (![h, s, l].every(Number.isFinite)) return void 0;
+    const at = (n) => {
+      const k = ((n + h / 30) % 12 + 12) % 12;
+      return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    };
+    return withAlpha({ r: byte(at(0) * 255), g: byte(at(8) * 255), b: byte(at(4) * 255) }, alpha);
+  }
+  return NAMED_COLORS.get(v);
+}
+var SvgError;
+var MAX_PICTURE_OPS;
+var MAX_PATH_DATA;
+var MAX_PICTURE_NUMBERS;
+var MAX_VISITS;
+var MAX_USE_DEPTH;
+var PATTERN_OPACITY;
+var GRADIENT_BANDS;
+var MAX_PATTERN_OPS;
+var MAX_SERVER_CLIPS;
+var BLACK;
+var INITIAL;
+var IDENTITY;
+var SKIPPED;
+var REFUSED;
+var MAX_FOLDED_STYLE;
+var BP_PER;
+var sameRgb;
+var clamp01;
+var init_svg = __esm({
+  "core/src/diagram/svg.ts"() {
+    "use strict";
+    init_path();
+    init_css();
+    init_svg_text();
+    init_xml();
+    SvgError = class extends Error {
+    };
+    MAX_PICTURE_OPS = 6e4;
+    MAX_PATH_DATA = 1e6;
+    MAX_PICTURE_NUMBERS = 2e6;
+    MAX_VISITS = 4e5;
+    MAX_USE_DEPTH = 8;
+    PATTERN_OPACITY = 0.35;
+    GRADIENT_BANDS = 64;
+    MAX_PATTERN_OPS = 6e3;
+    MAX_SERVER_CLIPS = 64;
+    BLACK = { r: 0, g: 0, b: 0 };
+    INITIAL = {
+      fill: BLACK,
+      fillOpacity: 1,
+      fillRule: "nonzero",
+      stroke: null,
+      strokeOpacity: 1,
+      strokeWidth: 1,
+      cap: "butt",
+      join: "miter",
+      miterLimit: 4,
+      dash: void 0,
+      dashOffset: 0,
+      opacity: 1,
+      color: BLACK,
+      clip: void 0,
+      font: INITIAL_FONT
+    };
+    IDENTITY = [1, 0, 0, 1, 0, 0];
+    SKIPPED = /* @__PURE__ */ new Set(["defs", "clipPath", "linearGradient", "radialGradient", "pattern", "symbol", "marker", "mask", "filter", "title", "desc", "metadata", "style", "script", "foreignObject"]);
+    REFUSED = /* @__PURE__ */ new Map([
+      ["image", "embedded bitmaps (<image>) are not drawn"],
+      ["svg", "nested <svg> documents are not drawn"],
+      ["video", "<video> is not drawn"],
+      ["iframe", "<iframe> is not drawn"]
+    ]);
+    MAX_FOLDED_STYLE = 8 * 1024 * 1024;
+    BP_PER = { px: 0.75, pt: 1, pc: 12, mm: 72 / 25.4, cm: 72 / 2.54, in: 72, q: 72 / 101.6 };
+    sameRgb = (a, b) => a.r === b.r && a.g === b.g && a.b === b.b;
+    clamp01 = (v) => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  }
+});
 // node_modules/jpeg-js/lib/decoder.js
 var require_decoder = __commonJS({
   "node_modules/jpeg-js/lib/decoder.js"(exports2, module) {
@@ -995,908 +2007,4 @@ var require_decoder = __commonJS({
     }
   }
 });
-// core/src/typeset/errors.ts
-var TexError;
-var GlyphError;
-var init_errors = __esm({
-  "core/src/typeset/errors.ts"() {
-    "use strict";
-    TexError = class extends Error {
-      name = "TexError";
-    };
-    GlyphError = class extends TexError {
-      name = "GlyphError";
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/DOMAdaptor.js
-var AbstractDOMAdaptor;
-var init_DOMAdaptor = __esm({
-  "node_modules/@mathjax/src/mjs/core/DOMAdaptor.js"() {
-    AbstractDOMAdaptor = class {
-      constructor(document = null) {
-        this.canMeasureNodes = true;
-        this.document = document;
-      }
-      node(kind, def2 = {}, children = [], ns) {
-        const node = this.create(kind, ns);
-        this.setAttributes(node, def2);
-        for (const child of children) {
-          this.append(node, child);
-        }
-        return node;
-      }
-      setProperty(node, name, value) {
-        node[name] = value;
-      }
-      getProperty(node, name) {
-        return node[name];
-      }
-      setAttributes(node, def2) {
-        if (def2.style && typeof def2.style !== "string") {
-          for (const key of Object.keys(def2.style)) {
-            this.setStyle(node, key.replace(/-([a-z])/g, (_m, c) => c.toUpperCase()), def2.style[key]);
-          }
-        }
-        if (def2.properties) {
-          for (const key of Object.keys(def2.properties)) {
-            node[key] = def2.properties[key];
-          }
-        }
-        for (const key of Object.keys(def2)) {
-          if ((key !== "style" || typeof def2.style === "string") && key !== "properties") {
-            this.setAttribute(node, key, def2[key]);
-          }
-        }
-      }
-      replace(nnode, onode) {
-        this.insert(nnode, onode);
-        this.remove(onode);
-        return onode;
-      }
-      childNode(node, i2) {
-        return this.childNodes(node)[i2];
-      }
-      allClasses(node) {
-        const classes = this.getAttribute(node, "class");
-        return !classes ? [] : classes.replace(/  +/g, " ").replace(/^ /, "").replace(/ $/, "").split(/ /);
-      }
-      cssText(node) {
-        return this.kind(node) === "style" ? this.textContent(node) : "";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Options.js
-function isObject(obj) {
-  return typeof obj === "object" && obj !== null && (obj.constructor === OBJECT || obj.constructor === Expandable);
-}
-function expandable(def2) {
-  return Object.assign(Object.create(Expandable.prototype), def2);
-}
-function makeArray(x2) {
-  return Array.isArray(x2) ? x2 : [x2];
-}
-function keys(def2) {
-  if (!def2) {
-    return [];
-  }
-  return Object.keys(def2).concat(Object.getOwnPropertySymbols(def2));
-}
-function copy(def2) {
-  const props = {};
-  for (const key of keys(def2)) {
-    const prop = Object.getOwnPropertyDescriptor(def2, key);
-    const value = prop.value;
-    if (Array.isArray(value)) {
-      prop.value = insert([], value, false);
-    } else if (isObject(value)) {
-      prop.value = copy(value);
-    }
-    if (prop.enumerable) {
-      props[key] = prop;
-    }
-  }
-  return Object.defineProperties(def2.constructor === Expandable ? expandable({}) : {}, props);
-}
-function insert(dst, src, warn = true) {
-  for (let key of keys(src)) {
-    if (warn && dst[key] === void 0 && dst.constructor !== Expandable) {
-      if (typeof key === "symbol") {
-        key = key.toString();
-      }
-      OPTIONS.optionError(`Invalid option "${key}" (no default value).`, key);
-      continue;
-    }
-    const sval = src[key];
-    let dval = dst[key];
-    if (isObject(sval) && dval !== null && (typeof dval === "object" || typeof dval === "function")) {
-      const ids = keys(sval);
-      if (Array.isArray(dval) && (ids.length === 1 && (ids[0] === APPEND || ids[0] === REMOVE) && Array.isArray(sval[ids[0]]) || ids.length === 2 && ids.sort().join(",") === APPEND + "," + REMOVE && Array.isArray(sval[APPEND]) && Array.isArray(sval[REMOVE]))) {
-        if (sval[REMOVE]) {
-          dval = dst[key] = dval.filter((x2) => sval[REMOVE].indexOf(x2) < 0);
-        }
-        if (sval[APPEND]) {
-          dst[key] = [...dval, ...sval[APPEND]];
-        }
-      } else {
-        insert(dval, sval, warn);
-      }
-    } else if (Array.isArray(sval)) {
-      dst[key] = [];
-      insert(dst[key], sval, false);
-    } else if (isObject(sval)) {
-      dst[key] = copy(sval);
-    } else {
-      dst[key] = sval;
-    }
-  }
-  return dst;
-}
-function defaultOptions(options3, ...defs) {
-  defs.forEach((def2) => insert(options3, def2, false));
-  return options3;
-}
-function userOptions(options3, ...defs) {
-  defs.forEach((def2) => insert(options3, def2, true));
-  return options3;
-}
-function separateOptions(options3, ...objects) {
-  const results = [];
-  for (const object of objects) {
-    const exists = {}, missing = {};
-    for (const key of Object.keys(options3 || {})) {
-      (object[key] === void 0 ? missing : exists)[key] = options3[key];
-    }
-    results.push(exists);
-    options3 = missing;
-  }
-  results.unshift(options3);
-  return results;
-}
-function lookup(name, lookup2, def2 = null) {
-  return Object.hasOwn(lookup2, name) ? lookup2[name] : def2;
-}
-var OBJECT;
-var APPEND;
-var REMOVE;
-var OPTIONS;
-var Expandable;
-var init_Options = __esm({
-  "node_modules/@mathjax/src/mjs/util/Options.js"() {
-    OBJECT = {}.constructor;
-    APPEND = "[+]";
-    REMOVE = "[-]";
-    OPTIONS = {
-      invalidOption: "warn",
-      optionError: (message, _key) => {
-        if (OPTIONS.invalidOption === "fatal") {
-          throw new Error(message);
-        }
-        console.warn("MathJax: " + message);
-      }
-    };
-    Expandable = class {
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/components/version.js
-var VERSION;
-var init_version = __esm({
-  "node_modules/@mathjax/src/mjs/components/version.js"() {
-    VERSION = "4.1.3";
-  }
-});
-// node_modules/@mathjax/src/mjs/util/PrioritizedList.js
-var PrioritizedList;
-var init_PrioritizedList = __esm({
-  "node_modules/@mathjax/src/mjs/util/PrioritizedList.js"() {
-    PrioritizedList = class _PrioritizedList {
-      constructor() {
-        this.items = [];
-        this.items = [];
-      }
-      [Symbol.iterator]() {
-        let i2 = 0;
-        const items = this.items;
-        return {
-          next() {
-            return { value: items[i2++], done: i2 > items.length };
-          }
-        };
-      }
-      add(item, priority = _PrioritizedList.DEFAULTPRIORITY) {
-        let i2 = this.items.length;
-        do {
-          i2--;
-        } while (i2 >= 0 && priority < this.items[i2].priority);
-        this.items.splice(i2 + 1, 0, { item, priority });
-        return item;
-      }
-      remove(item) {
-        let i2 = this.items.length;
-        do {
-          i2--;
-        } while (i2 >= 0 && this.items[i2].item !== item);
-        if (i2 >= 0) {
-          this.items.splice(i2, 1);
-        }
-        return this;
-      }
-    };
-    PrioritizedList.DEFAULTPRIORITY = 5;
-  }
-});
-// node_modules/@mathjax/src/mjs/core/HandlerList.js
-var HandlerList;
-var init_HandlerList = __esm({
-  "node_modules/@mathjax/src/mjs/core/HandlerList.js"() {
-    init_PrioritizedList();
-    HandlerList = class extends PrioritizedList {
-      register(handler) {
-        return this.add(handler, handler.priority);
-      }
-      unregister(handler) {
-        this.remove(handler);
-      }
-      handlesDocument(document) {
-        for (const item of this) {
-          const handler = item.item;
-          if (handler.handlesDocument(document)) {
-            return handler;
-          }
-        }
-        throw new Error(`Can't find handler for document`);
-      }
-      document(document, options3 = null) {
-        return this.handlesDocument(document).create(document, options3);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Retries.js
-function handleRetriesFor(code) {
-  return new Promise(function run2(ok, fail2) {
-    const handleRetry = (err2) => {
-      var _a2;
-      if (err2.retry instanceof Promise) {
-        err2.retry.then(() => run2(ok, fail2)).catch((e) => fail2(e));
-      } else if ((_a2 = err2.restart) === null || _a2 === void 0 ? void 0 : _a2.isCallback) {
-        MathJax.Callback.After(() => run2(ok, fail2), err2.restart);
-      } else {
-        fail2(err2);
-      }
-    };
-    try {
-      const result = code();
-      if (result instanceof Promise) {
-        result.then((value) => ok(value)).catch((err2) => handleRetry(err2));
-      } else {
-        ok(result);
-      }
-    } catch (err2) {
-      handleRetry(err2);
-    }
-  });
-}
-function retryAfter(promise) {
-  const err2 = new Error("MathJax retry -- an asynchronous action is required; try using one of the promise-based functions and await its resolution.");
-  err2.retry = promise;
-  throw err2;
-}
-var init_Retries = __esm({
-  "node_modules/@mathjax/src/mjs/util/Retries.js"() {
-  }
-});
-// node_modules/@mathjax/src/mjs/util/context.js
-var hasWindow;
-var isCJS;
-var context;
-var init_context = __esm({
-  "node_modules/@mathjax/src/mjs/util/context.js"() {
-    hasWindow = false;
-    isCJS = false;
-    context = {
-      window: hasWindow ? void 0 : null,
-      document: hasWindow ? (void 0).document : null,
-      os: (() => {
-        if (hasWindow && (void 0).navigator) {
-          const app = (void 0).navigator.appVersion;
-          const osNames = [
-            ["Win", "Windows"],
-            ["Mac", "MacOS"],
-            ["X11", "Unix"],
-            ["Linux", "Unix"]
-          ];
-          for (const [key, os] of osNames) {
-            if (app.includes(key)) {
-              return os;
-            }
-          }
-          if ((void 0).navigator.userAgent.includes("Android")) {
-            return "Unix";
-          }
-        } else if (false) {
-          return {
-            linux: "Unix",
-            android: "Unix",
-            aix: "Unix",
-            freebsd: "Unix",
-            netbsd: "Unix",
-            openbsd: "Unix",
-            sunos: "Unix",
-            darwin: "MacOS",
-            win32: "Windows",
-            cygwin: "Windows"
-          }[(void 0).platform] || (void 0).platform;
-        }
-        return "unknown";
-      })(),
-      path: (file) => file
-    };
-    if (context.os === "Windows") {
-      context.path = (file) => file.match(/^[/\\]?[a-zA-Z]:[/\\]/) ? (isCJS ? "" : "file://") + file.replace(/\\/g, "/").replace(/^\//, "") : file.replace(/^\//, "file:///");
-    }
-  }
-});
-// node_modules/@mathjax/src/mjs/mathjax.js
-var mathjax;
-var init_mathjax = __esm({
-  "node_modules/@mathjax/src/mjs/mathjax.js"() {
-    init_version();
-    init_HandlerList();
-    init_Retries();
-    init_context();
-    mathjax = {
-      version: VERSION,
-      context,
-      handlers: new HandlerList(),
-      document: function(document, options3) {
-        return mathjax.handlers.document(document, options3);
-      },
-      handleRetriesFor,
-      retryAfter,
-      asyncLoad: null,
-      asyncIsSynchronous: false
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/AsyncLoad.js
-function asyncLoad(name) {
-  if (!mathjax.asyncLoad) {
-    return Promise.reject(`Can't load '${name}': No mathjax.asyncLoad method specified`);
-  }
-  return new Promise((ok, fail2) => {
-    const result = mathjax.asyncLoad(name);
-    if (result instanceof Promise) {
-      result.then((value) => ok(value)).catch((err2) => fail2(err2));
-    } else {
-      ok(result);
-    }
-  });
-}
-var init_AsyncLoad = __esm({
-  "node_modules/@mathjax/src/mjs/util/AsyncLoad.js"() {
-    init_mathjax();
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js
-function NodeMixin(Base2, options3 = {}) {
-  var _a2;
-  options3 = userOptions(defaultOptions({}, NodeMixinOptions), options3);
-  return _a2 = class NodeAdaptor extends Base2 {
-    constructor(...args) {
-      super(args[0]);
-      this.canMeasureNodes = false;
-      const CLASS = this.constructor;
-      this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), args[1]);
-    }
-    fontSize(node) {
-      return options3.badCSS ? this.options.fontSize : super.fontSize(node);
-    }
-    fontFamily(node) {
-      return options3.badCSS ? this.options.fontFamily : super.fontFamily(node);
-    }
-    nodeSize(node, em2 = 1, local = null) {
-      if (!options3.badSizes) {
-        return super.nodeSize(node, em2, local);
-      }
-      const text = this.textContent(node);
-      const non = Array.from(text.replace(_a2.cjkPattern, "")).length;
-      const CJK = Array.from(text).length - non;
-      return [
-        CJK * this.options.cjkCharWidth + non * this.options.unknownCharWidth,
-        this.options.unknownCharHeight
-      ];
-    }
-    nodeBBox(node) {
-      return options3.badSizes ? { left: 0, right: 0, top: 0, bottom: 0 } : super.nodeBBox(node);
-    }
-    createWorker(listener, options4) {
-      return __awaiter(this, void 0, void 0, function* () {
-        const { Worker: Worker2 } = yield asyncLoad("node:worker_threads");
-        class LiteWorker {
-          constructor(url2, options5 = {}) {
-            this.worker = new Worker2(url2, options5);
-          }
-          addEventListener(kind, listener2) {
-            this.worker.on(kind, listener2);
-          }
-          postMessage(msg) {
-            this.worker.postMessage({ data: msg });
-          }
-          terminate() {
-            this.worker.terminate();
-          }
-        }
-        const { path, maps: maps3 } = options4;
-        const url = `${path}/${options4.worker}`;
-        const worker = new LiteWorker(url, {
-          type: "module",
-          workerData: { maps: maps3 }
-        });
-        worker.addEventListener("message", listener);
-        return worker;
-      });
-    }
-  }, _a2.OPTIONS = Object.assign(Object.assign({}, options3.badCSS ? {
-    fontSize: 16,
-    fontFamily: "Times"
-  } : {}), options3.badSizes ? {
-    cjkCharWidth: 1,
-    unknownCharWidth: 0.6,
-    unknownCharHeight: 0.8
-  } : {}), _a2.cjkPattern = new RegExp([
-    "[",
-    "ᄀ-\u115F",
-    "〈〉",
-    "⺀-〾",
-    "\u3040-㉇",
-    "㉐-䶿",
-    "一-꓆",
-    "ꥠ-ꥼ",
-    "가-힣",
-    "豈-\uFAFF",
-    "︐-︙",
-    "︰-﹫",
-    "！-｠￠-￦",
-    "𛀀-𛀁",
-    "🈀-🉑",
-    "𠀀-\uD8BF\uDFFD",
-    "]"
-  ].join(""), "gu"), _a2;
-}
-var __awaiter;
-var NodeMixinOptions;
-var init_NodeMixin = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js"() {
-    init_Options();
-    init_AsyncLoad();
-    __awaiter = function(thisArg, _arguments, P, generator) {
-      function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve) {
-          resolve(value);
-        });
-      }
-      return new (P || (P = Promise))(function(resolve, reject) {
-        function fulfilled(value) {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function rejected(value) {
-          try {
-            step(generator["throw"](value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function step(result) {
-          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
-        }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
-    };
-    NodeMixinOptions = {
-      badCSS: true,
-      badSizes: true
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Element.js
-var LiteElement;
-var init_Element = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Element.js"() {
-    LiteElement = class {
-      constructor(kind, attributes = {}, children = []) {
-        this.kind = kind;
-        this.attributes = Object.assign({}, attributes);
-        this.children = [...children];
-        for (const child of this.children) {
-          child.parent = this;
-        }
-        this.styles = null;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Document.js
-var LiteDocument;
-var init_Document = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Document.js"() {
-    init_Element();
-    LiteDocument = class {
-      get kind() {
-        return "#document";
-      }
-      constructor(window2 = null) {
-        this.defaultView = null;
-        this.root = new LiteElement("html", {}, [
-          this.head = new LiteElement("head"),
-          this.body = new LiteElement("body")
-        ]);
-        this.type = "";
-        this.defaultView = window2;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Text.js
-var LiteText;
-var LiteComment;
-var init_Text = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Text.js"() {
-    LiteText = class {
-      get kind() {
-        return "#text";
-      }
-      constructor(text = "") {
-        this.value = text;
-      }
-    };
-    LiteComment = class extends LiteText {
-      get kind() {
-        return "#comment";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/List.js
-var LiteList;
-var init_List = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/List.js"() {
-    LiteList = class {
-      constructor(children) {
-        this.nodes = [];
-        this.nodes = [...children];
-      }
-      append(node) {
-        this.nodes.push(node);
-      }
-      [Symbol.iterator]() {
-        let i2 = 0;
-        return {
-          next() {
-            return i2 === this.nodes.length ? { value: null, done: true } : { value: this.nodes[i2++], done: false };
-          }
-        };
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/util/Entities.js
-function translate(text) {
-  return text.replace(/&([a-z][a-z0-9]*|#(?:[0-9]+|x[0-9a-f]+));/gi, replace);
-}
-function replace(match, entity) {
-  if (entity.charAt(0) === "#") {
-    return numeric(entity.slice(1));
-  }
-  if (entities[entity]) {
-    return entities[entity];
-  }
-  if (options2["loadMissingEntities"]) {
-    const file = entity.match(/^[a-zA-Z](fr|scr|opf)$/) ? RegExp.$1 : entity.charAt(0).toLowerCase();
-    if (!loaded[file]) {
-      loaded[file] = true;
-      retryAfter(asyncLoad("./util/entities/" + file + ".js"));
-    }
-  }
-  return match;
-}
-function numeric(entity) {
-  const n = entity.charAt(0) === "x" ? parseInt(entity.slice(1), 16) : parseInt(entity);
-  return String.fromCodePoint(n);
-}
-var options2;
-var entities;
-var loaded;
-var init_Entities = __esm({
-  "node_modules/@mathjax/src/mjs/util/Entities.js"() {
-    init_Retries();
-    init_AsyncLoad();
-    options2 = {
-      loadMissingEntities: true
-    };
-    entities = JSON.parse(`{
- "ApplyFunction":"\u2061","Backslash":"∖","Because":"∵","Breve":"˘","Cap":"⋒","CenterDot":"·","CircleDot":"⊙","CircleMinus":"⊖","CirclePlus":"⊕","CircleTimes":"⊗","Congruent":"≡","ContourIntegral":"∮",
- "Coproduct":"∐","Cross":"⨯","Cup":"⋓","CupCap":"≍","Dagger":"‡","Del":"∇","Delta":"Δ","Diamond":"⋄","DifferentialD":"ⅆ","DotEqual":"≐","DoubleDot":"¨","DoubleRightTee":"⊨","DoubleVerticalBar":"∥",
- "DownArrow":"↓","DownLeftVector":"↽","DownRightVector":"⇁","DownTee":"⊤","Downarrow":"⇓","Element":"∈","EqualTilde":"≂","Equilibrium":"⇌","Exists":"∃","ExponentialE":"ⅇ","FilledVerySmallSquare":"▪",
- "ForAll":"∀","Gamma":"Γ","Gg":"⋙","GreaterEqual":"≥","GreaterEqualLess":"⋛","GreaterFullEqual":"≧","GreaterLess":"≷","GreaterSlantEqual":"⩾","GreaterTilde":"≳","Hacek":"ˇ","Hat":"^","HumpDownHump":"≎",
- "HumpEqual":"≏","Im":"ℑ","ImaginaryI":"ⅈ","Integral":"∫","Intersection":"⋂","InvisibleComma":"\u2063","InvisibleTimes":"\u2062","Lambda":"Λ","Larr":"↞","LeftAngleBracket":"⟨","LeftArrow":"←",
- "LeftArrowRightArrow":"⇆","LeftCeiling":"⌈","LeftDownVector":"⇃","LeftFloor":"⌊","LeftRightArrow":"↔","LeftTee":"⊣","LeftTriangle":"⊲","LeftTriangleEqual":"⊴","LeftUpVector":"↿","LeftVector":"↼",
- "Leftarrow":"⇐","Leftrightarrow":"⇔","LessEqualGreater":"⋚","LessFullEqual":"≦","LessGreater":"≶","LessSlantEqual":"⩽","LessTilde":"≲","Ll":"⋘","Lleftarrow":"⇚","LongLeftArrow":"⟵",
- "LongLeftRightArrow":"⟷","LongRightArrow":"⟶","Longleftarrow":"⟸","Longleftrightarrow":"⟺","Longrightarrow":"⟹","Lsh":"↰","MinusPlus":"∓","NestedGreaterGreater":"≫","NestedLessLess":"≪",
- "NotDoubleVerticalBar":"∦","NotElement":"∉","NotEqual":"≠","NotExists":"∄","NotGreater":"≯","NotGreaterEqual":"≱","NotLeftTriangle":"⋪","NotLeftTriangleEqual":"⋬","NotLess":"≮","NotLessEqual":"≰",
- "NotPrecedes":"⊀","NotPrecedesSlantEqual":"⋠","NotRightTriangle":"⋫","NotRightTriangleEqual":"⋭","NotSubsetEqual":"⊈","NotSucceeds":"⊁","NotSucceedsSlantEqual":"⋡","NotSupersetEqual":"⊉",
- "NotTilde":"≁","NotVerticalBar":"∤","Omega":"Ω","OverBar":"‾","OverBrace":"⏞","PartialD":"∂","Phi":"Φ","Pi":"Π","PlusMinus":"±","Precedes":"≺","PrecedesEqual":"⪯","PrecedesSlantEqual":"≼",
- "PrecedesTilde":"≾","Product":"∏","Proportional":"∝","Psi":"Ψ","Rarr":"↠","Re":"ℜ","ReverseEquilibrium":"⇋","RightAngleBracket":"⟩","RightArrow":"→","RightArrowLeftArrow":"⇄","RightCeiling":"⌉",
- "RightDownVector":"⇂","RightFloor":"⌋","RightTee":"⊢","RightTeeArrow":"↦","RightTriangle":"⊳","RightTriangleEqual":"⊵","RightUpVector":"↾","RightVector":"⇀","Rightarrow":"⇒","Rrightarrow":"⇛",
- "Rsh":"↱","Sigma":"Σ","SmallCircle":"∘","Sqrt":"√","Square":"□","SquareIntersection":"⊓","SquareSubset":"⊏","SquareSubsetEqual":"⊑","SquareSuperset":"⊐","SquareSupersetEqual":"⊒","SquareUnion":"⊔",
- "Star":"⋆","Subset":"⋐","SubsetEqual":"⊆","Succeeds":"≻","SucceedsEqual":"⪰","SucceedsSlantEqual":"≽","SucceedsTilde":"≿","SuchThat":"∋","Sum":"∑","Superset":"⊃","SupersetEqual":"⊇","Supset":"⋑",
- "Therefore":"∴","Theta":"Θ","Tilde":"∼","TildeEqual":"≃","TildeFullEqual":"≅","TildeTilde":"≈","UnderBar":"_","UnderBrace":"⏟","Union":"⋃","UnionPlus":"⊎","UpArrow":"↑","UpDownArrow":"↕","UpTee":"⊥",
- "Uparrow":"⇑","Updownarrow":"⇕","Upsilon":"Υ","Vdash":"⊩","Vee":"⋁","VerticalBar":"∣","VerticalTilde":"≀","Vvdash":"⊪","Wedge":"⋀","Xi":"Ξ","amp":"&","acute":"´","aleph":"ℵ","alpha":"α","amalg":"⨿",
- "and":"∧","ang":"∠","angmsd":"∡","angsph":"∢","ape":"≊","backprime":"‵","backsim":"∽","backsimeq":"⋍","beta":"β","beth":"ℶ","between":"≬","bigcirc":"◯","bigodot":"⨀","bigoplus":"⨁","bigotimes":"⨂",
- "bigsqcup":"⨆","bigstar":"★","bigtriangledown":"▽","bigtriangleup":"△","biguplus":"⨄","blacklozenge":"⧫","blacktriangle":"▴","blacktriangledown":"▾","blacktriangleleft":"◂","bowtie":"⋈","boxdl":"┐",
- "boxdr":"┌","boxminus":"⊟","boxplus":"⊞","boxtimes":"⊠","boxul":"┘","boxur":"└","bsol":"\\\\","bull":"•","cap":"∩","check":"✓","chi":"χ","circ":"ˆ","circeq":"≗","circlearrowleft":"↺",
- "circlearrowright":"↻","circledR":"®","circledS":"Ⓢ","circledast":"⊛","circledcirc":"⊚","circleddash":"⊝","clubs":"♣","colon":":","comp":"∁","ctdot":"⋯","cuepr":"⋞","cuesc":"⋟","cularr":"↶","cup":"∪",
- "curarr":"↷","curlyvee":"⋎","curlywedge":"⋏","dagger":"†","daleth":"ℸ","ddarr":"⇊","deg":"°","delta":"δ","digamma":"ϝ","div":"÷","divideontimes":"⋇","dot":"˙","doteqdot":"≑","dotplus":"∔",
- "dotsquare":"⊡","dtdot":"⋱","ecir":"≖","efDot":"≒","egs":"⪖","ell":"ℓ","els":"⪕","empty":"∅","epsi":"ε","epsiv":"ϵ","erDot":"≓","eta":"η","eth":"ð","flat":"♭","fork":"⋔","frown":"⌢","gEl":"⪌",
- "gamma":"γ","gap":"⪆","gimel":"ℷ","gnE":"≩","gnap":"⪊","gne":"⪈","gnsim":"⋧","gt":">","gtdot":"⋗","harrw":"↭","hbar":"ℏ","hellip":"…","hookleftarrow":"↩","hookrightarrow":"↪","imath":"ı","infin":"∞",
- "intcal":"⊺","iota":"ι","jmath":"ȷ","kappa":"κ","kappav":"ϰ","lEg":"⪋","lambda":"λ","lap":"⪅","larrlp":"↫","larrtl":"↢","lbrace":"{","lbrack":"[","le":"≤","leftleftarrows":"⇇","leftthreetimes":"⋋",
- "lessdot":"⋖","lmoust":"⎰","lnE":"≨","lnap":"⪉","lne":"⪇","lnsim":"⋦","longmapsto":"⟼","looparrowright":"↬","lowast":"∗","loz":"◊","lt":"<","ltimes":"⋉","ltri":"◃","macr":"¯","malt":"✠","mho":"℧",
- "mu":"μ","multimap":"⊸","nLeftarrow":"⇍","nLeftrightarrow":"⇎","nRightarrow":"⇏","nVDash":"⊯","nVdash":"⊮","natur":"♮","nearr":"↗","nharr":"↮","nlarr":"↚","not":"¬","nrarr":"↛","nu":"ν","nvDash":"⊭",
- "nvdash":"⊬","nwarr":"↖","omega":"ω","omicron":"ο","or":"∨","osol":"⊘","period":".","phi":"φ","phiv":"ϕ","pi":"π","piv":"ϖ","prap":"⪷","precnapprox":"⪹","precneqq":"⪵","precnsim":"⋨","prime":"′",
- "psi":"ψ","quot":"\\"","rarrtl":"↣","rbrace":"}","rbrack":"]","rho":"ρ","rhov":"ϱ","rightrightarrows":"⇉","rightthreetimes":"⋌","ring":"˚","rmoust":"⎱","rtimes":"⋊","rtri":"▹","scap":"⪸","scnE":"⪶",
- "scnap":"⪺","scnsim":"⋩","sdot":"⋅","searr":"↘","sect":"§","sharp":"♯","sigma":"σ","sigmav":"ς","simne":"≆","smile":"⌣","spades":"♠","sub":"⊂","subE":"⫅","subnE":"⫋","subne":"⊊","supE":"⫆","supnE":"⫌",
- "supne":"⊋","swarr":"↙","tau":"τ","theta":"θ","thetav":"ϑ","tilde":"˜","times":"×","triangle":"▵","triangleq":"≜","upsi":"υ","upuparrows":"⇈","veebar":"⊻","vellip":"⋮","weierp":"℘","xi":"ξ","yen":"¥",
- "zeta":"ζ","zigrarr":"⇝","nbsp":"\u00A0","rsquo":"’","lsquo":"‘"
-}`);
-    loaded = {};
-  }
-});
-// node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js
-var SPACE2;
-var OPTIONALSPACE;
-var TAGNAME;
-var ATTNAME;
-var VALUE;
-var VALUESPLIT;
-var ATTRIBUTE;
-var ATTRIBUTESPLIT;
-var TAG;
-var PATTERNS;
-var LiteParser;
-var init_Parser = __esm({
-  "node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js"() {
-    init_Entities();
-    init_Element();
-    init_Text();
-    SPACE2 = "[ \\n]+";
-    OPTIONALSPACE = "[ \\n]*";
-    TAGNAME = `[A-Za-z][^\0-\u001F "'>/=\u007F-\u009F]*`;
-    ATTNAME = `[^\0-\u001F "'>/=\u007F-\u009F]+`;
-    VALUE = `(?:'[^']*'|"[^"]*"|${SPACE2})`;
-    VALUESPLIT = `(?:'([^']*)'|"([^"]*)"|(${SPACE2}))`;
-    ATTRIBUTE = `${ATTNAME}(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUE})?`;
-    ATTRIBUTESPLIT = `(${ATTNAME})(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUESPLIT})?`;
-    TAG = `(<(?:${TAGNAME}(?:${SPACE2}${ATTRIBUTE})*${OPTIONALSPACE}/?|/${TAGNAME}|!--[^]*?--|![^]*?)(?:>|$))`;
-    PATTERNS = {
-      tag: new RegExp(TAG, "u"),
-      attr: new RegExp(ATTRIBUTE, "u"),
-      attrsplit: new RegExp(ATTRIBUTESPLIT, "u")
-    };
-    LiteParser = class {
-      parseFromString(text, _format = "text/html", adaptor = null) {
-        const root2 = adaptor.createDocument();
-        let node = adaptor.body(root2);
-        const parts = text.replace(/<\?.*?\?>/g, "").split(PATTERNS.tag);
-        while (parts.length) {
-          const text2 = parts.shift();
-          const tag3 = parts.shift();
-          if (text2) {
-            this.addText(adaptor, node, text2);
-          }
-          if (tag3 && tag3.charAt(tag3.length - 1) === ">") {
-            if (tag3.charAt(1) === "!") {
-              this.addComment(adaptor, node, tag3);
-            } else if (tag3.charAt(1) === "/") {
-              node = this.closeTag(adaptor, node, tag3);
-            } else {
-              node = this.openTag(adaptor, node, tag3, parts);
-            }
-          }
-        }
-        this.checkDocument(adaptor, root2);
-        return root2;
-      }
-      addText(adaptor, node, text) {
-        text = translate(text);
-        return adaptor.append(node, adaptor.text(text));
-      }
-      addComment(adaptor, node, comment) {
-        return adaptor.append(node, new LiteComment(comment));
-      }
-      closeTag(adaptor, node, tag3) {
-        const kind = tag3.slice(2, tag3.length - 1).toLowerCase();
-        while (adaptor.parent(node) && adaptor.kind(node) !== kind) {
-          node = adaptor.parent(node);
-        }
-        return adaptor.parent(node);
-      }
-      openTag(adaptor, node, tag3, parts) {
-        const PCDATA = this.constructor.PCDATA;
-        const SELF_CLOSING = this.constructor.SELF_CLOSING;
-        const kind = tag3.match(/<(.*?)[\s\n>/]/)[1].toLowerCase();
-        const child = adaptor.node(kind);
-        const attributes = tag3.replace(/^<.*?[\s\n>]/, "").split(PATTERNS.attrsplit);
-        if (attributes.pop().match(/>$/) || attributes.length < 5) {
-          this.addAttributes(adaptor, child, attributes);
-          adaptor.append(node, child);
-          if (!SELF_CLOSING[kind] && !tag3.match(/\/>$/)) {
-            if (PCDATA[kind]) {
-              this.handlePCDATA(adaptor, child, kind, parts);
-            } else {
-              node = child;
-            }
-          }
-        }
-        return node;
-      }
-      addAttributes(adaptor, node, attributes) {
-        while (attributes.length) {
-          const [, name, v1, v2, v3] = attributes.splice(0, 5);
-          const value = translate(v1 || v2 || v3 || "");
-          adaptor.setAttribute(node, name, value);
-        }
-      }
-      handlePCDATA(adaptor, node, kind, parts) {
-        const pcdata = [];
-        const etag = "</" + kind + ">";
-        let ptag = "";
-        while (parts.length && ptag !== etag) {
-          pcdata.push(ptag);
-          pcdata.push(parts.shift());
-          ptag = parts.shift();
-        }
-        adaptor.append(node, adaptor.text(pcdata.join("")));
-      }
-      checkDocument(adaptor, root2) {
-        const node = this.getOnlyChild(adaptor, adaptor.body(root2));
-        if (!node)
-          return;
-        for (const child of adaptor.childNodes(adaptor.body(root2))) {
-          if (child === node) {
-            break;
-          }
-          if (child instanceof LiteComment && child.value.match(/^<!DOCTYPE/)) {
-            root2.type = child.value;
-          }
-        }
-        switch (adaptor.kind(node)) {
-          case "html":
-            for (const child of node.children) {
-              switch (adaptor.kind(child)) {
-                case "head":
-                  root2.head = child;
-                  break;
-                case "body":
-                  root2.body = child;
-                  break;
-              }
-            }
-            root2.root = node;
-            adaptor.remove(node);
-            if (adaptor.parent(root2.body) !== node) {
-              adaptor.append(node, root2.body);
-            }
-            if (adaptor.parent(root2.head) !== node) {
-              adaptor.insert(root2.head, root2.body);
-            }
-            break;
-          case "head":
-            root2.head = adaptor.replace(node, root2.head);
-            break;
-          case "body":
-            root2.body = adaptor.replace(node, root2.body);
-            break;
-        }
-      }
-      getOnlyChild(adaptor, body) {
-        let node = null;
-        for (const child of adaptor.childNodes(body)) {
-          if (child instanceof LiteElement) {
-            if (node)
-              return null;
-            node = child;
-          }
-        }
-        return node;
-      }
-      serialize(adaptor, node, xml = false) {
-        const SELF_CLOSING = this.constructor.SELF_CLOSING;
-        const tag3 = adaptor.kind(node);
-        const attributes = this.allAttributes(adaptor, node, xml).map((x2) => x2.name + '="' + this.protectAttribute(x2.value, xml) + '"').join(" ");
-        const content = this.serializeInner(adaptor, node, xml);
-        const html2 = `<${tag3}` + (attributes ? " " + attributes : "") + ((!xml || content) && !SELF_CLOSING[tag3] ? `>${content}</${tag3}>` : xml ? "/>" : ">");
-        return html2;
-      }
-      serializeInner(adaptor, node, xml = false) {
-        const PCDATA = this.constructor.PCDATA;
-        if (Object.hasOwn(PCDATA, node.kind)) {
-          return adaptor.childNodes(node).map((x2) => adaptor.value(x2)).join("");
-        }
-        return adaptor.childNodes(node).map((x2) => {
-          const kind = adaptor.kind(x2);
-          return kind === "#text" ? this.protectHTML(adaptor.value(x2)) : kind === "#comment" ? x2.value : this.serialize(adaptor, x2, xml);
-        }).join("");
-      }
-      allAttributes(adaptor, node, xml) {
-        const attributes = adaptor.allAttributes(node);
-        if (!xml) {
-          return attributes;
-        }
-        const kind = adaptor.kind(node);
-        const xmlns = this.constructor.XMLNS;
-        if (!Object.hasOwn(xmlns, kind)) {
-          return attributes;
-        }
-        for (const { name } of attributes) {
-          if (name === "xmlns") {
-            return attributes;
-          }
-        }
-        attributes.push({ name: "xmlns", value: xmlns[kind] });
-        return attributes;
-      }
-      protectAttribute(text, xml) {
-        if (typeof text !== "string") {
-          text = String(text);
-        }
-        text = text.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        if (xml) {
-          text = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-        return text;
-      }
-      protectHTML(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      }
-    };
-    LiteParser.SELF_CLOSING = {
-      area: true,
-      base: true,
-      br: true,
-      col: true,
-      command: true,
-      embed: true,
-      hr: true,
-      img: true,
-      input: true,
-      keygen: true,
-      link: true,
-      menuitem: true,
-      meta: true,
-      param: true,
-      source: true,
-      track: true,
-      wbr: true
-    };
-    LiteParser.PCDATA = {
-      option: true,
-      textarea: true,
-      fieldset: true,
-      title: true,
-      style: true,
-      script: true
-    };
-    LiteParser.XMLNS = {
-      svg: "http://www.w3.org/2000/svg",
-      math: "http://www.w3.org/1998/Math/MathML",
-      html: "http://www.w3.org/1999/xhtml"
-    };
-  }
-});
-export{init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_Retries,handleRetriesFor,expandable,makeArray,separateOptions,mathjax,init_mathjax,init_Entities,entities,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,numeric,TexError,GlyphError,init_errors,require_decoder};
+export{parseColor,init_svg,init_xml,readSvg,require_decoder,SvgError,XmlError};

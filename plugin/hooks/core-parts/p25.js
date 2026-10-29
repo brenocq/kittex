@@ -1,9 +1,9 @@
 import{__esm,init_FontData2,init_common2,init_normal,init_bold,init_italic,init_bold_italic,init_double_struck,init_fraktur,init_fraktur_bold,init_sans_serif,init_sans_serif_bold,init_sans_serif_italic,init_sans_serif_bold_italic,init_monospace,init_smallop,init_largeop,init_size3,init_size4,init_size5,init_size6,init_size7,init_tex_mathit,init_tex_calligraphic,init_tex_calligraphic_bold,init_tex_oldstyle,init_tex_oldstyle_bold,init_tex_variant,init_lf_tp,init_rt_bt,init_ex_md,init_bbold,init_upsmall,init_uplarge,init_script,init_script_bold,init_delimiters,CommonMathJaxNewcmFontMixin,SvgFontData,delimiters,normal,bold,italic,boldItalic,doubleStruck,fraktur,frakturBold,sansSerif,sansSerifBold,sansSerifItalic,sansSerifBoldItalic,monospace,smallop,largeop,size3,size4,size5,size6,size7,texMathit,texCalligraphic,texCalligraphicBold,texOldstyle,texOldstyleBold,texVariant,lfTp,rtBt,exMd,bbold,upsmall,uplarge,script,scriptBold,__kittexJson18,init_common,init_WrapperFactory3,init_StyleJson,init_FontCache,init_string,init_lengths,init_Wrapper2,CommonOutputJax,SvgWrapperFactory,FontCache,StyleJsonSheet,em,SPACE3,unicodeChars,init_BaseItems,init_ParseUtil,init_NodeUtil,init_TexError,init_TexConstants,ArrayItem,ParseUtil,TexError_default,NodeUtil_default,TexConstant,EqnArrayItem,init_HandlerTypes,init_MapHandler,init_UnitUtil,init_Token,UnitUtil,Token,Macro,HandlerType,SubHandler,init_ParseMethods,init_TexParser,init_BaseMethods,init_MmlNode,BaseMethods_default,splitAlignArray,TexParser,TEXCLASS,ParseMethods_default,init_TokenMap,CharacterMap,RegExpMap,CommandMap,MATHSPACE,EnvironmentMap,DelimiterMap,init_StackItem,BaseItem,MacroMap,init_Configuration,Configuration,ConfigurationType,init_Tags,AbstractTags,NodeFactory,init_NodeFactory2,__kittexLate}from'./p24.js';export*from'./p24.js';
-__kittexLate.init_svg2=()=>init_svg2;__kittexLate.XLINKNS=()=>XLINKNS;
+__kittexLate.init_svg3=()=>init_svg3;__kittexLate.XLINKNS=()=>XLINKNS;
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg.js
 var Base;
 var MathJaxNewcmFont;
-var init_svg = __esm({
+var init_svg2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg.js"() {
     init_FontData2();
     init_common2();
@@ -102,7 +102,7 @@ var init_svg = __esm({
 var Font;
 var init_default = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/default.js"() {
-    init_svg();
+    init_svg2();
     Font = {
       fontName: "mathjax-newcm",
       DefaultFont: MathJaxNewcmFont
@@ -123,7 +123,7 @@ var init_DefaultFont = __esm({
 var SVGNS;
 var XLINKNS;
 var SVG;
-var init_svg2 = __esm({
+var init_svg3 = __esm({
   "node_modules/@mathjax/src/mjs/output/svg.js"() {
     init_common();
     init_WrapperFactory3();
@@ -1834,4 +1834,4 @@ var init_BoldsymbolConfiguration = __esm({
     });
   }
 });
-export{init_NewcommandUtil,NewcommandUtil,init_AmsMethods,init_NewcommandMethods,NewcommandTables,AmsMethods,NewcommandMethods_default,init_AmsItems,MultlineItem,NewcommandConfig,init_NewcommandConfiguration,init_svg,MathJaxNewcmFont,SVG,init_svg2,init_AmsConfiguration,init_BoldsymbolConfiguration};
+export{init_NewcommandUtil,NewcommandUtil,init_AmsMethods,init_NewcommandMethods,NewcommandTables,AmsMethods,NewcommandMethods_default,init_AmsItems,MultlineItem,NewcommandConfig,init_NewcommandConfiguration,init_svg2,MathJaxNewcmFont,SVG,init_svg3,init_AmsConfiguration,init_BoldsymbolConfiguration};

@@ -1,1143 +1,1128 @@
-import{u8,u16,shft,clim,flt,fdt,hMap,flm,fdm,fleb,fdeb,i32,revfl,revfd,slc,err,inflt,SIGNATURE,ImageError,COLOR_TYPES,checkSize,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,imageHeader,decodeJpeg}from'./p33.js';export*from'./p33.js';
-var wbits = function(d, p, v) {
-  v <<= p & 7;
-  var o = p / 8 | 0;
-  d[o] |= v;
-  d[o + 1] |= v >> 8;
-};
-var wbits16 = function(d, p, v) {
-  v <<= p & 7;
-  var o = p / 8 | 0;
-  d[o] |= v;
-  d[o + 1] |= v >> 8;
-  d[o + 2] |= v >> 16;
-};
-var hTree = function(d, mb) {
-  var t = [];
-  for (var i2 = 0; i2 < d.length; ++i2) {
-    if (d[i2])
-      t.push({ s: i2, f: d[i2] });
-  }
-  var s = t.length;
-  var t2 = t.slice();
-  if (!s)
-    return { t: et, l: 0 };
-  if (s == 1) {
-    var v = new u8(t[0].s + 1);
-    v[t[0].s] = 1;
-    return { t: v, l: 1 };
-  }
-  t.sort(function(a, b) {
-    return a.f - b.f;
-  });
-  t.push({ s: -1, f: 25001 });
-  var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
-  t[0] = { s: -1, f: l.f + r.f, l, r };
-  while (i1 != s - 1) {
-    l = t[t[i0].f < t[i22].f ? i0++ : i22++];
-    r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
-    t[i1++] = { s: -1, f: l.f + r.f, l, r };
-  }
-  var maxSym = t2[0].s;
-  for (var i2 = 1; i2 < s; ++i2) {
-    if (t2[i2].s > maxSym)
-      maxSym = t2[i2].s;
-  }
-  var tr = new u16(maxSym + 1);
-  var mbt = ln(t[i1 - 1], tr, 0);
-  if (mbt > mb) {
-    var i2 = 0, dt = 0;
-    var lft = mbt - mb, cst = 1 << lft;
-    t2.sort(function(a, b) {
-      return tr[b.s] - tr[a.s] || a.f - b.f;
-    });
-    for (; i2 < s; ++i2) {
-      var i2_1 = t2[i2].s;
-      if (tr[i2_1] > mb) {
-        dt += cst - (1 << mbt - tr[i2_1]);
-        tr[i2_1] = mb;
-      } else
-        break;
-    }
-    dt >>= lft;
-    while (dt > 0) {
-      var i2_2 = t2[i2].s;
-      if (tr[i2_2] < mb)
-        dt -= 1 << mb - tr[i2_2]++ - 1;
-      else
-        ++i2;
-    }
-    for (; i2 >= 0 && dt; --i2) {
-      var i2_3 = t2[i2].s;
-      if (tr[i2_3] == mb) {
-        --tr[i2_3];
-        ++dt;
-      }
-    }
-    mbt = mb;
-  }
-  return { t: new u8(tr), l: mbt };
-};
-var ln = function(n, l, d) {
-  return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
-};
-var lc = function(c) {
-  var s = c.length;
-  while (s && !c[--s])
-    ;
-  var cl = new u16(++s);
-  var cli = 0, cln = c[0], cls = 1;
-  var w = function(v) {
-    cl[cli++] = v;
-  };
-  for (var i2 = 1; i2 <= s; ++i2) {
-    if (c[i2] == cln && i2 != s)
-      ++cls;
-    else {
-      if (!cln && cls > 2) {
-        for (; cls > 138; cls -= 138)
-          w(32754);
-        if (cls > 2) {
-          w(cls > 10 ? cls - 11 << 5 | 28690 : cls - 3 << 5 | 12305);
-          cls = 0;
-        }
-      } else if (cls > 3) {
-        w(cln), --cls;
-        for (; cls > 6; cls -= 6)
-          w(8304);
-        if (cls > 2)
-          w(cls - 3 << 5 | 8208), cls = 0;
-      }
-      while (cls--)
-        w(cln);
-      cls = 1;
-      cln = c[i2];
-    }
-  }
-  return { c: cl.subarray(0, cli), n: s };
-};
-var clen = function(cf, cl) {
-  var l = 0;
-  for (var i2 = 0; i2 < cl.length; ++i2)
-    l += cf[i2] * cl[i2];
-  return l;
-};
-var wfblk = function(out, pos, dat) {
-  var s = dat.length;
-  var o = shft(pos + 2);
-  out[o] = s & 255;
-  out[o + 1] = s >> 8;
-  out[o + 2] = out[o] ^ 255;
-  out[o + 3] = out[o + 1] ^ 255;
-  for (var i2 = 0; i2 < s; ++i2)
-    out[o + i2 + 4] = dat[i2];
-  return (o + 4 + s) * 8;
-};
-var wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
-  wbits(out, p++, final);
-  ++lf[256];
-  var _a2 = hTree(lf, 15), dlt = _a2.t, mlb = _a2.l;
-  var _b2 = hTree(df, 15), ddt = _b2.t, mdb = _b2.l;
-  var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
-  var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
-  var lcfreq = new u16(19);
-  for (var i2 = 0; i2 < lclt.length; ++i2)
-    ++lcfreq[lclt[i2] & 31];
-  for (var i2 = 0; i2 < lcdt.length; ++i2)
-    ++lcfreq[lcdt[i2] & 31];
-  var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
-  var nlcc = 19;
-  for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
-    ;
-  var flen = bl + 5 << 3;
-  var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
-  var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
-  if (bs >= 0 && flen <= ftlen && flen <= dtlen)
-    return wfblk(out, p, dat.subarray(bs, bs + bl));
-  var lm, ll, dm, dl;
-  wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
-  if (dtlen < ftlen) {
-    lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
-    var llm = hMap(lct, mlcb, 0);
-    wbits(out, p, nlc - 257);
-    wbits(out, p + 5, ndc - 1);
-    wbits(out, p + 10, nlcc - 4);
-    p += 14;
-    for (var i2 = 0; i2 < nlcc; ++i2)
-      wbits(out, p + 3 * i2, lct[clim[i2]]);
-    p += 3 * nlcc;
-    var lcts = [lclt, lcdt];
-    for (var it = 0; it < 2; ++it) {
-      var clct = lcts[it];
-      for (var i2 = 0; i2 < clct.length; ++i2) {
-        var len = clct[i2] & 31;
-        wbits(out, p, llm[len]), p += lct[len];
-        if (len > 15)
-          wbits(out, p, clct[i2] >> 5 & 127), p += clct[i2] >> 12;
-      }
-    }
-  } else {
-    lm = flm, ll = flt, dm = fdm, dl = fdt;
-  }
-  for (var i2 = 0; i2 < li; ++i2) {
-    var sym = syms[i2];
-    if (sym > 255) {
-      var len = sym >> 18 & 31;
-      wbits16(out, p, lm[len + 257]), p += ll[len + 257];
-      if (len > 7)
-        wbits(out, p, sym >> 23 & 31), p += fleb[len];
-      var dst = sym & 31;
-      wbits16(out, p, dm[dst]), p += dl[dst];
-      if (dst > 3)
-        wbits16(out, p, sym >> 5 & 8191), p += fdeb[dst];
-    } else {
-      wbits16(out, p, lm[sym]), p += ll[sym];
-    }
-  }
-  wbits16(out, p, lm[256]);
-  return p + ll[256];
-};
-var deo = /* @__PURE__ */ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
-var et = /* @__PURE__ */ new u8(0);
-var dflt = function(dat, lvl, plvl, pre, post, st) {
-  var s = st.z || dat.length;
-  var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7e3)) + post);
-  var w = o.subarray(pre, o.length - post);
-  var lst = st.l;
-  var pos = (st.r || 0) & 7;
-  if (lvl) {
-    if (pos)
-      w[0] = st.r >> 3;
-    var opt = deo[lvl - 1];
-    var n = opt >> 13, c = opt & 8191;
-    var msk_1 = (1 << plvl) - 1;
-    var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
-    var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
-    var hsh = function(i3) {
-      return (dat[i3] ^ dat[i3 + 1] << bs1_1 ^ dat[i3 + 2] << bs2_1) & msk_1;
-    };
-    var syms = new i32(25e3);
-    var lf = new u16(288), df = new u16(32);
-    var lc_1 = 0, eb = 0, i2 = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
-    for (; i2 + 2 < s; ++i2) {
-      var hv = hsh(i2);
-      var imod = i2 & 32767, pimod = head[hv];
-      prev[imod] = pimod;
-      head[hv] = imod;
-      if (wi <= i2) {
-        var rem = s - i2;
-        if ((lc_1 > 7e3 || li > 24576) && (rem > 423 || !lst)) {
-          pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i2 - bs, pos);
-          li = lc_1 = eb = 0, bs = i2;
-          for (var j = 0; j < 286; ++j)
-            lf[j] = 0;
-          for (var j = 0; j < 30; ++j)
-            df[j] = 0;
-        }
-        var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
-        if (rem > 2 && hv == hsh(i2 - dif)) {
-          var maxn = Math.min(n, rem) - 1;
-          var maxd = Math.min(32767, i2);
-          var ml = Math.min(258, rem);
-          while (dif <= maxd && --ch_1 && imod != pimod) {
-            if (dat[i2 + l] == dat[i2 + l - dif]) {
-              var nl = 0;
-              for (; nl < ml && dat[i2 + nl] == dat[i2 + nl - dif]; ++nl)
-                ;
-              if (nl > l) {
-                l = nl, d = dif;
-                if (nl > maxn)
-                  break;
-                var mmd = Math.min(dif, nl - 2);
-                var md = 0;
-                for (var j = 0; j < mmd; ++j) {
-                  var ti = i2 - dif + j & 32767;
-                  var pti = prev[ti];
-                  var cd = ti - pti & 32767;
-                  if (cd > md)
-                    md = cd, pimod = ti;
-                }
-              }
-            }
-            imod = pimod, pimod = prev[imod];
-            dif += imod - pimod & 32767;
-          }
-        }
-        if (d) {
-          syms[li++] = 268435456 | revfl[l] << 18 | revfd[d];
-          var lin = revfl[l] & 31, din = revfd[d] & 31;
-          eb += fleb[lin] + fdeb[din];
-          ++lf[257 + lin];
-          ++df[din];
-          wi = i2 + l;
-          ++lc_1;
-        } else {
-          syms[li++] = dat[i2];
-          ++lf[dat[i2]];
-        }
-      }
-    }
-    for (i2 = Math.max(i2, wi); i2 < s; ++i2) {
-      syms[li++] = dat[i2];
-      ++lf[dat[i2]];
-    }
-    pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i2 - bs, pos);
-    if (!lst) {
-      st.r = pos & 7 | w[pos / 8 | 0] << 3;
-      pos -= 7;
-      st.h = head, st.p = prev, st.i = i2, st.w = wi;
-    }
-  } else {
-    for (var i2 = st.w || 0; i2 < s + lst; i2 += 65535) {
-      var e = i2 + 65535;
-      if (e >= s) {
-        w[pos / 8 | 0] = lst;
-        e = s;
-      }
-      pos = wfblk(w, pos + 1, dat.subarray(i2, e));
-    }
-    st.i = s;
-  }
-  return slc(o, 0, pre + shft(pos) + post);
-};
-var adler = function() {
-  var a = 1, b = 0;
-  return {
-    p: function(d) {
-      var n = a, m = b;
-      var l = d.length | 0;
-      for (var i2 = 0; i2 != l; ) {
-        var e = Math.min(i2 + 2655, l);
-        for (; i2 < e; ++i2)
-          m += n += d[i2];
-        n = (n & 65535) + 15 * (n >> 16), m = (m & 65535) + 15 * (m >> 16);
-      }
-      a = n, b = m;
-    },
-    d: function() {
-      a %= 65521, b %= 65521;
-      return (a & 255) << 24 | (a & 65280) << 8 | (b & 255) << 8 | b >> 8;
-    }
-  };
-};
-var dopt = function(dat, opt, pre, post, st) {
-  if (!st) {
-    st = { l: 1 };
-    if (opt.dictionary) {
-      var dict = opt.dictionary.subarray(-32768);
-      var newDat = new u8(dict.length + dat.length);
-      newDat.set(dict);
-      newDat.set(dat, dict.length);
-      dat = newDat;
-      st.w = dict.length;
-    }
-  }
-  return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
-};
-var wbytes = function(d, b, v) {
-  for (; v; ++b)
-    d[b] = v, v >>>= 8;
-};
-var zlh = function(c, o) {
-  var lv = o.level, fl2 = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
-  c[0] = 120, c[1] = fl2 << 6 | (o.dictionary && 32);
-  c[1] |= 31 - (c[0] << 8 | c[1]) % 31;
-  if (o.dictionary) {
-    var h = adler();
-    h.p(o.dictionary);
-    wbytes(c, 2, h.d());
-  }
-};
-var zls = function(d, dict) {
-  if ((d[0] & 15) != 8 || d[0] >> 4 > 7 || (d[0] << 8 | d[1]) % 31)
-    err(6, "invalid zlib data");
-  if ((d[1] >> 5 & 1) == +!dict)
-    err(6, "invalid zlib data: " + (d[1] & 32 ? "need" : "unexpected") + " dictionary");
-  return (d[1] >> 3 & 4) + 2;
-};
-var Inflate = /* @__PURE__ */ (function() {
-  function Inflate2(opts, cb) {
-    if (typeof opts == "function")
-      cb = opts, opts = {};
-    this.ondata = cb;
-    var dict = opts && opts.dictionary && opts.dictionary.subarray(-32768);
-    this.s = { i: 0, b: dict ? dict.length : 0 };
-    this.o = new u8(32768);
-    this.p = new u8(0);
-    if (dict)
-      this.o.set(dict);
-  }
-  Inflate2.prototype.e = function(c) {
-    if (!this.ondata)
-      err(5);
-    if (this.d)
-      err(4);
-    if (!this.p.length)
-      this.p = c;
-    else if (c.length) {
-      var n = new u8(this.p.length + c.length);
-      n.set(this.p), n.set(c, this.p.length), this.p = n;
-    }
-  };
-  Inflate2.prototype.c = function(final) {
-    this.s.i = +(this.d = final || false);
-    var bts = this.s.b;
-    var dt = inflt(this.p, this.s, this.o);
-    this.ondata(slc(dt, bts, this.s.b), this.d);
-    this.o = slc(dt, this.s.b - 32768), this.s.b = this.o.length;
-    this.p = slc(this.p, this.s.p / 8 | 0), this.s.p &= 7;
-  };
-  Inflate2.prototype.push = function(chunk2, final) {
-    this.e(chunk2), this.c(final);
-  };
-  return Inflate2;
-})();
-function zlibSync(data, opts) {
-  if (!opts)
-    opts = {};
-  var a = adler();
-  a.p(data);
-  var d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
-  return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
-}
-var Unzlib = /* @__PURE__ */ (function() {
-  function Unzlib2(opts, cb) {
-    Inflate.call(this, opts, cb);
-    this.v = opts && opts.dictionary ? 2 : 1;
-  }
-  Unzlib2.prototype.push = function(chunk2, final) {
-    Inflate.prototype.e.call(this, chunk2);
-    if (this.v) {
-      if (this.p.length < 6 && !final)
-        return;
-      this.p = this.p.subarray(zls(this.p, this.v - 1)), this.v = 0;
-    }
-    if (final) {
-      if (this.p.length < 4)
-        err(6, "invalid zlib data");
-      this.p = this.p.subarray(0, -4);
-    }
-    Inflate.prototype.c.call(this, final);
-  };
-  return Unzlib2;
-})();
-var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
-var tds = 0;
-try {
-  td.decode(et, { stream: true });
-  tds = 1;
-} catch (e) {
-}
-// core/src/image/png.ts
-function decodePng(bytes, maxPixels) {
-  if (!SIGNATURE.every((b, i2) => bytes[i2] === b)) throw new ImageError("not a PNG");
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let header;
-  let palette2;
-  let trns;
-  const idat = [];
-  let at = 8;
-  for (; ; ) {
-    if (at + 8 > bytes.length) {
-      if (header && idat.length > 0) break;
-      throw new ImageError("PNG is truncated");
-    }
-    const length4 = view.getUint32(at);
-    const type = String.fromCharCode(bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]);
-    if (header && type === "IEND") break;
-    if (at + 12 + length4 > bytes.length) throw new ImageError(`PNG ${type} chunk is truncated`);
-    const data = bytes.subarray(at + 8, at + 8 + length4);
-    at += 12 + length4;
-    if (!header) {
-      if (type !== "IHDR") throw new ImageError("PNG does not start with IHDR");
-      header = parseHeader(data, maxPixels);
-      continue;
-    }
-    if (type === "PLTE") palette2 = data;
-    else if (type === "tRNS") trns = data;
-    else if (type === "IDAT") idat.push(data);
-  }
-  if (idat.length === 0) throw new ImageError("PNG has no IDAT");
-  if (header.colorType === 3 && !palette2) throw new ImageError("palette PNG has no PLTE");
-  const raw = inflate(idat, header);
-  return toRgba(raw, header, palette2, trns);
-}
-function parseHeader(data, maxPixels) {
-  if (data.length < 13) throw new ImageError("PNG IHDR is short");
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const width = view.getUint32(0);
-  const height2 = view.getUint32(4);
-  const depth = data[8];
-  const colorType = data[9];
-  const kind = COLOR_TYPES[colorType];
-  if (!kind || !kind.depths.includes(depth)) throw new ImageError(`PNG colour type ${colorType} at ${depth} bits is not valid`);
-  if (data[10] !== 0 || data[11] !== 0 || data[12] !== 0 && data[12] !== 1) throw new ImageError("PNG uses an unknown compression, filter or interlace method");
-  checkSize(width, height2, maxPixels);
-  return { width, height: height2, depth, colorType, channels: kind.channels, interlaced: data[12] === 1 };
-}
-function stride(width, h) {
-  return Math.ceil(width * h.channels * h.depth / 8);
-}
-function passes(h) {
-  if (!h.interlaced) return [[0, 0, 1, 1, h.width, h.height]];
-  return ADAM7.map(([x0, y0, dx, dy]) => [x0, y0, dx, dy, Math.ceil((h.width - x0) / dx), Math.ceil((h.height - y0) / dy)]).filter(
-    ([, , , , w, rows]) => w > 0 && rows > 0
-  );
-}
-function inflate(idat, h) {
-  const expected = passes(h).reduce((n, [, , , , w, rows]) => n + rows * (1 + stride(w, h)), 0);
-  const out = new Uint8Array(expected);
-  let length4 = 0;
-  const stream = new Unzlib((chunk2) => {
-    if (length4 + chunk2.length > expected) throw new ImageError(`PNG image data inflates to more than the ${expected} bytes its header allows`);
-    out.set(chunk2, length4);
-    length4 += chunk2.length;
-  });
-  try {
-    for (const data of idat) for (let at = 0; at < data.length; at += INFLATE_STEP) stream.push(data.subarray(at, at + INFLATE_STEP));
-    stream.push(new Uint8Array(0), true);
-  } catch (error) {
-    if (error instanceof ImageError) throw error;
-    throw new ImageError(`PNG image data is corrupt or truncated (${error instanceof Error ? error.message : String(error)})`);
-  }
-  if (length4 !== expected) throw new ImageError(`PNG image data inflates to ${length4} bytes, not ${expected}`);
-  return out;
-}
-function toRgba(raw, h, palette2, trns) {
-  const rgba = new Uint8Array(h.width * h.height * 4);
-  const bpp = Math.max(1, h.channels * h.depth >> 3);
-  const convert = converter(h, palette2, trns);
-  let at = 0;
-  for (const [x0, y0, dx, dy, w, rows] of passes(h)) {
-    const n = stride(w, h);
-    let previous = new Uint8Array(n);
-    let line = new Uint8Array(n);
-    const pixels = new Uint8Array(w * 4);
-    for (let row = 0; row < rows; row++) {
-      unfilter(raw[at], raw.subarray(at + 1, at + 1 + n), previous, line, bpp);
-      at += 1 + n;
-      const y = y0 + row * dy;
-      if (dx === 1) convert(line, w, rgba.subarray(y * h.width * 4, (y + 1) * h.width * 4));
-      else {
-        convert(line, w, pixels);
-        for (let i2 = 0; i2 < w; i2++) rgba.set(pixels.subarray(i2 * 4, i2 * 4 + 4), (y * h.width + x0 + i2 * dx) * 4);
-      }
-      ;
-      [previous, line] = [line, previous];
-    }
-  }
-  return { width: h.width, height: h.height, rgba };
-}
-function unfilter(type, src, up, out, bpp) {
-  const n = src.length;
-  switch (type) {
-    case 0:
-      out.set(src);
-      return;
-    case 1:
-      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + (i2 >= bpp ? out[i2 - bpp] : 0);
-      return;
-    case 2:
-      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + up[i2];
-      return;
-    case 3:
-      for (let i2 = 0; i2 < n; i2++) out[i2] = src[i2] + ((i2 >= bpp ? out[i2 - bpp] : 0) + up[i2] >> 1);
-      return;
-    case 4:
-      for (let i2 = 0; i2 < n; i2++) {
-        const a = i2 >= bpp ? out[i2 - bpp] : 0;
-        const b = up[i2];
-        const c = i2 >= bpp ? up[i2 - bpp] : 0;
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        out[i2] = src[i2] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
-      }
-      return;
-    default:
-      throw new ImageError(`PNG row has unknown filter type ${type}`);
-  }
-}
-function converter(h, palette2, trns) {
-  const { depth, colorType } = h;
-  const sample = sampleReader(depth);
-  const to8 = depth === 16 ? (v) => (v * 255 + 32767) / 65535 | 0 : depth === 8 ? (v) => v : (v) => v * 255 / ((1 << depth) - 1);
-  const key = (i2) => trns && trns.length >= i2 * 2 + 2 ? trns[i2 * 2] << 8 | trns[i2 * 2 + 1] : -1;
-  switch (colorType) {
-    case 0: {
-      const gray = key(0);
-      return (line, width, out) => {
-        for (let x2 = 0; x2 < width; x2++) {
-          const v = sample(line, x2);
-          const g = to8(v);
-          out[x2 * 4] = out[x2 * 4 + 1] = out[x2 * 4 + 2] = g;
-          out[x2 * 4 + 3] = v === gray ? 0 : 255;
-        }
-      };
-    }
-    case 2: {
-      const [kr, kg, kb] = [key(0), key(1), key(2)];
-      return (line, width, out) => {
-        for (let x2 = 0; x2 < width; x2++) {
-          const r = sample(line, x2 * 3);
-          const g = sample(line, x2 * 3 + 1);
-          const b = sample(line, x2 * 3 + 2);
-          out[x2 * 4] = to8(r);
-          out[x2 * 4 + 1] = to8(g);
-          out[x2 * 4 + 2] = to8(b);
-          out[x2 * 4 + 3] = r === kr && g === kg && b === kb ? 0 : 255;
-        }
-      };
-    }
-    case 3: {
-      const plte = palette2 ?? new Uint8Array(0);
-      const table2 = new Uint8Array(256 * 4);
-      for (let i2 = 0; i2 < 256; i2++) {
-        if (i2 * 3 + 2 < plte.length) table2.set(plte.subarray(i2 * 3, i2 * 3 + 3), i2 * 4);
-        table2[i2 * 4 + 3] = trns && i2 < trns.length ? trns[i2] : 255;
-      }
-      return (line, width, out) => {
-        for (let x2 = 0; x2 < width; x2++) {
-          const at = sample(line, x2) * 4;
-          out[x2 * 4] = table2[at];
-          out[x2 * 4 + 1] = table2[at + 1];
-          out[x2 * 4 + 2] = table2[at + 2];
-          out[x2 * 4 + 3] = table2[at + 3];
-        }
-      };
-    }
-    case 4:
-      return (line, width, out) => {
-        for (let x2 = 0; x2 < width; x2++) {
-          out[x2 * 4] = out[x2 * 4 + 1] = out[x2 * 4 + 2] = to8(sample(line, x2 * 2));
-          out[x2 * 4 + 3] = to8(sample(line, x2 * 2 + 1));
-        }
-      };
-    default:
-      return (line, width, out) => {
-        if (depth === 8) out.set(line.subarray(0, width * 4));
-        else for (let i2 = 0; i2 < width * 4; i2++) out[i2] = to8(sample(line, i2));
-      };
-  }
-}
-function sampleReader(depth) {
-  if (depth === 8) return (line, i2) => line[i2];
-  if (depth === 16) return (line, i2) => line[i2 * 2] << 8 | line[i2 * 2 + 1];
-  const mask = (1 << depth) - 1;
-  return (line, i2) => {
-    const bit = i2 * depth;
-    return line[bit >> 3] >> 8 - depth - (bit & 7) & mask;
-  };
-}
-// core/src/raster/png.ts
-var SIGNATURE2 = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
-var TRNS_AT = PLTE_AT + 12 + 768;
-function encodeAlphaPng(alpha, width, height2, ink, over, curve) {
-  const ihdr = new Uint8Array(13);
-  const view = new DataView(ihdr.buffer);
-  view.setUint32(0, width);
-  view.setUint32(4, height2);
-  ihdr.set([8, 3, 0, 0, 0], 8);
-  return concat2([
-    SIGNATURE2,
-    chunk("IHDR", ihdr),
-    chunk("PLTE", palette(ink)),
-    chunk("tRNS", alphaTable(ink, over, curve)),
-    chunk("IDAT", zlibSync(filter(alpha, width, height2), { level: 6 })),
-    chunk("IEND", new Uint8Array(0))
-  ]);
-}
-function encodeQuantizedPng(rgba, width, height2) {
-  const n = width * height2;
-  const pairs3 = /* @__PURE__ */ new Map();
-  const weight = /* @__PURE__ */ new Map();
-  for (let i2 = 0; i2 < n; i2++) {
-    const a = rgba[4 * i2 + 3];
-    if (a === 0) continue;
-    const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
-    if (pairs3.size <= 256) pairs3.set(rgb * 256 + a, 0);
-    weight.set(rgb, (weight.get(rgb) ?? 0) + a);
-  }
-  const index = new Uint8Array(n);
-  let plte = [0, 0, 0];
-  let trns = [0];
-  if (pairs3.size <= 255) {
-    const slot = /* @__PURE__ */ new Map();
-    for (const key of pairs3.keys()) {
-      slot.set(key, slot.size + 1);
-      const rgb = Math.floor(key / 256);
-      plte.push(rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255);
-      trns.push(key % 256);
-    }
-    for (let i2 = 0; i2 < n; i2++) {
-      const a = rgba[4 * i2 + 3];
-      if (a === 0) continue;
-      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
-      index[i2] = slot.get(rgb * 256 + a);
-    }
-  } else {
-    const solidWeight = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < n; i2++) {
-      if (rgba[4 * i2 + 3] < SOLID) continue;
-      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
-      solidWeight.set(rgb, (solidWeight.get(rgb) ?? 0) + 1);
-    }
-    const pick2 = (weights, most, apart) => {
-      const chosen = [];
-      for (const [rgb] of [...weights].sort((a, b) => b[1] - a[1])) {
-        const c = [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255];
-        if (chosen.every((one) => distance(one, c) > apart)) chosen.push(c);
-        if (chosen.length >= most) break;
-      }
-      return chosen;
-    };
-    const cover = (weights, most, apart) => {
-      const sorted = [...weights].sort((a, b) => b[1] - a[1]).slice(0, CANDIDATES);
-      const chosen = pick2(new Map(sorted), most - FARTHEST_SLOTS, apart);
-      const total = sorted.reduce((sum3, [, w]) => sum3 + w, 0);
-      let kept = 0;
-      let sum2 = 0;
-      while (kept < sorted.length && sum2 < total * (1 - COVER_TAIL)) sum2 += sorted[kept++][1];
-      const candidates = sorted.slice(0, kept).map(([rgb]) => [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255]);
-      const gap2 = candidates.map((c) => Math.min(Infinity, ...chosen.map((one) => distance(one, c))));
-      while (chosen.length < most) {
-        let far = -1;
-        for (let k = 0; k < candidates.length; k++) if (gap2[k] > apart && (far < 0 || gap2[k] > gap2[far])) far = k;
-        if (far < 0) break;
-        const c = candidates[far];
-        chosen.push(c);
-        for (let k = 0; k < candidates.length; k++) gap2[k] = Math.min(gap2[k], distance(c, candidates[k]));
-      }
-      return chosen;
-    };
-    const inks = pick2(weight, MAX_INKS, INK_DISTANCE);
-    const solids = cover(solidWeight, SOLID_COLOURS, SOLID_DISTANCE);
-    const levels = Math.min(MAX_LEVELS, Math.floor((255 - solids.length) / inks.length));
-    plte = [0, 0, 0];
-    trns = [0];
-    for (const ink of inks) {
-      for (let l = 1; l <= levels; l++) {
-        plte.push(...ink);
-        trns.push(Math.round(255 * l / levels));
-      }
-    }
-    const solidAt = plte.length / 3;
-    for (const solid of solids) {
-      plte.push(...solid);
-      trns.push(255);
-    }
-    const nearest = (set, memo, rgb) => {
-      let k = memo.get(rgb);
-      if (k === void 0) {
-        const c = [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255];
-        k = 0;
-        for (let j = 1; j < set.length; j++) if (distance(set[j], c) < distance(set[k], c)) k = j;
-        memo.set(rgb, k);
-      }
-      return k;
-    };
-    const inkMemo = /* @__PURE__ */ new Map();
-    const solidMemo = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < n; i2++) {
-      const a = rgba[4 * i2 + 3];
-      if (a === 0) continue;
-      const rgb = rgba[4 * i2] << 16 | rgba[4 * i2 + 1] << 8 | rgba[4 * i2 + 2];
-      if (a >= SOLID && solids.length > 0) {
-        index[i2] = solidAt + nearest(solids, solidMemo, rgb);
-        continue;
-      }
-      const level = Math.max(1, Math.round(a * levels / 255));
-      index[i2] = 1 + nearest(inks, inkMemo, rgb) * levels + level - 1;
-    }
-  }
-  const ihdr = new Uint8Array(13);
-  const view = new DataView(ihdr.buffer);
-  view.setUint32(0, width);
-  view.setUint32(4, height2);
-  ihdr.set([8, 3, 0, 0, 0], 8);
-  return concat2([
-    SIGNATURE2,
-    chunk("IHDR", ihdr),
-    chunk("PLTE", Uint8Array.from(plte)),
-    chunk("tRNS", Uint8Array.from(trns)),
-    chunk("IDAT", zlibSync(filterBytes(index, width, height2, 1), { level: 9 })),
-    chunk("IEND", new Uint8Array(0))
-  ]);
-}
-var INK_DISTANCE = 40 * 40;
-var SOLID_DISTANCE = 6 * 6;
-function distance(a, b) {
-  return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
-}
-function filterBytes(rgba, w, h, bpp) {
-  const stride2 = w * bpp;
-  const out = new Uint8Array(h * (stride2 + 1));
-  const trial = [new Uint8Array(stride2), new Uint8Array(stride2), new Uint8Array(stride2), new Uint8Array(stride2)];
-  const cost = (row) => {
-    let sum2 = 0;
-    for (let i2 = 0; i2 < row.length; i2++) sum2 += row[i2] < 128 ? row[i2] : 256 - row[i2];
-    return sum2;
-  };
-  for (let y = 0; y < h; y++) {
-    const at = y * stride2;
-    const up = y > 0 ? at - stride2 : -1;
-    const [none, sub, upRow, paeth] = trial;
-    for (let i2 = 0; i2 < stride2; i2++) {
-      const x2 = rgba[at + i2];
-      const a = i2 >= bpp ? rgba[at + i2 - bpp] : 0;
-      const b = up >= 0 ? rgba[up + i2] : 0;
-      const c = up >= 0 && i2 >= bpp ? rgba[up + i2 - bpp] : 0;
-      none[i2] = x2;
-      sub[i2] = x2 - a & 255;
-      upRow[i2] = x2 - b & 255;
-      const p = a + b - c;
-      const pa = p > a ? p - a : a - p;
-      const pb = p > b ? p - b : b - p;
-      const pc = p > c ? p - c : c - p;
-      paeth[i2] = x2 - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c) & 255;
-    }
-    let best = 0;
-    let bestCost = Infinity;
-    for (let f = 0; f < 4; f++) {
-      const c = cost(trial[f]);
-      if (c < bestCost) {
-        bestCost = c;
-        best = f;
-      }
-    }
-    const filterType = [0, 1, 2, 4][best];
-    out[y * (stride2 + 1)] = filterType;
-    out.set(trial[best], y * (stride2 + 1) + 1);
-  }
-  return out;
-}
-function recolorPng(png, ink, over, curve) {
-  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
-  const isPlte = png.length > TRNS_AT + 12 + 256 && view.getUint32(PLTE_AT) === 768 && png[PLTE_AT + 4] === 80 && png[PLTE_AT + 5] === 76 && png[PLTE_AT + 6] === 84 && png[PLTE_AT + 7] === 69 && view.getUint32(TRNS_AT) === 256 && png[TRNS_AT + 4] === 116 && png[TRNS_AT + 5] === 82 && png[TRNS_AT + 6] === 78 && png[TRNS_AT + 7] === 83;
-  if (!isPlte) throw new Error("recolorPng: not a kittex palette PNG");
-  const out = png.slice();
-  out.set(chunk("PLTE", palette(ink)), PLTE_AT);
-  out.set(chunk("tRNS", alphaTable(ink, over, curve)), TRNS_AT);
-  return out;
-}
-function inkAlpha(alpha, ink, over) {
-  const fg = linearLuminance(ink);
-  const bg = linearLuminance(over);
-  if (!(Math.abs(fg - bg) > 1e-3)) return alpha;
-  const blend = linearize(unlinearize(fg) * alpha + unlinearize(bg) * (1 - alpha));
-  return Math.min(1, Math.max(0, (blend - bg) / (fg - bg)));
-}
-function curvedAlpha(alpha, ink, over, curve) {
-  const gamma = curve.gamma < 0.01 ? 1 : 1 / curve.gamma;
-  const t = (1 - linearLuminance(ink) + linearLuminance(over)) * 0.5;
-  const moved = alpha + (alpha ** gamma - alpha) * t;
-  return Math.min(1, Math.max(0, moved * (1 + curve.contrast * 0.01)));
-}
-function alphaTable(ink, over, curve) {
-  const trns = new Uint8Array(256);
-  for (let i2 = 0; i2 < 256; i2++) {
-    if (!over || i2 === 0 || i2 === 255 && !curve) trns[i2] = i2;
-    else trns[i2] = Math.round(255 * (curve ? curvedAlpha(i2 / 255, ink, over, curve) : inkAlpha(i2 / 255, ink, over)));
-  }
-  return trns;
-}
-var linearize = (v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-var unlinearize = (v) => v <= 31308e-7 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
-var linearLuminance = (c) => 0.2126 * linearize(clampByte(c.r) / 255) + 0.7152 * linearize(clampByte(c.g) / 255) + 0.0722 * linearize(clampByte(c.b) / 255);
-function palette(ink) {
-  const plte = new Uint8Array(768);
-  const r = clampByte(ink.r), g = clampByte(ink.g), b = clampByte(ink.b);
-  for (let i2 = 0; i2 < 768; i2 += 3) {
-    plte[i2] = r;
-    plte[i2 + 1] = g;
-    plte[i2 + 2] = b;
-  }
-  return plte;
-}
-var clampByte = (v) => Math.min(255, Math.max(0, Math.round(v))) || 0;
-function filter(alpha, w, h) {
-  const out = new Uint8Array(h * (w + 1));
-  for (let y = 0; y < h; y++) out.set(alpha.subarray(y * w, y * w + w), y * (w + 1) + 1);
-  return out;
-}
-function chunk(type, data) {
-  const out = new Uint8Array(12 + data.length);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, data.length);
-  for (let i2 = 0; i2 < 4; i2++) out[4 + i2] = type.charCodeAt(i2);
-  out.set(data, 8);
-  view.setUint32(8 + data.length, crc32(out, 4, 8 + data.length));
-  return out;
-}
-var crcTable;
-function crc32(bytes, from, to) {
-  const table2 = crcTable ??= Uint32Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
-    return c >>> 0;
-  });
-  let crc = 4294967295;
-  for (let i2 = from; i2 < to; i2++) crc = table2[(crc ^ bytes[i2]) & 255] ^ crc >>> 8;
-  return (crc ^ 4294967295) >>> 0;
-}
-function concat2(parts) {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of parts) {
-    out.set(p, at);
-    at += p.length;
-  }
-  return out;
-}
-// core/src/image/encode.ts
-var SIGNATURE3 = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
-function encodeRgbaPng(bitmap) {
-  const { width, height: height2, rgba } = bitmap;
-  if (rgba.length !== width * height2 * 4 || width < 1 || height2 < 1) throw new RangeError(`encodeRgbaPng: ${rgba.length} bytes is not a ${width}×${height2} RGBA bitmap`);
-  let opaque = true;
-  for (let i2 = 3; i2 < rgba.length; i2 += 4) {
-    if (rgba[i2] !== 255) {
-      opaque = false;
-      break;
-    }
-  }
-  let pixels = rgba;
-  if (opaque) {
-    pixels = new Uint8Array(width * height2 * 3);
-    for (let i2 = 0, j = 0; i2 < rgba.length; i2 += 4, j += 3) {
-      pixels[j] = rgba[i2];
-      pixels[j + 1] = rgba[i2 + 1];
-      pixels[j + 2] = rgba[i2 + 2];
-    }
-  }
-  const ihdr = new Uint8Array(13);
-  const view = new DataView(ihdr.buffer);
-  view.setUint32(0, width);
-  view.setUint32(4, height2);
-  ihdr.set([8, opaque ? 2 : 6, 0, 0, 0], 8);
-  const filtered = filterBytes(pixels, width, height2, opaque ? 3 : 4);
-  return concat2([SIGNATURE3, chunk("IHDR", ihdr), chunk("IDAT", zlibSync(filtered, { level: 6 })), chunk("IEND", new Uint8Array(0))]);
-}
-// core/src/image/scale.ts
-function spans(from, to) {
-  const scale2 = from / to;
-  const first = new Int32Array(to);
-  const offsets = new Int32Array(to + 1);
-  const weights = [];
-  for (let o = 0; o < to; o++) {
-    const start = o * scale2;
-    const end = Math.min(from, (o + 1) * scale2);
-    const lo = Math.min(from - 1, Math.floor(start));
-    first[o] = lo;
-    for (let i2 = lo; i2 < end && i2 < from; i2++) {
-      const w = Math.min(i2 + 1, end) - Math.max(i2, start);
-      if (w > 1e-9 || i2 === lo) weights.push(Math.max(w, 0) / (end - start));
-      else break;
-    }
-    offsets[o + 1] = weights.length;
-  }
-  return { first, offsets, weights: Float64Array.from(weights) };
-}
-function scaleBitmap(bitmap, widthPx, heightPx) {
-  const { width: w, height: h, rgba } = bitmap;
-  if (!Number.isInteger(widthPx) || !Number.isInteger(heightPx) || widthPx < 1 || heightPx < 1) {
-    throw new RangeError(`scaleBitmap: target size ${widthPx}×${heightPx} is not a positive whole size`);
-  }
-  if (rgba.length !== w * h * 4 || w < 1 || h < 1) throw new RangeError(`scaleBitmap: ${rgba.length} bytes is not a ${w}×${h} RGBA bitmap`);
-  if (widthPx === w && heightPx === h) return { width: w, height: h, rgba: rgba.slice() };
-  const xs = spans(w, widthPx);
-  const ys = spans(h, heightPx);
-  const out = new Uint8Array(widthPx * heightPx * 4);
-  const row = new Float64Array(w * 4);
-  for (let oy = 0; oy < heightPx; oy++) {
-    row.fill(0);
-    for (let k = ys.offsets[oy], sy = ys.first[oy]; k < ys.offsets[oy + 1]; k++, sy++) {
-      const wy = ys.weights[k];
-      const base = sy * w * 4;
-      for (let x2 = 0, i2 = base; x2 < w * 4; x2 += 4, i2 += 4) {
-        const a = rgba[i2 + 3] * wy;
-        row[x2] = row[x2] + rgba[i2] * a;
-        row[x2 + 1] = row[x2 + 1] + rgba[i2 + 1] * a;
-        row[x2 + 2] = row[x2 + 2] + rgba[i2 + 2] * a;
-        row[x2 + 3] = row[x2 + 3] + a;
-      }
-    }
-    for (let ox = 0; ox < widthPx; ox++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let a = 0;
-      for (let k = xs.offsets[ox], sx = xs.first[ox] * 4; k < xs.offsets[ox + 1]; k++, sx += 4) {
-        const wx = xs.weights[k];
-        r += row[sx] * wx;
-        g += row[sx + 1] * wx;
-        b += row[sx + 2] * wx;
-        a += row[sx + 3] * wx;
-      }
-      const at = (oy * widthPx + ox) * 4;
-      if (a > 0) {
-        out[at] = Math.round(r / a);
-        out[at + 1] = Math.round(g / a);
-        out[at + 2] = Math.round(b / a);
-        out[at + 3] = Math.round(a);
-      }
-    }
-  }
-  return { width: widthPx, height: heightPx, rgba: out };
-}
-// core/src/image/index.ts
-function decodeImage(bytes, limits) {
-  const maxPixels = limits?.maxPixels ?? MAX_IMAGE_PIXELS;
-  const format = imageHeader(bytes)?.format;
-  if (format === "png") return decodePng(bytes, maxPixels);
-  if (format === "jpeg") return decodeJpeg(bytes, maxPixels);
-  throw new ImageError(format ? `decodeImage does not decode ${format}` : "not an image kittex knows");
-}
-// core/src/raster/fill.ts
-var Coverage = class {
-  width;
-  height;
-  /** Row stride of `acc`: two spare cells right of the image take the deltas of edges at x = width. */
-  stride;
-  acc;
+import{curvedAlpha,inkAlpha,init_path,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,Coverage,RULE_MIN_SNAP,encodeAlphaPng,encodeExactPng,flattenPath,RULE_MIN_FILL,flattenSubpaths,MIN_STROKE_PX,OUTLINE_EM_PX,encodeQuantizedPng,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN}from'./p33.js';export*from'./p33.js';
+// core/src/raster/paint.ts
+var Canvas2 = class {
   constructor(width, height2) {
     this.width = width;
     this.height = height2;
-    this.stride = width + 2;
-    this.acc = new Float32Array(this.stride * height2);
+    this.pixels = new Uint8Array(width * height2 * 4);
   }
-  /** Adds a closed contour. `sign` is +1 or -1: the winding that counts as ink for this contour's shape. */
-  fill(contour, sign) {
-    const n = contour.length;
-    let x0 = contour[n - 2];
-    let y0 = contour[n - 1];
-    for (let i2 = 0; i2 < n; i2 += 2) {
-      const x1 = contour[i2];
-      const y1 = contour[i2 + 1];
-      this.line(x0, y0, x1, y1, sign);
-      x0 = x1;
-      y0 = y1;
-    }
-  }
-  /** Adds one edge, clipped to the image: the parts left of x = 0 or right of x = width run along that side. */
-  line(x0, y0, x1, y1, sign) {
-    if (y0 === y1) return;
-    const w = this.width;
-    if (x0 >= 0 && x1 >= 0 && x0 <= w && x1 <= w) {
-      this.edge(x0, y0, x1, y1, sign);
-      return;
-    }
-    const ts = [0, 1];
-    for (const bound of [0, w]) {
-      if ((x0 - bound) * (x1 - bound) < 0) ts.push((bound - x0) / (x1 - x0));
-    }
-    ts.sort((a, b) => a - b);
-    for (let i2 = 1; i2 < ts.length; i2++) {
-      const ta = ts[i2 - 1];
-      const tb = ts[i2];
-      const ax = x0 + (x1 - x0) * ta;
-      const bx = x0 + (x1 - x0) * tb;
-      const ay = y0 + (y1 - y0) * ta;
-      const by = y0 + (y1 - y0) * tb;
-      this.edge(Math.min(w, Math.max(0, ax)), ay, Math.min(w, Math.max(0, bx)), by, sign);
-    }
-  }
-  /** Adds one edge with 0 ≤ x ≤ width; rows outside the image are skipped. */
-  edge(px0, py0, px1, py1, sign) {
-    if (py0 === py1) return;
-    let dir = sign;
-    let x0 = px0, y0 = py0, x1 = px1, y1 = py1;
-    if (y0 > y1) {
-      dir = -sign;
-      x0 = px1;
-      y0 = py1;
-      x1 = px0;
-      y1 = py0;
-    }
-    const h = this.height;
-    if (y1 <= 0 || y0 >= h) return;
-    const acc = this.acc;
-    const stride2 = this.stride;
-    const dxdy = (x1 - x0) / (y1 - y0);
-    let x2 = x0;
-    if (y0 < 0) x2 -= y0 * dxdy;
-    const rowFrom = Math.max(0, Math.floor(y0));
-    const rowTo = Math.min(h, Math.ceil(y1));
-    for (let row = rowFrom; row < rowTo; row++) {
-      const base = row * stride2;
-      const dy = Math.min(row + 1, y1) - Math.max(row, y0);
-      const xnext = x2 + dxdy * dy;
-      const d = dy * dir;
-      const xa = x2 < xnext ? x2 : xnext;
-      const xb = x2 < xnext ? xnext : x2;
-      const xaFloor = Math.floor(xa);
-      const xai = xaFloor;
-      const xbCeil = Math.ceil(xb);
-      const xbi = xbCeil;
-      if (xbi <= xai + 1) {
-        const xmf = 0.5 * (x2 + xnext) - xaFloor;
-        acc[base + xai] += d - d * xmf;
-        acc[base + xai + 1] += d * xmf;
-      } else {
-        const s = 1 / (xb - xa);
-        const xaf = xa - xaFloor;
-        const a0 = 0.5 * s * (1 - xaf) * (1 - xaf);
-        const xbf = xb - xbCeil + 1;
-        const am = 0.5 * s * xbf * xbf;
-        acc[base + xai] += d * a0;
-        if (xbi === xai + 2) {
-          acc[base + xai + 1] += d * (1 - a0 - am);
-        } else {
-          const a1 = s * (1.5 - xaf);
-          acc[base + xai + 1] += d * (a1 - a0);
-          for (let xi = xai + 2; xi < xbi - 1; xi++) acc[base + xi] += d * s;
-          const a2 = a1 + (xbi - xai - 3) * s;
-          acc[base + xbi - 1] += d * (1 - a2 - am);
+  width;
+  height;
+  /** Premultiplied RGBA, row-major. */
+  pixels;
+  /**
+   * Paints `coverage` (w × h bytes, its top-left at x0, y0 in the canvas) in
+   * `color` at `opacity`, through `mask` (the canvas's size, a clip) when given.
+   */
+  paint(coverage, x0, y0, w, h, color, opacity, mask) {
+    const px2 = this.pixels;
+    const W = this.width;
+    const erase = color === "erase";
+    const r = erase ? 0 : color.r;
+    const g = erase ? 0 : color.g;
+    const b = erase ? 0 : color.b;
+    const k = Math.min(1, Math.max(0, opacity)) / 255;
+    for (let y = 0; y < h; y++) {
+      const cy = y0 + y;
+      if (cy < 0 || cy >= this.height) continue;
+      for (let x2 = 0; x2 < w; x2++) {
+        const c = coverage[y * w + x2];
+        if (c === 0) continue;
+        const cx = x0 + x2;
+        if (cx < 0 || cx >= W) continue;
+        const at = cy * W + cx;
+        let a = c * k;
+        if (mask) {
+          const m = mask[at];
+          if (m === 0) continue;
+          a = a * m / 255;
         }
-        acc[base + xbi] += d * am;
+        const keep = 1 - a;
+        const i2 = at * 4;
+        if (erase) {
+          px2[i2] = px2[i2] * keep + 0.5;
+          px2[i2 + 1] = px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = px2[i2 + 3] * keep + 0.5;
+        } else {
+          px2[i2] = r * a + px2[i2] * keep + 0.5;
+          px2[i2 + 1] = g * a + px2[i2 + 1] * keep + 0.5;
+          px2[i2 + 2] = b * a + px2[i2 + 2] * keep + 0.5;
+          px2[i2 + 3] = 255 * a + px2[i2 + 3] * keep + 0.5;
+        }
       }
-      x2 = xnext;
     }
   }
   /**
-   * The coverage under the even-odd rule, as bytes: a winding of 2 is a hole,
-   * and the accumulated area w covers |w| folded into [0, 1] (the distance to
-   * the nearest even number), which is exact for areas no two edges of a
-   * pixel overlap in.
+   * The pixels with straight alpha, for a PNG; with `over`, each pixel's
+   * alpha corrected for its colour as the terminal corrects text blended over
+   * that background (inkAlpha: Ghostty's linear-corrected blending; with a
+   * `curve`, curvedAlpha: kitty's).
    */
-  toAlphaEvenOdd() {
-    const { width: w, height: h, stride: stride2, acc } = this;
-    const out = new Uint8Array(w * h);
-    for (let row = 0; row < h; row++) {
-      let sum2 = 0;
-      const from = row * stride2;
-      const to = row * w;
-      for (let x2 = 0; x2 < w; x2++) {
-        sum2 += acc[from + x2];
-        let c = (sum2 < 0 ? -sum2 : sum2) % 2;
-        if (c > 1) c = 2 - c;
-        out[to + x2] = c * 255 + 0.5 | 0;
+  straight(over, curve) {
+    const px2 = this.pixels;
+    const out = new Uint8Array(px2.length);
+    const tables = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < px2.length; i2 += 4) {
+      const a = px2[i2 + 3];
+      if (a === 0) continue;
+      const half = a >> 1;
+      const r0 = (px2[i2] * 255 + half) / a | 0;
+      const g0 = (px2[i2 + 1] * 255 + half) / a | 0;
+      const b0 = (px2[i2 + 2] * 255 + half) / a | 0;
+      const r = r0 > 255 ? 255 : r0;
+      const g = g0 > 255 ? 255 : g0;
+      const b = b0 > 255 ? 255 : b0;
+      out[i2] = r;
+      out[i2 + 1] = g;
+      out[i2 + 2] = b;
+      if (!over || a === 255 && !curve) {
+        out[i2 + 3] = a;
+        continue;
       }
-    }
-    return out;
-  }
-  /** The coverage as bytes (0 to 255), row-major, through `curve` (256 entries) when given. */
-  toAlpha(curve) {
-    const { width: w, height: h, stride: stride2, acc } = this;
-    const out = new Uint8Array(w * h);
-    for (let row = 0; row < h; row++) {
-      let sum2 = 0;
-      const from = row * stride2;
-      const to = row * w;
-      for (let x2 = 0; x2 < w; x2++) {
-        sum2 += acc[from + x2];
-        const c = sum2 < 0 ? -sum2 : sum2;
-        const byte = c >= 1 ? 255 : c * 255 + 0.5 | 0;
-        out[to + x2] = curve ? curve[byte] : byte;
+      const key = r << 16 | g << 8 | b;
+      let table2 = tables.get(key);
+      if (!table2) {
+        if (tables.size >= 4096) {
+          out[i2 + 3] = Math.round(255 * corrected(a / 255, { r, g, b }, over, curve));
+          continue;
+        }
+        table2 = correctionTable({ r, g, b }, over, curve);
+        tables.set(key, table2);
       }
+      out[i2 + 3] = table2[a];
     }
     return out;
   }
 };
-export{inkAlpha,Coverage,encodeAlphaPng,encodeQuantizedPng,recolorPng,decodeImage,scaleBitmap,encodeRgbaPng};
+function correctionTable(color, over, curve) {
+  const table2 = new Uint8Array(256);
+  for (let a = 0; a < 256; a++) table2[a] = a === 0 || a === 255 && !curve ? a : Math.round(255 * corrected(a / 255, color, over, curve));
+  return table2;
+}
+var corrected = (alpha, color, over, curve) => curve ? curvedAlpha(alpha, color, over, curve) : inkAlpha(alpha, color, over);
+// core/src/raster/index.ts
+init_path();
+// core/src/raster/stroke.ts
+function strokeOutlines(subpaths, g) {
+  const hw = g.width / 2;
+  if (!(hw > 0)) return [];
+  const out = [];
+  for (const piece of dashed(subpaths, g)) strokePiece(piece, hw, g, out);
+  for (const c of out) if (area(c) < 0) reverse(c);
+  return out;
+}
+function dashed(subpaths, g) {
+  const dash = g.dash;
+  if (!dash || dash.length === 0) return [...subpaths];
+  const period = dash.reduce((sum2, n) => sum2 + n, 0);
+  if (!(period >= MIN_DASH_PERIOD)) return [...subpaths];
+  const pieces = [];
+  for (const sub of subpaths) {
+    const pts = sub.points.slice();
+    if (sub.closed) pts.push(pts[0], pts[1]);
+    let phase = ((g.dashOffset ?? 0) % period + period) % period;
+    let k = 0;
+    while (phase >= dash[k]) {
+      phase -= dash[k];
+      k = (k + 1) % dash.length;
+    }
+    let left = dash[k] - phase;
+    let on = k % 2 === 0;
+    let current = on ? [pts[0], pts[1]] : [];
+    for (let i2 = 0; i2 + 3 < pts.length; i2 += 2) {
+      const x0 = pts[i2], y0 = pts[i2 + 1], x1 = pts[i2 + 2], y1 = pts[i2 + 3];
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      let at = 0;
+      while (len - at > left) {
+        at += left;
+        const t = at / len;
+        const x2 = x0 + (x1 - x0) * t;
+        const y = y0 + (y1 - y0) * t;
+        if (on) {
+          current.push(x2, y);
+          pieces.push({ points: current, closed: false });
+          if (pieces.length > MAX_DASHES) return [...subpaths];
+          current = [];
+        } else {
+          current = [x2, y];
+        }
+        on = !on;
+        k = (k + 1) % dash.length;
+        left = dash[k];
+      }
+      left -= len - at;
+      if (on) current.push(x1, y1);
+    }
+    if (on && current.length >= 4) pieces.push({ points: current, closed: false });
+  }
+  return pieces;
+}
+function strokePiece(sub, hw, g, out) {
+  const pts = [];
+  for (let i2 = 0; i2 + 1 < sub.points.length; i2 += 2) {
+    const x2 = sub.points[i2];
+    const y = sub.points[i2 + 1];
+    const n2 = pts.length;
+    if (n2 >= 2 && Math.abs(x2 - pts[n2 - 2]) < SAME_POINT && Math.abs(y - pts[n2 - 1]) < SAME_POINT) continue;
+    pts.push(x2, y);
+  }
+  let closed = sub.closed;
+  if (closed && pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) < SAME_POINT && Math.abs(pts[1] - pts[pts.length - 1]) < SAME_POINT) pts.length -= 2;
+  const n = pts.length / 2;
+  if (n < 2) {
+    if (n === 1 && g.cap !== "butt" && sub.points.length >= 4) {
+      const x2 = pts[0], y = pts[1];
+      out.push(g.cap === "round" ? circle(x2, y, hw) : [x2 - hw, y - hw, x2 + hw, y - hw, x2 + hw, y + hw, x2 - hw, y + hw]);
+    }
+    return;
+  }
+  if (n === 2) closed = false;
+  const segments = closed ? n : n - 1;
+  const dx = new Float64Array(segments);
+  const dy = new Float64Array(segments);
+  for (let i2 = 0; i2 < segments; i2++) {
+    const j = (i2 + 1) % n;
+    const ex = pts[2 * j] - pts[2 * i2];
+    const ey = pts[2 * j + 1] - pts[2 * i2 + 1];
+    const len = Math.hypot(ex, ey);
+    dx[i2] = ex / len;
+    dy[i2] = ey / len;
+  }
+  for (let i2 = 0; i2 < segments; i2++) {
+    const j = (i2 + 1) % n;
+    const nx = -dy[i2] * hw;
+    const ny = dx[i2] * hw;
+    const ax = pts[2 * i2], ay = pts[2 * i2 + 1], bx = pts[2 * j], by = pts[2 * j + 1];
+    out.push([ax + nx, ay + ny, bx + nx, by + ny, bx - nx, by - ny, ax - nx, ay - ny]);
+  }
+  const first = closed ? 0 : 1;
+  const last = closed ? n - 1 : n - 2;
+  for (let v = first; v <= last; v++) {
+    const into = (v - 1 + segments) % segments;
+    const from = v % segments;
+    join(pts[2 * v], pts[2 * v + 1], dx[into], dy[into], dx[from], dy[from], hw, g, out);
+  }
+  if (!closed) {
+    cap(pts[0], pts[1], -dx[0], -dy[0], hw, g.cap, out);
+    cap(pts[2 * n - 2], pts[2 * n - 1], dx[segments - 1], dy[segments - 1], hw, g.cap, out);
+  }
+}
+function join(x2, y, ix, iy, ox, oy, hw, g, out) {
+  const cross = ix * oy - iy * ox;
+  const dot = ix * ox + iy * oy;
+  const turn = Math.atan2(Math.abs(cross), dot);
+  if (hw * turn < NO_JOIN) return;
+  const s = cross > 0 ? -1 : 1;
+  const ax = x2 + s * -iy * hw;
+  const ay = y + s * ix * hw;
+  const bx = x2 + s * -oy * hw;
+  const by = y + s * ox * hw;
+  if (g.join === "round" && hw * turn > ROUND_AS_BEVEL) {
+    out.push(circle(x2, y, hw));
+    return;
+  }
+  if (g.join === "miter") {
+    const ratio = 1 / Math.sqrt(Math.max(1e-12, (1 + dot) / 2));
+    if (ratio <= g.miterLimit) {
+      let mx = -iy - oy;
+      let my = ix + ox;
+      const len = Math.hypot(mx, my);
+      if (len > 1e-9) {
+        mx = mx / len * s * hw * ratio;
+        my = my / len * s * hw * ratio;
+        out.push([x2, y, ax, ay, x2 + mx, y + my, bx, by]);
+        return;
+      }
+    }
+  }
+  out.push([x2, y, ax, ay, bx, by]);
+}
+function cap(x2, y, dx, dy, hw, kind, out) {
+  if (kind === "round") {
+    out.push(circle(x2, y, hw));
+  } else if (kind === "square") {
+    const nx = -dy * hw;
+    const ny = dx * hw;
+    const ex = x2 + dx * hw;
+    const ey = y + dy * hw;
+    out.push([x2 + nx, y + ny, ex + nx, ey + ny, ex - nx, ey - ny, x2 - nx, y - ny]);
+  }
+}
+function circle(x2, y, r) {
+  const k = r <= ARC_FLATNESS ? 6 : Math.min(128, Math.max(6, Math.ceil(Math.PI / Math.acos(1 - ARC_FLATNESS / r))));
+  const c = [];
+  for (let i2 = 0; i2 < k; i2++) {
+    const t = 2 * Math.PI * i2 / k;
+    c.push(x2 + r * Math.cos(t), y + r * Math.sin(t));
+  }
+  return c;
+}
+function area(c) {
+  let sum2 = 0;
+  const n = c.length;
+  let x0 = c[n - 2];
+  let y0 = c[n - 1];
+  for (let i2 = 0; i2 < n; i2 += 2) {
+    sum2 += x0 * c[i2 + 1] - c[i2] * y0;
+    x0 = c[i2];
+    y0 = c[i2 + 1];
+  }
+  return sum2 / 2;
+}
+function reverse(c) {
+  for (let i2 = 0, j = c.length - 2; i2 < j; i2 += 2, j -= 2) {
+    const x2 = c[i2];
+    const y = c[i2 + 1];
+    c[i2] = c[j];
+    c[i2 + 1] = c[j + 1];
+    c[j] = x2;
+    c[j + 1] = y;
+  }
+}
+function snapStroke(subpaths, width) {
+  const whole = Math.max(1, Math.round(width));
+  const at = (v) => whole % 2 === 1 ? Math.floor(v) + 0.5 : Math.round(v);
+  let snapped = false;
+  for (const sub of subpaths) {
+    const p = sub.points;
+    if (sub.closed && p.length >= 6 && Math.abs(p[0] - p[p.length - 2]) < SAME_POINT && Math.abs(p[1] - p[p.length - 1]) < SAME_POINT) p.length -= 2;
+    const n = p.length / 2;
+    const segments = sub.closed ? n : n - 1;
+    const snapX = new Uint8Array(n);
+    const snapY = new Uint8Array(n);
+    for (let i2 = 0; i2 < segments; i2++) {
+      const j = (i2 + 1) % n;
+      const ex = p[2 * j] - p[2 * i2];
+      const ey = p[2 * j + 1] - p[2 * i2 + 1];
+      const len = Math.hypot(ex, ey);
+      if (!(len > 0)) continue;
+      if (Math.abs(ey) < 1e-3 * len) snapY[i2] = snapY[j] = 1;
+      else if (Math.abs(ex) < 1e-3 * len) snapX[i2] = snapX[j] = 1;
+    }
+    for (let i2 = 0; i2 < n; i2++) {
+      if (snapX[i2]) p[2 * i2] = at(p[2 * i2]);
+      if (snapY[i2]) p[2 * i2 + 1] = at(p[2 * i2 + 1]);
+      if (snapX[i2] || snapY[i2]) snapped = true;
+    }
+  }
+  return snapped ? whole : width;
+}
+// core/src/raster/index.ts
+var WEIGHT_STEPS = [
+  [300, 12],
+  [400, DEFAULT_WEIGHT],
+  [500, 20],
+  [600, 23],
+  [700, 26]
+];
+function strokeWeight(fontWeight) {
+  if (fontWeight === void 0 || !Number.isFinite(fontWeight)) return DEFAULT_WEIGHT;
+  const first = WEIGHT_STEPS[0];
+  const last = WEIGHT_STEPS.at(-1);
+  if (fontWeight <= first[0]) return first[1];
+  if (fontWeight >= last[0]) return last[1];
+  const i2 = WEIGHT_STEPS.findIndex(([w]) => w >= fontWeight);
+  const [w0, s0] = WEIGHT_STEPS[i2 - 1];
+  const [w1, s1] = WEIGHT_STEPS[i2];
+  return Math.round(s0 + (s1 - s0) * (fontWeight - w0) / (w1 - w0));
+}
+function layout(result, options3) {
+  const { emPx, cellWidth, cellHeight } = options3;
+  if (!(emPx > 0 && cellWidth > 0 && cellHeight > 0)) throw new RangeError("raster: emPx and cell sizes must be positive");
+  const maxColumns = Math.max(1, Math.min(255, Math.floor(options3.maxColumns) || 1));
+  const minRows = Math.max(1, Math.min(255, Math.ceil(options3.minRows ?? 1)));
+  const weight = Math.max(0, options3.weight ?? DEFAULT_WEIGHT);
+  const width = Math.max(0, result.width);
+  const boxHeight = Math.max(0, result.height + result.depth);
+  const dilation0 = weight / 1e3 * emPx;
+  const pad2 = Math.ceil(dilation0 - 1e-9);
+  const span = options3.align === "left" && options3.centerInk ? inkSpan(result, emPx, dilation0, pad2) : void 0;
+  const fullWidth = span ?? width * emPx;
+  const availWidth = maxColumns * cellWidth - (span === void 0 ? 2 * pad2 : 0);
+  const availHeight = 255 * cellHeight - 2 * pad2;
+  const inline3 = options3.baselinePx !== void 0;
+  let scale2 = 1;
+  let inlineBaseline = 0;
+  if (fullWidth > availWidth) scale2 = Math.max(0, availWidth - (span === void 0 ? 0 : INK_MARGIN)) / fullWidth;
+  if (inline3) {
+    const heightPx2 = Math.max(1, Math.round(minRows * cellHeight));
+    const baseline = Math.min(heightPx2, Math.max(0, Math.round(options3.baselinePx)));
+    const above2 = Math.max(0, result.height) * emPx + dilation0;
+    const below2 = Math.max(0, result.depth) * emPx + dilation0;
+    const shift = Math.max(1, Math.round(cellHeight * BASELINE_SHIFT));
+    const floor = options3.minScale ?? 0;
+    const fitAt = (edge) => (at) => Math.min(scale2, above2 > 0 ? Math.max(0, at - edge) / above2 : Infinity, below2 > 0 ? (heightPx2 - at) / below2 : Infinity);
+    const place = (fit) => {
+      let best = baseline;
+      for (let d = 1; d <= shift; d++) {
+        for (const at of [baseline - d, baseline + d]) {
+          if (at >= 0 && at <= heightPx2 && fit(at) > fit(best) + 1e-9) best = at;
+        }
+      }
+      return { at: best, scale: fit(best) };
+    };
+    let placed = place(fitAt(INK_EDGE));
+    if (placed.scale < floor) placed = place(fitAt(0));
+    inlineBaseline = placed.at;
+    scale2 = placed.scale;
+    const slack = Math.max(0, options3.overflowPx ?? 0);
+    if (scale2 < floor && slack > 0) {
+      const fitWith = (at) => Math.min(above2 > 0 ? (at + slack) / above2 : Infinity, below2 > 0 ? (heightPx2 - at + slack) / below2 : Infinity);
+      let rescue = baseline;
+      for (let d = 1; d <= shift; d++) {
+        for (const at of [baseline - d, baseline + d]) {
+          if (at >= 0 && at <= heightPx2 && fitWith(at) > fitWith(rescue) + 1e-9) rescue = at;
+        }
+      }
+      if (fitWith(rescue) >= floor - 1e-9 && (fullWidth * floor <= availWidth || availWidth <= 0)) {
+        inlineBaseline = rescue;
+        scale2 = floor;
+      }
+    }
+  } else if (boxHeight * emPx * scale2 > availHeight) {
+    scale2 = Math.max(0, availHeight) / (boxHeight * emPx);
+  }
+  const k = emPx * scale2;
+  const inkWidth = span === void 0 ? width * k + 2 * pad2 : scale2 === 1 ? span : span * scale2 + INK_MARGIN;
+  const inkHeight = boxHeight * k + 2 * pad2;
+  const minColumns = Math.max(1, Math.floor(options3.minColumns ?? 1));
+  const columns = options3.align === "center" ? maxColumns : Math.min(maxColumns, Math.max(minColumns, Math.ceil(inkWidth / cellWidth - 1e-9)));
+  const rows = inline3 ? minRows : Math.min(255, Math.max(minRows, Math.ceil(inkHeight / cellHeight - 1e-9)));
+  const widthPx = Math.max(1, Math.round(columns * cellWidth));
+  const heightPx = Math.max(1, Math.round(rows * cellHeight));
+  const originX = options3.align === "center" ? Math.round((widthPx - width * k) / 2) : pad2;
+  const baselinePx = inline3 ? inlineBaseline : Math.round((heightPx - inkHeight) / 2 + pad2 + Math.max(0, result.height) * k);
+  return { columns, rows, scale: scale2, widthPx, heightPx, k, dilation: dilation0 * scale2, originX, baselinePx };
+}
+function measure(result, options3) {
+  const { columns, rows, scale: scale2 } = layout(result, options3);
+  return { columns, rows, scale: scale2 };
+}
+function rasterize(result, options3) {
+  const box2 = layout(result, options3);
+  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box2;
+  const coverage = new Coverage(widthPx, heightPx);
+  const toPx = [k, 0, 0, k, originX, baselinePx];
+  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k);
+  const drawn = result.ops.flatMap((op) => {
+    const shape = outline(op, toPx, dilation, ruleMax);
+    return shape ? [{ op, shape }] : [];
+  });
+  const shapes = drawn.map((d) => d.shape);
+  const dx = options3.align === "left" && options3.centerInk ? inkShift(shapes, widthPx, options3.inkPlace ?? "center") : 0;
+  for (const { contours, sign } of shapes) {
+    for (const c of contours) {
+      if (dx !== 0) for (let i2 = 0; i2 < c.length; i2 += 2) c[i2] = c[i2] + dx;
+      coverage.fill(c, sign);
+    }
+  }
+  const raster = {
+    columns: box2.columns,
+    rows: box2.rows,
+    scale: box2.scale,
+    alpha: coverage.toAlpha(),
+    widthPx,
+    heightPx,
+    baselinePx
+  };
+  const layers = colorLayers(drawn, widthPx, heightPx);
+  return layers ? { ...raster, layers } : raster;
+}
+function colorLayers(drawn, widthPx, heightPx) {
+  if (!drawn.some(({ op }) => op.color || op.backdrop || op.background)) return void 0;
+  const groups = /* @__PURE__ */ new Map();
+  const order = [...drawn.filter((d) => d.op.background), ...drawn.filter((d) => !d.op.background)];
+  for (const { op, shape } of order) {
+    const key = [rgbKey(op.color), rgbKey(op.backdrop), op.background ? 1 : 0].join("|");
+    let group2 = groups.get(key);
+    if (!group2) {
+      const color = {};
+      if (op.color) color.color = op.color;
+      if (op.backdrop) color.backdrop = op.backdrop;
+      if (op.background) color.background = true;
+      group2 = { color, coverage: new Coverage(widthPx, heightPx) };
+      groups.set(key, group2);
+    }
+    for (const c of shape.contours) group2.coverage.fill(c, shape.sign);
+  }
+  return [...groups.values()].map(({ color, coverage }) => ({ ...color, alpha: coverage.toAlpha() }));
+}
+var rgbKey = (c) => c ? c.r << 16 | c.g << 8 | c.b : -1;
+function encodePng(raster, ink, over, curve, paint2) {
+  const { layers, widthPx, heightPx } = raster;
+  if (!layers) return encodeAlphaPng(raster.alpha, widthPx, heightPx, ink, over, curve);
+  const canvas = new Canvas2(widthPx, heightPx);
+  for (const layer of layers) {
+    const color = paint2 ? paint2(layer) : layer.color ?? ink;
+    if (color !== "erase") canvas.paint(layer.alpha, 0, 0, widthPx, heightPx, color, 1);
+  }
+  return encodeExactPng(canvas.straight(over, curve), widthPx, heightPx);
+}
+function inkSpan(result, emPx, dilation, originX) {
+  const toPx = [emPx, 0, 0, emPx, originX, 0];
+  const shapes = result.ops.flatMap((op) => outline(op, toPx, dilation, Math.max(RULE_MIN_SNAP, 0.15 * emPx)) ?? []);
+  const { x0, x1 } = extent(shapes);
+  return x1 > x0 ? Math.ceil(x1 - 1e-9) - Math.floor(x0 + 1e-9) : void 0;
+}
+function extent(shapes) {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const { contours } of shapes) {
+    for (const c of contours) {
+      for (let i2 = 0; i2 < c.length; i2 += 2) {
+        if (c[i2] < x0) x0 = c[i2];
+        if (c[i2] > x1) x1 = c[i2];
+      }
+    }
+  }
+  return { x0, x1 };
+}
+function inkShift(shapes, widthPx, place) {
+  const { x0, x1 } = extent(shapes);
+  if (!(x1 > x0) || x1 - x0 > widthPx) return 0;
+  const slack = widthPx - (x1 - x0);
+  const dx = Math.round((place === "start" ? 0 : place === "end" ? slack : slack / 2) - x0);
+  return Math.min(Math.max(dx, Math.ceil(-x0 - 1e-9)), Math.floor(widthPx - x1 + 1e-9));
+}
+function outline(op, toPx, dilation, ruleMax) {
+  let contours;
+  if (op.type === "rect") {
+    const [k, , , , e, f] = toPx;
+    const x0 = e + k * Math.min(op.x, op.x + op.width);
+    const x1 = e + k * Math.max(op.x, op.x + op.width);
+    const y0 = f + k * Math.min(op.y, op.y + op.height);
+    const y1 = f + k * Math.max(op.y, op.y + op.height);
+    if (!(x1 > x0 && y1 > y0)) return void 0;
+    contours = [[x0, y0, x1, y0, x1, y1, x0, y1]];
+  } else {
+    contours = flattenPath(op.d, compose(toPx, op.transform));
+  }
+  let area2 = 0;
+  for (const c of contours) area2 += signedArea(c);
+  if (!(Math.abs(area2) > 1e-9)) return void 0;
+  const sign = area2 > 0 ? 1 : -1;
+  const out = [];
+  for (let c of contours) {
+    if (dilation > 0) c = dilate(c, dilation, sign);
+    snapRule(c, ruleMax);
+    out.push(c);
+  }
+  return { contours: out, sign };
+}
+function compose(p, t) {
+  return [
+    p[0] * t[0] + p[2] * t[1],
+    p[1] * t[0] + p[3] * t[1],
+    p[0] * t[2] + p[2] * t[3],
+    p[1] * t[2] + p[3] * t[3],
+    p[0] * t[4] + p[2] * t[5] + p[4],
+    p[1] * t[4] + p[3] * t[5] + p[5]
+  ];
+}
+function signedArea(c) {
+  let sum2 = 0;
+  const n = c.length;
+  let x0 = c[n - 2];
+  let y0 = c[n - 1];
+  for (let i2 = 0; i2 < n; i2 += 2) {
+    const x1 = c[i2];
+    const y1 = c[i2 + 1];
+    sum2 += x0 * y1 - x1 * y0;
+    x0 = x1;
+    y0 = y1;
+  }
+  return sum2 / 2;
+}
+function dilate(c, d, sign) {
+  const pts = [];
+  for (let i2 = 0; i2 < c.length; i2 += 2) {
+    const x2 = c[i2];
+    const y = c[i2 + 1];
+    const n2 = pts.length;
+    if (n2 >= 2 && Math.abs(x2 - pts[n2 - 2]) < 1e-6 && Math.abs(y - pts[n2 - 1]) < 1e-6) continue;
+    pts.push(x2, y);
+  }
+  while (pts.length >= 4 && Math.abs(pts[0] - pts[pts.length - 2]) < 1e-6 && Math.abs(pts[1] - pts[pts.length - 1]) < 1e-6) {
+    pts.length -= 2;
+  }
+  const n = pts.length / 2;
+  if (n < 3) return c;
+  const nx = new Float64Array(n);
+  const ny = new Float64Array(n);
+  for (let i2 = 0; i2 < n; i2++) {
+    const j = (i2 + 1) % n;
+    const dx = pts[2 * j] - pts[2 * i2];
+    const dy = pts[2 * j + 1] - pts[2 * i2 + 1];
+    const len = Math.hypot(dx, dy);
+    nx[i2] = sign * dy / len;
+    ny[i2] = -sign * dx / len;
+  }
+  const out = new Array(2 * n);
+  for (let i2 = 0; i2 < n; i2++) {
+    const p = (i2 + n - 1) % n;
+    const sx = nx[p] + nx[i2];
+    const sy = ny[p] + ny[i2];
+    const cos1 = 1 + nx[p] * nx[i2] + ny[p] * ny[i2];
+    let mx = 0;
+    let my = 0;
+    if (cos1 >= 0.5) {
+      mx = sx / cos1;
+      my = sy / cos1;
+    } else {
+      const len = Math.hypot(sx, sy);
+      if (len > 1e-9) {
+        mx = 2 * sx / len;
+        my = 2 * sy / len;
+      }
+    }
+    out[2 * i2] = pts[2 * i2] + d * mx;
+    out[2 * i2 + 1] = pts[2 * i2 + 1] + d * my;
+  }
+  return out;
+}
+function snapRule(c, maxThickness = RULE_MIN_SNAP) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i2 = 0; i2 < c.length; i2 += 2) {
+    const x2 = c[i2];
+    const y = c[i2 + 1];
+    if (x2 < x0) x0 = x2;
+    if (x2 > x1) x1 = x2;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (!(w > 0 && h > 0) || Math.abs(signedArea(c)) < RULE_MIN_FILL * w * h) return;
+  const axis = h <= maxThickness && w >= 2 * h ? 1 : w <= maxThickness && h >= 2 * w ? 0 : -1;
+  if (axis < 0) return;
+  const lo = axis === 1 ? y0 : x0;
+  const size = axis === 1 ? h : w;
+  const t = Math.max(1, Math.round(size));
+  const to = Math.round(lo + size / 2 - t / 2);
+  const f = t / size;
+  for (let i2 = axis; i2 < c.length; i2 += 2) c[i2] = to + (c[i2] - lo) * f;
+}
+function pictureLayout(picture, options3) {
+  const maxRows = Math.max(1, Math.min(255, Math.floor(options3.maxRows) || 1));
+  const weight = Math.max(0, options3.weight ?? DEFAULT_WEIGHT);
+  const box2 = { width: picture.width, height: picture.height, depth: picture.depth, ops: [] };
+  const boxHeight = Math.max(0, picture.height + picture.depth);
+  let emPx = options3.emPx;
+  const pad2 = Math.ceil(weight / 1e3 * emPx - 1e-9);
+  const room = maxRows * options3.cellHeight - 2 * pad2;
+  if (boxHeight * emPx > room) emPx = Math.max(1e-6, room) / boxHeight;
+  const placed = layout(box2, { emPx, cellWidth: options3.cellWidth, cellHeight: options3.cellHeight, maxColumns: options3.maxColumns, align: "left", minRows: options3.minRows, ...options3.minColumns !== void 0 ? { minColumns: options3.minColumns } : {}, weight });
+  const originX = Math.round((placed.widthPx - box2.width * placed.k) / 2);
+  return { ...placed, originX, scale: placed.scale * emPx / options3.emPx };
+}
+function measurePicture(picture, options3) {
+  const { columns, rows, scale: scale2 } = pictureLayout(picture, options3);
+  return { columns, rows, scale: scale2 };
+}
+function rasterizePicture(picture, options3) {
+  const box2 = pictureLayout(picture, options3);
+  const { widthPx, heightPx, k, dilation, originX, baselinePx } = box2;
+  const toPx = [k, 0, 0, k, originX, baselinePx];
+  const canvas = new Canvas2(widthPx, heightPx);
+  const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k);
+  const masks = /* @__PURE__ */ new Map();
+  const maskOf = (index) => {
+    const known = masks.get(index);
+    if (known) return known;
+    const clip = picture.clips[index];
+    if (!clip) return void 0;
+    const mask = new Uint8Array(widthPx * heightPx);
+    for (const path of clip.paths) {
+      const coverage = new Coverage(widthPx, heightPx);
+      const contours = flattenPath(path.d, compose(toPx, path.transform));
+      let area2 = 0;
+      for (const c of contours) area2 += signedArea(c);
+      for (const c of contours) coverage.fill(c, area2 >= 0 ? 1 : -1);
+      const alpha = path.rule === "evenodd" ? coverage.toAlphaEvenOdd() : coverage.toAlpha();
+      for (let i2 = 0; i2 < mask.length; i2++) if (alpha[i2] > mask[i2]) mask[i2] = alpha[i2];
+    }
+    const outer = clip.within !== void 0 && clip.within < index ? maskOf(clip.within) : void 0;
+    if (outer) for (let i2 = 0; i2 < mask.length; i2++) mask[i2] = (mask[i2] * outer[i2] + 127) / 255;
+    masks.set(index, mask);
+    return mask;
+  };
+  for (const op of picture.ops) {
+    const m = compose(toPx, op.transform);
+    let contours;
+    let sign = 1;
+    let evenOdd = false;
+    if (op.type === "fill") {
+      contours = flattenPath(op.d, m);
+      if (op.rule === "evenodd") {
+        evenOdd = true;
+      } else {
+        let area2 = 0;
+        for (const c of contours) area2 += signedArea(c);
+        if (!(Math.abs(area2) > 1e-9)) continue;
+        sign = area2 > 0 ? 1 : -1;
+        contours = contours.map((c) => {
+          const grown = dilation > 0 ? dilate(c, dilation, sign) : c;
+          snapRule(grown, ruleMax);
+          return grown;
+        });
+      }
+    } else {
+      const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+      const subpaths = flattenSubpaths(op.d, m);
+      const width = snapStroke(subpaths, Math.max(MIN_STROKE_PX, op.style.width * unit) + 2 * dilation);
+      contours = strokeOutlines(subpaths, {
+        width,
+        cap: op.style.cap,
+        join: op.style.join,
+        miterLimit: op.style.miterLimit,
+        ...op.style.dash ? { dash: op.style.dash.map((n) => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}
+      });
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of contours) {
+      for (let i2 = 0; i2 < c.length; i2 += 2) {
+        if (c[i2] < x0) x0 = c[i2];
+        if (c[i2] > x1) x1 = c[i2];
+        if (c[i2 + 1] < y0) y0 = c[i2 + 1];
+        if (c[i2 + 1] > y1) y1 = c[i2 + 1];
+      }
+    }
+    const left = Math.max(0, Math.floor(x0));
+    const top = Math.max(0, Math.floor(y0));
+    const right = Math.min(widthPx, Math.ceil(x1));
+    const bottom = Math.min(heightPx, Math.ceil(y1));
+    if (!(right > left && bottom > top)) continue;
+    const w = right - left;
+    const h = bottom - top;
+    const coverage = new Coverage(w, h);
+    for (const c of contours) {
+      for (let i2 = 0; i2 < c.length; i2 += 2) {
+        c[i2] = c[i2] - left;
+        c[i2 + 1] = c[i2 + 1] - top;
+      }
+      coverage.fill(c, sign);
+    }
+    const alpha = evenOdd ? coverage.toAlphaEvenOdd() : coverage.toAlpha();
+    const color = options3.color(op.paint.color, op.type === "stroke" || op.glyph === true);
+    canvas.paint(alpha, left, top, w, h, color, op.paint.opacity, op.clip !== void 0 ? maskOf(op.clip) : void 0);
+  }
+  return { columns: box2.columns, rows: box2.rows, scale: box2.scale, rgba: canvas.straight(options3.over), widthPx, heightPx };
+}
+function pictureOutlines(picture) {
+  const ops = [];
+  const back = [1 / OUTLINE_EM_PX, 0, 0, 1 / OUTLINE_EM_PX, 0, 0];
+  for (const op of picture.ops) {
+    if (op.type === "fill") {
+      ops.push({ type: "path", d: op.d, transform: op.transform });
+      continue;
+    }
+    const m = compose([OUTLINE_EM_PX, 0, 0, OUTLINE_EM_PX, 0, 0], op.transform);
+    const unit = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+    const contours = strokeOutlines(flattenSubpaths(op.d, m), {
+      width: op.style.width * unit,
+      cap: op.style.cap,
+      join: op.style.join,
+      miterLimit: op.style.miterLimit,
+      ...op.style.dash ? { dash: op.style.dash.map((n) => n * unit), dashOffset: (op.style.dashOffset ?? 0) * unit } : {}
+    });
+    if (contours.length > 0) ops.push({ type: "path", d: contours.map(contourPath).join(""), transform: back });
+  }
+  return { width: picture.width, height: picture.height, depth: picture.depth, ops };
+}
+function contourPath(c) {
+  const n = (v) => (Math.round(v * 1e3) / 1e3).toString();
+  let d = `M${n(c[0])} ${n(c[1])}`;
+  for (let i2 = 2; i2 < c.length; i2 += 2) d += `L${n(c[i2])} ${n(c[i2 + 1])}`;
+  return d + "Z";
+}
+function encodePicturePng(raster) {
+  return encodeQuantizedPng(raster.rgba, raster.widthPx, raster.heightPx);
+}
+// core/src/scan/blocks.ts
+var FENCE = /^(`{3,}|~{3,})(.*)$/;
+function fenceOpen(body) {
+  const m = FENCE.exec(body);
+  if (!m) return null;
+  const run2 = m[1];
+  const info = m[2];
+  if (run2[0] === "`" && info.includes("`")) return null;
+  const lang = info.trim().split(/\s+/, 1)[0].toLowerCase();
+  const diagram = lang === "latex" || lang === "tex" ? "latex" : lang === "tikz" ? "tikz" : void 0;
+  return { ch: run2[0], len: run2.length, math: lang === "math", ...diagram ? { diagram } : {} };
+}
+function closesFence(body, ch, len) {
+  let n = 0;
+  while (body[n] === ch) n++;
+  if (n < len) return false;
+  for (let i2 = n; i2 < body.length; i2++) {
+    const c = body.charCodeAt(i2);
+    if (c !== 32 && c !== 9 && c !== 13) return false;
+  }
+  return true;
+}
+function looksLikeFence(body) {
+  return body.startsWith("```") || body.startsWith("~~~");
+}
+var ENVS = /* @__PURE__ */ new Set([
+  "equation",
+  "align",
+  "gather",
+  "multline",
+  "flalign",
+  "alignat",
+  "eqnarray",
+  "displaymath",
+  "subequations",
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "Bmatrix",
+  "vmatrix",
+  "Vmatrix",
+  "smallmatrix",
+  "cases",
+  "dcases",
+  "rcases",
+  "aligned",
+  "alignedat",
+  "gathered",
+  "split",
+  "multlined",
+  "array",
+  "CD",
+  "empheq"
+]);
+var BEGIN = /^\\begin\{([A-Za-z]+)(\*?)\}/;
+var DIAGRAM_ENVS2 = /* @__PURE__ */ new Set(["tikzpicture", "tikzcd", "circuitikz"]);
+function displayOpen(body, diagrams = false) {
+  let kind;
+  let delimiter;
+  let from;
+  if (body.startsWith("$$")) {
+    if (body[2] === "$") return null;
+    kind = delimiter = "$$";
+    from = 2;
+  } else if (body.startsWith("\\[")) {
+    kind = delimiter = "\\[";
+    from = 2;
+  } else {
+    const m = BEGIN.exec(body);
+    if (!m || !(ENVS.has(m[1]) || diagrams && DIAGRAM_ENVS2.has(m[1]))) return null;
+    kind = m[1] + m[2];
+    delimiter = "env";
+    from = m[0].length;
+  }
+  const close = findClose(kind, body, from);
+  if (!close) return { kind, delimiter, from };
+  if (!close.ok || !onlySpaceAfter(body, close.end)) return null;
+  if (isBlankRange(body, from, close.pos)) return null;
+  const tex = (delimiter === "env" ? body.slice(0, close.end) : body.slice(from, close.pos)).trim();
+  return { kind, delimiter, from, oneLine: { end: close.end, tex } };
+}
+function findClose(kind, s, from) {
+  if (kind === "$$") {
+    for (let i2 = from; i2 < s.length; ) {
+      const c = s.charCodeAt(i2);
+      if (c === BACKSLASH) {
+        i2 += 2;
+      } else if (c === DOLLAR) {
+        let j = i2 + 1;
+        while (s.charCodeAt(j) === DOLLAR) j++;
+        if (j - i2 >= 2) return { pos: i2, end: j, ok: j - i2 === 2 };
+        i2 = j;
+      } else {
+        i2++;
+      }
+    }
+    return null;
+  }
+  const token2 = kind === "\\[" ? "]" : `end{${kind}}`;
+  for (let i2 = from; i2 < s.length; i2++) {
+    if (s.charCodeAt(i2) !== BACKSLASH) continue;
+    if (s.startsWith(token2, i2 + 1)) return { pos: i2, end: i2 + 1 + token2.length, ok: true };
+    i2++;
+  }
+  return null;
+}
+function onlySpaceAfter(s, from) {
+  return isBlankRange(s, from, s.length);
+}
+function isBlankRange(s, from, to) {
+  return s.slice(from, to).trim() === "";
+}
+var LIST_ITEM = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
+var HEADING = /^#{1,6}(?:[ \t]|$)/;
+var THEMATIC_OR_SETEXT = /^(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*)\r?$/;
+function isListItem(body) {
+  return LIST_ITEM.test(body);
+}
+function standsAlone(body) {
+  return HEADING.test(body) || body.startsWith("|");
+}
+function startsBlock(body) {
+  return HEADING.test(body) || LIST_ITEM.test(body) || body.startsWith("|") || THEMATIC_OR_SETEXT.test(body);
+}
+var DELIMITER_ROW = /^ {0,3}((?:\| *)?:?-+:? *(?:\| *:?-+:? *)*(?:\| *)?)$/;
+function delimitsTable(header, body) {
+  const delimiter = DELIMITER_ROW.exec(body.replace(/[ \t\r]+$/, ""))?.[1];
+  if (!delimiter || !/[:|]/.test(delimiter) || header.trim() === "") return false;
+  return cellCount(header) === delimiter.replace(/^\||\| *$/g, "").split("|").length;
+}
+function cellCount(line) {
+  const cells2 = line.replace(/\|/g, (_match, offset, all) => {
+    let escaped = false;
+    for (let p = offset - 1; p >= 0 && all[p] === "\\"; p--) escaped = !escaped;
+    return escaped ? "|" : " |";
+  }).split(/ \|/);
+  if (!cells2[0]?.trim()) cells2.shift();
+  if (cells2.length > 0 && !cells2.at(-1)?.trim()) cells2.pop();
+  return cells2.length;
+}
+function endsTable(body) {
+  return HEADING.test(body) || LIST_ITEM.test(body) || THEMATIC_OR_SETEXT.test(body) || looksLikeFence(body) || body.startsWith("<");
+}
+// core/src/scan/lines.ts
+function makeLine(raw, start) {
+  const text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+  const prefixEnds = [0];
+  let p = 0;
+  for (let q = quoteMarkerEnd(text, p); q >= 0; q = quoteMarkerEnd(text, p)) {
+    p = q;
+    prefixEnds.push(p);
+  }
+  let indent = 0;
+  let i2 = p;
+  for (; i2 < text.length; i2++) {
+    const c = text.charCodeAt(i2);
+    if (c === 32) indent++;
+    else if (c === 9) indent += 4 - indent % 4;
+    else break;
+  }
+  const body = text.slice(i2);
+  return {
+    raw,
+    text,
+    start,
+    end: start + raw.length,
+    depth: prefixEnds.length - 1,
+    prefixEnds,
+    indent,
+    bodyStart: i2,
+    body,
+    blank: isBlank(body)
+  };
+}
+function restAt(line, depth) {
+  return line.text.slice(line.prefixEnds[depth] ?? 0);
+}
+function stripQuotes(text, depth) {
+  let p = 0;
+  for (let d = 0; d < depth; d++) {
+    const q = quoteMarkerEnd(text, p);
+    if (q < 0) break;
+    p = q;
+  }
+  return text.slice(p);
+}
+function quoteMarkerEnd(text, p) {
+  let q = p;
+  while (q - p < 3 && text.charCodeAt(q) === 32) q++;
+  if (text.charCodeAt(q) !== 62) return -1;
+  q++;
+  const c = text.charCodeAt(q);
+  if (c === 32 || c === 9) q++;
+  return q;
+}
+function isBlank(s) {
+  for (let i2 = 0; i2 < s.length; i2++) if (!isSpace(s.charCodeAt(i2))) return false;
+  return true;
+}
+function isSpace(c) {
+  if (c <= 32) return c === 32 || c >= 9 && c <= 13;
+  return c >= 128 && /\s/.test(String.fromCharCode(c));
+}
+function trimEndLength(s) {
+  let n = s.length;
+  while (n > 0 && isSpace(s.charCodeAt(n - 1))) n--;
+  return n;
+}
+// core/src/scan/inline.ts
+function scanInline(lines2, open, isRow = () => false) {
+  const first = lines2[0];
+  const base = first.start;
+  const depth = first.depth;
+  const s = lines2.length === 1 ? first.raw : lines2.map((l) => l.raw).join("");
+  const tokens = tokenize(s);
+  const n = tokens.length;
+  let pending = Infinity;
+  const closeTick = new Int32Array(n).fill(-1);
+  {
+    const nextByLen = /* @__PURE__ */ new Map();
+    const nextSame = new Int32Array(n).fill(-1);
+    for (let k = n - 1; k >= 0; k--) {
+      const t = tokens[k];
+      if (t.type !== TICK) continue;
+      if (t.open > 0) nextSame[k] = nextByLen.get(t.open) ?? -1;
+      nextByLen.set(t.len, k);
+    }
+    for (let k = 0; k < n; k++) {
+      const t = tokens[k];
+      if (t.type !== TICK || t.open === 0) continue;
+      const m = nextSame[k];
+      if (m >= 0) {
+        closeTick[k] = m;
+        k = m;
+      } else if (open) {
+        pending = t.pos;
+        break;
+      }
+    }
+  }
+  const nextDollar = new Int32Array(n).fill(-1);
+  const nextParen = new Int32Array(n).fill(-1);
+  for (let k = n - 1, dollar = -1, paren = -1; k >= 0; k--) {
+    nextDollar[k] = dollar;
+    nextParen[k] = paren;
+    const t = tokens[k];
+    if (t.type === TICK) dollar = paren = k;
+    else if (t.type === DOLLAR2) dollar = k;
+    else if (t.type === CLOSE_PAREN) paren = k;
+  }
+  const spans2 = [];
+  for (let k = 0; k < n; k++) {
+    const t = tokens[k];
+    if (t.pos >= pending) break;
+    if (t.type === TICK) {
+      const m2 = closeTick[k];
+      if (m2 >= 0) {
+        spans2.push({ start: t.pos, end: tokens[m2].pos + tokens[m2].len });
+        k = m2;
+      }
+      continue;
+    }
+    if (t.type === CLOSE_PAREN || t.type === DOLLAR2 && (t.len > 2 || t.len === 1 && !t.canOpen)) continue;
+    const m = t.type === DOLLAR2 ? nextDollar[k] : nextParen[k];
+    if (m < 0) {
+      if (open) {
+        pending = t.pos;
+        break;
+      }
+      continue;
+    }
+    const c = tokens[m];
+    if (c.type === TICK) continue;
+    let delimiter;
+    if (t.type === OPEN_PAREN) delimiter = "\\(";
+    else if (t.len === 1 && c.len === 1 && c.canClose) delimiter = "$";
+    else if (t.len === 2 && c.len === 2) delimiter = "$$";
+    else continue;
+    k = m;
+    const tex = texOf(s.slice(t.pos + t.len, c.pos), depth);
+    spans2.push({ start: t.pos, end: c.pos + c.len, math: tex === "" ? void 0 : { tex, delimiter } });
+  }
+  const starts = lineStarts(lines2, base);
+  const rows = lines2.map(isRow);
+  let cut = s.length;
+  if (pending < Infinity) cut = lineStartAt(starts, pending);
+  const last = lines2.length - 1;
+  if (open && !rows[last] && lines2[last].raw.includes("\\|")) cut = Math.min(cut, starts[last]);
+  if (cut < s.length) {
+    for (let j = spans2.length - 1; j >= 0; j--) {
+      const span = spans2[j];
+      if (span.end <= cut) break;
+      if (span.start < cut) cut = lineStartAt(starts, span.start);
+    }
+  }
+  const segments = [];
+  let pos = 0;
+  const text = (to) => {
+    if (to > pos) segments.push({ kind: "text", text: s.slice(pos, to), start: base + pos, end: base + to });
+  };
+  for (const span of spans2) {
+    if (span.start >= cut) break;
+    if (!span.math) continue;
+    text(span.start);
+    const row = rows[lineIndexAt(starts, span.start)];
+    segments.push({
+      kind: "math",
+      display: false,
+      tex: row ? tablePipes(span.math.tex) : span.math.tex,
+      raw: s.slice(span.start, span.end),
+      delimiter: span.math.delimiter,
+      start: base + span.start,
+      end: base + span.end
+    });
+    pos = span.end;
+  }
+  text(cut);
+  return { segments, cut: base + cut };
+}
+function tablePipes(tex) {
+  return tex.replace(/\\\\\\\||\\\|/g, (match) => match.length === 4 ? "\\|" : "|");
+}
+function texOf(content, depth) {
+  if (depth > 0 && content.includes("\n")) content = content.split("\n").map((l, i2) => i2 === 0 ? l : stripQuotes(l, depth)).join("\n");
+  return content.trim();
+}
+function tokenize(s) {
+  const tokens = [];
+  const n = s.length;
+  const push = (type, pos, len, open = 0, canOpen = false, canClose = false) => tokens.push({ type, pos, len, open, canOpen, canClose });
+  for (let i2 = 0; i2 < n; ) {
+    const c = s.charCodeAt(i2);
+    if (c === 92) {
+      let k = i2 + 1;
+      while (s.charCodeAt(k) === 92) k++;
+      const escaped = (k - i2) % 2 === 1;
+      const d = s.charCodeAt(k);
+      if (d === 96) {
+        const j = runEnd(s, k, 96);
+        push(TICK, k, j - k, escaped ? j - k - 1 : j - k);
+        i2 = j;
+      } else if (escaped && (d === 40 || d === 41)) {
+        push(d === 40 ? OPEN_PAREN : CLOSE_PAREN, k - 1, 2);
+        i2 = k + 1;
+      } else {
+        i2 = escaped && k < n ? k + 1 : k;
+      }
+    } else if (c === 96) {
+      const j = runEnd(s, i2, 96);
+      push(TICK, i2, j - i2, j - i2);
+      i2 = j;
+    } else if (c === 36) {
+      const j = runEnd(s, i2, 36);
+      const single2 = j - i2 === 1;
+      const canOpen = single2 && j < n && !isSpace(s.charCodeAt(j));
+      const next = s.charCodeAt(j);
+      const canClose = single2 && i2 > 0 && !isSpace(s.charCodeAt(i2 - 1)) && !(next >= 48 && next <= 57);
+      push(DOLLAR2, i2, j - i2, 0, canOpen, canClose);
+      i2 = j;
+    } else {
+      i2++;
+    }
+  }
+  return tokens;
+}
+function runEnd(s, i2, code) {
+  let j = i2;
+  while (s.charCodeAt(j) === code) j++;
+  return j;
+}
+function lineStarts(lines2, base) {
+  return lines2.map((l) => l.start - base);
+}
+function lineStartAt(starts, pos) {
+  return starts[lineIndexAt(starts, pos)];
+}
+function lineIndexAt(starts, pos) {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = lo + hi + 1 >> 1;
+    if (starts[mid] <= pos) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+export{DIAGRAM_ENVS2,makeLine,scanInline,restAt,looksLikeFence,findClose,onlySpaceAfter,isListItem,fenceOpen,trimEndLength,displayOpen,standsAlone,startsBlock,endsTable,delimitsTable,closesFence,encodePng,measure,rasterize,measurePicture,rasterizePicture,encodePicturePng,pictureOutlines,strokeWeight};

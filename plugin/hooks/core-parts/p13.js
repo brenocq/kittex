@@ -1,4 +1,908 @@
-import{__esm,init_Element,init_Document,init_List,init_Parser,LiteParser,LiteList,LiteElement,LiteDocument,init_DOMAdaptor,init_NodeMixin,init_Text,AbstractDOMAdaptor,LiteText,LiteComment,NodeMixin}from'./p12.js';export*from'./p12.js';
+import{__esm}from'./p12.js';export*from'./p12.js';
+// core/src/typeset/errors.ts
+var TexError;
+var GlyphError;
+var init_errors = __esm({
+  "core/src/typeset/errors.ts"() {
+    "use strict";
+    TexError = class extends Error {
+      name = "TexError";
+    };
+    GlyphError = class extends TexError {
+      name = "GlyphError";
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/core/DOMAdaptor.js
+var AbstractDOMAdaptor;
+var init_DOMAdaptor = __esm({
+  "node_modules/@mathjax/src/mjs/core/DOMAdaptor.js"() {
+    AbstractDOMAdaptor = class {
+      constructor(document = null) {
+        this.canMeasureNodes = true;
+        this.document = document;
+      }
+      node(kind, def2 = {}, children = [], ns) {
+        const node = this.create(kind, ns);
+        this.setAttributes(node, def2);
+        for (const child of children) {
+          this.append(node, child);
+        }
+        return node;
+      }
+      setProperty(node, name, value) {
+        node[name] = value;
+      }
+      getProperty(node, name) {
+        return node[name];
+      }
+      setAttributes(node, def2) {
+        if (def2.style && typeof def2.style !== "string") {
+          for (const key of Object.keys(def2.style)) {
+            this.setStyle(node, key.replace(/-([a-z])/g, (_m, c) => c.toUpperCase()), def2.style[key]);
+          }
+        }
+        if (def2.properties) {
+          for (const key of Object.keys(def2.properties)) {
+            node[key] = def2.properties[key];
+          }
+        }
+        for (const key of Object.keys(def2)) {
+          if ((key !== "style" || typeof def2.style === "string") && key !== "properties") {
+            this.setAttribute(node, key, def2[key]);
+          }
+        }
+      }
+      replace(nnode, onode) {
+        this.insert(nnode, onode);
+        this.remove(onode);
+        return onode;
+      }
+      childNode(node, i2) {
+        return this.childNodes(node)[i2];
+      }
+      allClasses(node) {
+        const classes = this.getAttribute(node, "class");
+        return !classes ? [] : classes.replace(/  +/g, " ").replace(/^ /, "").replace(/ $/, "").split(/ /);
+      }
+      cssText(node) {
+        return this.kind(node) === "style" ? this.textContent(node) : "";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/Options.js
+function isObject(obj) {
+  return typeof obj === "object" && obj !== null && (obj.constructor === OBJECT || obj.constructor === Expandable);
+}
+function expandable(def2) {
+  return Object.assign(Object.create(Expandable.prototype), def2);
+}
+function makeArray(x2) {
+  return Array.isArray(x2) ? x2 : [x2];
+}
+function keys(def2) {
+  if (!def2) {
+    return [];
+  }
+  return Object.keys(def2).concat(Object.getOwnPropertySymbols(def2));
+}
+function copy(def2) {
+  const props = {};
+  for (const key of keys(def2)) {
+    const prop = Object.getOwnPropertyDescriptor(def2, key);
+    const value = prop.value;
+    if (Array.isArray(value)) {
+      prop.value = insert([], value, false);
+    } else if (isObject(value)) {
+      prop.value = copy(value);
+    }
+    if (prop.enumerable) {
+      props[key] = prop;
+    }
+  }
+  return Object.defineProperties(def2.constructor === Expandable ? expandable({}) : {}, props);
+}
+function insert(dst, src, warn = true) {
+  for (let key of keys(src)) {
+    if (warn && dst[key] === void 0 && dst.constructor !== Expandable) {
+      if (typeof key === "symbol") {
+        key = key.toString();
+      }
+      OPTIONS.optionError(`Invalid option "${key}" (no default value).`, key);
+      continue;
+    }
+    const sval = src[key];
+    let dval = dst[key];
+    if (isObject(sval) && dval !== null && (typeof dval === "object" || typeof dval === "function")) {
+      const ids = keys(sval);
+      if (Array.isArray(dval) && (ids.length === 1 && (ids[0] === APPEND || ids[0] === REMOVE) && Array.isArray(sval[ids[0]]) || ids.length === 2 && ids.sort().join(",") === APPEND + "," + REMOVE && Array.isArray(sval[APPEND]) && Array.isArray(sval[REMOVE]))) {
+        if (sval[REMOVE]) {
+          dval = dst[key] = dval.filter((x2) => sval[REMOVE].indexOf(x2) < 0);
+        }
+        if (sval[APPEND]) {
+          dst[key] = [...dval, ...sval[APPEND]];
+        }
+      } else {
+        insert(dval, sval, warn);
+      }
+    } else if (Array.isArray(sval)) {
+      dst[key] = [];
+      insert(dst[key], sval, false);
+    } else if (isObject(sval)) {
+      dst[key] = copy(sval);
+    } else {
+      dst[key] = sval;
+    }
+  }
+  return dst;
+}
+function defaultOptions(options3, ...defs) {
+  defs.forEach((def2) => insert(options3, def2, false));
+  return options3;
+}
+function userOptions(options3, ...defs) {
+  defs.forEach((def2) => insert(options3, def2, true));
+  return options3;
+}
+function separateOptions(options3, ...objects) {
+  const results = [];
+  for (const object of objects) {
+    const exists = {}, missing = {};
+    for (const key of Object.keys(options3 || {})) {
+      (object[key] === void 0 ? missing : exists)[key] = options3[key];
+    }
+    results.push(exists);
+    options3 = missing;
+  }
+  results.unshift(options3);
+  return results;
+}
+function lookup(name, lookup2, def2 = null) {
+  return Object.hasOwn(lookup2, name) ? lookup2[name] : def2;
+}
+var OBJECT;
+var APPEND;
+var REMOVE;
+var OPTIONS;
+var Expandable;
+var init_Options = __esm({
+  "node_modules/@mathjax/src/mjs/util/Options.js"() {
+    OBJECT = {}.constructor;
+    APPEND = "[+]";
+    REMOVE = "[-]";
+    OPTIONS = {
+      invalidOption: "warn",
+      optionError: (message, _key) => {
+        if (OPTIONS.invalidOption === "fatal") {
+          throw new Error(message);
+        }
+        console.warn("MathJax: " + message);
+      }
+    };
+    Expandable = class {
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/components/version.js
+var VERSION;
+var init_version = __esm({
+  "node_modules/@mathjax/src/mjs/components/version.js"() {
+    VERSION = "4.1.3";
+  }
+});
+// node_modules/@mathjax/src/mjs/util/PrioritizedList.js
+var PrioritizedList;
+var init_PrioritizedList = __esm({
+  "node_modules/@mathjax/src/mjs/util/PrioritizedList.js"() {
+    PrioritizedList = class _PrioritizedList {
+      constructor() {
+        this.items = [];
+        this.items = [];
+      }
+      [Symbol.iterator]() {
+        let i2 = 0;
+        const items = this.items;
+        return {
+          next() {
+            return { value: items[i2++], done: i2 > items.length };
+          }
+        };
+      }
+      add(item, priority = _PrioritizedList.DEFAULTPRIORITY) {
+        let i2 = this.items.length;
+        do {
+          i2--;
+        } while (i2 >= 0 && priority < this.items[i2].priority);
+        this.items.splice(i2 + 1, 0, { item, priority });
+        return item;
+      }
+      remove(item) {
+        let i2 = this.items.length;
+        do {
+          i2--;
+        } while (i2 >= 0 && this.items[i2].item !== item);
+        if (i2 >= 0) {
+          this.items.splice(i2, 1);
+        }
+        return this;
+      }
+    };
+    PrioritizedList.DEFAULTPRIORITY = 5;
+  }
+});
+// node_modules/@mathjax/src/mjs/core/HandlerList.js
+var HandlerList;
+var init_HandlerList = __esm({
+  "node_modules/@mathjax/src/mjs/core/HandlerList.js"() {
+    init_PrioritizedList();
+    HandlerList = class extends PrioritizedList {
+      register(handler) {
+        return this.add(handler, handler.priority);
+      }
+      unregister(handler) {
+        this.remove(handler);
+      }
+      handlesDocument(document) {
+        for (const item of this) {
+          const handler = item.item;
+          if (handler.handlesDocument(document)) {
+            return handler;
+          }
+        }
+        throw new Error(`Can't find handler for document`);
+      }
+      document(document, options3 = null) {
+        return this.handlesDocument(document).create(document, options3);
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/Retries.js
+function handleRetriesFor(code) {
+  return new Promise(function run2(ok, fail2) {
+    const handleRetry = (err2) => {
+      var _a2;
+      if (err2.retry instanceof Promise) {
+        err2.retry.then(() => run2(ok, fail2)).catch((e) => fail2(e));
+      } else if ((_a2 = err2.restart) === null || _a2 === void 0 ? void 0 : _a2.isCallback) {
+        MathJax.Callback.After(() => run2(ok, fail2), err2.restart);
+      } else {
+        fail2(err2);
+      }
+    };
+    try {
+      const result = code();
+      if (result instanceof Promise) {
+        result.then((value) => ok(value)).catch((err2) => handleRetry(err2));
+      } else {
+        ok(result);
+      }
+    } catch (err2) {
+      handleRetry(err2);
+    }
+  });
+}
+function retryAfter(promise) {
+  const err2 = new Error("MathJax retry -- an asynchronous action is required; try using one of the promise-based functions and await its resolution.");
+  err2.retry = promise;
+  throw err2;
+}
+var init_Retries = __esm({
+  "node_modules/@mathjax/src/mjs/util/Retries.js"() {
+  }
+});
+// node_modules/@mathjax/src/mjs/util/context.js
+var hasWindow;
+var isCJS;
+var context;
+var init_context = __esm({
+  "node_modules/@mathjax/src/mjs/util/context.js"() {
+    hasWindow = false;
+    isCJS = false;
+    context = {
+      window: hasWindow ? void 0 : null,
+      document: hasWindow ? (void 0).document : null,
+      os: (() => {
+        if (hasWindow && (void 0).navigator) {
+          const app = (void 0).navigator.appVersion;
+          const osNames = [
+            ["Win", "Windows"],
+            ["Mac", "MacOS"],
+            ["X11", "Unix"],
+            ["Linux", "Unix"]
+          ];
+          for (const [key, os] of osNames) {
+            if (app.includes(key)) {
+              return os;
+            }
+          }
+          if ((void 0).navigator.userAgent.includes("Android")) {
+            return "Unix";
+          }
+        } else if (false) {
+          return {
+            linux: "Unix",
+            android: "Unix",
+            aix: "Unix",
+            freebsd: "Unix",
+            netbsd: "Unix",
+            openbsd: "Unix",
+            sunos: "Unix",
+            darwin: "MacOS",
+            win32: "Windows",
+            cygwin: "Windows"
+          }[(void 0).platform] || (void 0).platform;
+        }
+        return "unknown";
+      })(),
+      path: (file) => file
+    };
+    if (context.os === "Windows") {
+      context.path = (file) => file.match(/^[/\\]?[a-zA-Z]:[/\\]/) ? (isCJS ? "" : "file://") + file.replace(/\\/g, "/").replace(/^\//, "") : file.replace(/^\//, "file:///");
+    }
+  }
+});
+// node_modules/@mathjax/src/mjs/mathjax.js
+var mathjax;
+var init_mathjax = __esm({
+  "node_modules/@mathjax/src/mjs/mathjax.js"() {
+    init_version();
+    init_HandlerList();
+    init_Retries();
+    init_context();
+    mathjax = {
+      version: VERSION,
+      context,
+      handlers: new HandlerList(),
+      document: function(document, options3) {
+        return mathjax.handlers.document(document, options3);
+      },
+      handleRetriesFor,
+      retryAfter,
+      asyncLoad: null,
+      asyncIsSynchronous: false
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/AsyncLoad.js
+function asyncLoad(name) {
+  if (!mathjax.asyncLoad) {
+    return Promise.reject(`Can't load '${name}': No mathjax.asyncLoad method specified`);
+  }
+  return new Promise((ok, fail2) => {
+    const result = mathjax.asyncLoad(name);
+    if (result instanceof Promise) {
+      result.then((value) => ok(value)).catch((err2) => fail2(err2));
+    } else {
+      ok(result);
+    }
+  });
+}
+var init_AsyncLoad = __esm({
+  "node_modules/@mathjax/src/mjs/util/AsyncLoad.js"() {
+    init_mathjax();
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js
+function NodeMixin(Base2, options3 = {}) {
+  var _a2;
+  options3 = userOptions(defaultOptions({}, NodeMixinOptions), options3);
+  return _a2 = class NodeAdaptor extends Base2 {
+    constructor(...args) {
+      super(args[0]);
+      this.canMeasureNodes = false;
+      const CLASS = this.constructor;
+      this.options = userOptions(defaultOptions({}, CLASS.OPTIONS), args[1]);
+    }
+    fontSize(node) {
+      return options3.badCSS ? this.options.fontSize : super.fontSize(node);
+    }
+    fontFamily(node) {
+      return options3.badCSS ? this.options.fontFamily : super.fontFamily(node);
+    }
+    nodeSize(node, em2 = 1, local = null) {
+      if (!options3.badSizes) {
+        return super.nodeSize(node, em2, local);
+      }
+      const text = this.textContent(node);
+      const non = Array.from(text.replace(_a2.cjkPattern, "")).length;
+      const CJK = Array.from(text).length - non;
+      return [
+        CJK * this.options.cjkCharWidth + non * this.options.unknownCharWidth,
+        this.options.unknownCharHeight
+      ];
+    }
+    nodeBBox(node) {
+      return options3.badSizes ? { left: 0, right: 0, top: 0, bottom: 0 } : super.nodeBBox(node);
+    }
+    createWorker(listener, options4) {
+      return __awaiter(this, void 0, void 0, function* () {
+        const { Worker: Worker2 } = yield asyncLoad("node:worker_threads");
+        class LiteWorker {
+          constructor(url2, options5 = {}) {
+            this.worker = new Worker2(url2, options5);
+          }
+          addEventListener(kind, listener2) {
+            this.worker.on(kind, listener2);
+          }
+          postMessage(msg) {
+            this.worker.postMessage({ data: msg });
+          }
+          terminate() {
+            this.worker.terminate();
+          }
+        }
+        const { path, maps: maps3 } = options4;
+        const url = `${path}/${options4.worker}`;
+        const worker = new LiteWorker(url, {
+          type: "module",
+          workerData: { maps: maps3 }
+        });
+        worker.addEventListener("message", listener);
+        return worker;
+      });
+    }
+  }, _a2.OPTIONS = Object.assign(Object.assign({}, options3.badCSS ? {
+    fontSize: 16,
+    fontFamily: "Times"
+  } : {}), options3.badSizes ? {
+    cjkCharWidth: 1,
+    unknownCharWidth: 0.6,
+    unknownCharHeight: 0.8
+  } : {}), _a2.cjkPattern = new RegExp([
+    "[",
+    "ᄀ-\u115F",
+    "〈〉",
+    "⺀-〾",
+    "\u3040-㉇",
+    "㉐-䶿",
+    "一-꓆",
+    "ꥠ-ꥼ",
+    "가-힣",
+    "豈-\uFAFF",
+    "︐-︙",
+    "︰-﹫",
+    "！-｠￠-￦",
+    "𛀀-𛀁",
+    "🈀-🉑",
+    "𠀀-\uD8BF\uDFFD",
+    "]"
+  ].join(""), "gu"), _a2;
+}
+var __awaiter;
+var NodeMixinOptions;
+var init_NodeMixin = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/NodeMixin.js"() {
+    init_Options();
+    init_AsyncLoad();
+    __awaiter = function(thisArg, _arguments, P, generator) {
+      function adopt(value) {
+        return value instanceof P ? value : new P(function(resolve) {
+          resolve(value);
+        });
+      }
+      return new (P || (P = Promise))(function(resolve, reject) {
+        function fulfilled(value) {
+          try {
+            step(generator.next(value));
+          } catch (e) {
+            reject(e);
+          }
+        }
+        function rejected(value) {
+          try {
+            step(generator["throw"](value));
+          } catch (e) {
+            reject(e);
+          }
+        }
+        function step(result) {
+          result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+        }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+      });
+    };
+    NodeMixinOptions = {
+      badCSS: true,
+      badSizes: true
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/lite/Element.js
+var LiteElement;
+var init_Element = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/lite/Element.js"() {
+    LiteElement = class {
+      constructor(kind, attributes = {}, children = []) {
+        this.kind = kind;
+        this.attributes = Object.assign({}, attributes);
+        this.children = [...children];
+        for (const child of this.children) {
+          child.parent = this;
+        }
+        this.styles = null;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/lite/Document.js
+var LiteDocument;
+var init_Document = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/lite/Document.js"() {
+    init_Element();
+    LiteDocument = class {
+      get kind() {
+        return "#document";
+      }
+      constructor(window2 = null) {
+        this.defaultView = null;
+        this.root = new LiteElement("html", {}, [
+          this.head = new LiteElement("head"),
+          this.body = new LiteElement("body")
+        ]);
+        this.type = "";
+        this.defaultView = window2;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/lite/Text.js
+var LiteText;
+var LiteComment;
+var init_Text = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/lite/Text.js"() {
+    LiteText = class {
+      get kind() {
+        return "#text";
+      }
+      constructor(text = "") {
+        this.value = text;
+      }
+    };
+    LiteComment = class extends LiteText {
+      get kind() {
+        return "#comment";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/lite/List.js
+var LiteList;
+var init_List = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/lite/List.js"() {
+    LiteList = class {
+      constructor(children) {
+        this.nodes = [];
+        this.nodes = [...children];
+      }
+      append(node) {
+        this.nodes.push(node);
+      }
+      [Symbol.iterator]() {
+        let i2 = 0;
+        return {
+          next() {
+            return i2 === this.nodes.length ? { value: null, done: true } : { value: this.nodes[i2++], done: false };
+          }
+        };
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/util/Entities.js
+function translate(text) {
+  return text.replace(/&([a-z][a-z0-9]*|#(?:[0-9]+|x[0-9a-f]+));/gi, replace);
+}
+function replace(match, entity) {
+  if (entity.charAt(0) === "#") {
+    return numeric(entity.slice(1));
+  }
+  if (entities[entity]) {
+    return entities[entity];
+  }
+  if (options2["loadMissingEntities"]) {
+    const file = entity.match(/^[a-zA-Z](fr|scr|opf)$/) ? RegExp.$1 : entity.charAt(0).toLowerCase();
+    if (!loaded[file]) {
+      loaded[file] = true;
+      retryAfter(asyncLoad("./util/entities/" + file + ".js"));
+    }
+  }
+  return match;
+}
+function numeric(entity) {
+  const n = entity.charAt(0) === "x" ? parseInt(entity.slice(1), 16) : parseInt(entity);
+  return String.fromCodePoint(n);
+}
+var options2;
+var entities;
+var loaded;
+var init_Entities = __esm({
+  "node_modules/@mathjax/src/mjs/util/Entities.js"() {
+    init_Retries();
+    init_AsyncLoad();
+    options2 = {
+      loadMissingEntities: true
+    };
+    entities = JSON.parse(`{
+ "ApplyFunction":"\u2061","Backslash":"∖","Because":"∵","Breve":"˘","Cap":"⋒","CenterDot":"·","CircleDot":"⊙","CircleMinus":"⊖","CirclePlus":"⊕","CircleTimes":"⊗","Congruent":"≡","ContourIntegral":"∮",
+ "Coproduct":"∐","Cross":"⨯","Cup":"⋓","CupCap":"≍","Dagger":"‡","Del":"∇","Delta":"Δ","Diamond":"⋄","DifferentialD":"ⅆ","DotEqual":"≐","DoubleDot":"¨","DoubleRightTee":"⊨","DoubleVerticalBar":"∥",
+ "DownArrow":"↓","DownLeftVector":"↽","DownRightVector":"⇁","DownTee":"⊤","Downarrow":"⇓","Element":"∈","EqualTilde":"≂","Equilibrium":"⇌","Exists":"∃","ExponentialE":"ⅇ","FilledVerySmallSquare":"▪",
+ "ForAll":"∀","Gamma":"Γ","Gg":"⋙","GreaterEqual":"≥","GreaterEqualLess":"⋛","GreaterFullEqual":"≧","GreaterLess":"≷","GreaterSlantEqual":"⩾","GreaterTilde":"≳","Hacek":"ˇ","Hat":"^","HumpDownHump":"≎",
+ "HumpEqual":"≏","Im":"ℑ","ImaginaryI":"ⅈ","Integral":"∫","Intersection":"⋂","InvisibleComma":"\u2063","InvisibleTimes":"\u2062","Lambda":"Λ","Larr":"↞","LeftAngleBracket":"⟨","LeftArrow":"←",
+ "LeftArrowRightArrow":"⇆","LeftCeiling":"⌈","LeftDownVector":"⇃","LeftFloor":"⌊","LeftRightArrow":"↔","LeftTee":"⊣","LeftTriangle":"⊲","LeftTriangleEqual":"⊴","LeftUpVector":"↿","LeftVector":"↼",
+ "Leftarrow":"⇐","Leftrightarrow":"⇔","LessEqualGreater":"⋚","LessFullEqual":"≦","LessGreater":"≶","LessSlantEqual":"⩽","LessTilde":"≲","Ll":"⋘","Lleftarrow":"⇚","LongLeftArrow":"⟵",
+ "LongLeftRightArrow":"⟷","LongRightArrow":"⟶","Longleftarrow":"⟸","Longleftrightarrow":"⟺","Longrightarrow":"⟹","Lsh":"↰","MinusPlus":"∓","NestedGreaterGreater":"≫","NestedLessLess":"≪",
+ "NotDoubleVerticalBar":"∦","NotElement":"∉","NotEqual":"≠","NotExists":"∄","NotGreater":"≯","NotGreaterEqual":"≱","NotLeftTriangle":"⋪","NotLeftTriangleEqual":"⋬","NotLess":"≮","NotLessEqual":"≰",
+ "NotPrecedes":"⊀","NotPrecedesSlantEqual":"⋠","NotRightTriangle":"⋫","NotRightTriangleEqual":"⋭","NotSubsetEqual":"⊈","NotSucceeds":"⊁","NotSucceedsSlantEqual":"⋡","NotSupersetEqual":"⊉",
+ "NotTilde":"≁","NotVerticalBar":"∤","Omega":"Ω","OverBar":"‾","OverBrace":"⏞","PartialD":"∂","Phi":"Φ","Pi":"Π","PlusMinus":"±","Precedes":"≺","PrecedesEqual":"⪯","PrecedesSlantEqual":"≼",
+ "PrecedesTilde":"≾","Product":"∏","Proportional":"∝","Psi":"Ψ","Rarr":"↠","Re":"ℜ","ReverseEquilibrium":"⇋","RightAngleBracket":"⟩","RightArrow":"→","RightArrowLeftArrow":"⇄","RightCeiling":"⌉",
+ "RightDownVector":"⇂","RightFloor":"⌋","RightTee":"⊢","RightTeeArrow":"↦","RightTriangle":"⊳","RightTriangleEqual":"⊵","RightUpVector":"↾","RightVector":"⇀","Rightarrow":"⇒","Rrightarrow":"⇛",
+ "Rsh":"↱","Sigma":"Σ","SmallCircle":"∘","Sqrt":"√","Square":"□","SquareIntersection":"⊓","SquareSubset":"⊏","SquareSubsetEqual":"⊑","SquareSuperset":"⊐","SquareSupersetEqual":"⊒","SquareUnion":"⊔",
+ "Star":"⋆","Subset":"⋐","SubsetEqual":"⊆","Succeeds":"≻","SucceedsEqual":"⪰","SucceedsSlantEqual":"≽","SucceedsTilde":"≿","SuchThat":"∋","Sum":"∑","Superset":"⊃","SupersetEqual":"⊇","Supset":"⋑",
+ "Therefore":"∴","Theta":"Θ","Tilde":"∼","TildeEqual":"≃","TildeFullEqual":"≅","TildeTilde":"≈","UnderBar":"_","UnderBrace":"⏟","Union":"⋃","UnionPlus":"⊎","UpArrow":"↑","UpDownArrow":"↕","UpTee":"⊥",
+ "Uparrow":"⇑","Updownarrow":"⇕","Upsilon":"Υ","Vdash":"⊩","Vee":"⋁","VerticalBar":"∣","VerticalTilde":"≀","Vvdash":"⊪","Wedge":"⋀","Xi":"Ξ","amp":"&","acute":"´","aleph":"ℵ","alpha":"α","amalg":"⨿",
+ "and":"∧","ang":"∠","angmsd":"∡","angsph":"∢","ape":"≊","backprime":"‵","backsim":"∽","backsimeq":"⋍","beta":"β","beth":"ℶ","between":"≬","bigcirc":"◯","bigodot":"⨀","bigoplus":"⨁","bigotimes":"⨂",
+ "bigsqcup":"⨆","bigstar":"★","bigtriangledown":"▽","bigtriangleup":"△","biguplus":"⨄","blacklozenge":"⧫","blacktriangle":"▴","blacktriangledown":"▾","blacktriangleleft":"◂","bowtie":"⋈","boxdl":"┐",
+ "boxdr":"┌","boxminus":"⊟","boxplus":"⊞","boxtimes":"⊠","boxul":"┘","boxur":"└","bsol":"\\\\","bull":"•","cap":"∩","check":"✓","chi":"χ","circ":"ˆ","circeq":"≗","circlearrowleft":"↺",
+ "circlearrowright":"↻","circledR":"®","circledS":"Ⓢ","circledast":"⊛","circledcirc":"⊚","circleddash":"⊝","clubs":"♣","colon":":","comp":"∁","ctdot":"⋯","cuepr":"⋞","cuesc":"⋟","cularr":"↶","cup":"∪",
+ "curarr":"↷","curlyvee":"⋎","curlywedge":"⋏","dagger":"†","daleth":"ℸ","ddarr":"⇊","deg":"°","delta":"δ","digamma":"ϝ","div":"÷","divideontimes":"⋇","dot":"˙","doteqdot":"≑","dotplus":"∔",
+ "dotsquare":"⊡","dtdot":"⋱","ecir":"≖","efDot":"≒","egs":"⪖","ell":"ℓ","els":"⪕","empty":"∅","epsi":"ε","epsiv":"ϵ","erDot":"≓","eta":"η","eth":"ð","flat":"♭","fork":"⋔","frown":"⌢","gEl":"⪌",
+ "gamma":"γ","gap":"⪆","gimel":"ℷ","gnE":"≩","gnap":"⪊","gne":"⪈","gnsim":"⋧","gt":">","gtdot":"⋗","harrw":"↭","hbar":"ℏ","hellip":"…","hookleftarrow":"↩","hookrightarrow":"↪","imath":"ı","infin":"∞",
+ "intcal":"⊺","iota":"ι","jmath":"ȷ","kappa":"κ","kappav":"ϰ","lEg":"⪋","lambda":"λ","lap":"⪅","larrlp":"↫","larrtl":"↢","lbrace":"{","lbrack":"[","le":"≤","leftleftarrows":"⇇","leftthreetimes":"⋋",
+ "lessdot":"⋖","lmoust":"⎰","lnE":"≨","lnap":"⪉","lne":"⪇","lnsim":"⋦","longmapsto":"⟼","looparrowright":"↬","lowast":"∗","loz":"◊","lt":"<","ltimes":"⋉","ltri":"◃","macr":"¯","malt":"✠","mho":"℧",
+ "mu":"μ","multimap":"⊸","nLeftarrow":"⇍","nLeftrightarrow":"⇎","nRightarrow":"⇏","nVDash":"⊯","nVdash":"⊮","natur":"♮","nearr":"↗","nharr":"↮","nlarr":"↚","not":"¬","nrarr":"↛","nu":"ν","nvDash":"⊭",
+ "nvdash":"⊬","nwarr":"↖","omega":"ω","omicron":"ο","or":"∨","osol":"⊘","period":".","phi":"φ","phiv":"ϕ","pi":"π","piv":"ϖ","prap":"⪷","precnapprox":"⪹","precneqq":"⪵","precnsim":"⋨","prime":"′",
+ "psi":"ψ","quot":"\\"","rarrtl":"↣","rbrace":"}","rbrack":"]","rho":"ρ","rhov":"ϱ","rightrightarrows":"⇉","rightthreetimes":"⋌","ring":"˚","rmoust":"⎱","rtimes":"⋊","rtri":"▹","scap":"⪸","scnE":"⪶",
+ "scnap":"⪺","scnsim":"⋩","sdot":"⋅","searr":"↘","sect":"§","sharp":"♯","sigma":"σ","sigmav":"ς","simne":"≆","smile":"⌣","spades":"♠","sub":"⊂","subE":"⫅","subnE":"⫋","subne":"⊊","supE":"⫆","supnE":"⫌",
+ "supne":"⊋","swarr":"↙","tau":"τ","theta":"θ","thetav":"ϑ","tilde":"˜","times":"×","triangle":"▵","triangleq":"≜","upsi":"υ","upuparrows":"⇈","veebar":"⊻","vellip":"⋮","weierp":"℘","xi":"ξ","yen":"¥",
+ "zeta":"ζ","zigrarr":"⇝","nbsp":"\u00A0","rsquo":"’","lsquo":"‘"
+}`);
+    loaded = {};
+  }
+});
+// node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js
+var SPACE2;
+var OPTIONALSPACE;
+var TAGNAME;
+var ATTNAME;
+var VALUE;
+var VALUESPLIT;
+var ATTRIBUTE;
+var ATTRIBUTESPLIT;
+var TAG;
+var PATTERNS;
+var LiteParser;
+var init_Parser = __esm({
+  "node_modules/@mathjax/src/mjs/adaptors/lite/Parser.js"() {
+    init_Entities();
+    init_Element();
+    init_Text();
+    SPACE2 = "[ \\n]+";
+    OPTIONALSPACE = "[ \\n]*";
+    TAGNAME = `[A-Za-z][^\0-\u001F "'>/=\u007F-\u009F]*`;
+    ATTNAME = `[^\0-\u001F "'>/=\u007F-\u009F]+`;
+    VALUE = `(?:'[^']*'|"[^"]*"|${SPACE2})`;
+    VALUESPLIT = `(?:'([^']*)'|"([^"]*)"|(${SPACE2}))`;
+    ATTRIBUTE = `${ATTNAME}(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUE})?`;
+    ATTRIBUTESPLIT = `(${ATTNAME})(?:${OPTIONALSPACE}=${OPTIONALSPACE}${VALUESPLIT})?`;
+    TAG = `(<(?:${TAGNAME}(?:${SPACE2}${ATTRIBUTE})*${OPTIONALSPACE}/?|/${TAGNAME}|!--[^]*?--|![^]*?)(?:>|$))`;
+    PATTERNS = {
+      tag: new RegExp(TAG, "u"),
+      attr: new RegExp(ATTRIBUTE, "u"),
+      attrsplit: new RegExp(ATTRIBUTESPLIT, "u")
+    };
+    LiteParser = class {
+      parseFromString(text, _format = "text/html", adaptor = null) {
+        const root2 = adaptor.createDocument();
+        let node = adaptor.body(root2);
+        const parts = text.replace(/<\?.*?\?>/g, "").split(PATTERNS.tag);
+        while (parts.length) {
+          const text2 = parts.shift();
+          const tag3 = parts.shift();
+          if (text2) {
+            this.addText(adaptor, node, text2);
+          }
+          if (tag3 && tag3.charAt(tag3.length - 1) === ">") {
+            if (tag3.charAt(1) === "!") {
+              this.addComment(adaptor, node, tag3);
+            } else if (tag3.charAt(1) === "/") {
+              node = this.closeTag(adaptor, node, tag3);
+            } else {
+              node = this.openTag(adaptor, node, tag3, parts);
+            }
+          }
+        }
+        this.checkDocument(adaptor, root2);
+        return root2;
+      }
+      addText(adaptor, node, text) {
+        text = translate(text);
+        return adaptor.append(node, adaptor.text(text));
+      }
+      addComment(adaptor, node, comment) {
+        return adaptor.append(node, new LiteComment(comment));
+      }
+      closeTag(adaptor, node, tag3) {
+        const kind = tag3.slice(2, tag3.length - 1).toLowerCase();
+        while (adaptor.parent(node) && adaptor.kind(node) !== kind) {
+          node = adaptor.parent(node);
+        }
+        return adaptor.parent(node);
+      }
+      openTag(adaptor, node, tag3, parts) {
+        const PCDATA = this.constructor.PCDATA;
+        const SELF_CLOSING = this.constructor.SELF_CLOSING;
+        const kind = tag3.match(/<(.*?)[\s\n>/]/)[1].toLowerCase();
+        const child = adaptor.node(kind);
+        const attributes = tag3.replace(/^<.*?[\s\n>]/, "").split(PATTERNS.attrsplit);
+        if (attributes.pop().match(/>$/) || attributes.length < 5) {
+          this.addAttributes(adaptor, child, attributes);
+          adaptor.append(node, child);
+          if (!SELF_CLOSING[kind] && !tag3.match(/\/>$/)) {
+            if (PCDATA[kind]) {
+              this.handlePCDATA(adaptor, child, kind, parts);
+            } else {
+              node = child;
+            }
+          }
+        }
+        return node;
+      }
+      addAttributes(adaptor, node, attributes) {
+        while (attributes.length) {
+          const [, name, v1, v2, v3] = attributes.splice(0, 5);
+          const value = translate(v1 || v2 || v3 || "");
+          adaptor.setAttribute(node, name, value);
+        }
+      }
+      handlePCDATA(adaptor, node, kind, parts) {
+        const pcdata = [];
+        const etag = "</" + kind + ">";
+        let ptag = "";
+        while (parts.length && ptag !== etag) {
+          pcdata.push(ptag);
+          pcdata.push(parts.shift());
+          ptag = parts.shift();
+        }
+        adaptor.append(node, adaptor.text(pcdata.join("")));
+      }
+      checkDocument(adaptor, root2) {
+        const node = this.getOnlyChild(adaptor, adaptor.body(root2));
+        if (!node)
+          return;
+        for (const child of adaptor.childNodes(adaptor.body(root2))) {
+          if (child === node) {
+            break;
+          }
+          if (child instanceof LiteComment && child.value.match(/^<!DOCTYPE/)) {
+            root2.type = child.value;
+          }
+        }
+        switch (adaptor.kind(node)) {
+          case "html":
+            for (const child of node.children) {
+              switch (adaptor.kind(child)) {
+                case "head":
+                  root2.head = child;
+                  break;
+                case "body":
+                  root2.body = child;
+                  break;
+              }
+            }
+            root2.root = node;
+            adaptor.remove(node);
+            if (adaptor.parent(root2.body) !== node) {
+              adaptor.append(node, root2.body);
+            }
+            if (adaptor.parent(root2.head) !== node) {
+              adaptor.insert(root2.head, root2.body);
+            }
+            break;
+          case "head":
+            root2.head = adaptor.replace(node, root2.head);
+            break;
+          case "body":
+            root2.body = adaptor.replace(node, root2.body);
+            break;
+        }
+      }
+      getOnlyChild(adaptor, body) {
+        let node = null;
+        for (const child of adaptor.childNodes(body)) {
+          if (child instanceof LiteElement) {
+            if (node)
+              return null;
+            node = child;
+          }
+        }
+        return node;
+      }
+      serialize(adaptor, node, xml = false) {
+        const SELF_CLOSING = this.constructor.SELF_CLOSING;
+        const tag3 = adaptor.kind(node);
+        const attributes = this.allAttributes(adaptor, node, xml).map((x2) => x2.name + '="' + this.protectAttribute(x2.value, xml) + '"').join(" ");
+        const content = this.serializeInner(adaptor, node, xml);
+        const html2 = `<${tag3}` + (attributes ? " " + attributes : "") + ((!xml || content) && !SELF_CLOSING[tag3] ? `>${content}</${tag3}>` : xml ? "/>" : ">");
+        return html2;
+      }
+      serializeInner(adaptor, node, xml = false) {
+        const PCDATA = this.constructor.PCDATA;
+        if (Object.hasOwn(PCDATA, node.kind)) {
+          return adaptor.childNodes(node).map((x2) => adaptor.value(x2)).join("");
+        }
+        return adaptor.childNodes(node).map((x2) => {
+          const kind = adaptor.kind(x2);
+          return kind === "#text" ? this.protectHTML(adaptor.value(x2)) : kind === "#comment" ? x2.value : this.serialize(adaptor, x2, xml);
+        }).join("");
+      }
+      allAttributes(adaptor, node, xml) {
+        const attributes = adaptor.allAttributes(node);
+        if (!xml) {
+          return attributes;
+        }
+        const kind = adaptor.kind(node);
+        const xmlns = this.constructor.XMLNS;
+        if (!Object.hasOwn(xmlns, kind)) {
+          return attributes;
+        }
+        for (const { name } of attributes) {
+          if (name === "xmlns") {
+            return attributes;
+          }
+        }
+        attributes.push({ name: "xmlns", value: xmlns[kind] });
+        return attributes;
+      }
+      protectAttribute(text, xml) {
+        if (typeof text !== "string") {
+          text = String(text);
+        }
+        text = text.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        if (xml) {
+          text = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+        return text;
+      }
+      protectHTML(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+    };
+    LiteParser.SELF_CLOSING = {
+      area: true,
+      base: true,
+      br: true,
+      col: true,
+      command: true,
+      embed: true,
+      hr: true,
+      img: true,
+      input: true,
+      keygen: true,
+      link: true,
+      menuitem: true,
+      meta: true,
+      param: true,
+      source: true,
+      track: true,
+      wbr: true
+    };
+    LiteParser.PCDATA = {
+      option: true,
+      textarea: true,
+      fieldset: true,
+      title: true,
+      style: true,
+      script: true
+    };
+    LiteParser.XMLNS = {
+      svg: "http://www.w3.org/2000/svg",
+      math: "http://www.w3.org/1998/Math/MathML",
+      html: "http://www.w3.org/1999/xhtml"
+    };
+  }
+});
 // node_modules/@mathjax/src/mjs/adaptors/lite/Window.js
 var LiteWindow;
 var init_Window = __esm({
@@ -1049,912 +1953,4 @@ var init_Attributes = __esm({
     };
   }
 });
-// node_modules/@mathjax/src/mjs/core/Tree/Node.js
-var AbstractNode;
-var AbstractEmptyNode;
-var init_Node = __esm({
-  "node_modules/@mathjax/src/mjs/core/Tree/Node.js"() {
-    AbstractNode = class {
-      constructor(factory, properties = {}, children = []) {
-        this.factory = factory;
-        this.parent = null;
-        this.properties = {};
-        this.childNodes = [];
-        for (const name of Object.keys(properties)) {
-          this.setProperty(name, properties[name]);
-        }
-        if (children.length) {
-          this.setChildren(children);
-        }
-      }
-      get kind() {
-        return "unknown";
-      }
-      setProperty(name, value) {
-        this.properties[name] = value;
-      }
-      getProperty(name) {
-        return this.properties[name];
-      }
-      getPropertyNames() {
-        return Object.keys(this.properties);
-      }
-      getAllProperties() {
-        return this.properties;
-      }
-      removeProperty(...names) {
-        for (const name of names) {
-          delete this.properties[name];
-        }
-      }
-      isKind(kind) {
-        return this.factory.nodeIsKind(this, kind);
-      }
-      setChildren(children) {
-        this.childNodes = [];
-        for (const child of children) {
-          this.appendChild(child);
-        }
-      }
-      appendChild(child) {
-        this.childNodes.push(child);
-        child.parent = this;
-        return child;
-      }
-      replaceChild(newChild, oldChild) {
-        const i2 = this.childIndex(oldChild);
-        if (i2 !== null) {
-          this.childNodes[i2] = newChild;
-          newChild.parent = this;
-          if (oldChild.parent === this) {
-            oldChild.parent = null;
-          }
-        }
-        return newChild;
-      }
-      removeChild(child) {
-        const i2 = this.childIndex(child);
-        if (i2 !== null) {
-          this.childNodes.splice(i2, 1);
-          child.parent = null;
-        }
-        return child;
-      }
-      childIndex(node) {
-        const i2 = this.childNodes.indexOf(node);
-        return i2 === -1 ? null : i2;
-      }
-      copy() {
-        const node = this.factory.create(this.kind);
-        node.properties = Object.assign({}, this.properties);
-        for (const child of this.childNodes || []) {
-          if (child) {
-            node.appendChild(child.copy());
-          }
-        }
-        return node;
-      }
-      findNodes(kind) {
-        const nodes = [];
-        this.walkTree((node) => {
-          if (node.isKind(kind)) {
-            nodes.push(node);
-          }
-        });
-        return nodes;
-      }
-      walkTree(func, data) {
-        func(this, data);
-        for (const child of this.childNodes) {
-          if (child) {
-            child.walkTree(func, data);
-          }
-        }
-        return data;
-      }
-      toString() {
-        return this.kind + "(" + this.childNodes.join(",") + ")";
-      }
-    };
-    AbstractEmptyNode = class extends AbstractNode {
-      setChildren(_children) {
-      }
-      appendChild(child) {
-        return child;
-      }
-      replaceChild(_newChild, oldChild) {
-        return oldChild;
-      }
-      childIndex(_node) {
-        return null;
-      }
-      walkTree(func, data) {
-        func(this, data);
-        return data;
-      }
-      toString() {
-        return this.kind;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNode.js
-var TEXCLASS;
-var TEXCLASSNAMES;
-var TEXSPACELENGTH;
-var TEXSPACE;
-var MATHVARIANTS;
-var indentAttributes;
-var AbstractMmlNode;
-var AbstractMmlTokenNode;
-var AbstractMmlLayoutNode;
-var AbstractMmlBaseNode;
-var AbstractMmlEmptyNode;
-var TextNode;
-var XMLNode;
-var init_MmlNode = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNode.js"() {
-    init_Attributes();
-    init_Node();
-    TEXCLASS = {
-      ORD: 0,
-      OP: 1,
-      BIN: 2,
-      REL: 3,
-      OPEN: 4,
-      CLOSE: 5,
-      PUNCT: 6,
-      INNER: 7,
-      NONE: -1
-    };
-    TEXCLASSNAMES = [
-      "ORD",
-      "OP",
-      "BIN",
-      "REL",
-      "OPEN",
-      "CLOSE",
-      "PUNCT",
-      "INNER"
-    ];
-    TEXSPACELENGTH = [
-      "",
-      "thinmathspace",
-      "mediummathspace",
-      "thickmathspace"
-    ];
-    TEXSPACE = JSON.parse(`[[0,-1,2,3,0,0,0,1],[-1,-1,0,3,0,0,0,1],[2,2,0,0,2,0,0,2],[3,3,0,0,3,0,0,3],[0,0,0,0,0,0,0,0],[0,-1,2,3,0,0,0,1],[1,1,0,1,1,1,1,1],[1,-1,2,3,1,0,1,1]]`);
-    MATHVARIANTS = /* @__PURE__ */ new Set([
-      "normal",
-      "bold",
-      "italic",
-      "bold-italic",
-      "double-struck",
-      "fraktur",
-      "bold-fraktur",
-      "script",
-      "bold-script",
-      "sans-serif",
-      "bold-sans-serif",
-      "sans-serif-italic",
-      "sans-serif-bold-italic",
-      "monospace",
-      "inital",
-      "tailed",
-      "looped",
-      "stretched"
-    ]);
-    indentAttributes = [
-      "indentalign",
-      "indentalignfirst",
-      "indentshift",
-      "indentshiftfirst"
-    ];
-    AbstractMmlNode = class _AbstractMmlNode extends AbstractNode {
-      constructor(factory, attributes = {}, children = []) {
-        super(factory);
-        this.prevClass = null;
-        this.prevLevel = null;
-        this.texclass = null;
-        if (this.arity < 0) {
-          this.childNodes = [factory.create("inferredMrow")];
-          this.childNodes[0].parent = this;
-        }
-        this.setChildren(children);
-        this.attributes = new Attributes(factory.getNodeClass(this.kind).defaults, factory.getNodeClass("math").defaults);
-        this.attributes.setList(attributes);
-      }
-      copy(keepIds = false) {
-        const node = this.factory.create(this.kind);
-        node.properties = Object.assign({}, this.properties);
-        if (this.attributes) {
-          const attributes = this.attributes.getAllAttributes();
-          for (const name of Object.keys(attributes)) {
-            if (name !== "id" || keepIds) {
-              node.attributes.set(name, attributes[name]);
-            }
-          }
-        }
-        if (this.childNodes && this.childNodes.length) {
-          let children = this.childNodes;
-          if (children.length === 1 && children[0].isInferred) {
-            children = children[0].childNodes;
-          }
-          for (const child of children) {
-            if (child) {
-              node.appendChild(child.copy());
-            } else {
-              node.childNodes.push(null);
-            }
-          }
-        }
-        return node;
-      }
-      get texClass() {
-        return this.texclass;
-      }
-      set texClass(texClass) {
-        this.texclass = texClass;
-      }
-      get isToken() {
-        return false;
-      }
-      get isEmbellished() {
-        return false;
-      }
-      get isSpacelike() {
-        return false;
-      }
-      get linebreakContainer() {
-        return false;
-      }
-      get linebreakAlign() {
-        return "data-align";
-      }
-      get isEmpty() {
-        for (const child of this.childNodes) {
-          if (child && !child.isEmpty)
-            return false;
-        }
-        return true;
-      }
-      get arity() {
-        return Infinity;
-      }
-      get isInferred() {
-        return false;
-      }
-      get Parent() {
-        let parent = this.parent;
-        while (parent && parent.notParent) {
-          parent = parent.Parent;
-        }
-        return parent;
-      }
-      get notParent() {
-        return false;
-      }
-      setChildren(children) {
-        if (this.arity < 0) {
-          return this.childNodes[0].setChildren(children);
-        }
-        return super.setChildren(children);
-      }
-      appendChild(child) {
-        if (this.arity < 0) {
-          this.childNodes[0].appendChild(child);
-          return child;
-        }
-        if (child.isInferred) {
-          if (this.arity === Infinity) {
-            child.childNodes.forEach((node) => super.appendChild(node));
-            return child;
-          }
-          const original = child;
-          child = this.factory.create("mrow");
-          child.setChildren(original.childNodes);
-          child.attributes = original.attributes;
-          for (const name of original.getPropertyNames()) {
-            child.setProperty(name, original.getProperty(name));
-          }
-        }
-        return super.appendChild(child);
-      }
-      replaceChild(newChild, oldChild) {
-        if (this.arity < 0) {
-          this.childNodes[0].replaceChild(newChild, oldChild);
-          return newChild;
-        }
-        return super.replaceChild(newChild, oldChild);
-      }
-      core() {
-        return this;
-      }
-      coreMO() {
-        return this;
-      }
-      coreIndex() {
-        return 0;
-      }
-      childPosition() {
-        let child = null;
-        let parent = this.parent;
-        while (parent && parent.notParent) {
-          child = parent;
-          parent = parent.parent;
-        }
-        child = child || this;
-        if (parent) {
-          let i2 = 0;
-          for (const node of parent.childNodes) {
-            if (node === child) {
-              return i2;
-            }
-            i2++;
-          }
-        }
-        return null;
-      }
-      setTeXclass(prev) {
-        this.getPrevClass(prev);
-        return this.texClass != null ? this : prev;
-      }
-      updateTeXclass(core) {
-        if (core) {
-          this.prevClass = core.prevClass;
-          this.prevLevel = core.prevLevel;
-          core.prevClass = core.prevLevel = null;
-          this.texClass = core.texClass;
-        }
-      }
-      getPrevClass(prev) {
-        if (prev) {
-          this.prevClass = prev.texClass;
-          this.prevLevel = prev.attributes.get("scriptlevel");
-        }
-      }
-      texSpacing() {
-        const prevClass = this.prevClass != null ? this.prevClass : TEXCLASS.NONE;
-        const texClass = this.texClass || TEXCLASS.ORD;
-        if (prevClass === TEXCLASS.NONE || texClass === TEXCLASS.NONE) {
-          return "";
-        }
-        const space = TEXSPACE[prevClass][texClass];
-        if ((this.prevLevel > 0 || this.attributes.get("scriptlevel") > 0) && space >= 0) {
-          return "";
-        }
-        return TEXSPACELENGTH[Math.abs(space)];
-      }
-      hasSpacingAttributes() {
-        return this.isEmbellished && this.coreMO().hasSpacingAttributes();
-      }
-      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
-        var _a2, _b2, _c;
-        const defaults = this.attributes.getAllDefaults();
-        for (const key of Object.keys(attributes)) {
-          if (Object.hasOwn(defaults, key) || Object.hasOwn(_AbstractMmlNode.alwaysInherit, key)) {
-            const [node, value] = attributes[key];
-            if (!((_b2 = (_a2 = _AbstractMmlNode.noInherit[node]) === null || _a2 === void 0 ? void 0 : _a2[this.kind]) === null || _b2 === void 0 ? void 0 : _b2[key])) {
-              this.attributes.setInherited(key, value);
-            }
-          }
-          if ((_c = _AbstractMmlNode.stopInherit[this.kind]) === null || _c === void 0 ? void 0 : _c[key]) {
-            attributes = Object.assign({}, attributes);
-            delete attributes[key];
-          }
-        }
-        const displaystyle = this.attributes.getExplicit("displaystyle");
-        if (displaystyle === void 0) {
-          this.attributes.setInherited("displaystyle", display);
-        }
-        const scriptlevel = this.attributes.getExplicit("scriptlevel");
-        if (scriptlevel === void 0) {
-          this.attributes.setInherited("scriptlevel", level);
-        }
-        if (prime) {
-          this.setProperty("texprimestyle", prime);
-        }
-        const arity = this.arity;
-        if (arity >= 0 && arity !== Infinity && (arity === 1 && this.childNodes.length === 0 || arity !== 1 && this.childNodes.length !== arity)) {
-          if (arity < this.childNodes.length) {
-            this.childNodes = this.childNodes.slice(0, arity);
-          } else {
-            while (this.childNodes.length < arity) {
-              this.appendChild(this.factory.create("mrow"));
-            }
-          }
-        }
-        if (this.linebreakContainer && !this.isEmbellished) {
-          const align = this.linebreakAlign;
-          if (align) {
-            const indentalign = this.attributes.get(align) || "left";
-            attributes = this.addInheritedAttributes(attributes, {
-              indentalign,
-              indentshift: "0",
-              indentalignfirst: indentalign,
-              indentshiftfirst: "0",
-              indentalignlast: "indentalign",
-              indentshiftlast: "indentshift"
-            });
-          }
-        }
-        this.setChildInheritedAttributes(attributes, display, level, prime);
-      }
-      setChildInheritedAttributes(attributes, display, level, prime) {
-        for (const child of this.childNodes) {
-          child.setInheritedAttributes(attributes, display, level, prime);
-        }
-      }
-      addInheritedAttributes(current, attributes) {
-        const updated = Object.assign({}, current);
-        for (const name of Object.keys(attributes)) {
-          if (name !== "displaystyle" && name !== "scriptlevel" && name !== "style") {
-            updated[name] = [this.kind, attributes[name]];
-          }
-        }
-        return updated;
-      }
-      inheritAttributesFrom(node) {
-        const attributes = node.attributes;
-        const display = attributes.get("displaystyle");
-        const scriptlevel = attributes.get("scriptlevel");
-        const defaults = !attributes.isSet("mathsize") ? {} : { mathsize: ["math", attributes.get("mathsize")] };
-        const prime = node.getProperty("texprimestyle") || false;
-        this.setInheritedAttributes(defaults, display, scriptlevel, prime);
-      }
-      verifyTree(options3 = null) {
-        if (options3 === null) {
-          return;
-        }
-        this.verifyAttributes(options3);
-        const arity = this.arity;
-        if (options3["checkArity"]) {
-          if (arity >= 0 && arity !== Infinity && (arity === 1 && this.childNodes.length === 0 || arity !== 1 && this.childNodes.length !== arity)) {
-            this.mError('Wrong number of children for "' + this.kind + '" node', options3, true);
-          }
-        }
-        this.verifyChildren(options3);
-      }
-      verifyAttributes(options3) {
-        if (options3.checkAttributes) {
-          const attributes = this.attributes;
-          const bad = [];
-          for (const name of attributes.getExplicitNames()) {
-            if (name.substring(0, 5) !== "data-" && attributes.getDefault(name) === void 0 && !name.match(/^(?:class|style|id|(?:xlink:)?href)$/)) {
-              bad.push(name);
-            }
-          }
-          if (bad.length) {
-            this.mError("Unknown attributes for " + this.kind + " node: " + bad.join(", "), options3);
-          }
-        }
-        if (options3.checkMathvariants) {
-          const variant = this.attributes.getExplicit("mathvariant");
-          if (variant && !MATHVARIANTS.has(variant) && !this.getProperty("ignore-variant")) {
-            this.mError(`Invalid mathvariant: ${variant}`, options3, true);
-          }
-        }
-      }
-      verifyChildren(options3) {
-        for (const child of this.childNodes) {
-          child.verifyTree(options3);
-        }
-      }
-      mError(message, options3, short = false) {
-        if (this.parent && this.parent.isKind("merror")) {
-          return null;
-        }
-        const merror = this.factory.create("merror");
-        merror.attributes.set("data-mjx-message", message);
-        if (options3.fullErrors || short) {
-          const mtext = this.factory.create("mtext");
-          const text = this.factory.create("text");
-          text.setText(options3.fullErrors ? message : this.kind);
-          mtext.appendChild(text);
-          merror.appendChild(mtext);
-          this.parent.replaceChild(merror, this);
-          if (!options3.fullErrors) {
-            merror.attributes.set("title", message);
-          }
-        } else {
-          this.parent.replaceChild(merror, this);
-          merror.appendChild(this);
-        }
-        return merror;
-      }
-    };
-    AbstractMmlNode.defaults = {
-      mathbackground: INHERIT,
-      mathcolor: INHERIT,
-      mathsize: INHERIT,
-      dir: INHERIT
-    };
-    AbstractMmlNode.noInherit = JSON.parse(`{
- "mstyle":{"mpadded":{"width":true,"height":true,"depth":true,"lspace":true,"voffset":true},"mtable":{"width":true,"height":true,"depth":true,"align":true}},
- "maligngroup":{"mrow":{"groupalign":true},"mtable":{"groupalign":true}},
- "mtr":{"msqrt":{"data-vertical-align":true},"mroot":{"data-vertical-align":true}},
- "mlabeledtr":{"msqrt":{"data-vertical-align":true},"mroot":{"data-vertical-align":true}}
-}`);
-    AbstractMmlNode.stopInherit = {
-      mtd: { columnalign: true, rowalign: true, groupalign: true }
-    };
-    AbstractMmlNode.alwaysInherit = {
-      scriptminsize: true,
-      scriptsizemultiplier: true,
-      infixlinebreakstyle: true
-    };
-    AbstractMmlNode.verifyDefaults = {
-      checkArity: true,
-      checkAttributes: false,
-      checkMathvariants: true,
-      fullErrors: false,
-      fixMmultiscripts: true,
-      fixMtables: true
-    };
-    AbstractMmlTokenNode = class extends AbstractMmlNode {
-      get isToken() {
-        return true;
-      }
-      get isEmpty() {
-        for (const child of this.childNodes) {
-          if (!(child instanceof TextNode) || child.getText().length) {
-            return false;
-          }
-        }
-        return true;
-      }
-      getText() {
-        let text = "";
-        for (const child of this.childNodes) {
-          if (child instanceof TextNode) {
-            text += child.getText();
-          } else if ("textContent" in child) {
-            text += child.textContent();
-          }
-        }
-        return text;
-      }
-      setChildInheritedAttributes(attributes, display, level, prime) {
-        for (const child of this.childNodes) {
-          if (child instanceof AbstractMmlNode) {
-            child.setInheritedAttributes(attributes, display, level, prime);
-          }
-        }
-      }
-      walkTree(func, data) {
-        func(this, data);
-        for (const child of this.childNodes) {
-          if (child instanceof AbstractMmlNode) {
-            child.walkTree(func, data);
-          }
-        }
-        return data;
-      }
-    };
-    AbstractMmlTokenNode.defaults = Object.assign(Object.assign({}, AbstractMmlNode.defaults), { mathvariant: "normal", mathsize: INHERIT });
-    AbstractMmlLayoutNode = class extends AbstractMmlNode {
-      get isSpacelike() {
-        return this.childNodes[0].isSpacelike;
-      }
-      get isEmbellished() {
-        return this.childNodes[0].isEmbellished;
-      }
-      get arity() {
-        return -1;
-      }
-      core() {
-        return this.childNodes[0];
-      }
-      coreMO() {
-        return this.childNodes[0].coreMO();
-      }
-      setTeXclass(prev) {
-        prev = this.childNodes[0].setTeXclass(prev);
-        this.updateTeXclass(this.childNodes[0]);
-        return prev;
-      }
-    };
-    AbstractMmlLayoutNode.defaults = AbstractMmlNode.defaults;
-    AbstractMmlBaseNode = class extends AbstractMmlNode {
-      get isEmbellished() {
-        return this.childNodes[0].isEmbellished;
-      }
-      core() {
-        return this.childNodes[0];
-      }
-      coreMO() {
-        return this.childNodes[0].coreMO();
-      }
-      setTeXclass(prev) {
-        this.getPrevClass(prev);
-        this.texClass = TEXCLASS.ORD;
-        const base = this.childNodes[0];
-        let result = null;
-        if (base) {
-          if (this.isEmbellished || base.isKind("mi")) {
-            result = base.setTeXclass(prev);
-            this.updateTeXclass(this.core());
-          } else {
-            base.setTeXclass(null);
-            if (base.isKind("TeXAtom")) {
-              this.texClass = base.texClass;
-            }
-          }
-        }
-        for (const child of this.childNodes.slice(1)) {
-          if (child) {
-            child.setTeXclass(null);
-          }
-        }
-        return result || this;
-      }
-    };
-    AbstractMmlBaseNode.defaults = AbstractMmlNode.defaults;
-    AbstractMmlEmptyNode = class extends AbstractEmptyNode {
-      get isToken() {
-        return false;
-      }
-      get isEmpty() {
-        return true;
-      }
-      get isEmbellished() {
-        return false;
-      }
-      get isSpacelike() {
-        return false;
-      }
-      get linebreakContainer() {
-        return false;
-      }
-      get linebreakAlign() {
-        return "";
-      }
-      get arity() {
-        return 0;
-      }
-      get isInferred() {
-        return false;
-      }
-      get notParent() {
-        return false;
-      }
-      get Parent() {
-        return this.parent;
-      }
-      get texClass() {
-        return TEXCLASS.NONE;
-      }
-      get prevClass() {
-        return TEXCLASS.NONE;
-      }
-      get prevLevel() {
-        return 0;
-      }
-      hasSpacingAttributes() {
-        return false;
-      }
-      get attributes() {
-        return null;
-      }
-      core() {
-        return this;
-      }
-      coreMO() {
-        return this;
-      }
-      coreIndex() {
-        return 0;
-      }
-      childPosition() {
-        return 0;
-      }
-      setTeXclass(prev) {
-        return prev;
-      }
-      texSpacing() {
-        return "";
-      }
-      setInheritedAttributes(_attributes, _display, _level, _prime) {
-      }
-      inheritAttributesFrom(_node) {
-      }
-      verifyTree(_options) {
-      }
-      mError(_message, _options, _short = false) {
-        return null;
-      }
-    };
-    TextNode = class extends AbstractMmlEmptyNode {
-      constructor() {
-        super(...arguments);
-        this.text = "";
-      }
-      get kind() {
-        return "text";
-      }
-      getText() {
-        return this.text;
-      }
-      setText(text) {
-        this.text = text;
-        return this;
-      }
-      copy() {
-        return this.factory.create(this.kind).setText(this.getText());
-      }
-      toString() {
-        return this.text;
-      }
-    };
-    XMLNode = class extends AbstractMmlEmptyNode {
-      constructor() {
-        super(...arguments);
-        this.xml = null;
-        this.adaptor = null;
-      }
-      get kind() {
-        return "XML";
-      }
-      getXML() {
-        return this.xml;
-      }
-      setXML(xml, adaptor = null) {
-        this.xml = xml;
-        this.adaptor = adaptor;
-        return this;
-      }
-      getSerializedXML() {
-        return this.adaptor.serializeXML(this.xml);
-      }
-      copy() {
-        return this.factory.create(this.kind).setXML(this.adaptor.clone(this.xml));
-      }
-      toString() {
-        return "XML data";
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/math.js
-var MmlMath;
-var init_math = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/math.js"() {
-    init_MmlNode();
-    MmlMath = class extends AbstractMmlLayoutNode {
-      get kind() {
-        return "math";
-      }
-      get linebreakContainer() {
-        return true;
-      }
-      get linebreakAlign() {
-        return "";
-      }
-      setChildInheritedAttributes(attributes, display, level, prime) {
-        if (this.attributes.get("mode") === "display") {
-          this.attributes.setInherited("display", "block");
-        }
-        attributes = this.addInheritedAttributes(attributes, this.attributes.getAllAttributes());
-        display = !!this.attributes.get("displaystyle") || !this.attributes.get("displaystyle") && this.attributes.get("display") === "block";
-        this.attributes.setInherited("displaystyle", display);
-        level = this.attributes.get("scriptlevel") || this.constructor.defaults["scriptlevel"];
-        super.setChildInheritedAttributes(attributes, display, level, prime);
-      }
-      verifyTree(options3 = null) {
-        super.verifyTree(options3);
-        if (this.parent) {
-          this.mError("Improper nesting of math tags", options3, true);
-        }
-      }
-    };
-    MmlMath.defaults = Object.assign(Object.assign({}, AbstractMmlLayoutNode.defaults), { mathvariant: "normal", mathsize: "normal", mathcolor: "", mathbackground: "transparent", dir: "ltr", scriptlevel: 0, displaystyle: false, display: "inline", maxwidth: "", overflow: "linebreak", altimg: "", "altimg-width": "", "altimg-height": "", "altimg-valign": "", alttext: "", cdgroup: "", scriptsizemultiplier: 1 / Math.sqrt(2), scriptminsize: ".4em", infixlinebreakstyle: "before", lineleading: "100%", linebreakmultchar: "\u2062", indentshift: "auto", indentalign: "auto", indenttarget: "", indentalignfirst: "indentalign", indentshiftfirst: "indentshift", indentalignlast: "indentalign", indentshiftlast: "indentshift" });
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mi.js
-var MmlMi;
-var init_mi = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mi.js"() {
-    init_MmlNode();
-    MmlMi = class _MmlMi extends AbstractMmlTokenNode {
-      constructor() {
-        super(...arguments);
-        this.texclass = TEXCLASS.ORD;
-      }
-      get kind() {
-        return "mi";
-      }
-      setInheritedAttributes(attributes = {}, display = false, level = 0, prime = false) {
-        super.setInheritedAttributes(attributes, display, level, prime);
-        const text = this.getText();
-        if (text.match(_MmlMi.singleCharacter) && !attributes.mathvariant) {
-          this.attributes.setInherited("mathvariant", "italic");
-        }
-      }
-      setTeXclass(prev) {
-        this.getPrevClass(prev);
-        const name = this.getText();
-        if (name.length > 1 && name.match(_MmlMi.operatorName) && this.attributes.get("mathvariant") === "normal" && this.getProperty("autoOP") === void 0 && this.getProperty("texClass") === void 0) {
-          this.texClass = TEXCLASS.OP;
-          this.setProperty("autoOP", true);
-        }
-        return this;
-      }
-    };
-    MmlMi.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
-    MmlMi.operatorName = /^[a-z][a-z0-9]*$/i;
-    MmlMi.singleCharacter = /^[\uD800-\uDBFF]?.[\u0300-\u036F\u1AB0-\u1ABE\u1DC0-\u1DFF\u20D0-\u20EF]*$/;
-  }
-});
-// node_modules/@mathjax/src/mjs/core/Tree/Factory.js
-var AbstractFactory;
-var init_Factory = __esm({
-  "node_modules/@mathjax/src/mjs/core/Tree/Factory.js"() {
-    AbstractFactory = class {
-      constructor(nodes = null) {
-        this.defaultKind = "unknown";
-        this.nodeMap = /* @__PURE__ */ new Map();
-        this.node = {};
-        if (nodes === null) {
-          nodes = this.constructor.defaultNodes;
-        }
-        for (const kind of Object.keys(nodes)) {
-          this.setNodeClass(kind, nodes[kind]);
-        }
-      }
-      create(kind, ...args) {
-        return (this.node[kind] || this.node[this.defaultKind])(...args);
-      }
-      setNodeClass(kind, nodeClass) {
-        this.nodeMap.set(kind, nodeClass);
-        const KIND = this.nodeMap.get(kind);
-        this.node[kind] = (...args) => {
-          return new KIND(this, ...args);
-        };
-      }
-      getNodeClass(kind) {
-        return this.nodeMap.get(kind);
-      }
-      deleteNodeClass(kind) {
-        this.nodeMap.delete(kind);
-        delete this.node[kind];
-      }
-      nodeIsKind(node, kind) {
-        return node instanceof this.getNodeClass(kind);
-      }
-      getKinds() {
-        return Array.from(this.nodeMap.keys());
-      }
-    };
-    AbstractFactory.defaultNodes = {};
-  }
-});
-// node_modules/@mathjax/src/mjs/core/Tree/NodeFactory.js
-var AbstractNodeFactory;
-var init_NodeFactory = __esm({
-  "node_modules/@mathjax/src/mjs/core/Tree/NodeFactory.js"() {
-    init_Factory();
-    AbstractNodeFactory = class extends AbstractFactory {
-      create(kind, properties = {}, children = []) {
-        return this.node[kind](properties, children);
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mn.js
-var MmlMn;
-var init_mn = __esm({
-  "node_modules/@mathjax/src/mjs/core/MmlTree/MmlNodes/mn.js"() {
-    init_MmlNode();
-    MmlMn = class extends AbstractMmlTokenNode {
-      constructor() {
-        super(...arguments);
-        this.texclass = TEXCLASS.ORD;
-      }
-      get kind() {
-        return "mn";
-      }
-    };
-    MmlMn.defaults = Object.assign({}, AbstractMmlTokenNode.defaults);
-  }
-});
-export{TEXCLASS,init_MmlNode,AbstractMmlTokenNode,AbstractMmlNode,AbstractMmlBaseNode,init_Attributes,AbstractMmlLayoutNode,INHERIT,indentAttributes,XMLNode,init_math,init_mi,init_mn,MmlMath,MmlMi,MmlMn,TextNode,init_NodeFactory,AbstractNodeFactory,TEXCLASSNAMES,init_MathItem,STATE,AbstractMathItem,newState,protoItem,AbstractMmlEmptyNode,init_Factory,AbstractFactory,init_Styles,TRBL,Styles,liteAdaptor,init_liteAdaptor};
+export{init_Attributes,Attributes,INHERIT,init_Options,lookup,init_PrioritizedList,PrioritizedList,userOptions,defaultOptions,init_MathItem,init_Retries,STATE,AbstractMathItem,handleRetriesFor,expandable,makeArray,newState,separateOptions,mathjax,init_mathjax,protoItem,init_Entities,entities,init_Styles,TRBL,init_context,context,init_AsyncLoad,asyncLoad,retryAfter,Styles,numeric,liteAdaptor,TexError,GlyphError,init_liteAdaptor,init_errors};

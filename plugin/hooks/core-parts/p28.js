@@ -1,4 +1,4 @@
-import{__esm,init_HandlerTypes,init_Configuration,init_TokenMap,init_TexError,init_BaseMethods,init_AmsMethods,init_mhchemParser,init_MmlNode,TEXCLASS,mhchemParser,TexError_default,BaseMethods_default,AmsMethods,CommandMap,CharacterMap,Configuration,ConfigurationType,HandlerType,init_TexParser,init_BaseConfiguration,init_NodeUtil,Other,TexParser,NodeUtil_default,init_ParseMethods,EnvironmentMap,ParseMethods_default,MacroMap,init_ParseUtil,ParseUtil,TexConstant,init_TexConstants,TextParser,TextMacrosMethods,init_TextMacrosMethods,init_TextParser,init_svg,init_Direction,MathJaxNewcmFont,__kittexJson19,__kittexJson20,H,__kittexJson21,__kittexJson22,__kittexJson23,__kittexJson24,V,__kittexJson25,__kittexJson26,__kittexJson27,__kittexJson28,__kittexJson29,__kittexJson30,__kittexJson31,__kittexJson32,__kittexJson33,__kittexJson34,__kittexJson35,__kittexJson36,__kittexJson37,__kittexJson38,__kittexJson39,__kittexJson40,__kittexJson41,__kittexJson42,__kittexJson43,__kittexJson44,__kittexJson45,__kittexJson46,__kittexJson47,__kittexJson48,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__kittexLate}from'./p27.js';export*from'./p27.js';
+import{__esm,init_HandlerTypes,init_Configuration,init_TokenMap,init_TexError,init_BaseMethods,init_AmsMethods,init_mhchemParser,init_MmlNode,TEXCLASS,mhchemParser,TexError_default,BaseMethods_default,AmsMethods,CommandMap,CharacterMap,Configuration,ConfigurationType,HandlerType,init_TexParser,init_BaseConfiguration,init_NodeUtil,Other,TexParser,NodeUtil_default,init_ParseMethods,EnvironmentMap,ParseMethods_default,MacroMap,init_ParseUtil,ParseUtil,TexConstant,init_TexConstants,TextParser,TextMacrosMethods,init_TextMacrosMethods,init_TextParser,init_svg2,init_Direction,MathJaxNewcmFont,__kittexJson19,__kittexJson20,H,__kittexJson21,__kittexJson22,__kittexJson23,__kittexJson24,V,__kittexJson25,__kittexJson26,__kittexJson27,__kittexJson28,__kittexJson29,__kittexJson30,__kittexJson31,__kittexJson32,__kittexJson33,__kittexJson34,__kittexJson35,__kittexJson36,__kittexJson37,__kittexJson38,__kittexJson39,__kittexJson40,__kittexJson41,__kittexJson42,__kittexJson43,__kittexJson44,__kittexJson45,__kittexJson46,__kittexJson47,__kittexJson48,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__kittexLate}from'./p27.js';export*from'./p27.js';
 // node_modules/@mathjax/src/mjs/input/tex/mhchem/MhchemConfiguration.js
 var MhchemUtils;
 var MhchemReplacements;
@@ -743,7 +743,7 @@ var init_TextcompConfiguration = __esm({
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/accents.js
 var init_accents = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/accents.js"() {
-    init_svg();
+    init_svg2();
     init_Direction();
     MathJaxNewcmFont.dynamicSetup("", "accents", JSON.parse(__kittexJson19 + __kittexJson20), {
       785: {
@@ -817,7 +817,7 @@ var init_accents = __esm({
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/arrows.js
 var init_arrows = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/arrows.js"() {
-    init_svg();
+    init_svg2();
     init_Direction();
     MathJaxNewcmFont.dynamicSetup("", "arrows", JSON.parse(__kittexJson21 + __kittexJson22 + __kittexJson23 + __kittexJson24), {
       10145: {
@@ -1133,70 +1133,70 @@ var init_arrows = __esm({
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/calligraphic.js
 var init_calligraphic = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/calligraphic.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "calligraphic", JSON.parse(__kittexJson25));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/double-struck.js
 var init_double_struck2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/double-struck.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "double-struck", JSON.parse(__kittexJson26));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/fraktur.js
 var init_fraktur2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/fraktur.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "fraktur", JSON.parse(__kittexJson27 + __kittexJson28));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/latin.js
 var init_latin = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/latin.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "latin", JSON.parse(__kittexJson29 + __kittexJson30 + __kittexJson31 + __kittexJson32 + __kittexJson33 + __kittexJson34));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/math.js
 var init_math4 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/math.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "math", JSON.parse(__kittexJson35 + __kittexJson36 + __kittexJson37 + __kittexJson38));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/monospace.js
 var init_monospace2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/monospace.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "monospace", JSON.parse(__kittexJson39 + __kittexJson40));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/sans-serif.js
 var init_sans_serif2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/sans-serif.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "sans-serif", JSON.parse(__kittexJson41 + __kittexJson42 + __kittexJson43 + __kittexJson44));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/script.js
 var init_script2 = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/script.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "script", JSON.parse(__kittexJson45 + __kittexJson46));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/shapes.js
 var init_shapes = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/shapes.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "shapes", JSON.parse(__kittexJson47 + __kittexJson48));
   }
 });
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/symbols.js
 var init_symbols = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/symbols.js"() {
-    init_svg();
+    init_svg2();
     init_Direction();
     MathJaxNewcmFont.dynamicSetup("", "symbols", JSON.parse(__kittexJson49 + __kittexJson50 + __kittexJson51), {
       8215: {
@@ -1211,7 +1211,7 @@ var init_symbols = __esm({
 // node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/variants.js
 var init_variants = __esm({
   "node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/variants.js"() {
-    init_svg();
+    init_svg2();
     MathJaxNewcmFont.dynamicSetup("", "variants", JSON.parse(__kittexJson52));
   }
 });

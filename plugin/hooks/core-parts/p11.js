@@ -500,74 +500,6 @@ var MAX_ROWS = 200;
 var RULE_MAX = 40;
 var REPLY_INDENT = 2;
 var EMPTY = { text: "", source: [] };
-var FLATNESS = 0.05;
-var MAX_RULES = 4e3;
-var MAX_COMPOUND = 16;
-var MAX_CHAIN = 8;
-var MAX_MATCH_STEPS = 4e6;
-var NAMES = "aliceblue:f0f8ff antiquewhite:faebd7 aqua:00ffff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000000 blanchedalmond:ffebcd blue:0000ff blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:00ffff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:ff00ff gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:778899 lightslategrey:778899 lightsteelblue:b0c4de lightyellow:ffffe0 lime:00ff00 limegreen:32cd32 linen:faf0e6 magenta:ff00ff maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:663399 red:ff0000 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:ffffff whitesmoke:f5f5f5 yellow:ffff00 yellowgreen:9acd32";
-var INITIAL_FONT = {
-  size: 16,
-  bold: false,
-  italic: false,
-  anchor: "start",
-  baselineShift: 0,
-  preserve: false,
-  underline: false,
-  lineThrough: false
-};
-var MAX_TEXT_CHARS = 2e4;
-var MAX_RUN_CHARS = 200;
-var MAX_TEXT_DEPTH = 32;
-var MISSING_ADVANCE = 0.5;
-var SIZE_KEYWORDS = { "xx-small": 9, "x-small": 10, small: 13, medium: 16, large: 18, "x-large": 24, "xx-large": 32, "xxx-large": 48 };
-var BASELINES = {
-  auto: 0,
-  alphabetic: 0,
-  baseline: 0,
-  middle: 0.215,
-  central: 0.3,
-  mathematical: 0.25,
-  hanging: 0.8,
-  "text-before-edge": 0.8,
-  "text-top": 0.8,
-  "before-edge": 0.8,
-  "text-after-edge": -0.2,
-  "text-bottom": -0.2,
-  "after-edge": -0.2,
-  ideographic: -0.2
-};
-var FONT_PROPERTIES = ["font", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline", "alignment-baseline", "xml:space", "white-space", "text-decoration"];
-var TEX_ESCAPES = {
-  "\\": "\\textbackslash{}",
-  "{": "\\{",
-  "}": "\\}",
-  $: "\\$",
-  "%": "\\%",
-  "&": "\\&",
-  "#": "\\#",
-  _: "\\_",
-  "^": "\\textasciicircum{}",
-  "~": "\\textasciitilde{}",
-  " ": "\\ ",
-  "\u00A0": "\\ ",
-  "`": "`{}",
-  "'": "'{}"
-};
-var MAX_DEPTH = 2e4;
-var MAX_ELEMENTS = 2e5;
-var ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
-var MAX_PICTURE_OPS = 6e4;
-var MAX_PATH_DATA = 1e6;
-var MAX_PICTURE_NUMBERS = 2e6;
-var MAX_VISITS = 4e5;
-var MAX_USE_DEPTH = 8;
-var PATTERN_OPACITY = 0.35;
-var GRADIENT_BANDS = 64;
-var MAX_PATTERN_OPS = 6e3;
-var MAX_SERVER_CLIPS = 64;
-var BLACK = { r: 0, g: 0, b: 0 };
-var IDENTITY = [1, 0, 0, 1, 0, 0];
 var PREAMBLE_VERSION = 6;
 var JOB_NAME = "kittex";
 var MAX_TEX_SOURCE = 24e3;
@@ -590,6 +522,8 @@ var SATURATED = 0.12;
 var KEEP_CENTER = 0.55;
 var KEEP_BAND = 0.4;
 var MIN_CONTRAST = 0.3;
+var WHITE = { r: 255, g: 255, b: 255 };
+var BLACK2 = { r: 0, g: 0, b: 0 };
 var MAX_BLOCK_IMAGES = 4;
 var LINE_WIDTH_PT = 345;
 var TEXT_HEIGHT_PT = 550;
@@ -743,11 +677,12 @@ var CLAUDE_THEME_TEXT = {
 var ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
 var MIN_INLINE_SCALE = 0.85;
 var INLINE_OVERFLOW = 0.06;
-var BUILD_ID = "kittex-build:36eb686728fb844d";
+var BUILD_ID = "kittex-build:d9775cf76d063b41";
 var MAX_TEX_LENGTH = 4096;
 var MAX_PIXELS = 16e6;
 var MAX_IMAGE_SIDE = 4096;
 var CACHE_LIMIT = 256;
+var LEGIBLE_CONTRAST = 4.5;
 var MIN_DISPLAY_SCALE = 0.5;
 var TOO_LARGE = "formula too large to draw";
 var CLIPPED_RUN_PX = 2.5;
@@ -797,4 +732,753 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-export{__commonJS,__esm,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,FLATNESS,MAX_RULES,MAX_COMPOUND,MAX_CHAIN,MAX_MATCH_STEPS,NAMES,MAX_TEXT_CHARS,INITIAL_FONT,SIZE_KEYWORDS,BASELINES,TEX_ESCAPES,MAX_TEXT_DEPTH,MISSING_ADVANCE,MAX_RUN_CHARS,MAX_ELEMENTS,MAX_DEPTH,ENTITIES,BLACK,MAX_PATH_DATA,MAX_PICTURE_NUMBERS,MAX_PICTURE_OPS,MAX_USE_DEPTH,MAX_SERVER_CLIPS,IDENTITY,MAX_PATTERN_OPS,MAX_VISITS,FONT_PROPERTIES,PATTERN_OPACITY,GRADIENT_BANDS,STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,MAX_BLOCK_IMAGES,LINE_WIDTH_PT,TEXT_HEIGHT_PT,IMAGE_GAP,PNG_SIGNATURE,__toESM,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,SIGNATURE,COLOR_TYPES,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,MIN_DISPLAY_SCALE,TOO_LARGE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,KEPT_IMAGE_PIXELS,MIN_IMAGE_DENSITY,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};
+// core/src/raster/path.ts
+function flattenPath(d, m) {
+  const contours = [];
+  walkPath(d, m, FLATNESS, (points) => {
+    if (points.length >= 6) contours.push(points);
+  });
+  return contours;
+}
+function flattenSubpaths(d, m, flatness = FLATNESS) {
+  const out = [];
+  walkPath(d, m, flatness, (points, closed) => {
+    if (points.length >= 4) out.push({ points, closed });
+  });
+  return out;
+}
+function walkPath(d, m, flatness, emit2) {
+  let contour = [];
+  const [a, b, c, dd, e, f] = m;
+  const px2 = (x3, y2) => a * x3 + c * y2 + e;
+  const py = (x3, y2) => b * x3 + dd * y2 + f;
+  let x2 = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  let ctrlX = 0;
+  let ctrlY = 0;
+  let prev = "";
+  const finish = (closed = false) => {
+    if (contour.length > 0) emit2(contour, closed);
+    contour = [];
+  };
+  const begin = () => {
+    if (contour.length === 0) contour.push(px2(x2, y), py(x2, y));
+  };
+  const lineTo = (nx, ny) => {
+    begin();
+    contour.push(px2(nx, ny), py(nx, ny));
+    x2 = nx;
+    y = ny;
+  };
+  const quadTo = (x1, y1, nx, ny) => {
+    begin();
+    const p0x = px2(x2, y), p0y = py(x2, y);
+    const p1x = px2(x1, y1), p1y = py(x1, y1);
+    const p2x = px2(nx, ny), p2y = py(nx, ny);
+    const ddx = p0x - 2 * p1x + p2x;
+    const ddy = p0y - 2 * p1y + p2y;
+    const n = Math.min(100, Math.ceil(Math.sqrt(Math.hypot(ddx, ddy) / (4 * flatness))));
+    for (let i2 = 1; i2 < n; i2++) {
+      const t = i2 / n;
+      const u = 1 - t;
+      contour.push(u * u * p0x + 2 * u * t * p1x + t * t * p2x, u * u * p0y + 2 * u * t * p1y + t * t * p2y);
+    }
+    contour.push(p2x, p2y);
+    x2 = nx;
+    y = ny;
+  };
+  const cubicTo = (x1, y1, x22, y2, nx, ny) => {
+    begin();
+    const p0x = px2(x2, y), p0y = py(x2, y);
+    const p1x = px2(x1, y1), p1y = py(x1, y1);
+    const p2x = px2(x22, y2), p2y = py(x22, y2);
+    const p3x = px2(nx, ny), p3y = py(nx, ny);
+    const dd1 = Math.hypot(p0x - 2 * p1x + p2x, p0y - 2 * p1y + p2y);
+    const dd2 = Math.hypot(p1x - 2 * p2x + p3x, p1y - 2 * p2y + p3y);
+    const n = Math.min(100, Math.ceil(Math.sqrt(0.75 * Math.max(dd1, dd2) / flatness)));
+    for (let i2 = 1; i2 < n; i2++) {
+      const t = i2 / n;
+      const u = 1 - t;
+      const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
+      contour.push(w0 * p0x + w1 * p1x + w2 * p2x + w3 * p3x, w0 * p0y + w1 * p1y + w2 * p2y + w3 * p3y);
+    }
+    contour.push(p3x, p3y);
+    x2 = nx;
+    y = ny;
+  };
+  const arcTo = (rx, ry, angle, large, sweep, nx, ny) => {
+    for (const seg of arcToCubics(x2, y, rx, ry, angle, large, sweep, nx, ny)) cubicTo(...seg);
+    x2 = nx;
+    y = ny;
+  };
+  const s = new Scanner(d);
+  let cmd = "";
+  for (; ; ) {
+    s.skip();
+    if (s.done()) break;
+    const next = s.command();
+    if (next) cmd = next;
+    else if (!cmd || cmd === "Z" || cmd === "z") break;
+    else if (cmd === "M") cmd = "L";
+    else if (cmd === "m") cmd = "l";
+    const rel = cmd === cmd.toLowerCase();
+    const ox = rel ? x2 : 0;
+    const oy = rel ? y : 0;
+    const upper = cmd.toUpperCase();
+    let cx = NaN;
+    let cy = NaN;
+    if (upper === "Z") {
+      finish(true);
+      x2 = startX;
+      y = startY;
+    } else if (upper === "M") {
+      const nx = s.number() + ox;
+      const ny = s.number() + oy;
+      if (Number.isNaN(nx + ny)) break;
+      finish();
+      x2 = startX = nx;
+      y = startY = ny;
+    } else if (upper === "L") {
+      const nx = s.number() + ox;
+      const ny = s.number() + oy;
+      if (Number.isNaN(nx + ny)) break;
+      lineTo(nx, ny);
+    } else if (upper === "H") {
+      const nx = s.number() + ox;
+      if (Number.isNaN(nx)) break;
+      lineTo(nx, y);
+    } else if (upper === "V") {
+      const ny = s.number() + oy;
+      if (Number.isNaN(ny)) break;
+      lineTo(x2, ny);
+    } else if (upper === "C" || upper === "S") {
+      let x1;
+      let y1;
+      if (upper === "C") {
+        x1 = s.number() + ox;
+        y1 = s.number() + oy;
+      } else if (prev === "C" || prev === "S") {
+        x1 = 2 * x2 - ctrlX;
+        y1 = 2 * y - ctrlY;
+      } else {
+        x1 = x2;
+        y1 = y;
+      }
+      const x22 = s.number() + ox;
+      const y2 = s.number() + oy;
+      const nx = s.number() + ox;
+      const ny = s.number() + oy;
+      if (Number.isNaN(x1 + y1 + x22 + y2 + nx + ny)) break;
+      cubicTo(x1, y1, x22, y2, nx, ny);
+      cx = x22;
+      cy = y2;
+    } else if (upper === "Q" || upper === "T") {
+      let x1;
+      let y1;
+      if (upper === "Q") {
+        x1 = s.number() + ox;
+        y1 = s.number() + oy;
+      } else if (prev === "Q" || prev === "T") {
+        x1 = 2 * x2 - ctrlX;
+        y1 = 2 * y - ctrlY;
+      } else {
+        x1 = x2;
+        y1 = y;
+      }
+      const nx = s.number() + ox;
+      const ny = s.number() + oy;
+      if (Number.isNaN(x1 + y1 + nx + ny)) break;
+      quadTo(x1, y1, nx, ny);
+      cx = x1;
+      cy = y1;
+    } else if (upper === "A") {
+      const rx = s.number();
+      const ry = s.number();
+      const angle = s.number();
+      const large = s.flag();
+      const sweep = s.flag();
+      const nx = s.number() + ox;
+      const ny = s.number() + oy;
+      if (Number.isNaN(rx + ry + angle + large + sweep + nx + ny)) break;
+      arcTo(rx, ry, angle, large === 1, sweep === 1, nx, ny);
+    } else {
+      break;
+    }
+    ctrlX = cx;
+    ctrlY = cy;
+    prev = upper;
+  }
+  finish();
+}
+function arcToCubics(x1, y1, rx, ry, angle, large, sweep, x2, y2) {
+  if (x1 === x2 && y1 === y2) return [];
+  rx = Math.abs(rx);
+  ry = Math.abs(ry);
+  if (rx === 0 || ry === 0) return [[x1, y1, x2, y2, x2, y2]];
+  const phi = angle * Math.PI / 180;
+  const cos = Math.cos(phi);
+  const sin = Math.sin(phi);
+  const hx = (x1 - x2) / 2;
+  const hy = (y1 - y2) / 2;
+  const x1p = cos * hx + sin * hy;
+  const y1p = -sin * hx + cos * hy;
+  const lambda = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+  if (lambda > 1) {
+    rx *= Math.sqrt(lambda);
+    ry *= Math.sqrt(lambda);
+  }
+  const num3 = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
+  const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+  let k = Math.sqrt(Math.max(0, num3 / den));
+  if (large === sweep) k = -k;
+  const cxp = k * rx * y1p / ry;
+  const cyp = -k * ry * x1p / rx;
+  const cx = cos * cxp - sin * cyp + (x1 + x2) / 2;
+  const cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
+  const vecAngle = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const theta = vecAngle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let delta = vecAngle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  if (!sweep && delta > 0) delta -= 2 * Math.PI;
+  if (sweep && delta < 0) delta += 2 * Math.PI;
+  const n = Math.max(1, Math.ceil(Math.abs(delta) / (Math.PI / 2) - 1e-9));
+  const step = delta / n;
+  const t = 4 / 3 * Math.tan(step / 4);
+  const point = (u) => {
+    const cu = Math.cos(u);
+    const su = Math.sin(u);
+    return [
+      cx + rx * cu * cos - ry * su * sin,
+      cy + rx * cu * sin + ry * su * cos,
+      -rx * su * cos - ry * cu * sin,
+      -rx * su * sin + ry * cu * cos
+    ];
+  };
+  const out = [];
+  let [ax, ay, adx, ady] = point(theta);
+  for (let i2 = 1; i2 <= n; i2++) {
+    const [bx, by, bdx, bdy] = point(theta + i2 * step);
+    const endX = i2 === n ? x2 : bx;
+    const endY = i2 === n ? y2 : by;
+    out.push([ax + t * adx, ay + t * ady, endX - t * bdx, endY - t * bdy, endX, endY]);
+    ax = endX;
+    ay = endY;
+    adx = bdx;
+    ady = bdy;
+  }
+  return out;
+}
+var FLATNESS;
+var Scanner;
+var init_path = __esm({
+  "core/src/raster/path.ts"() {
+    "use strict";
+    FLATNESS = 0.05;
+    Scanner = class {
+      constructor(s) {
+        this.s = s;
+      }
+      s;
+      i = 0;
+      done() {
+        return this.i >= this.s.length;
+      }
+      /** Skips whitespace and commas. */
+      skip() {
+        while (this.i < this.s.length) {
+          const ch = this.s.charCodeAt(this.i);
+          if (ch === 32 || ch === 44 || ch === 9 || ch === 10 || ch === 13 || ch === 12) this.i++;
+          else break;
+        }
+      }
+      /** The command letter at the cursor, consumed, or '' when a number is next. */
+      command() {
+        const ch = this.s[this.i];
+        if ("MmLlHhVvCcSsQqTtAaZz".includes(ch)) {
+          this.i++;
+          return ch;
+        }
+        return "";
+      }
+      /** The next number, or NaN when there is none. */
+      number() {
+        this.skip();
+        const s = this.s;
+        const start = this.i;
+        let i2 = start;
+        if (s[i2] === "+" || s[i2] === "-") i2++;
+        const digitsFrom = i2;
+        while (i2 < s.length && s.charCodeAt(i2) >= 48 && s.charCodeAt(i2) <= 57) i2++;
+        if (s[i2] === ".") {
+          i2++;
+          while (i2 < s.length && s.charCodeAt(i2) >= 48 && s.charCodeAt(i2) <= 57) i2++;
+        }
+        if (i2 === digitsFrom || i2 === digitsFrom + 1 && s[digitsFrom] === ".") return NaN;
+        if (s[i2] === "e" || s[i2] === "E") {
+          let j = i2 + 1;
+          if (s[j] === "+" || s[j] === "-") j++;
+          const expFrom = j;
+          while (j < s.length && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) j++;
+          if (j > expFrom) i2 = j;
+        }
+        this.i = i2;
+        return Number(s.slice(start, i2));
+      }
+      /** An arc flag: a single 0 or 1, which may be packed against what follows. */
+      flag() {
+        this.skip();
+        const ch = this.s[this.i];
+        if (ch === "0" || ch === "1") {
+          this.i++;
+          return ch === "1" ? 1 : 0;
+        }
+        return NaN;
+      }
+    };
+  }
+});
+// core/src/diagram/css.ts
+function parseStylesheet(text, first = 0) {
+  const css = text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+  const rules = [];
+  let at = 0;
+  while (at < css.length && rules.length < MAX_RULES) {
+    const open = css.indexOf("{", at);
+    if (open < 0) break;
+    const prelude = css.slice(at, open).trim();
+    const statement = prelude.lastIndexOf(";");
+    const selectors = statement >= 0 ? prelude.slice(statement + 1).trim() : prelude;
+    const close = blockEnd(css, open);
+    const declarations = css.slice(open + 1, close).replace(/!\s*important/gi, "").trim();
+    for (const selector of selectors.split(",")) {
+      const rule = simpleRule(selector.trim(), declarations, first + rules.length);
+      if (rule) rules.push(rule);
+    }
+    at = close + 1;
+  }
+  return rules;
+}
+function blockEnd(css, open) {
+  let depth = 0;
+  for (let i2 = open; i2 < css.length; i2++) {
+    if (css[i2] === "{") depth++;
+    else if (css[i2] === "}" && --depth === 0) return i2;
+  }
+  return css.length;
+}
+function compound(selector) {
+  const match = SIMPLE.exec(selector);
+  if (!match || selector === "") return void 0;
+  const tag3 = match[1] === void 0 || match[1] === "*" ? void 0 : match[1];
+  const parts = match[2].match(/[.#][-\w]+/g) ?? [];
+  const ids = parts.filter((part) => part.startsWith("#")).map((part) => part.slice(1));
+  if (ids.length > 1 || parts.length > MAX_COMPOUND) return void 0;
+  const classes = parts.filter((part) => part.startsWith(".")).map((part) => part.slice(1));
+  return {
+    compound: { ...tag3 !== void 0 ? { tag: tag3 } : {}, ...ids[0] !== void 0 ? { id: ids[0] } : {}, classes },
+    specificity: ids.length * 1e4 + classes.length * 100 + (tag3 !== void 0 ? 1 : 0)
+  };
+}
+function simpleRule(selector, declarations, order) {
+  const tokens = selector.split(/(\s*>\s*|\s+)/);
+  if (tokens.length > 2 * MAX_CHAIN - 1) return void 0;
+  const compounds = [];
+  for (let i2 = 0; i2 < tokens.length; i2 += 2) {
+    const read = compound(tokens[i2]);
+    if (!read) return void 0;
+    compounds.push(read);
+  }
+  const subject = compounds[compounds.length - 1];
+  const context2 = [];
+  for (let i2 = compounds.length - 2; i2 >= 0; i2--) context2.push({ compound: compounds[i2].compound, child: tokens[2 * i2 + 1].includes(">") });
+  return {
+    ...subject.compound,
+    context: context2,
+    specificity: compounds.reduce((sum2, c) => sum2 + c.specificity, 0),
+    order,
+    declarations
+  };
+}
+var MAX_RULES;
+var MAX_COMPOUND;
+var MAX_CHAIN;
+var MAX_MATCH_STEPS;
+var SIMPLE;
+var RuleIndex;
+var NAMES;
+var NAMED_COLORS;
+var init_css = __esm({
+  "core/src/diagram/css.ts"() {
+    "use strict";
+    MAX_RULES = 4e3;
+    MAX_COMPOUND = 16;
+    MAX_CHAIN = 8;
+    MAX_MATCH_STEPS = 4e6;
+    SIMPLE = /^(\*|[A-Za-z][-\w]*)?((?:[.#][-\w]+)*)$/;
+    RuleIndex = class {
+      #universal = [];
+      #byTag = /* @__PURE__ */ new Map();
+      #byId = /* @__PURE__ */ new Map();
+      #byClass = /* @__PURE__ */ new Map();
+      constructor(rules) {
+        const add = (map, key, rule) => {
+          const list3 = map.get(key);
+          if (list3) list3.push(rule);
+          else map.set(key, [rule]);
+        };
+        for (const rule of rules) {
+          if (rule.id !== void 0) add(this.#byId, rule.id, rule);
+          else if (rule.classes[0] !== void 0) add(this.#byClass, rule.classes[0], rule);
+          else if (rule.tag !== void 0) add(this.#byTag, rule.tag, rule);
+          else this.#universal.push(rule);
+        }
+      }
+      #classes = /* @__PURE__ */ new Map();
+      #steps = 0;
+      #classesOf(el) {
+        let classes = this.#classes.get(el);
+        if (!classes) {
+          classes = new Set((el.attrs.class ?? "").split(/\s+/).filter(Boolean));
+          this.#classes.set(el, classes);
+        }
+        return classes;
+      }
+      #matches(c, el) {
+        if (c.tag !== void 0 && c.tag !== el.name || c.id !== void 0 && c.id !== el.attrs.id) return false;
+        const classes = this.#classesOf(el);
+        return c.classes.every((name) => classes.has(name));
+      }
+      /** Whether `el`'s ancestors match a rule's context, from its `i`th compound on (trying each ancestor a descendant combinator allows). */
+      #inContext(rule, i2, el, parentOf) {
+        const step = rule.context[i2];
+        if (step === void 0) return true;
+        for (let at = parentOf(el); at; at = parentOf(at)) {
+          if (++this.#steps > MAX_MATCH_STEPS) throw new RangeError("style sheet too costly to match");
+          if (this.#matches(step.compound, at) && this.#inContext(rule, i2 + 1, at, parentOf)) return true;
+          if (step.child) return false;
+        }
+        return false;
+      }
+      /**
+       * The declarations of every rule `el` matches, lowest specificity first (so
+       * the strongest come last and win); `parentOf` gives an element's parent.
+       * Throws RangeError past MAX_MATCH_STEPS.
+       */
+      declarationsFor(el, parentOf) {
+        const classes = this.#classesOf(el);
+        const candidates = [...this.#universal, ...this.#byTag.get(el.name) ?? [], ...el.attrs.id !== void 0 ? this.#byId.get(el.attrs.id) ?? [] : [], ...[...classes].flatMap((name) => this.#byClass.get(name) ?? [])];
+        const matched = [...new Set(candidates)].filter((rule) => this.#matches(rule, el) && this.#inContext(rule, 0, el, parentOf));
+        return matched.toSorted((a, b) => a.specificity - b.specificity || a.order - b.order).map((rule) => rule.declarations).join(";");
+      }
+    };
+    NAMES = "aliceblue:f0f8ff antiquewhite:faebd7 aqua:00ffff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000000 blanchedalmond:ffebcd blue:0000ff blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:00ffff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:ff00ff gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:778899 lightslategrey:778899 lightsteelblue:b0c4de lightyellow:ffffe0 lime:00ff00 limegreen:32cd32 linen:faf0e6 magenta:ff00ff maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:663399 red:ff0000 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:ffffff whitesmoke:f5f5f5 yellow:ffff00 yellowgreen:9acd32";
+    NAMED_COLORS = new Map(
+      NAMES.split(" ").map((pair) => {
+        const [name, hex] = pair.split(":");
+        return [name, { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) }];
+      })
+    );
+  }
+});
+// core/src/diagram/svg-text.ts
+function cssLength(value, em2) {
+  const match = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([a-z%]*)\s*$/i.exec(value);
+  if (!match) return void 0;
+  const n = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  let px2;
+  if (unit === "") px2 = n;
+  else if (unit === "em") px2 = n * em2;
+  else if (unit === "ex") px2 = n * em2 / 2;
+  else if (unit === "%") px2 = n * em2 / 100;
+  else if (unit === "rem") px2 = n * INITIAL_FONT.size;
+  else px2 = n * (PX_PER[unit] ?? NaN);
+  return Number.isFinite(px2) ? px2 : void 0;
+}
+function fontSize(value, parent) {
+  const v = value.trim().toLowerCase();
+  const keyword = SIZE_KEYWORDS[v];
+  if (keyword !== void 0) return keyword;
+  if (v === "smaller") return parent / 1.2;
+  if (v === "larger") return parent * 1.2;
+  const px2 = cssLength(v, parent);
+  return px2 !== void 0 && px2 >= 0 ? px2 : void 0;
+}
+function isBold(weight, parent) {
+  const w = weight.trim().toLowerCase();
+  if (w === "bold" || w === "bolder") return true;
+  if (w === "normal" || w === "lighter") return false;
+  const n = Number(w);
+  return w !== "" && Number.isFinite(n) ? n >= 600 : parent;
+}
+function isItalic(style, parent) {
+  const s = style.trim().toLowerCase();
+  if (s === "italic" || s.startsWith("oblique")) return true;
+  return s === "normal" ? false : parent;
+}
+function fontShorthand(value) {
+  const out = {};
+  for (const token2 of value.trim().toLowerCase().split(/\s+/)) {
+    if (token2 === "italic" || token2 === "oblique") out.style = token2;
+    else if (token2 === "bold" || token2 === "bolder" || token2 === "lighter" || /^[1-9]00$/.test(token2)) out.weight = token2;
+    else if (token2 !== "normal" && token2 !== "small-caps") {
+      const size = token2.split("/")[0];
+      if (SIZE_KEYWORDS[size] !== void 0 || cssLength(size, INITIAL_FONT.size) !== void 0) out.size = size;
+      break;
+    }
+  }
+  return out;
+}
+function fontOf(get, parent) {
+  const short = get("font");
+  const shorthand = short === void 0 ? {} : fontShorthand(short);
+  const sizeValue = get("font-size") ?? shorthand.size;
+  const weight = get("font-weight") ?? shorthand.weight;
+  const style = get("font-style") ?? shorthand.style;
+  const anchor = get("text-anchor")?.toLowerCase();
+  const baseline = get("alignment-baseline") ?? get("dominant-baseline");
+  const shift = baseline === void 0 ? void 0 : BASELINES[baseline.trim().toLowerCase()];
+  const space = get("white-space")?.toLowerCase();
+  const xmlSpace = get("xml:space");
+  const decoration = get("text-decoration")?.toLowerCase();
+  let preserve = parent.preserve;
+  if (space !== void 0 && space !== "inherit") preserve = space === "pre" || space === "pre-wrap" || space === "break-spaces";
+  else if (xmlSpace === "preserve" || xmlSpace === "default") preserve = xmlSpace === "preserve";
+  return {
+    size: sizeValue === void 0 ? parent.size : fontSize(sizeValue, parent.size) ?? parent.size,
+    bold: weight === void 0 ? parent.bold : isBold(weight, parent.bold),
+    italic: style === void 0 ? parent.italic : isItalic(style, parent.italic),
+    anchor: anchor === "start" || anchor === "middle" || anchor === "end" ? anchor : parent.anchor,
+    baselineShift: shift ?? parent.baselineShift,
+    preserve,
+    underline: decoration === void 0 ? parent.underline : decoration.includes("underline"),
+    lineThrough: decoration === void 0 ? parent.lineThrough : decoration.includes("line-through")
+  };
+}
+function svgTextTex(run2) {
+  let body = "";
+  for (const c of run2.text) body += TEX_ESCAPES[c] ?? (INVISIBLE.test(c) ? "" : c);
+  if (run2.italic) body = `\\textit{${body}}`;
+  if (run2.bold) body = `\\textbf{${body}}`;
+  return `\\text{${body}}`;
+}
+function textChars(text, span, spanOf) {
+  const raw = [];
+  const gather = (el, at, owners) => {
+    for (const item of el.content ?? []) {
+      if (typeof item === "string") {
+        if (raw.length + item.length > MAX_RAW_TEXT_CHARS) throw new RangeError(`more than ${MAX_RAW_TEXT_CHARS} characters of text`);
+        for (const ch of item) if (!INVISIBLE.test(ch)) raw.push({ ch: ch === "\n" || ch === "\r" || ch === "	" ? " " : ch, span: at, owners });
+      } else if ((item.name === "tspan" || item.name === "a") && owners.length < MAX_TEXT_DEPTH) {
+        const inner = spanOf(item, at);
+        if (inner) gather(item, inner, [...owners, item]);
+      }
+    }
+  };
+  gather(text, span, [text]);
+  const kept = [];
+  for (const c of raw) {
+    if (c.ch === " " && !c.span.font.preserve) {
+      const before = kept[kept.length - 1];
+      if (before === void 0 || before.ch === " ") continue;
+    }
+    kept.push(c);
+  }
+  for (let last = kept[kept.length - 1]; last && last.ch === " " && !last.span.font.preserve; last = kept[kept.length - 1]) kept.pop();
+  return kept;
+}
+function textSetter(typeset2) {
+  const cache = /* @__PURE__ */ new Map();
+  const once = (text, bold2, italic2) => {
+    const key = `${bold2 ? "b" : ""}${italic2 ? "i" : ""}
+${text}`;
+    let set = cache.get(key);
+    if (set === void 0) {
+      const result = typeset2({ text, bold: bold2, italic: italic2 });
+      set = result ? { width: result.width, ops: result.ops } : null;
+      cache.set(key, set);
+    }
+    return set;
+  };
+  return (text, bold2, italic2) => {
+    const whole = once(text, bold2, italic2);
+    if (whole) return whole;
+    const points = [...text];
+    let width = 0;
+    const ops = [];
+    for (const ch of points) {
+      const one = points.length > 1 ? once(ch, bold2, italic2) : null;
+      if (one) for (const op of one.ops) ops.push(shifted(op, width));
+      width += one ? one.width : MISSING_ADVANCE;
+    }
+    return { width, ops };
+  };
+}
+function shifted(op, dx) {
+  if (dx === 0) return op;
+  if (op.type === "rect") return { ...op, x: op.x + dx };
+  const m = op.transform;
+  return { type: "path", d: op.d, transform: [m[0], m[1], m[2], m[3], m[4] + dx, m[5]] };
+}
+function positionList(value, em2) {
+  if (value === void 0 || value.trim() === "") return [];
+  return value.trim().split(/[\s,]+/).map((v) => cssLength(v, em2));
+}
+function setText(chars, set, emOf) {
+  const lists = /* @__PURE__ */ new Map();
+  const listsOf = (el) => {
+    let found = lists.get(el);
+    if (!found) {
+      const em2 = emOf(el);
+      found = { x: positionList(el.attrs.x, em2), y: positionList(el.attrs.y, em2), dx: positionList(el.attrs.dx, em2), dy: positionList(el.attrs.dy, em2) };
+      lists.set(el, found);
+    }
+    return found;
+  };
+  const counters = /* @__PURE__ */ new Map();
+  const segments = [];
+  const chunks = [];
+  let cx = 0;
+  let cy = 0;
+  let open;
+  const close = (segment) => {
+    const points = [...segment.text];
+    const font = segment.span.font;
+    let at = 0;
+    for (let i2 = 0; i2 < points.length; i2 += MAX_RUN_CHARS) {
+      const piece = set(points.slice(i2, i2 + MAX_RUN_CHARS).join(""), font.bold, font.italic);
+      segment.pieces.push({ set: piece, at });
+      at += piece.width;
+    }
+    segment.advance = at * font.size;
+    cx += segment.advance;
+    chunks[segment.chunk].end = cx;
+    segments.push(segment);
+  };
+  for (const c of chars) {
+    let x2, y, dx, dy;
+    for (let k = c.owners.length - 1; k >= 0; k--) {
+      const owner = c.owners[k];
+      const index = counters.get(owner) ?? 0;
+      counters.set(owner, index + 1);
+      const l = listsOf(owner);
+      x2 ??= l.x[index];
+      y ??= l.y[index];
+      dx ??= l.dx[index];
+      dy ??= l.dy[index];
+    }
+    const absolute = x2 !== void 0 || y !== void 0;
+    const moved = (dx ?? 0) !== 0 || (dy ?? 0) !== 0;
+    if (open && (absolute || moved || open.span !== c.span)) {
+      close(open);
+      open = void 0;
+    }
+    if (absolute) {
+      cx = x2 ?? cx;
+      cy = y ?? cy;
+    }
+    cx += dx ?? 0;
+    cy += dy ?? 0;
+    if (absolute || chunks.length === 0) chunks.push({ start: cx, end: cx, anchor: c.span.font.anchor });
+    open ??= { text: "", span: c.span, x: cx, y: cy, chunk: chunks.length - 1, pieces: [], advance: 0 };
+    open.text += c.ch;
+  }
+  if (open) close(open);
+  const fills = [];
+  for (const segment of segments) {
+    const { font, paint: paint2, hidden } = segment.span;
+    if (hidden || paint2 === null || !(font.size > 0)) continue;
+    const chunk2 = chunks[segment.chunk];
+    const shift = chunk2.anchor === "start" ? 0 : (chunk2.start - chunk2.end) * (chunk2.anchor === "middle" ? 0.5 : 1);
+    const s = font.size;
+    const x0 = segment.x + shift;
+    const y0 = segment.y + font.baselineShift * s;
+    for (const piece of segment.pieces) {
+      const tx = x0 + piece.at * s;
+      for (const op of piece.set.ops) {
+        if (op.type === "rect") fills.push({ d: box(op.x, op.y, op.width, op.height), transform: [s, 0, 0, s, tx, y0], paint: paint2 });
+        else {
+          const m = op.transform;
+          fills.push({ d: op.d, transform: [s * m[0], s * m[1], s * m[2], s * m[3], s * m[4] + tx, s * m[5] + y0], paint: paint2 });
+        }
+      }
+    }
+    const width = segment.advance / s;
+    if (font.underline) fills.push({ d: box(0, 0.1, width, 0.05), transform: [s, 0, 0, s, x0, y0], paint: paint2 });
+    if (font.lineThrough) fills.push({ d: box(0, -0.275, width, 0.05), transform: [s, 0, 0, s, x0, y0], paint: paint2 });
+  }
+  return fills;
+}
+function box(x2, y, width, height2) {
+  return `M${x2} ${y}H${x2 + width}V${y + height2}H${x2}Z`;
+}
+var INITIAL_FONT;
+var MAX_TEXT_CHARS;
+var MAX_RAW_TEXT_CHARS;
+var MAX_RUN_CHARS;
+var MAX_TEXT_DEPTH;
+var MISSING_ADVANCE;
+var SIZE_KEYWORDS;
+var PX_PER;
+var BASELINES;
+var FONT_PROPERTIES;
+var TEX_ESCAPES;
+var INVISIBLE;
+var init_svg_text = __esm({
+  "core/src/diagram/svg-text.ts"() {
+    "use strict";
+    INITIAL_FONT = {
+      size: 16,
+      bold: false,
+      italic: false,
+      anchor: "start",
+      baselineShift: 0,
+      preserve: false,
+      underline: false,
+      lineThrough: false
+    };
+    MAX_TEXT_CHARS = 2e4;
+    MAX_RAW_TEXT_CHARS = 4 * MAX_TEXT_CHARS;
+    MAX_RUN_CHARS = 200;
+    MAX_TEXT_DEPTH = 32;
+    MISSING_ADVANCE = 0.5;
+    SIZE_KEYWORDS = { "xx-small": 9, "x-small": 10, small: 13, medium: 16, large: 18, "x-large": 24, "xx-large": 32, "xxx-large": 48 };
+    PX_PER = { px: 1, pt: 4 / 3, pc: 16, mm: 96 / 25.4, cm: 96 / 2.54, in: 96, q: 96 / 101.6 };
+    BASELINES = {
+      auto: 0,
+      alphabetic: 0,
+      baseline: 0,
+      middle: 0.215,
+      central: 0.3,
+      mathematical: 0.25,
+      hanging: 0.8,
+      "text-before-edge": 0.8,
+      "text-top": 0.8,
+      "before-edge": 0.8,
+      "text-after-edge": -0.2,
+      "text-bottom": -0.2,
+      "after-edge": -0.2,
+      ideographic: -0.2
+    };
+    FONT_PROPERTIES = ["font", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline", "alignment-baseline", "xml:space", "white-space", "text-decoration"];
+    TEX_ESCAPES = {
+      "\\": "\\textbackslash{}",
+      "{": "\\{",
+      "}": "\\}",
+      $: "\\$",
+      "%": "\\%",
+      "&": "\\&",
+      "#": "\\#",
+      _: "\\_",
+      "^": "\\textasciicircum{}",
+      "~": "\\textasciitilde{}",
+      " ": "\\ ",
+      "\u00A0": "\\ ",
+      "`": "`{}",
+      "'": "'{}"
+    };
+    INVISIBLE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200B-\u200D\u2060\uFEFF]/;
+  }
+});
+export{__esm,textChars,MAX_TEXT_CHARS,textSetter,setText,parseStylesheet,RuleIndex,FONT_PROPERTIES,fontOf,flattenSubpaths,NAMED_COLORS,init_path,init_css,init_svg_text,INITIAL_FONT,__commonJS,__kittexJson49,__kittexJson50,__kittexJson51,__kittexJson52,__export,engine_exports,_tag,emStrongRDelimAstCore,escapeReplacements,ARTIFACT_MARK,HYPERLINK_TERMINALS,NARROW,COMBINING,EMOJI,VS16,KEYCAP,ZWJ,TEXT_EMOJI,MODIFIER_BASE,MAX_ITEMS,MAX_INDENT,MIN_TEXT,ROMAN,QUOTE_TEXT,QUOTE_BAR,MAX_NESTING,MAX_ITEMS2,MAX_INDENT2,REPLY_INDENT,MAX_ROWS,MIN_COLUMN,TABLE_MARGIN,MAX_CELL_ROWS,RULE_MAX,EMPTY,STANDALONE_NO_PS,DUMP_POINT,PREAMBLE_VERSION,MATH_PREAMBLE,REFUSED_COMMANDS,MAX_TEX_SOURCE,MAX_CPU_SECONDS,JOB_NAME,PDF_NAME,NEAR,SATURATED,KEEP_CENTER,KEEP_BAND,MIN_CONTRAST,WHITE,BLACK2,MAX_BLOCK_IMAGES,LINE_WIDTH_PT,TEXT_HEIGHT_PT,IMAGE_GAP,PNG_SIGNATURE,__toESM,MAX_JPEG_SCANS,VISITS_PER_COEFFICIENT,SIGNATURE,COLOR_TYPES,ADAM7,INFLATE_STEP,PLTE_AT,SOLID,CANDIDATES,FARTHEST_SLOTS,COVER_TAIL,MAX_INKS,SOLID_COLOURS,MAX_LEVELS,MAX_IMAGE_PIXELS,MIN_DASH_PERIOD,MAX_DASHES,SAME_POINT,NO_JOIN,ROUND_AS_BEVEL,ARC_FLATNESS,DEFAULT_WEIGHT,INK_MARGIN,BASELINE_SHIFT,INK_EDGE,RULE_MIN_SNAP,flattenPath,RULE_MIN_FILL,MIN_STROKE_PX,OUTLINE_EM_PX,BACKSLASH,DOLLAR,TICK,DOLLAR2,CLOSE_PAREN,OPEN_PAREN,NORMAL,__toCommonJS,WIDE,BOLD,DOUBLE_HOLES,SCRIPT_HOLES,FRAKTUR_HOLES,SANS,SANS_BOLD,OPERATORS,ORDERS,RANGES2,ORDER,TEXSPACE2,ENTITIES2,MAX_DEPTH2,DOT_PRIMES,NAMED,ADJUST_KEYS,GHOSTTY_DEFAULT_FOREGROUND,GHOSTTY_DEFAULT_BACKGROUND,KITTY_DEFAULT_FOREGROUND,KITTY_DEFAULT_BACKGROUND,AUTO_THEMES,X_HEIGHT_RATIO,MATH_X_HEIGHT,CORETEXT_FONT_JXA,CLAUDE_THEME_TEXT,ANSI_NAMES,MAX_IMAGE_SIDE,TOO_LARGE,LEGIBLE_CONTRAST,MIN_DISPLAY_SCALE,MAX_PIXELS,MIN_INLINE_SCALE,CLIPPED_RUN_PX,MAX_TEX_LENGTH,INLINE_OVERFLOW,CACHE_LIMIT,MAX_PICTURE_ROWS,MIN_PICTURE_SCALE,KEPT_IMAGE_PIXELS,svgTextTex,MIN_IMAGE_DENSITY,BUILD_ID,DIAGRAM_ENVS,GHOSTTY_BUILTIN_FONT};

@@ -238,14 +238,14 @@ function drawItem(canvas, item, raw, marker, indent, depth, blank2, links) {
       continue;
     }
     if (room < MIN_TEXT) return false;
-    const shown = fits(drawn, room, canvas.partial);
-    if (!shown || shown.text === "" && (m === 0 || shown.stop === void 0)) {
-      if (shown?.stop !== void 0) canvas.halt(shown.stop);
+    const shown2 = fits(drawn, room, canvas.partial);
+    if (!shown2 || shown2.text === "" && (m === 0 || shown2.stop === void 0)) {
+      if (shown2?.stop !== void 0) canvas.halt(shown2.stop);
       return false;
     }
     const top = canvas.rows + (gap2 || m > 0 && opens ? 1 : 0);
     if (m === 0) canvas.put(marker, top, indent);
-    if (!canvas.draw(shown, top, left, room)) return false;
+    if (!canvas.draw(shown2, top, left, room)) return false;
     gap2 = drawn.blankAfter;
   }
   if (halt === void 0) return true;
@@ -277,9 +277,9 @@ function textOf(runs, owner, glue, links, partial = false) {
   const kept = out.stop === void 0 ? raw.slice(lead).trimEnd().length : raw.length - lead;
   const text = raw.slice(lead, lead + kept);
   const source = out.source.slice(lead, lead + kept);
-  const shown = out.stop === void 0 ? { text, source } : cutPartial({ text, source }, out.stop);
+  const shown2 = out.stop === void 0 ? { text, source } : cutPartial({ text, source }, out.stop);
   return {
-    ...shown,
+    ...shown2,
     lead: raw.startsWith("\n"),
     blankAfter: out.stop === void 0 && /\n\s*\n$/.test(raw) && raw.endsWith("\n"),
     newline: raw.includes("\n")

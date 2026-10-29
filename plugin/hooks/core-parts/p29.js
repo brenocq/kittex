@@ -1,4 +1,4 @@
-import{signedArea2,__esm,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,__export,engine_exports,mathjax,liteAdaptor,RegisterHTMLHandler,MapHandler,MathtoolsUtil,NewcommandUtil,MathtoolsMethods,EmpheqUtil,ParseUtil,TeX,TexError,SVG,MathJaxNewcmFont,rememberLabels,MmlMath,STATE,GlyphError,init_liteAdaptor,init_MathItem,init_math,init_SerializedMmlVisitor,init_html,init_tex,init_MapHandler,init_mathjax,init_svg2,init_LinebreakVisitor,init_svg,init_BaseConfiguration,init_AmsConfiguration,init_NewcommandConfiguration,init_BoldsymbolConfiguration,init_BraketConfiguration,init_CancelConfiguration,init_ColorConfiguration,init_MathtoolsConfiguration,init_PhysicsConfiguration,init_TextMacrosConfiguration,init_UnicodeConfiguration,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_MathtoolsUtil,init_MathtoolsMethods,init_NewcommandUtil,init_EmpheqUtil,init_ParseUtil,init_fonts,init_macros,init_errors,LinebreakVisitor,NOBREAK,SerializedMmlVisitor,_tag,emStrongRDelimAstCore,escapeReplacements,__kittexLate}from'./p28.js';export*from'./p28.js';
+import{signedArea2,__esm,scale,multiply2,parseTransform,flatten,parsePath,translate2,isAxisAligned,mapBox,intersect,apply2,clipPolygon,parseColor,init_svg,__export,engine_exports,mathjax,liteAdaptor,RegisterHTMLHandler,MapHandler,MathtoolsUtil,NewcommandUtil,MathtoolsMethods,EmpheqUtil,ParseUtil,TeX,TexError,SVG,MathJaxNewcmFont,rememberLabels,MmlMath,STATE,GlyphError,init_liteAdaptor,init_MathItem,init_math,init_SerializedMmlVisitor,init_html,init_tex,init_MapHandler,init_mathjax,init_svg3,init_LinebreakVisitor,init_svg2,init_BaseConfiguration,init_AmsConfiguration,init_NewcommandConfiguration,init_BoldsymbolConfiguration,init_BraketConfiguration,init_CancelConfiguration,init_ColorConfiguration,init_MathtoolsConfiguration,init_PhysicsConfiguration,init_TextMacrosConfiguration,init_UnicodeConfiguration,init_MhchemConfiguration,init_AmsCdConfiguration,init_EmpheqConfiguration,init_CenternotConfiguration,init_GensymbConfiguration,init_UpgreekConfiguration,init_TextcompConfiguration,init_MathtoolsUtil,init_MathtoolsMethods,init_NewcommandUtil,init_EmpheqUtil,init_ParseUtil,init_fonts,init_macros,init_errors,LinebreakVisitor,NOBREAK,SerializedMmlVisitor,_tag,emStrongRDelimAstCore,escapeReplacements,__kittexLate}from'./p28.js';export*from'./p28.js';
 __kittexLate.IDENTITY2=()=>IDENTITY2;__kittexLate.ARG_COUNT=()=>ARG_COUNT;
 function oriented(polygon, sign) {
   return Math.sign(signedArea2(polygon)) === -sign ? [...polygon].reverse() : polygon;
@@ -72,19 +72,25 @@ function walkSvg(adaptor, svg, options3) {
     m = [1 / emPx, 0, 0, 1 / emPx, 0, -options3.height];
     [vw, vh] = [width, height2];
   }
-  walkChildren(adaptor, svg, { m, clip: null, vw, vh }, ops);
+  walkChildren(adaptor, svg, { m, clip: null, vw, vh, fill: "ink", stroke: "ink", backdrop: void 0 }, ops);
   return ops;
 }
-function walkChildren(adaptor, node, state, ops) {
+function walkChildren(adaptor, node, parent, ops) {
+  let onBox = parent;
   for (const child of adaptor.childNodes(node)) {
     if (!("kind" in child) || child.kind === "#text" || child.kind === "#comment") continue;
-    walk(adaptor, child, state, ops);
+    const el = child;
+    walk(adaptor, el, adaptor.kind(el) === "g" ? onBox : parent, ops);
+    const backdrop = backgroundOf(adaptor, el, parent);
+    if (backdrop) onBox = { ...parent, backdrop };
   }
 }
 function walk(adaptor, el, parent, ops) {
   const kind = adaptor.kind(el);
   const transform = adaptor.getAttribute(el, "transform");
-  const state = transform ? { ...parent, m: multiply2(parent.m, parseTransform(transform)) } : parent;
+  const state = painted(adaptor, el, transform ? { ...parent, m: multiply2(parent.m, parseTransform(transform)) } : parent);
+  const fill = tint(state, state.fill);
+  const stroke = tint(state, state.stroke);
   switch (kind) {
     case "g":
     case "a":
@@ -100,32 +106,36 @@ function walk(adaptor, el, parent, ops) {
       const d = adaptor.getAttribute(el, "d");
       if (!d) return;
       if (!isUnfilled(adaptor, el)) {
-        if (state.clip) emitPolygons(flatten(parsePath(d)).map((l) => l.points), state, ops);
-        else ops.push({ type: "path", d, transform: state.m });
+        if (state.clip) emitPolygons(flatten(parsePath(d)).map((l) => l.points), state, fill, ops);
+        else ops.push({ type: "path", d, transform: state.m, ...fill });
       }
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(strokePath(d, stroke), state, ops);
+      const width = strokeWidth(adaptor, el);
+      if (width > 0) emitPolygons(strokePath(d, width), state, stroke, ops);
       return;
     }
     case "rect": {
-      if (adaptor.getAttribute(el, "data-bgcolor") != null) return;
       const x2 = num2(adaptor.getAttribute(el, "x"));
       const y = num2(adaptor.getAttribute(el, "y"));
       const w = num2(adaptor.getAttribute(el, "width"));
       const h = num2(adaptor.getAttribute(el, "height"));
-      if (!isUnfilled(adaptor, el) && w > 0 && h > 0) emitRect([x2, y, x2 + w, y + h], state, ops);
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(frame(x2, y, w, h, stroke), state, ops);
+      if (adaptor.getAttribute(el, "data-bgcolor") != null) {
+        const color = backgroundOf(adaptor, el, parent);
+        if (color && w > 0 && h > 0) emitRect([x2, y, x2 + w, y + h], state, { color, background: true }, ops);
+        return;
+      }
+      if (!isUnfilled(adaptor, el) && w > 0 && h > 0) emitRect([x2, y, x2 + w, y + h], state, fill, ops);
+      const width = strokeWidth(adaptor, el);
+      if (width > 0) emitPolygons(frame(x2, y, w, h, width), state, stroke, ops);
       return;
     }
     case "line": {
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke <= 0) return;
+      const width = strokeWidth(adaptor, el);
+      if (width <= 0) return;
       const a = [num2(adaptor.getAttribute(el, "x1")), num2(adaptor.getAttribute(el, "y1"))];
       const b = [num2(adaptor.getAttribute(el, "x2")), num2(adaptor.getAttribute(el, "y2"))];
-      const dashes = dashArray(adaptor, el, stroke);
+      const dashes = dashArray(adaptor, el, width);
       const square = adaptor.getAttribute(el, "stroke-linecap") === "square";
-      emitPolygons(dashes ? dashedSegment(a, b, stroke, dashes) : [strokeSegment(a, b, stroke, square ? stroke / 2 : 0)], state, ops);
+      emitPolygons(dashes ? dashedSegment(a, b, width, dashes) : [strokeSegment(a, b, width, square ? width / 2 : 0)], state, stroke, ops);
       return;
     }
     case "ellipse":
@@ -134,11 +144,11 @@ function walk(adaptor, el, parent, ops) {
       const cy = num2(adaptor.getAttribute(el, "cy"));
       const rx = num2(adaptor.getAttribute(el, kind === "circle" ? "r" : "rx"));
       const ry = kind === "circle" ? rx : num2(adaptor.getAttribute(el, "ry"));
-      if (!isUnfilled(adaptor, el)) emitPolygons([ellipse(cx, cy, rx, ry)], state, ops);
+      if (!isUnfilled(adaptor, el)) emitPolygons([ellipse(cx, cy, rx, ry)], state, fill, ops);
       const t = strokeWidth(adaptor, el) / 2;
       if (t > 0) {
         const ring = [oriented(ellipse(cx, cy, rx + t, ry + t), 1), oriented(ellipse(cx, cy, Math.max(0, rx - t), Math.max(0, ry - t)), -1)];
-        emitPolygons(ring, state, ops);
+        emitPolygons(ring, state, stroke, ops);
       }
       return;
     }
@@ -147,9 +157,9 @@ function walk(adaptor, el, parent, ops) {
       const v = numbers(adaptor.getAttribute(el, "points"));
       const pts = [];
       for (let i2 = 0; i2 + 1 < v.length; i2 += 2) pts.push([v[i2], v[i2 + 1]]);
-      if (!isUnfilled(adaptor, el)) emitPolygons([pts], state, ops);
-      const stroke = strokeWidth(adaptor, el);
-      if (stroke > 0) emitPolygons(strokePolyline(pts, kind === "polygon", stroke), state, ops);
+      if (!isUnfilled(adaptor, el)) emitPolygons([pts], state, fill, ops);
+      const width = strokeWidth(adaptor, el);
+      if (width > 0) emitPolygons(strokePolyline(pts, kind === "polygon", width), state, stroke, ops);
       return;
     }
     case "title":
@@ -186,7 +196,7 @@ function nestedViewport(adaptor, el, parent) {
     const box2 = mapBox(parent.m, [x2, y, x2 + w, y + h]);
     clip = clip ? intersect(clip, box2) : box2;
   }
-  return { m: multiply2(parent.m, inner), clip, vw, vh };
+  return { ...parent, m: multiply2(parent.m, inner), clip, vw, vh };
 }
 function viewBoxMatrix([x2, y, w, h], [vx, vy, vw, vh], par) {
   let sx = vw ? w / vw : 1;
@@ -206,11 +216,11 @@ function viewBoxMatrix([x2, y, w, h], [vx, vy, vw, vh], par) {
   }
   return [sx, 0, 0, sy, tx, ty];
 }
-function emitRect(box2, state, ops) {
+function emitRect(box2, state, color, ops) {
   if (isAxisAligned(state.m)) {
     let r = mapBox(state.m, box2);
     if (state.clip) r = intersect(r, state.clip);
-    if (r[2] > r[0] && r[3] > r[1]) ops.push({ type: "rect", x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1] });
+    if (r[2] > r[0] && r[3] > r[1]) ops.push({ type: "rect", x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], ...color });
     return;
   }
   const [x0, y0, x1, y1] = box2;
@@ -224,17 +234,41 @@ function emitRect(box2, state, ops) {
       ]
     ],
     state,
+    color,
     ops
   );
 }
-function emitPolygons(polygons, state, ops) {
+function emitPolygons(polygons, state, color, ops) {
   let mapped = polygons.map((p) => p.map(([x2, y]) => apply2(state.m, x2, y)));
   if (state.clip) {
     const clip = state.clip;
     mapped = mapped.map((p) => clipPolygon(p, clip));
   }
   const d = polygonsToPath(mapped);
-  if (d) ops.push({ type: "path", d, transform: [1, 0, 0, 1, 0, 0] });
+  if (d) ops.push({ type: "path", d, transform: [1, 0, 0, 1, 0, 0], ...color });
+}
+function painted(adaptor, el, parent) {
+  const styled = adaptor.getAttribute(el, "style") != null;
+  const property = (name) => adaptor.getAttribute(el, name) ?? (styled ? adaptor.getStyle(el, name) : "") ?? "";
+  const fill = property("fill");
+  const stroke = property("stroke");
+  if (!fill && !stroke) return parent;
+  return { ...parent, fill: paint(fill, parent.fill), stroke: paint(stroke, parent.stroke) };
+}
+function paint(value, inherited) {
+  if (value.trim().toLowerCase() === "currentcolor") return "ink";
+  return value && parseColor(value, BLACK3) || inherited;
+}
+function tint(state, paint2) {
+  const out = {};
+  if (paint2 !== "ink") out.color = paint2;
+  if (state.backdrop) out.backdrop = state.backdrop;
+  return out;
+}
+function backgroundOf(adaptor, el, state) {
+  if (adaptor.kind(el) !== "rect" || adaptor.getAttribute(el, "data-bgcolor") == null) return void 0;
+  const { fill } = painted(adaptor, el, state);
+  return fill === "ink" ? void 0 : fill;
 }
 function frame(x2, y, w, h, t) {
   const o = t / 2;
@@ -331,15 +365,18 @@ function numbers(value) {
 }
 var UndrawableError;
 var MissingGlyphError;
+var BLACK3;
 var TABLE_RULE;
 var init_walk = __esm({
   "core/src/typeset/walk.ts"() {
     "use strict";
+    init_svg();
     init_geometry();
     UndrawableError = class extends Error {
     };
     MissingGlyphError = class extends UndrawableError {
     };
+    BLACK3 = { r: 0, g: 0, b: 0 };
     TABLE_RULE = 70;
   }
 });
@@ -496,9 +533,9 @@ var init_engine = __esm({
     init_tex();
     init_MapHandler();
     init_mathjax();
-    init_svg2();
+    init_svg3();
     init_LinebreakVisitor();
-    init_svg();
+    init_svg2();
     init_BaseConfiguration();
     init_AmsConfiguration();
     init_NewcommandConfiguration();

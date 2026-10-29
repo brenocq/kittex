@@ -1,4 +1,395 @@
-import{__esm,init_HandlerTypes,init_UnitUtil,init_Stack,init_TexError,init_MmlNode,init_StackItem,init_TexConstants,Stack,HandlerType,BaseItem,AbstractMmlNode,TexConstant,TexError_default,UnitUtil,init_Factory,AbstractFactory,init_NodeUtil,NodeUtil_default,init_Entities,TEXCLASS,entities,init_Options,lookup,defaultOptions,__kittexLate}from'./p16.js';export*from'./p16.js';
+import{__esm,init_NodeUtil,NodeUtil_default,init_TexConstants,TexConstant,init_MmlNode,AbstractMmlNode,init_Factory,AbstractFactory,init_Entities,TEXCLASS,entities,init_Options,lookup,defaultOptions}from'./p16.js';export*from'./p16.js';
+// node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js
+var ConfigurationType;
+var HandlerType;
+var init_HandlerTypes = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/HandlerTypes.js"() {
+    (function(ConfigurationType2) {
+      ConfigurationType2["HANDLER"] = "handler";
+      ConfigurationType2["FALLBACK"] = "fallback";
+      ConfigurationType2["ITEMS"] = "items";
+      ConfigurationType2["TAGS"] = "tags";
+      ConfigurationType2["OPTIONS"] = "options";
+      ConfigurationType2["NODES"] = "nodes";
+      ConfigurationType2["PREPROCESSORS"] = "preprocessors";
+      ConfigurationType2["POSTPROCESSORS"] = "postprocessors";
+      ConfigurationType2["INIT"] = "init";
+      ConfigurationType2["CONFIG"] = "config";
+      ConfigurationType2["PRIORITY"] = "priority";
+      ConfigurationType2["PARSER"] = "parser";
+    })(ConfigurationType || (ConfigurationType = {}));
+    (function(HandlerType2) {
+      HandlerType2["DELIMITER"] = "delimiter";
+      HandlerType2["MACRO"] = "macro";
+      HandlerType2["CHARACTER"] = "character";
+      HandlerType2["ENVIRONMENT"] = "environment";
+    })(HandlerType || (HandlerType = {}));
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js
+function muReplace([value, unit, length4]) {
+  if (unit !== "mu") {
+    return [value, unit, length4];
+  }
+  const em2 = UnitUtil.em(UnitUtil.UNIT_CASES.get(unit) * parseFloat(value));
+  return [em2.slice(0, -2), "em", length4];
+}
+var UnitMap;
+var emPerInch;
+var pxPerInch;
+var UnitUtil;
+var init_UnitUtil = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/UnitUtil.js"() {
+    UnitMap = class {
+      constructor(map) {
+        this.num = "([-+]?([.,]\\d+|\\d+([.,]\\d*)?))";
+        this.unit = "";
+        this.dimenEnd = /./;
+        this.dimenRest = /./;
+        this.map = new Map(map);
+        this.updateDimen();
+      }
+      updateDimen() {
+        this.unit = `(${Array.from(this.map.keys()).join("|")})`;
+        this.dimenEnd = RegExp("^\\s*" + this.num + "\\s*" + this.unit + "\\s*$");
+        this.dimenRest = RegExp("^\\s*" + this.num + "\\s*" + this.unit + " ?");
+      }
+      set(name, ems) {
+        this.map.set(name, ems);
+        this.updateDimen();
+        return this;
+      }
+      get(name) {
+        return this.map.get(name) || this.map.get("pt");
+      }
+      delete(name) {
+        if (this.map.delete(name)) {
+          this.updateDimen();
+          return true;
+        }
+        return false;
+      }
+    };
+    emPerInch = 7.2;
+    pxPerInch = 72;
+    UnitUtil = {
+      UNIT_CASES: new UnitMap([
+        ["em", 1],
+        ["ex", 0.43],
+        ["pt", 1 / 10],
+        ["pc", 1.2],
+        ["px", emPerInch / pxPerInch],
+        ["in", emPerInch],
+        ["cm", emPerInch / 2.54],
+        ["mm", emPerInch / 25.4],
+        ["mu", 1 / 18]
+      ]),
+      matchDimen(dim, rest = false) {
+        const match = dim.match(rest ? UnitUtil.UNIT_CASES.dimenRest : UnitUtil.UNIT_CASES.dimenEnd);
+        return match ? muReplace([match[1].replace(/,/, "."), match[4], match[0].length]) : [null, null, 0];
+      },
+      dimen2em(dim) {
+        const [value, unit] = UnitUtil.matchDimen(dim);
+        const m = parseFloat(value || "1");
+        const factor = UnitUtil.UNIT_CASES.get(unit);
+        return factor * m;
+      },
+      em(m) {
+        if (Math.abs(m) < 6e-4) {
+          return "0em";
+        }
+        return m.toFixed(3).replace(/\.?0+$/, "") + "em";
+      },
+      trimSpaces(text) {
+        if (typeof text !== "string") {
+          return text;
+        }
+        let TEXT = text.trim();
+        if (TEXT.match(/\\$/) && text.match(/ $/)) {
+          TEXT += " ";
+        }
+        return TEXT;
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/Stack.js
+var Stack;
+var init_Stack = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/Stack.js"() {
+    init_NodeUtil();
+    Stack = class {
+      constructor(_factory, _env, inner) {
+        this._factory = _factory;
+        this._env = _env;
+        this.global = {};
+        this.stack = [];
+        this.global = { isInner: inner };
+        this.stack = [this._factory.create("start", this.global)];
+        if (_env) {
+          this.stack[0].env = _env;
+        }
+        this.env = this.stack[0].env;
+      }
+      set env(env) {
+        this._env = env;
+      }
+      get env() {
+        return this._env;
+      }
+      Push(...args) {
+        for (const node of args) {
+          if (!node) {
+            continue;
+          }
+          const item = NodeUtil_default.isNode(node) ? this._factory.create("mml", node) : node;
+          item.global = this.global;
+          const [top, success] = this.stack.length ? this.Top().checkItem(item) : [null, true];
+          if (!success) {
+            continue;
+          }
+          if (top) {
+            this.Pop();
+            this.Push(...top);
+            continue;
+          }
+          if (!item.isKind("null")) {
+            this.stack.push(item);
+          }
+          if (item.env) {
+            if (item.copyEnv) {
+              Object.assign(item.env, this.env);
+            }
+            this.env = item.env;
+          } else {
+            item.env = this.env;
+          }
+        }
+      }
+      Pop() {
+        const item = this.stack.pop();
+        if (!item.isOpen) {
+          delete item.env;
+        }
+        this.env = this.stack.length ? this.Top().env : {};
+        return item;
+      }
+      Top(n = 1) {
+        return this.stack.length < n ? null : this.stack[this.stack.length - n];
+      }
+      Prev(noPop) {
+        const top = this.Top();
+        return noPop ? top.First : top.Pop();
+      }
+      get height() {
+        return this.stack.length;
+      }
+      toString() {
+        return "stack[\n  " + this.stack.join("\n  ") + "\n]";
+      }
+    };
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/TexError.js
+var TexError2;
+var TexError_default;
+var init_TexError = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/TexError.js"() {
+    TexError2 = class _TexError {
+      static processString(str, args) {
+        const parts = str.split(_TexError.pattern);
+        for (let i2 = 1, m = parts.length; i2 < m; i2 += 2) {
+          let c = parts[i2].charAt(0);
+          if (c >= "0" && c <= "9") {
+            parts[i2] = args[parseInt(parts[i2], 10) - 1];
+            if (typeof parts[i2] === "number") {
+              parts[i2] = parts[i2].toString();
+            }
+          } else if (c === "{") {
+            c = parts[i2].substring(1);
+            if (c >= "0" && c <= "9") {
+              parts[i2] = args[parseInt(parts[i2].substring(1, parts[i2].length - 1), 10) - 1];
+              if (typeof parts[i2] === "number") {
+                parts[i2] = parts[i2].toString();
+              }
+            } else {
+              const match = parts[i2].match(/^\{([a-z]+):%(\d+)\|(.*)\}$/);
+              if (match) {
+                parts[i2] = "%" + parts[i2];
+              }
+            }
+          }
+        }
+        return parts.join("");
+      }
+      constructor(id, message, ...rest) {
+        this.id = id;
+        this.message = _TexError.processString(message, rest);
+      }
+    };
+    TexError2.pattern = /%(\d+|\{\d+\}|\{[a-z]+:%\d+(?:\|(?:%\{\d+\}|%.|[^}])*)+\}|.)/g;
+    TexError_default = TexError2;
+  }
+});
+// node_modules/@mathjax/src/mjs/input/tex/StackItem.js
+var MmlStack;
+var BaseItem;
+var init_StackItem = __esm({
+  "node_modules/@mathjax/src/mjs/input/tex/StackItem.js"() {
+    init_TexError();
+    init_TexConstants();
+    MmlStack = class {
+      constructor(_nodes) {
+        this._nodes = _nodes;
+        this.startStr = "";
+        this.startI = 0;
+        this.stopI = 0;
+      }
+      get nodes() {
+        return this._nodes;
+      }
+      Push(...nodes) {
+        this._nodes.push(...nodes);
+      }
+      Pop() {
+        return this._nodes.pop();
+      }
+      get First() {
+        return this._nodes[this.Size() - 1];
+      }
+      set First(node) {
+        this._nodes[this.Size() - 1] = node;
+      }
+      get Last() {
+        return this._nodes[0];
+      }
+      set Last(node) {
+        this._nodes[0] = node;
+      }
+      Peek(n) {
+        if (n == null) {
+          n = 1;
+        }
+        return this._nodes.slice(this.Size() - n);
+      }
+      Size() {
+        return this._nodes.length;
+      }
+      Clear() {
+        this._nodes = [];
+      }
+      toMml(inferred = true, forceRow) {
+        if (this._nodes.length === 1 && !forceRow) {
+          return this.First;
+        }
+        return this.create("node", inferred ? "inferredMrow" : "mrow", this._nodes, {});
+      }
+      create(kind, ...rest) {
+        return this.factory.configuration.nodeFactory.create(kind, ...rest);
+      }
+    };
+    BaseItem = class _BaseItem extends MmlStack {
+      constructor(factory, ...nodes) {
+        super(nodes);
+        this.factory = factory;
+        this.global = {};
+        this._properties = {};
+        if (this.isOpen) {
+          this._env = {};
+        }
+      }
+      get kind() {
+        return "base";
+      }
+      get env() {
+        return this._env;
+      }
+      set env(value) {
+        this._env = value;
+      }
+      get copyEnv() {
+        return true;
+      }
+      getProperty(key) {
+        return this._properties[key];
+      }
+      setProperty(key, value) {
+        this._properties[key] = value;
+        return this;
+      }
+      get isOpen() {
+        return false;
+      }
+      get isClose() {
+        return false;
+      }
+      get isFinal() {
+        return false;
+      }
+      isKind(kind) {
+        return kind === this.kind;
+      }
+      checkItem(item) {
+        if (item.isKind("over") && this.isOpen) {
+          item.setProperty("num", this.toMml(false));
+          this.Clear();
+        }
+        if (item.isKind("cell") && this.isOpen) {
+          if (item.getProperty("linebreak")) {
+            return _BaseItem.fail;
+          }
+          throw new TexError_default("Misplaced", "Misplaced %1", item.getName());
+        }
+        if (item.isClose && this.getErrors(item.kind)) {
+          const [id, message] = this.getErrors(item.kind);
+          throw new TexError_default(id, message, item.getName());
+        }
+        if (!item.isFinal) {
+          return _BaseItem.success;
+        }
+        this.Push(item.First);
+        return _BaseItem.fail;
+      }
+      clearEnv() {
+        for (const id of Object.keys(this.env)) {
+          delete this.env[id];
+        }
+      }
+      setProperties(def2) {
+        Object.assign(this._properties, def2);
+        return this;
+      }
+      getName() {
+        return this.getProperty("name");
+      }
+      toString() {
+        return this.kind + "[" + this.nodes.join("; ") + "]";
+      }
+      getErrors(kind) {
+        const CLASS = this.constructor;
+        return CLASS.errors[kind] || _BaseItem.errors[kind];
+      }
+      addLatexItem(node, prefix = "") {
+        const str = this.startStr.slice(this.startI, this.stopI);
+        if (str) {
+          const tex = prefix ? prefix + str : str;
+          node.attributes.set(TexConstant.Attr.LATEXITEM, tex);
+          if (tex !== "}") {
+            node.attributes.set(TexConstant.Attr.LATEX, tex);
+          }
+        }
+      }
+    };
+    BaseItem.fail = [null, false];
+    BaseItem.success = [null, true];
+    BaseItem.errors = {
+      end: ["MissingBeginExtraEnd", "Missing \\begin{%1} or extra \\end{%1}"],
+      close: ["ExtraCloseMissingOpen", "Extra close brace or missing open brace"],
+      right: ["MissingLeftExtraRight", "Missing \\left or extra \\right"],
+      middle: ["ExtraMiddle", "Extra \\middle"]
+    };
+  }
+});
 // node_modules/@mathjax/src/mjs/input/tex/TexParser.js
 var TexParser;
 var init_TexParser = __esm({
@@ -1541,190 +1932,4 @@ var init_Tags = __esm({
     };
   }
 });
-// node_modules/@mathjax/src/mjs/input/tex/Token.js
-var Token;
-var Macro;
-var init_Token = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/Token.js"() {
-    Token = class {
-      constructor(_token, _char, _attributes) {
-        this._token = _token;
-        this._char = _char;
-        this._attributes = _attributes;
-      }
-      get token() {
-        return this._token;
-      }
-      get char() {
-        return this._char;
-      }
-      get attributes() {
-        return this._attributes;
-      }
-    };
-    Macro = class {
-      constructor(_token, _func, _args = []) {
-        this._token = _token;
-        this._func = _func;
-        this._args = _args;
-      }
-      get token() {
-        return this._token;
-      }
-      get func() {
-        return this._func;
-      }
-      get args() {
-        return this._args;
-      }
-    };
-  }
-});
-// node_modules/@mathjax/src/mjs/input/tex/TokenMap.js
-function parseResult(result) {
-  return result === void 0 ? true : result;
-}
-var AbstractTokenMap;
-var RegExpMap;
-var AbstractParseMap;
-var CharacterMap;
-var DelimiterMap;
-var MacroMap;
-var CommandMap;
-var EnvironmentMap;
-var init_TokenMap = __esm({
-  "node_modules/@mathjax/src/mjs/input/tex/TokenMap.js"() {
-    init_Token();
-    (__kittexLate.init_MapHandler?.())();
-    AbstractTokenMap = class {
-      constructor(_name, _parser) {
-        this._name = _name;
-        this._parser = _parser;
-        (__kittexLate.MapHandler?.()).register(this);
-      }
-      get name() {
-        return this._name;
-      }
-      parserFor(token2) {
-        return this.contains(token2) ? this.parser : null;
-      }
-      parse([env, token2]) {
-        const parser2 = this.parserFor(token2);
-        const mapped = this.lookup(token2);
-        return parser2 && mapped ? parseResult(parser2(env, mapped)) : null;
-      }
-      set parser(parser2) {
-        this._parser = parser2;
-      }
-      get parser() {
-        return this._parser;
-      }
-    };
-    RegExpMap = class extends AbstractTokenMap {
-      constructor(name, parser2, _regExp) {
-        super(name, parser2);
-        this._regExp = _regExp;
-      }
-      contains(token2) {
-        return this._regExp.test(token2);
-      }
-      lookup(token2) {
-        return this.contains(token2) ? token2 : null;
-      }
-    };
-    AbstractParseMap = class extends AbstractTokenMap {
-      constructor() {
-        super(...arguments);
-        this.map = /* @__PURE__ */ new Map();
-      }
-      lookup(token2) {
-        return this.map.get(token2);
-      }
-      contains(token2) {
-        return this.map.has(token2);
-      }
-      add(token2, object) {
-        this.map.set(token2, object);
-      }
-      remove(token2) {
-        this.map.delete(token2);
-      }
-    };
-    CharacterMap = class extends AbstractParseMap {
-      constructor(name, parser2, json) {
-        super(name, parser2);
-        for (const key of Object.keys(json)) {
-          const value = json[key];
-          const [char, attrs] = typeof value === "string" ? [value, null] : value;
-          const character = new Token(key, char, attrs);
-          this.add(key, character);
-        }
-      }
-    };
-    DelimiterMap = class extends CharacterMap {
-      parse([env, token2]) {
-        return super.parse([env, "\\" + token2]);
-      }
-    };
-    MacroMap = class extends AbstractParseMap {
-      constructor(name, json, functionMap = {}) {
-        super(name, null);
-        const getMethod = (func) => typeof func === "string" ? functionMap[func] : func;
-        for (const [key, value] of Object.entries(json)) {
-          let func;
-          let args;
-          if (Array.isArray(value)) {
-            func = getMethod(value[0]);
-            args = value.slice(1);
-          } else {
-            func = getMethod(value);
-            args = [];
-          }
-          const character = new Macro(key, func, args);
-          this.add(key, character);
-        }
-      }
-      parserFor(token2) {
-        const macro = this.lookup(token2);
-        return macro ? macro.func : null;
-      }
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const parser2 = this.parserFor(token2);
-        if (!macro || !parser2) {
-          return null;
-        }
-        return parseResult(parser2(env, macro.token, ...macro.args));
-      }
-    };
-    CommandMap = class extends MacroMap {
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const parser2 = this.parserFor(token2);
-        if (!macro || !parser2) {
-          return null;
-        }
-        const saveCommand = env.currentCS;
-        env.currentCS = "\\" + token2;
-        const result = parser2(env, "\\" + macro.token, ...macro.args);
-        env.currentCS = saveCommand;
-        return parseResult(result);
-      }
-    };
-    EnvironmentMap = class extends MacroMap {
-      constructor(name, parser2, json, functionMap = {}) {
-        super(name, json, functionMap);
-        this.parser = parser2;
-      }
-      parse([env, token2]) {
-        const macro = this.lookup(token2);
-        const envParser = this.parserFor(token2);
-        if (!macro || !envParser) {
-          return null;
-        }
-        return parseResult(this.parser(env, macro.token, envParser, macro.args));
-      }
-    };
-  }
-});
-export{init_TokenMap,CharacterMap,init_Tags,TagsFactory,init_ParseUtil,ParseUtil,TexParser,init_TexParser,Label,RegExpMap,MacroMap,DelimiterMap,CommandMap,EnvironmentMap,AbstractTags,init_ParseOptions,ParseOptions_default,init_Token,Token,Macro,NodeFactory,init_NodeFactory2};
+export{init_HandlerTypes,init_Tags,ConfigurationType,HandlerType,TagsFactory,init_TexError,init_ParseUtil,init_UnitUtil,init_StackItem,BaseItem,TexError_default,ParseUtil,UnitUtil,TexParser,init_TexParser,Label,AbstractTags,init_ParseOptions,ParseOptions_default,NodeFactory,init_NodeFactory2};

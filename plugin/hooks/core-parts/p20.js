@@ -1253,7 +1253,7 @@ var init_Wrapper3 = __esm({
   "node_modules/@mathjax/src/mjs/output/svg/Wrapper.js"() {
     init_string();
     init_Wrapper2();
-    (__kittexLate.init_svg2?.())();
+    (__kittexLate.init_svg3?.())();
     SvgWrapper = class _SvgWrapper extends CommonWrapper {
       constructor() {
         super(...arguments);
