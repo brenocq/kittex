@@ -85,8 +85,21 @@ export type Matrix = readonly [number, number, number, number, number, number]
  * in its own coordinates, mapped to em by `transform`. Fill rule: nonzero.
  */
 export type DrawOp =
-  | { type: 'path'; d: string; transform: Matrix }
-  | { type: 'rect'; x: number; y: number; width: number; height: number }
+  | ({ type: 'path'; d: string; transform: Matrix } & OpColor)
+  | ({ type: 'rect'; x: number; y: number; width: number; height: number } & OpColor)
+
+/**
+ * The colour LaTeX gave a DrawOp (\color, \textcolor, \colorbox); every field
+ * absent for an op in the terminal's own text colour.
+ */
+export interface OpColor {
+  /** The op's colour as the formula gives it, before it is made legible on the terminal's background. */
+  color?: RGB
+  /** The \colorbox the op is drawn on (its colour as given), which the op is kept legible against instead of the background. */
+  backdrop?: RGB
+  /** A \colorbox's background in `color`: painted under the ink, and not ink itself. */
+  background?: boolean
+}
 
 export interface TypesetOptions {
   display: boolean
@@ -220,6 +233,17 @@ export interface Raster extends CellBox {
   heightPx: number
   /** Pixel row of the math baseline, from the top of the image. */
   baselinePx: number
+  /**
+   * A formula with colours (OpColor): its ops' coverage split by colour, in
+   * the order they are painted (backgrounds first); absent when it is all
+   * in the terminal's ink, which `alpha` alone then draws.
+   */
+  layers?: InkLayer[]
+}
+
+/** The coverage (widthPx × heightPx bytes, as Raster.alpha) of a formula's ops of one colour. */
+export interface InkLayer extends OpColor {
+  alpha: Uint8Array
 }
 
 // ─── unicode ─────────────────────────────────────────────────────────────────

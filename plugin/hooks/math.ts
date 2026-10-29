@@ -446,6 +446,7 @@ export function renderEnvFor(env: KittexEnv, columns = env.columns): RenderEnv {
   if (env.inkOver) renderEnv.inkOver = env.inkOver
   if (env.inkOver && env.inkCurve) renderEnv.inkCurve = env.inkCurve
   if (env.weight !== undefined) renderEnv.weight = env.weight
+  if (env.background) renderEnv.background = env.background
   return renderEnv
 }
 
@@ -2806,7 +2807,6 @@ export function pictureEnvFor(env: KittexEnv, columns = env.columns): PictureEnv
     ...renderEnvFor(env, columns),
     maxColumns: proseWidthFor(env, columns),
     maxRows: MAX_PICTURE_ROWS,
-    ...(env.background ? { background: env.background } : {}),
   }
 }
 

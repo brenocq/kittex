@@ -58,6 +58,20 @@ export function encodeRgbaPng(rgba: Uint8Array, width: number, height: number): 
 }
 
 /**
+ * Straight-alpha RGBA pixels drawn exactly (a coloured formula, whose
+ * anti-aliased edges must keep every level): indexed when they have at most
+ * 255 colour and alpha pairs, else truecolour.
+ */
+export function encodeExactPng(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const pairs = new Set<number>()
+  for (let i = 0; i < rgba.length && pairs.size <= 255; i += 4) {
+    const a = rgba[i + 3]!
+    if (a !== 0) pairs.add(((rgba[i]! << 16) | (rgba[i + 1]! << 8) | rgba[i + 2]!) * 256 + a)
+  }
+  return pairs.size <= 255 ? encodeQuantizedPng(rgba, width, height) : encodeRgbaPng(rgba, width, height)
+}
+
+/**
  * Straight-alpha RGBA pixels (a TeX picture) as an indexed PNG, at most 256
  * palette entries, most compressed. Exact where the picture has at most 255
  * colour and alpha pairs; else a solid pixel is its nearest of up to

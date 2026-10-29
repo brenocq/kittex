@@ -1,5 +1,5 @@
-import type { RGB } from '../types.js'
-import { inkAlpha } from './png.js'
+import type { RGB, TextCurve } from '../types.js'
+import { curvedAlpha, inkAlpha } from './png.js'
 
 /*
  * A picture's pixels: each shape's coverage (fill.ts) painted over the ones
@@ -62,9 +62,10 @@ export class Canvas {
   /**
    * The pixels with straight alpha, for a PNG; with `over`, each pixel's
    * alpha corrected for its colour as the terminal corrects text blended over
-   * that background (inkAlpha: Ghostty's linear-corrected blending).
+   * that background (inkAlpha: Ghostty's linear-corrected blending; with a
+   * `curve`, curvedAlpha: kitty's).
    */
-  straight(over?: RGB): Uint8Array {
+  straight(over?: RGB, curve?: TextCurve): Uint8Array {
     const px = this.pixels
     const out = new Uint8Array(px.length)
     const tables = new Map<number, Uint8Array>()
@@ -82,7 +83,7 @@ export class Canvas {
       out[i] = r
       out[i + 1] = g
       out[i + 2] = b
-      if (!over || a === 255) {
+      if (!over || (a === 255 && !curve)) {
         out[i + 3] = a
         continue
       }
@@ -90,10 +91,10 @@ export class Canvas {
       let table = tables.get(key)
       if (!table) {
         if (tables.size >= 4096) {
-          out[i + 3] = Math.round(255 * inkAlpha(a / 255, { r, g, b }, over))
+          out[i + 3] = Math.round(255 * corrected(a / 255, { r, g, b }, over, curve))
           continue
         }
-        table = correctionTable({ r, g, b }, over)
+        table = correctionTable({ r, g, b }, over, curve)
         tables.set(key, table)
       }
       out[i + 3] = table[a]!
@@ -102,8 +103,11 @@ export class Canvas {
   }
 }
 
-function correctionTable(color: RGB, over: RGB): Uint8Array {
+function correctionTable(color: RGB, over: RGB, curve: TextCurve | undefined): Uint8Array {
   const table = new Uint8Array(256)
-  for (let a = 0; a < 256; a++) table[a] = a === 0 || a === 255 ? a : Math.round(255 * inkAlpha(a / 255, color, over))
+  for (let a = 0; a < 256; a++) table[a] = a === 0 || (a === 255 && !curve) ? a : Math.round(255 * corrected(a / 255, color, over, curve))
   return table
 }
+
+const corrected = (alpha: number, color: RGB, over: RGB, curve: TextCurve | undefined) =>
+  curve ? curvedAlpha(alpha, color, over, curve) : inkAlpha(alpha, color, over)

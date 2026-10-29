@@ -69,6 +69,39 @@ export function adaptColor(color: RGB, paper: PaperColors, line: boolean): Adapt
   return fromOklab(l, lab.a, lab.b)
 }
 
+/** WCAG 2's contrast ratio of two colours, 1 to 21. */
+export function contrast(a: RGB, b: RGB): number {
+  const la = luminance(a)
+  const lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/**
+ * `color` as it is if its contrast against `against` reaches `floor`, else
+ * moved in OKLab lightness (hue kept, chroma reduced where it would leave
+ * sRGB) just far enough to reach it, towards white or black, whichever has
+ * more room; as far as it goes when the floor can't be reached.
+ */
+export function legible(color: RGB, against: RGB, floor: number): RGB {
+  if (contrast(color, against) >= floor) return color
+  const lab = oklab(color)
+  const lighter = contrast(WHITE, against) >= contrast(BLACK, against)
+  let near = lab.l
+  let far = lighter ? 1 : 0
+  if (contrast(fromOklab(far, lab.a, lab.b), against) < floor) return fromOklab(far, lab.a, lab.b)
+  for (let i = 0; i < 20; i++) {
+    const mid = (near + far) / 2
+    if (contrast(fromOklab(mid, lab.a, lab.b), against) >= floor) far = mid
+    else near = mid
+  }
+  return fromOklab(far, lab.a, lab.b)
+}
+
+const WHITE: RGB = { r: 255, g: 255, b: 255 }
+const BLACK: RGB = { r: 0, g: 0, b: 0 }
+
+const luminance = (c: RGB) => 0.2126 * toLinear(c.r) + 0.7152 * toLinear(c.g) + 0.0722 * toLinear(c.b)
+
 /** Whether two colours are the same. */
 export function sameRgb(a: RGB, b: RGB): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b

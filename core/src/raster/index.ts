@@ -1,8 +1,8 @@
-import type { CellBox, DrawOp, Matrix, Picture, Raster, RasterOptions, RGB, TextCurve, TypesetResult } from '../types.js'
+import type { CellBox, DrawOp, InkLayer, Matrix, OpColor, Picture, Raster, RasterOptions, RGB, TextCurve, TypesetResult } from '../types.js'
 import { Coverage } from './fill.js'
 import { Canvas } from './paint.js'
 import { type Contour, flattenPath, flattenSubpaths } from './path.js'
-import { curvedAlpha, encodeAlphaPng, encodeQuantizedPng, encodeRgbaPng, inkAlpha, recolorPng } from './png.js'
+import { curvedAlpha, encodeAlphaPng, encodeExactPng, encodeQuantizedPng, encodeRgbaPng, inkAlpha, recolorPng } from './png.js'
 import { snapStroke, strokeOutlines } from './stroke.js'
 
 export { curvedAlpha, encodeQuantizedPng, encodeRgbaPng, inkAlpha, recolorPng }
@@ -218,7 +218,11 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
   const toPx: Matrix = [k, 0, 0, k, originX, baselinePx]
   // Rules up to 0.15 em thick (4 px at least) are snapped: TeX's are 0.04 to 0.1 em.
   const ruleMax = Math.max(RULE_MIN_SNAP, 0.15 * k)
-  const shapes = result.ops.flatMap(op => outline(op, toPx, dilation, ruleMax) ?? [])
+  const drawn = result.ops.flatMap(op => {
+    const shape = outline(op, toPx, dilation, ruleMax)
+    return shape ? [{ op, shape }] : []
+  })
+  const shapes = drawn.map(d => d.shape)
   // Centred by its ink, moved by whole pixels so glyphs land as they would at the left.
   const dx = options.align === 'left' && options.centerInk ? inkShift(shapes, widthPx, options.inkPlace ?? 'center') : 0
   for (const { contours, sign } of shapes) {
@@ -227,7 +231,7 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
       coverage.fill(c, sign)
     }
   }
-  return {
+  const raster: Raster = {
     columns: box.columns,
     rows: box.rows,
     scale: box.scale,
@@ -236,15 +240,54 @@ export function rasterize(result: TypesetResult, options: RasterOptions): Raster
     heightPx,
     baselinePx,
   }
+  const layers = colorLayers(drawn, widthPx, heightPx)
+  return layers ? { ...raster, layers } : raster
 }
 
 /**
- * Encodes a raster as a PNG in one ink colour, transparent where there is no
- * coverage; with `over`, its alpha corrected as the terminal corrects text
- * blended over that background (inkAlpha, or kitty's `curve`: curvedAlpha).
+ * The coverage of a formula's ops split by colour (the colour, the box it
+ * sits on, whether it is a box), \colorbox backgrounds first in their order,
+ * then ink in order of first appearance; undefined when every op is plain ink.
  */
-export function encodePng(raster: Raster, ink: RGB, over?: RGB, curve?: TextCurve): Uint8Array {
-  return encodeAlphaPng(raster.alpha, raster.widthPx, raster.heightPx, ink, over, curve)
+function colorLayers(drawn: readonly { op: DrawOp; shape: Shape }[], widthPx: number, heightPx: number): InkLayer[] | undefined {
+  if (!drawn.some(({ op }) => op.color || op.backdrop || op.background)) return undefined
+  const groups = new Map<string, { color: OpColor; coverage: Coverage }>()
+  const order = [...drawn.filter(d => d.op.background), ...drawn.filter(d => !d.op.background)]
+  for (const { op, shape } of order) {
+    const key = [rgbKey(op.color), rgbKey(op.backdrop), op.background ? 1 : 0].join('|')
+    let group = groups.get(key)
+    if (!group) {
+      const color: OpColor = {}
+      if (op.color) color.color = op.color
+      if (op.backdrop) color.backdrop = op.backdrop
+      if (op.background) color.background = true
+      group = { color, coverage: new Coverage(widthPx, heightPx) }
+      groups.set(key, group)
+    }
+    for (const c of shape.contours) group.coverage.fill(c, shape.sign)
+  }
+  return [...groups.values()].map(({ color, coverage }) => ({ ...color, alpha: coverage.toAlpha() }))
+}
+
+const rgbKey = (c: RGB | undefined) => (c ? (c.r << 16) | (c.g << 8) | c.b : -1)
+
+/**
+ * Encodes a raster as a PNG, transparent where there is no coverage; with
+ * `over`, its alpha corrected as the terminal corrects text blended over that
+ * background (inkAlpha, or kitty's `curve`: curvedAlpha). Plain ink is one
+ * colour, `ink`, in a palette PNG recolorPng can repaint; a coloured
+ * formula's layers are painted in the colours `paint` gives them (their own,
+ * or `ink` for the plain ones, without it), in order, source-over.
+ */
+export function encodePng(raster: Raster, ink: RGB, over?: RGB, curve?: TextCurve, paint?: (layer: InkLayer) => RGB | 'erase'): Uint8Array {
+  const { layers, widthPx, heightPx } = raster
+  if (!layers) return encodeAlphaPng(raster.alpha, widthPx, heightPx, ink, over, curve)
+  const canvas = new Canvas(widthPx, heightPx)
+  for (const layer of layers) {
+    const color = paint ? paint(layer) : (layer.color ?? ink)
+    if (color !== 'erase') canvas.paint(layer.alpha, 0, 0, widthPx, heightPx, color, 1)
+  }
+  return encodeExactPng(canvas.straight(over, curve), widthPx, heightPx)
 }
 
 /** An op's outlines in pixels, dilated and snapped, and the winding its ink fills with. */

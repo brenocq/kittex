@@ -1,11 +1,11 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
-import { adaptColor, assumedBackground, readSvg, svgTextTex, texPicture as readTexPicture, type SvgTextRun, type TexDocument } from './diagram/index.js'
+import { adaptColor, assumedBackground, contrast, legible, readSvg, svgTextTex, texPicture as readTexPicture, type SvgTextRun, type TexDocument } from './diagram/index.js'
 import { type BlockFit, type BlockImage, blockImages, fitImage, fitImageBlock, type ImageBlock, type ImageBox, type ImageSpec } from './image/block.js'
 import { type Bitmap, decodeImage, encodeRgbaPng as encodeBitmapPng, ImageError, imageHeader, MAX_IMAGE_PIXELS, scaleBitmap } from './image/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
 import { GlyphError, initTypeset, TexError, texToMathML, typeset, typesetLoaded } from './typeset/index.js'
-import type { CellBox, Picture, RasterOptions, RGB, TextCurve, TypesetResult, UnicodeResult } from './types.js'
+import type { CellBox, InkLayer, Picture, Raster, RasterOptions, RGB, TextCurve, TypesetResult, UnicodeResult } from './types.js'
 import { toUnicode } from './unicode/index.js'
 
 export type * from './types.js'
@@ -111,6 +111,12 @@ export interface RenderEnv {
    * terminal font's (strokeWeight); absent for the default.
    */
   weight?: number
+  /**
+   * The terminal's background, which a formula's own colours (\color,
+   * \colorbox) and TeX's are kept legible on (assumed from the ink when
+   * absent). Plain ink never depends on it.
+   */
+  background?: RGB
 }
 
 /** Where an inline formula is drawn: one text row. */
@@ -187,8 +193,64 @@ export function init(): Promise<void> {
 }
 
 const typesetCache = new Map<string, TypesetResult>()
-const imageCache = new Map<string, RenderedImage>()
+/**
+ * A drawn formula as cached: plain ink is a palette PNG, recoloured for each
+ * theme by rewriting its palette; a coloured one (`theme` set) is drawn for
+ * the theme it names, and drawn again for any other.
+ */
+interface CachedImage extends RenderedImage {
+  theme?: string
+}
+
+const imageCache = new Map<string, CachedImage>()
 const CACHE_LIMIT = 256
+
+/** What a coloured formula's pixels depend on besides its TeX and size. */
+const themeOf = (env: RenderEnv) => JSON.stringify([env.ink, env.inkOver ?? null, env.inkCurve ?? null, env.background ?? null])
+
+/** A cached formula in `env`'s colours. */
+function shown({ theme, ...image }: CachedImage, env: RenderEnv): RenderedImage {
+  return theme === undefined ? { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) } : image
+}
+
+/** A cached formula for `key`, unless it is coloured and was drawn for another theme. */
+function cachedImage(key: string, env: RenderEnv): CachedImage | undefined {
+  const image = remember(imageCache, key)
+  return image?.theme === undefined || image.theme === themeOf(env) ? image : undefined
+}
+
+/** A formula drawn in `env`'s colours, marked with its theme when it is coloured. */
+function drawnImage(raster: Raster, env: RenderEnv): CachedImage {
+  const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve, formulaPaint(env))
+  if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
+  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png, ...(raster.layers ? { theme: themeOf(env) } : {}) }
+}
+
+/**
+ * Contrast (WCAG 2) a formula's own colour keeps against what it is drawn on:
+ * 4.5, WCAG's floor for body text, or the theme's own ink against its
+ * background where that is lower (a dim theme asks no more of a colour than
+ * of its text).
+ */
+const LEGIBLE_CONTRAST = 4.5
+
+/**
+ * The colours a coloured formula's layers are drawn in: a \colorbox in its
+ * colour adapted to the background as TeX pictures' fills are (a pale box a
+ * dark tint of its hue on a dark theme, white none at all); a glyph in its own
+ * colour (plain ones in the ink), moved in lightness, hue kept, only as far as
+ * it takes to read on its box or on the background.
+ */
+function formulaPaint(env: RenderEnv): (layer: InkLayer) => RGB | 'erase' {
+  const paper = { ink: env.ink, background: env.background ?? assumedBackground(env.ink) }
+  const floor = Math.min(LEGIBLE_CONTRAST, contrast(env.ink, paper.background))
+  const box = (color: RGB | undefined) => (color ? adaptColor(color, paper, false) : 'erase')
+  return layer => {
+    if (layer.background) return box(layer.color)
+    const under = box(layer.backdrop)
+    return legible(layer.color ?? env.ink, under === 'erase' ? paper.background : under, floor)
+  }
+}
 
 /**
  * Display formulas that would have to shrink below this to fit the column are
@@ -244,21 +306,18 @@ function tooSmall(scale: number): string {
 
 /** Typesets and draws a display formula, at least `minRows` tall. Throws TexError. */
 export function renderDisplay(tex: string, env: RenderEnv, minRows?: number): RenderedImage {
-  // Cached without its colour: a palette PNG changes colour by rewriting its palette alone.
+  // Keyed without its colours (see CachedImage).
   const key = [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', minRows ?? 0, tex].join('\n')
-  let image = remember(imageCache, key)
+  let image = cachedImage(key, env)
   if (!image) {
     const result = typesetDisplay(tex, env)
     const options = rasterOptions(env, minRows)
     const box = measure(result, options)
     if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
     if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS || box.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
-    const raster = rasterize(result, options)
-    const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
-    if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
-    image = store(imageCache, key, { columns: raster.columns, rows: raster.rows, scale: raster.scale, png })
+    image = store(imageCache, key, drawnImage(rasterize(result, options), env))
   }
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
+  return shown(image, env)
 }
 
 /**
@@ -354,26 +413,19 @@ function clipsOnlyThinInk(result: TypesetResult, options: RasterOptions): boolea
  */
 export function renderInline(tex: string, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
   const key = ['inline', env.cellWidth, env.cellHeight, env.emPx, env.weight ?? '', env.baselinePx, columns, place, tex].join('\n')
-  let image = remember(imageCache, key)
-  if (!image) {
-    const drawn = drawInline(typesetInline(tex), env, columns, place)
-    if (drawn.png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
-    image = store(imageCache, key, drawn)
-  }
-  return { ...image, png: recolorPng(image.png, env.ink, env.inkOver, env.inkCurve) }
+  const image = cachedImage(key, env) ?? store(imageCache, key, drawInline(typesetInline(tex), env, columns, place))
+  return shown(image, env)
 }
 
 /** renderInline for a formula typeset some other way (TeX's, see texFormula); not cached. */
 export function renderInlineResult(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace = 'center'): RenderedImage {
-  return drawInline(result, env, columns, place)
+  const { theme: _, ...image } = drawInline(result, env, columns, place)
+  return image
 }
 
-function drawInline(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace): RenderedImage {
+function drawInline(result: TypesetResult, env: InlineEnv, columns: number, place: InkPlace): CachedImage {
   const options = { ...inlineOptions(env, columns, 'left'), minColumns: columns, inkPlace: place }
-  const raster = rasterize(result, options)
-  const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
-  if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
-  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
+  return drawnImage(rasterize(result, options), env)
 }
 
 export interface InlinePreviewOptions {
@@ -505,8 +557,6 @@ function store<V>(cache: Map<string, V>, key: string, value: V): V {
 
 /** Where a TeX picture is drawn: as display math is, with the terminal's background when known. */
 export interface PictureEnv extends RenderEnv {
-  /** The terminal's background, which TeX's white becomes and its colours are kept legible on (assumed from the ink when absent). */
-  background?: RGB
   /** Rows a picture may take before it is shrunk (MAX_PICTURE_ROWS by default). */
   maxRows?: number
 }
@@ -838,8 +888,6 @@ export function renderDisplayResult(result: TypesetResult, env: RenderEnv, minRo
   const box = measure(result, options)
   if (box.scale < MIN_DISPLAY_SCALE) throw new TexError(tooSmall(box.scale))
   if (box.columns * env.cellWidth * box.rows * env.cellHeight > MAX_PIXELS || box.rows * env.cellHeight > MAX_IMAGE_SIDE) throw new TexError(TOO_LARGE)
-  const raster = rasterize(result, options)
-  const png = encodePng(raster, env.ink, env.inkOver, env.inkCurve)
-  if (png.length > MAX_IMAGE_BYTES) throw new TexError(TOO_LARGE)
-  return { columns: raster.columns, rows: raster.rows, scale: raster.scale, png }
+  const { theme: _, ...image } = drawnImage(rasterize(result, options), env)
+  return image
 }

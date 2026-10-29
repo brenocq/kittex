@@ -32,9 +32,11 @@ function cachedImage(key: string, draw: () => RenderedImage): RenderedImage {
   return image
 }
 
+/** What an image depends on besides its source: the cells and the colours (a coloured formula's and a picture's on the background). */
 function geometryKey(env: RenderEnv): string {
   const over = env.inkOver ? [env.inkOver.r, env.inkOver.g, env.inkOver.b, env.inkCurve?.gamma ?? '', env.inkCurve?.contrast ?? ''] : []
-  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', env.ink.r, env.ink.g, env.ink.b, ...over].join(',')
+  const back = env.background ? [env.background.r, env.background.g, env.background.b] : ['', '', '']
+  return [env.cellWidth, env.cellHeight, env.maxColumns, env.emPx, env.weight ?? '', env.ink.r, env.ink.g, env.ink.b, ...back, ...over].join(',')
 }
 
 /** A display formula's image, `rows` tall (measured when not given). Throws TexError. */
@@ -151,7 +153,7 @@ export function diagramImage(source: string, kind: DiagramKind, env: PictureEnv,
   }
   if (!outcome.ok) return { error: outcome.error }
   try {
-    const key = `p\n${geometryKey(env)},${env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''}\n${rows ?? ''}\n${job.document.text}`
+    const key = `p\n${geometryKey(env)}\n${rows ?? ''}\n${job.document.text}`
     const image = cachedImage(key, () => renderPicture(outcome.picture, env, rows))
     if (!pictureRedraws.has(image)) pictureRedraws.set(image, density => cachedImage(`${key}\n${density}`, () => renderPicture(outcome.picture, env, image.rows, density)))
     return image
@@ -173,8 +175,7 @@ function filesImage(block: ImageBlock, env: PictureEnv, rows?: number): Rendered
   }
   if (!outcome.ok) return { error: outcome.error }
   try {
-    const background = env.background ? [env.background.r, env.background.g, env.background.b].join(',') : ''
-    const key = `f\n${geometryKey(env)},${background},${env.maxRows ?? ''}\n${rows ?? ''}\n${outcome.id}\n${JSON.stringify(block)}`
+    const key = `f\n${geometryKey(env)},${env.maxRows ?? ''}\n${rows ?? ''}\n${outcome.id}\n${JSON.stringify(block)}`
     const image = cachedImage(key, () => renderImageBlock(outcome.sources, block, env, rows))
     // Drawn again at fewer pixels (fitPictures) relative to the density it was drawn at: a photo is already below 1.
     const drawnAt = 'density' in image && typeof image.density === 'number' ? image.density : 1
