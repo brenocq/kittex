@@ -118,12 +118,16 @@ describe('a new session in the same process', () => {
 
 /**
  * The host beneath kittex for the instructions' bookkeeping: the session's
- * id and whether its conversation has messages yet, and kittex's $.store.
+ * id, its conversation's length and first message (`head`, a compaction's
+ * summary once one ran), and kittex's $.store.
  */
 function host(on: On, start: { session?: string; messages?: number; store?: Record<string, unknown>; drop?: boolean } = {}) {
-  const world = { session: start.session ?? 'one', messages: start.messages ?? 0, store: new Map(Object.entries(start.store ?? {})) }
+  const world = { session: start.session ?? 'one', messages: start.messages ?? 0, head: 'the first prompt', store: new Map(Object.entries(start.store ?? {})) }
   on('session.id', () => ({ value: world.session }))
-  on('session.messages', () => ({ value: Array.from({ length: world.messages }, () => ({ role: 'user', text: 'earlier', toolUses: [] })) }) as never)
+  on('session.messages', ($, e) => {
+    const rows = Array.from({ length: world.messages }, (_, i) => ({ role: 'user', text: i === 0 ? world.head : 'earlier', toolUses: [] }))
+    return { value: e.as === 'api' ? rows.map(row => ({ role: row.role, content: [{ type: 'text', text: row.text }] })) : rows } as never
+  })
   on('store.get', ($, e) => ({ value: world.store.get(e.key) }))
   on('store.set', ($, e) => {
     world.store.set(e.key, e.value)
@@ -200,6 +204,25 @@ describe("a conversation whose system prompt holds older instructions, or none",
     world.messages = 2
     expect(await submit($, 'after compaction')).toEqual([BASE])
     expect(await submit($, 'next')).toEqual([])
+  })
+
+  test('where a policy skips the compaction row too, the new head of the conversation brings the instructions back, once', { plugins: [policy] }, async ($, on) => {
+    const world = host(on, { messages: 4 })
+    await startSession($, on)
+    expect(await submit($, 'first')).toEqual([`${UPDATED_INSTRUCTIONS} ${BASE}`])
+    world.messages = 6
+    expect(await submit($, 'second')).toEqual([])
+    world.head = 'This session is being continued from a previous conversation.'
+    world.messages = 2
+    expect(await submit($, 'after compaction')).toEqual([BASE])
+    world.messages = 4
+    expect(await submit($, 'next')).toEqual([])
+    // Another conversation resumed, already instructed: its different head is no compaction.
+    await endConversation($, 'resume')
+    world.session = 'two'
+    world.head = 'the other conversation'
+    world.store.set('instructed', { ...(world.store.get('instructed') as Record<string, string>), two: instructionsKey(BASE) })
+    expect(await submit($, 'in the resumed one')).toEqual([])
   })
 
   test('another conversation resumed from inside the session: its own record decides', { plugins: [facts] }, async ($, on) => {

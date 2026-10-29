@@ -190,6 +190,8 @@ let instructByContext = false
 let instructWanted = false
 /** The next request composes its conversation's system prompt anew (/clear, compaction): the current instructions are in it. */
 let composesFresh = false
+/** The conversation's first message (conversationHead) when the last prompt entered, where instructions ride context. */
+let lastHead: { session: string; head: string } | undefined
 /** InstructedSessions in $.store, and as this process last wrote it (where the store can't be read). */
 const INSTRUCTED = 'instructed'
 let instructedHere: InstructedSessions = {}
@@ -347,7 +349,7 @@ export const register: Register = (on, options) => {
   // conversation was composed with holds older ones or none (a resume, a
   // kittex reloaded or upgraded since, TeX found since).
   on('prompt.submit', async ($, e, next) => {
-    let update: { record: InstructedSessions; session: string; key: string } | undefined
+    let update: { record: InstructedSessions; session: string; key: string; head: string | undefined } | undefined
     let note: string | undefined
     try {
       const env = await readEnv($, true)
@@ -356,10 +358,14 @@ export const register: Register = (on, options) => {
         const key = instructionsKey(text)
         const session = await $.session.id().catch(() => THIS_SESSION)
         const record = await readInstructed($)
+        // Where they ride context, a compaction is also read from the conversation itself: the policy that drops the
+        // section may skip the compaction's row too (seen on an auto-compaction), and the summary replaces the head.
+        const head = instructByContext ? await conversationHead($) : undefined
+        const compacted = head !== undefined && lastHead?.session === session && lastHead.head !== head
         // A conversation with nothing in it yet is composed with this text too (a new session, a hot reload before its first prompt).
-        const fresh = composesFresh || (record[session] !== key && (await $.session.messages().catch(() => [])).length === 0)
+        const fresh = composesFresh || compacted || (record[session] !== key && (await $.session.messages().catch(() => [])).length === 0)
         if (instructionsNeeded({ fresh, byContext: instructByContext, held: record[session], key })) note = fresh ? text : `${UPDATED_INSTRUCTIONS} ${text}`
-        update = { record, session, key }
+        update = { record, session, key, head }
       }
     } catch {
       update = undefined
@@ -368,6 +374,7 @@ export const register: Register = (on, options) => {
     const entered = await next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
     if (update && entered.drop === undefined) {
       composesFresh = false
+      if (update.head !== undefined) lastHead = { session: update.session, head: update.head }
       if (update.record[update.session] !== update.key) {
         instructedHere = recordInstructed(update.record, update.session, update.key)
         await $.store.set(INSTRUCTED, instructedHere).catch(() => undefined)
@@ -811,6 +818,18 @@ async function writeEnv($: Engine, env: KittexEnv | null): Promise<void> {
 async function readInstructed($: Engine): Promise<InstructedSessions> {
   const value = await $.store.get(INSTRUCTED).catch(() => undefined)
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as InstructedSessions) : instructedHere
+}
+
+/**
+ * A key of the main conversation's first message as the next request sends
+ * it (the API form, which starts at a compaction's summary), from its text;
+ * undefined while the conversation is empty or can't be read.
+ */
+async function conversationHead($: Engine): Promise<string | undefined> {
+  const messages = await $.session.messages({ as: 'api' }).catch(() => undefined)
+  const first = Array.isArray(messages) ? messages[0] : undefined
+  if (first === undefined || !Array.isArray(first.content)) return undefined
+  return instructionsKey(first.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('\n'))
 }
 
 /** Whether the model is told to write LaTeX: kittex is set up and draws math on this terminal. */
