@@ -7,7 +7,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { BUILD_ID, detectTerminal, drawsEmojiSequences } from '../hooks/core.js'
-import { linkEnv, mathOptions } from '../hooks/math.ts'
+import { linkEnv, mathOptions, renderEnvFor } from '../hooks/math.ts'
 import type { KittexEnv } from '../hooks/math.ts'
 import { cacheDir, cacheFacts, CACHE_LIMIT_BYTES, CACHE_VERSION, decodeEntry, encodeEntry, entryKey, ENTRY_NAME, hash128, pruneList } from '../hooks/cache.ts'
 import type { Piece } from '../hooks/math.ts'
@@ -69,6 +69,15 @@ describe('cache entries', () => {
     expect(entryKey('$x$', { ...facts, ink: [1, 2, 4] })).not.toBe(key)
     expect(entryKey('$x$', { ...facts, cell: [13, 27, 25] })).not.toBe(key)
     expect(hash128('a')).not.toBe(hash128('b'))
+  })
+
+  test("the facts hold the terminal's background: coloured math and pictures are drawn for it", () => {
+    const env = kittyEnv()
+    const facts = (background?: KittexEnv['background']) => JSON.stringify(cacheFacts({ ...env, ...(background ? { background } : {}) }, COLUMNS, mathOptions({}), 'build'))
+    expect(facts({ r: 40, g: 40, b: 40 })).not.toBe(facts({ r: 251, g: 241, b: 199 }))
+    expect(facts({ r: 40, g: 40, b: 40 })).not.toBe(facts())
+    // And the formulas are drawn for it, so their keys in memory hold it too.
+    expect(renderEnvFor({ ...env, background: { r: 40, g: 40, b: 40 } }).background).toEqual({ r: 40, g: 40, b: 40 })
   })
 
   test('an entry reads back as the same drawing', () => {
