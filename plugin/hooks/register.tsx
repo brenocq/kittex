@@ -51,6 +51,7 @@ import {
   BUILD_ID,
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
+import { formulaOf } from './formula.ts'
 import { imageBlockOf, imageBook, NO_PDF } from './image.ts'
 import type { ImageHost } from './image.ts'
 import {
@@ -108,6 +109,7 @@ import { base64Cache, base64Of, diagramImage, displayImage, displayRows, inlineI
 import { CACHE_LIMIT_BYTES, CACHE_READ_MS, cacheDir, cacheFacts, decodeEntry, encodeEntry, entryKey, entryPath, ENTRY_NAME, pruneList, TEX_CACHE_LIMIT_BYTES, TEX_ENTRY_NAME } from './cache.ts'
 import { newestFirst } from './schedule.ts'
 import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedPlan, MathOptions, Piece, PlanOptions, PreviewRecord, StreamedBlock, StreamEnv, StreamRewrite, TexUse } from './math.ts'
+import type { Kittex } from '../types'
 import { diagramJob, hiddenDirs, mathJob, onPath, pdfPicture, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
 import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
@@ -245,6 +247,17 @@ export const register: Register = (on, options) => {
   /** The `latex` option: `auto` draws diagrams and the math MathJax refuses with the local LaTeX where it is found; `off` never runs it. */
   const latex = options.latex === 'off' ? 'off' : 'auto'
   texAllowed = !off && latex === 'auto' && math.block !== 'unicode'
+
+  // `$.kittex` (Kittex, the contract): one formula typeset for another
+  // plugin, in the terminal as the setup last saw it (lastEnv; no image
+  // before session.start has set it up) and in the colour the caller names.
+  on('engine.create', async ($, e, next) => {
+    const built = await next(e)
+    const kittex: Kittex = {
+      formula: async request => formulaOf(request, off || lastEnv === undefined ? null : lastEnv, terminalColors, math),
+    }
+    return { ...built, kittex }
+  })
 
   // /kittex-doctor (doctor.ts), whatever the options: kittex's own command,
   // answered here (a registered command has no core); no other command is hooked.

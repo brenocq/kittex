@@ -1,5 +1,6 @@
-// kittex's contract: the values it keeps in `$.state` (PluginState), named in
-// plugin.json as "types". Self-contained (no import), types only.
+// kittex's contract: the values it keeps in `$.state` (PluginState) and the
+// noun it adds to `$` (`$.kittex`, Kittex), named in plugin.json as "types".
+// Self-contained (no import), types only.
 
 /** What drawing needs to know about the terminal (kittex.env). */
 export type KittexEnv = {
@@ -110,7 +111,49 @@ export type KittexBlock = {
   cwd?: string
 }
 
+/**
+ * A formula another plugin asks kittex to typeset with `$.kittex.formula`
+ * (a pane that shows math, say).
+ */
+export type KittexFormulaRequest = {
+  /** The TeX, without its `$` delimiters. */
+  tex: string
+  /** A display formula (several rows, centred); else inline, one row tall. */
+  display?: boolean
+  /** The ink, as a Text with that `color` draws it: `#rgb`, `#rrggbb`, a colour name (`red`, `gray`) or `ansi:<name>` for the terminal palette's; the terminal's text colour when absent or unread. */
+  color?: string
+  /** The most columns the image takes; the terminal's width when absent. */
+  maxColumns?: number
+}
+
+/** A typeset formula, for an Image where `image` is given, else its Unicode. */
+export type KittexFormula = {
+  /** Its Unicode lines (one inline), for where no image is shown; null where it has none (draw the TeX). */
+  text: string[] | null
+  /** Its image, where the terminal draws images and the kind's option is `image`; absent when it fits no row (inline) or failed. */
+  image?: {
+    /** A PNG of exactly columns × rows cells, in base64 (an Image's `source.png`). */
+    png: string
+    columns: number
+    rows: number
+    /** A hash of the pixels: an Image whose pixels change must be a new element (key it by this). */
+    key: string
+  }
+  /** Why it got no image, when typesetting failed. */
+  error?: string
+}
+
+/** What kittex adds to `$`. */
+export type Kittex = {
+  /** Typesets one formula; never rejects. */
+  formula(request: KittexFormulaRequest): Promise<KittexFormula>
+}
+
 declare module 'claude-code' {
+  interface EngineInterface {
+    kittex: Kittex
+  }
+
   interface PluginState {
     kittex: {
       /** The terminal as drawing sees it; null until session.start set it up, or when that failed. */

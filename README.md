@@ -184,6 +184,12 @@ the first plugin installed is the outermost one, and kittex only sees a reply
 when it sits outside such a mod (it then hands each piece of prose to it). If
 prismantis is already installed, reinstall it after kittex.
 
+A mod that draws math of its own, in a pane say, can have kittex typeset it:
+`$.kittex.formula({ tex, display, color, maxColumns })` resolves to the
+formula's image (for an `Image`) in the colour it names and its Unicode, for
+where no image is shown. Its types are kittex's contract,
+`plugin/types/index.d.ts`.
+
 </details>
 
 <details>
