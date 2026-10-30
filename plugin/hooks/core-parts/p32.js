@@ -725,6 +725,20 @@ function fitImageBlock(own, block2, box2) {
   const heightPx = Math.max(1, Math.round(height2 * k));
   return { ...cellsFor(widthPx, heightPx, box2), widthPx, heightPx, images };
 }
+function blockCells(fit, box2, rows = fit.rows) {
+  const left = (fit.columns * box2.cellWidth - fit.widthPx) / 2;
+  const top = (rows * box2.cellHeight - fit.heightPx) / 2;
+  const span = (from, size, cell, count) => {
+    const start = Math.min(count - 1, Math.max(0, Math.round(from / cell)));
+    const end = Math.min(count, Math.max(start + 1, Math.round((from + size) / cell)));
+    return [start, end - start];
+  };
+  return fit.images.map((place) => {
+    const [column, columns] = span(left + place.x, place.widthPx, box2.cellWidth, fit.columns);
+    const [row, height2] = span(top + place.y, place.heightPx, box2.cellHeight, rows);
+    return { column, row, columns, rows: height2 };
+  });
+}
 // core/src/image/bitmap.ts
 var ImageError = class extends Error {
   name = "ImageError";
@@ -1346,4 +1360,4 @@ var inflt = function(dat, st, buf, dict) {
   } while (!final);
   return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
 };
-export{u8,u16,shft,clim,flt,fdt,hMap,flm,fdm,fleb,fdeb,i32,revfl,revfd,slc,err,inflt,ImageError,checkSize,imageHeader,decodeJpeg,assumedBackground,contrast,adaptColor,legible,texPicture,fitImage,blockImages,fitImageBlock,FORMAT_SOURCE,LATEX_ARGV,TRIAL_PDF,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,imageBlock,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,parseLength,pdfArgv,pdfCopyArgv,resolveImagePath,texEnvironment,texError,ulimitProbe,unsafeTex};
+export{u8,u16,shft,clim,flt,fdt,hMap,flm,fdm,fleb,fdeb,i32,revfl,revfd,slc,err,inflt,ImageError,checkSize,imageHeader,decodeJpeg,assumedBackground,contrast,adaptColor,legible,texPicture,fitImage,blockImages,fitImageBlock,blockCells,FORMAT_SOURCE,LATEX_ARGV,TRIAL_PDF,bwrapProbe,confined,diagramDocument,diagramFence,drawsPicture,dvisvgmArgv,formatArgv,formatName,imageBlock,inlineTables,isJobDir,jobDirTemplate,latexArgv,mathDocument,parseLength,pdfArgv,pdfCopyArgv,resolveImagePath,texEnvironment,texError,ulimitProbe,unsafeTex};

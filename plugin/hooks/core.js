@@ -1,4 +1,4 @@
-import{BUILD_ID,DIAGRAM_ENVS,FORMAT_SOURCE,GHOSTTY_BUILTIN_FONT,GlyphError,IMAGE_FILE_BYTES,IMAGE_GAP,INLINE_OVERFLOW,ImageError,JOB_NAME,KEPT_IMAGE_PIXELS,LATEX_ARGV,LINE_WIDTH_PT,MAX_BLOCK_IMAGES,MAX_IMAGE_BYTES,MAX_IMAGE_FILE_BYTES,MAX_IMAGE_PIXELS,MAX_IMAGE_SIDE,MAX_PICTURE_ROWS,MAX_PIXELS,MAX_TEX_LENGTH,MAX_TEX_SOURCE,MIN_DISPLAY_SCALE,MIN_IMAGE_DENSITY,MIN_INLINE_SCALE,MIN_PICTURE_SCALE,PDF_NAME,PREAMBLE_VERSION,SvgError,TEXT_HEIGHT_PT,TRIAL_PDF,TexError,VECTOR_PX_PER_EM,XmlError,adaptColor,assumedBackground,blockImages,blockParts,bwrapProbe,cellProbe,cellProbeRan,cellProbes,charsOf,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,confined,coreTextFontArgv,createLineScanner,decodeImage,detectTerminal,diagramDocument,diagramFence,drawsEmojiSequences,drawsPicture,dvisvgmArgv,emPxForCell,encodePng,encodeRgbaPng2,engineHyperlinks,faceIndexOf,fitImage,fitImageBlock,fontCell,fontFileArgv,formatArgv,formatName,imageBlock,imageColumns,imageHeader,imageInkBackground,imageInkCurve,init,initTypeset,inkAlpha,inlineTables,isJobDir,jobDirTemplate,latexArgv,layoutHeading,layoutList,layoutProse,layoutQuote,layoutTable,matchesFamily,mathDocument,mathEmPx,measure,measureDisplay,measureDisplayResult,measureImage,measureImageBlock,measureInline,measureInlineResult,measurePicture2,odArgv,parseCoreTextFont,parseFontFile,parseLength,parseOd,pdfArgv,pdfCopyArgv,pictureSource,previewDisplay,previewInline,previewWidth,proseBlocks,rasterize,readFontMetrics,readImageFile,readTerminalColors,recolorPng,renderDisplay,renderDisplayResult,renderImage,renderImageBlock,renderInline,renderInlineResult,renderPicture,resolveImagePath,scaleBitmap,scan,strokeWeight,texEnvironment,texError,texFormula,texPicture2,texToMathML2,textBaseline,textLayout,textWidth,toBase64,toHex,toUnicode,typeset,typesetLoaded,ulimitProbe,unsafeTex,visibleProse,wrapLine,wrapRows}from'./core-parts/p36.js';
+import{BUILD_ID,DIAGRAM_ENVS,FORMAT_SOURCE,GHOSTTY_BUILTIN_FONT,GlyphError,IMAGE_FILE_BYTES,IMAGE_GAP,INLINE_OVERFLOW,ImageError,JOB_NAME,KEPT_IMAGE_PIXELS,LATEX_ARGV,LINE_WIDTH_PT,MAX_BLOCK_IMAGES,MAX_IMAGE_BYTES,MAX_IMAGE_FILE_BYTES,MAX_IMAGE_PIXELS,MAX_IMAGE_SIDE,MAX_PICTURE_ROWS,MAX_PIXELS,MAX_TEX_LENGTH,MAX_TEX_SOURCE,MIN_DISPLAY_SCALE,MIN_IMAGE_DENSITY,MIN_INLINE_SCALE,MIN_PICTURE_SCALE,PDF_NAME,PREAMBLE_VERSION,SvgError,TEXT_HEIGHT_PT,TRIAL_PDF,TexError,VECTOR_PX_PER_EM,XmlError,adaptColor,assumedBackground,blockCells,blockImages,blockParts,bwrapProbe,cellProbe,cellProbeRan,cellProbes,charsOf,chooseInk,claudeCustomThemePath,claudeThemeInk,claudeThemeScheme,colorProbes,confined,coreTextFontArgv,createLineScanner,decodeImage,detectTerminal,diagramDocument,diagramFence,drawsEmojiSequences,drawsPicture,dvisvgmArgv,emPxForCell,encodePng,encodeRgbaPng2,engineHyperlinks,faceIndexOf,fitImage,fitImageBlock,fontCell,fontFileArgv,formatArgv,formatName,imageBlock,imageColumns,imageHeader,imageInkBackground,imageInkCurve,init,initTypeset,inkAlpha,inlineTables,isJobDir,jobDirTemplate,latexArgv,layoutHeading,layoutList,layoutProse,layoutQuote,layoutTable,matchesFamily,mathDocument,mathEmPx,measure,measureDisplay,measureDisplayResult,measureImage,measureImageBlock,measureInline,measureInlineResult,measurePicture2,odArgv,originalPng,parseCoreTextFont,parseFontFile,parseLength,parseOd,pdfArgv,pdfCopyArgv,pictureSource,previewDisplay,previewInline,previewWidth,proseBlocks,rasterize,readFontMetrics,readImageFile,readTerminalColors,recolorPng,renderDisplay,renderDisplayResult,renderImage,renderImageBlock,renderInline,renderInlineResult,renderPicture,resolveImagePath,scaleBitmap,scan,strokeWeight,texEnvironment,texError,texFormula,texPicture2,texToMathML2,textBaseline,textLayout,textWidth,toBase64,toHex,toUnicode,typeset,typesetLoaded,ulimitProbe,unsafeTex,visibleProse,wrapLine,wrapRows}from'./core-parts/p37.js';
 export {
   BUILD_ID,
   DIAGRAM_ENVS,
@@ -36,6 +36,7 @@ export {
   XmlError,
   adaptColor,
   assumedBackground,
+  blockCells,
   blockImages,
   blockParts,
   bwrapProbe,
@@ -98,6 +99,7 @@ export {
   measureInlineResult,
   measurePicture2 as measurePicture,
   odArgv,
+  originalPng,
   parseCoreTextFont,
   parseFontFile,
   parseLength,
