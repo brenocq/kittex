@@ -48,9 +48,12 @@ import {
   TexError,
   strokeWeight,
   toBase64,
+  originalPng,
   BUILD_ID,
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
+import { COPIED_IMAGE, COPY_IMAGE_LABEL, copyImage, failedCopy } from './clipboard.ts'
+import type { ClipboardImage } from './clipboard.ts'
 import { formulaOf } from './formula.ts'
 import { imageBlockOf, imageBook, NO_PDF } from './image.ts'
 import type { ImageHost } from './image.ts'
@@ -684,18 +687,55 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
     // formula (the engine copies screen cells and offers no hook), so each image
     // carries a copy button, shown while the pointer is over it (fullscreen), in
     // its top-right corner: absolute, so it moves no row. An image block's
-    // copies the paths of its files, placed as they were drawn.
+    // images carry theirs each over its own cells (imageButtons).
+    const copyText = (action: ReturnType<typeof copyAction>) => async () => {
+      const copied = await $.ui.copy({ text: action.text, surface: e.surface })
+      $.ui.toast(copied.isCopied ? action.copied : action.failed)
+    }
     const copyButton = (key: string, tex: string, source?: string, kind?: DiagramKind) => {
       const action = copyAction(tex, source, source !== undefined && kind !== undefined ? imageBook.paths(source, kind, found.block?.cwd) : undefined)
-      const press = async () => {
-        const copied = await $.ui.copy({ text: action.text, surface: e.surface })
-        $.ui.toast(copied.isCopied ? action.copied : action.failed)
-      }
       return (
         <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-          <Button key={key} label={action.label} plain dimColor onPress={press} />
+          <Button key={key} label={action.label} plain dimColor onPress={copyText(action)} />
         </Box>
       )
+    }
+    // An image puts itself on the system clipboard: a PNG or JPEG file as it
+    // is, an SVG or PDF drawn to a PNG in its own colors (originalPng).
+    const copyImagePress = (path: string) => async () => {
+      try {
+        const outcome = await imageBook.load({ path }, TEX_BACKGROUND_MS)
+        if (!outcome.ok) return $.ui.toast(failedCopy(outcome.error))
+        const source = outcome.source
+        const image: ClipboardImage =
+          source.kind === 'bitmap' && source.format !== undefined ? { kind: 'file', path, format: source.format } : { kind: 'png', base64: toBase64(originalPng(source)) }
+        const [wayland, tmpdir] = await Promise.all([$.env.get('WAYLAND_DISPLAY'), $.env.get('TMPDIR')])
+        const copied = await copyImage({ run: (argv, init) => $.process.run([...argv], init) }, { platform, wayland: Boolean(wayland), tmpdir }, image)
+        $.ui.toast(copied.ok ? COPIED_IMAGE : failedCopy(copied.reason))
+      } catch (error) {
+        $.ui.toast(failedCopy(error instanceof Error ? error.message : String(error)))
+      }
+    }
+    // Each image of an image block gets its own "copy path" and "copy image",
+    // in the top-right corner of the cells it covers. Those cells are a keyed
+    // Box of their own, the hover scope that shows the buttons, so the pointer
+    // over one image shows only that image's.
+    const imageButtons = (k: number, inline: InlineSlot['inline']) => {
+      const paths = inline.copy !== undefined && inline.diagram !== undefined ? imageBook.paths(inline.copy, inline.diagram, found.block?.cwd) : undefined
+      const cells = inline.image.cells
+      if (paths === undefined || paths.length === 0 || cells?.length !== paths.length) return copyButton(`kittex-copy-${k}`, inline.tex, inline.copy, inline.diagram)
+      return cells.map((cell, j) => {
+        const path = paths[j] ?? ''
+        const action = copyAction(inline.tex, inline.copy, [path])
+        return (
+          <Box key={`kittex-cell-${k}-${j}`} position="absolute" top={cell.row} left={cell.column} width={cell.columns} height={cell.rows}>
+            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }} flexDirection="column" alignItems="flex-end">
+              <Button key={`kittex-copy-${k}-${j}`} label={action.label} plain dimColor onPress={copyText(action)} />
+              <Button key={`kittex-copy-image-${k}-${j}`} label={COPY_IMAGE_LABEL} plain dimColor onPress={copyImagePress(path)} />
+            </Box>
+          </Box>
+        )
+      })
     }
     const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
       piece.kind === 'image' && left.has(piece.image) ? (
@@ -748,7 +788,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
                   rows={inline.image.rows}
                   alt={shownAlt ? altText(inline.tex) : inline.display ? BLANK_ALT : inlineAlt(inline.tex, inlineEnv, inline.image.columns)}
                 />
-                {inline.display ? copyButton(`kittex-copy-${k}`, inline.tex, inline.copy, inline.diagram) : null}
+                {inline.display ? imageButtons(k, inline) : null}
               </Box>
             ))}
           </Box>

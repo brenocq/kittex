@@ -12,6 +12,7 @@ import { blockImages, createLineScanner, imageBlock, init, measureImageBlock, re
 import type { ImageSource, ImageSpec } from '../hooks/core.js'
 import { COPY_PATH_LABEL, DIAGRAM_INSTRUCTIONS, IMAGE_LABEL, imageInstructions, MATH_INSTRUCTIONS, MessageStream, NOT_RENDERED, pictureEnvFor, planLanded, renderEnvFor, SECTION_ID, STREAMED_PATTERN } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
+import { clipboardArgv, COPIED_IMAGE, COPY_IMAGE_LABEL, failedCopy } from '../hooks/clipboard.ts'
 import { ImageBook, imageBlockOf, imageBook } from '../hooks/image.ts'
 import type { ImageHost } from '../hooks/image.ts'
 import { texBook } from '../hooks/tex.ts'
@@ -482,7 +483,24 @@ describe('image blocks in a session', () => {
     expect(centre(after[0]!)).not.toEqual([0, 200, 0, 255])
   })
 
-  test("an image block's copy button copies the paths of its files, as they were drawn", async ($, on) => {
+  /** Every Box keyed as one image's cells (`kittex-cell-`): its props, the labels of the Buttons inside, and the box that shows them (props, hover). */
+  function cellBoxes(node: unknown): { props: Record<string, unknown>; labels: string[]; corner: unknown }[] {
+    if (typeof node !== 'object' || node === null) return []
+    const element = node as { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+    const labels = (one: unknown): string[] => {
+      if (typeof one !== 'object' || one === null) return []
+      const inner = one as { type?: unknown; props?: { label?: unknown }; children?: unknown[] }
+      return [...(inner.type === 'Button' && typeof inner.props?.label === 'string' ? [inner.props.label] : []), ...(inner.children ?? []).flatMap(labels)]
+    }
+    if (element.type === 'Box' && String(element.props?.['key']).startsWith('kittex-cell-')) {
+      return [{ props: element.props ?? {}, labels: labels(element), corner: (element.children ?? [])[0] }]
+    }
+    return (element.children ?? []).flatMap(cellBoxes)
+  }
+
+  const TWO = '```latex\n\\includegraphics{out/plot.png}\\hfill\n\\includegraphics{out/green.png}\n```'
+
+  test("each image of a block has its own copy path and copy image over its own cells; copy path copies that image's path, as drawn", async ($, on) => {
     const copied: string[] = []
     on('ui.copy', ($, e) => {
       copied.push(e.text)
@@ -493,18 +511,119 @@ describe('image blocks in a session', () => {
     await startSession($, on)
     await init()
     const shown = await streamReply($, 'm1', `Here:\n\n${FENCE}\n\nDone.\n`)
-    const two = '```latex\n\\includegraphics{out/plot.png}\\hfill\n\\includegraphics{out/green.png}\n```'
-    const both = await streamReply($, 'm2', `Both:\n\n${two}\n\nDone.\n`)
-    // After a /cd the button still names the file the reply drew.
+    const both = await streamReply($, 'm2', `Both:\n\n${TWO}\n\nDone.\n`)
+    // After a /cd the buttons still name the files the reply drew.
     where.cwd = '/v'
     await streamReply($, 'm3', 'Moved.\n')
-    for (const text of [shown, both]) {
-      const ui = await mount($, text)
-      const button = await ui.find({ type: 'Button' })
-      expect(button?.props).toMatchObject({ label: COPY_PATH_LABEL })
-      await ui.press({ key: String(button?.key) })
+    const one = await mount($, shown)
+    const two = await mount($, both)
+    const [alone] = cellBoxes(await one.drawn())
+    const pair = cellBoxes(await two.drawn())
+    // Each image's cells hold its two buttons, stacked in their top-right corner, shown on hover.
+    for (const cell of [alone, ...pair]) {
+      expect(cell?.labels).toEqual([COPY_PATH_LABEL, COPY_IMAGE_LABEL])
+      expect(cell?.props).toMatchObject({ position: 'absolute' })
+      expect(cell?.corner).toMatchObject({ props: { position: 'absolute', top: 0, right: 0, display: 'none', flexDirection: 'column' }, hover: { display: 'flex' } })
     }
-    expect(copied).toEqual(['/w/out/plot.png', '/w/out/plot.png\n/w/out/green.png'])
+    expect(pair).toHaveLength(2)
+    const [left, right] = pair.map(cell => cell.props as { left: number; width: number; top: number; height: number })
+    expect(left!.left + left!.width).toBeLessThanOrEqual(right!.left)
+    for (const ui of [one, two]) {
+      for (const button of await ui.findAll({ type: 'Button', text: COPY_PATH_LABEL })) await ui.press({ key: String(button.key) })
+    }
+    expect(copied).toEqual(['/w/out/plot.png', '/w/out/plot.png', '/w/out/green.png'])
+  })
+
+  /** A session on `uname` and `env` whose clipboard commands are answered by `answer`; the commands it ran and the toasts it showed. */
+  async function clipboardSession($: Engine, on: On, uname: string | undefined, env: Record<string, string>, files: Map<string, { base64: string; mtimeMs: number }>, answer: (argv: readonly string[], stdin?: string) => { exitCode: number; stdout: string; stderr?: string } | undefined) {
+    const runs: { argv: string[]; stdin: string | undefined }[] = []
+    const toasts: string[] = []
+    on('ui.toast', ($, e) => {
+      toasts.push(e.text)
+      return { value: undefined }
+    })
+    serveDisk(on, files, { cwd: '/w' })
+    await startSession($, on, { ...KITTY, ...env }, 'dark', undefined, (argv, stdin) => {
+      if (argv[0] === 'uname') return uname === undefined ? undefined : { exitCode: 0, stdout: `${uname}\n` }
+      const clipboard = ['osascript', 'sh', 'mktemp', 'rm'].includes(argv[0] ?? '')
+      if (clipboard) runs.push({ argv: [...argv], stdin })
+      return clipboard ? answer(argv, stdin) : undefined
+    })
+    await init()
+    return { runs, toasts }
+  }
+
+  /** Presses the copy image button of the `n`th image of the block in `text`. */
+  async function copyImageOf($: Engine, text: string, n = 0) {
+    const ui = await mount($, text)
+    const buttons = await ui.findAll({ type: 'Button', text: COPY_IMAGE_LABEL })
+    await ui.press({ key: String(buttons[n]?.key) })
+  }
+
+  const DISK = new Map([['/w/out/plot.png', { base64: GRADIENT_B64, mtimeMs: 1 }], ['/w/out/green.png', { base64: GREEN_B64, mtimeMs: 1 }]])
+
+  test('copy image on macOS: osascript reads that image file as PNG data, the path an argument of its own', async ($, on) => {
+    const { runs, toasts } = await clipboardSession($, on, 'Darwin', {}, DISK, () => ({ exitCode: 0, stdout: '' }))
+    await copyImageOf($, `Both:\n\n${TWO}\n`, 1)
+    expect(runs.map(run => run.argv)).toEqual([clipboardArgv({ platform: 'darwin', wayland: false }, '/w/out/green.png', 'png')])
+    expect(runs[0]?.argv).toEqual(['osascript', '-e', 'on run argv', '-e', 'set the clipboard to (read (POSIX file (item 1 of argv)) as «class PNGf»)', '-e', 'end run', '/w/out/green.png'])
+    expect(toasts).toEqual([COPIED_IMAGE])
+  })
+
+  test('copy image on Linux: wl-copy under Wayland, else xclip, both through sh with the path and type as arguments', async ($, on) => {
+    const wayland = await clipboardSession($, on, 'Linux', { WAYLAND_DISPLAY: 'wayland-0' }, DISK, () => ({ exitCode: 0, stdout: '' }))
+    await copyImageOf($, `Here:\n\n${FENCE}\n`)
+    expect(wayland.runs.map(run => run.argv)).toEqual([['sh', '-c', 'wl-copy --type "$2" < "$1" >/dev/null 2>&1', 'sh', '/w/out/plot.png', 'image/png']])
+    expect(wayland.toasts).toEqual([COPIED_IMAGE])
+  })
+
+  test('copy image on Linux without Wayland runs xclip', async ($, on) => {
+    const x11 = await clipboardSession($, on, 'Linux', {}, DISK, () => ({ exitCode: 0, stdout: '' }))
+    await copyImageOf($, `Here:\n\n${FENCE}\n`)
+    expect(x11.runs.map(run => run.argv)).toEqual([['sh', '-c', 'xclip -selection clipboard -t "$2" -i "$1" >/dev/null 2>&1', 'sh', '/w/out/plot.png', 'image/png']])
+    expect(x11.toasts).toEqual([COPIED_IMAGE])
+  })
+
+  test('copy image of an SVG: a PNG at its own size and colors goes to a temporary file, is copied, and the directory is removed', async ($, on) => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><rect width="300" height="100" fill="#000040"/></svg>'
+    const files = new Map([['/w/out/fig.svg', { base64: btoa(svg), mtimeMs: 1 }]])
+    const dir = '/tmp/kittex-tex.CoPyImAgE0'
+    const { runs, toasts } = await clipboardSession($, on, 'Darwin', { TMPDIR: '/tmp/' }, files, argv => ({ exitCode: 0, stdout: argv[0] === 'mktemp' ? `${dir}\n` : '' }))
+    await copyImageOf($, 'Here:\n\n```latex\n\\includegraphics{out/fig.svg}\n```\n')
+    expect(runs.map(run => run.argv)).toEqual([
+      ['mktemp', '-d', '/tmp/kittex-tex.XXXXXXXXXX'],
+      ['sh', '-c', 'base64 -d > "$1"', 'sh', `${dir}/image.png`],
+      clipboardArgv({ platform: 'darwin', wayland: false }, `${dir}/image.png`, 'png'),
+      ['rm', '-rf', '--', dir],
+    ])
+    const png = source(fromBase64(runs[1]?.stdin ?? ''))
+    if (png.kind !== 'bitmap') throw new Error('not a bitmap')
+    expect([png.width, png.height]).toEqual([450, 150])
+    const at = (75 * 450 + 225) * 4
+    expect([...png.bitmap.rgba.subarray(at, at + 4)]).toEqual([0, 0, 64, 255])
+    expect(toasts).toEqual([COPIED_IMAGE])
+  })
+
+  test('copy image fails with a toast and never throws: a missing tool, a failing one, no known tool, a PNG that could not be written', async ($, on) => {
+    let answer: (argv: readonly string[]) => { exitCode: number; stdout: string; stderr?: string } = () => ({ exitCode: 127, stdout: '' })
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="10"/>'
+    const files = new Map([...DISK, ['/w/out/fig.svg', { base64: btoa(svg), mtimeMs: 1 }]])
+    const { runs, toasts } = await clipboardSession($, on, 'Linux', {}, files, argv => answer(argv))
+    await copyImageOf($, `Here:\n\n${FENCE}\n`)
+    answer = () => ({ exitCode: 1, stdout: '', stderr: 'Error: Can\'t open display: (null)\n' })
+    await copyImageOf($, `Here:\n\n${FENCE}\n`)
+    answer = argv => (argv[0] === 'mktemp' ? { exitCode: 0, stdout: '/tmp/kittex-tex.FaIlEdPnG0\n' } : { exitCode: argv[0] === 'sh' ? 1 : 0, stdout: '' })
+    await copyImageOf($, 'Here:\n\n```latex\n\\includegraphics{out/fig.svg}\n```\n')
+    expect(toasts).toEqual([failedCopy('xclip not found'), failedCopy("Error: Can't open display: (null)"), failedCopy('could not write the PNG')])
+    // The temporary directory is removed after a failure too.
+    expect(runs.at(-1)?.argv).toEqual(['rm', '-rf', '--', '/tmp/kittex-tex.FaIlEdPnG0'])
+  })
+
+  test('copy image where uname told nothing: no clipboard tool, said in the toast', async ($, on) => {
+    const { runs, toasts } = await clipboardSession($, on, undefined, {}, DISK, () => ({ exitCode: 0, stdout: '' }))
+    await copyImageOf($, `Here:\n\n${FENCE}\n`)
+    expect(runs).toEqual([])
+    expect(toasts).toEqual([failedCopy('no clipboard tool known for this system')])
   })
 
   test('the instructions tell the model how to show a file, PDF left out without TeX', async ($, on) => {
@@ -561,6 +680,23 @@ describe('image blocks in a session', () => {
 })
 
 // Keep the fixtures honest: both decode to 60 × 30.
+describe('the clipboard command', () => {
+  test('a path with quotes, backslashes and $( ) is an argument of its own, never script text; a JPEG goes as JPEG', () => {
+    const path = `/w/it's "a" \\ $(touch x) \`id\`.jpg`
+    const systems = [
+      { platform: 'darwin', wayland: false },
+      { platform: 'linux', wayland: true },
+      { platform: 'linux', wayland: false },
+    ]
+    const [mac, wayland, x11] = systems.map(system => clipboardArgv(system, path, 'jpeg'))
+    expect(mac?.at(-1)).toBe(path)
+    expect(mac?.[4]).toBe('set the clipboard to (read (POSIX file (item 1 of argv)) as «class JPEG»)')
+    for (const argv of [wayland, x11]) expect(argv?.slice(-2)).toEqual([path, 'image/jpeg'])
+    for (const argv of [mac, wayland, x11]) expect(argv?.filter(one => one.includes('touch'))).toEqual([path])
+    expect(clipboardArgv({ platform: 'freebsd', wayland: false }, path, 'png')).toBeUndefined()
+  })
+})
+
 describe('fixtures', () => {
   test('the PNGs are what they say', () => {
     for (const bytes of [GRADIENT, GREEN]) {
