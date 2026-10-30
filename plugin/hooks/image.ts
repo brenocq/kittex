@@ -109,6 +109,16 @@ export class ImageBook {
   }
 
   /**
+   * The files an image block shows, in reading order, each path placed as
+   * the block draws it (against `cwd`, the reply's, else the book's), for
+   * its copy button; undefined for a diagram that is no image block.
+   */
+  paths(source: string, kind: DiagramKind, cwd: string | undefined): string[] | undefined {
+    const block = imageBlockOf(source, kind)
+    return block && blockImages(this.place(block, cwd ?? this.cwd)).map(image => image.path)
+  }
+
+  /**
    * What a block's files gave, as far as this process read them: all drawn,
    * or the first file (in reading order) that failed for good; undefined
    * while any is unread or failed only for now.

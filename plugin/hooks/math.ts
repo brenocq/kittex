@@ -60,9 +60,34 @@ export const BULLET = { macos: '⏺', other: '●' } as const
 /** The label of the copy button shown over a formula image while the pointer is on it. */
 export const COPY_LABEL = '⧉ copy LaTeX'
 
+/** The label of the copy button over an image block's picture, which copies the paths of its files. */
+export const COPY_PATH_LABEL = '⧉ copy path'
+
 /** What the copy button puts on the clipboard: the formula as a display block, ready to paste back into markdown. */
 export function copiedFormula(tex: string): string {
   return `$$\n${tex.trim()}\n$$`
+}
+
+/** A picture's copy button: its label, what it copies, and the toast once it copied or failed to. */
+export interface CopyAction {
+  label: string
+  text: string
+  copied: string
+  failed: string
+}
+
+/**
+ * What a picture's copy button copies: the files an image block shows
+ * (`paths`, one per line), else a diagram's source (`source`), else the
+ * formula as a display block.
+ */
+export function copyAction(tex: string, source?: string, paths?: readonly string[]): CopyAction {
+  if (paths !== undefined && paths.length > 0) {
+    const what = paths.length === 1 ? 'the image path' : 'the image paths'
+    return { label: COPY_PATH_LABEL, text: paths.join('\n'), copied: `Copied ${what}`, failed: `Could not copy ${what}` }
+  }
+  if (source !== undefined) return { label: COPY_LABEL, text: source, copied: 'Copied the LaTeX source', failed: 'Could not copy the LaTeX source' }
+  return { label: COPY_LABEL, text: copiedFormula(tex), copied: 'Copied the formula as LaTeX', failed: 'Could not copy the formula' }
 }
 
 /**
@@ -1611,6 +1636,8 @@ export interface InlineImage {
   display?: true
   /** What its copy button copies where that is not the formula as a display block: a diagram's source. */
   copy?: string
+  /** A diagram's kind (with `copy`): an image block's button copies its files' paths instead (imageBook.paths). */
+  diagram?: DiagramKind
 }
 
 /** An inline image as the overlay beside its prose piece lays it out: in the overlay's column, by margins (inlineFlow). */
@@ -2416,7 +2443,7 @@ function layOut(block: string, part: BlockPart, spans: readonly MarkedSpan[], op
         // As wide as the picture: centred across the placeholder, as its label is.
         if (drawn !== null && 'png' in drawn) {
           const col = Math.max(0, Math.floor((span.mark.columns - drawn.columns) / 2))
-          images.push([span, { tex: span.mark.tex, image: drawn, row, col, display: true, copy: span.mark.tex }])
+          images.push([span, { tex: span.mark.tex, image: drawn, row, col, display: true, copy: span.mark.tex, diagram: span.mark.diagram }])
         }
         continue
       }

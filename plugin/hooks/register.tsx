@@ -63,8 +63,7 @@ import {
   CELL_IDLE_MS,
   CELL_REFRESH_MS,
   cellOrFallback,
-  COPY_LABEL,
-  copiedFormula,
+  copyAction,
   DIAGRAM_INSTRUCTIONS,
   imageInstructions,
   FALLBACK_COLUMNS,
@@ -684,10 +683,19 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
     // A selection over an image copies the terminal's placeholder cells, not the
     // formula (the engine copies screen cells and offers no hook), so each image
     // carries a copy button, shown while the pointer is over it (fullscreen), in
-    // its top-right corner: absolute, so it moves no row.
-    const copy = (tex: string, source?: string) => async () => {
-      const copied = await $.ui.copy({ text: source ?? copiedFormula(tex), surface: e.surface })
-      $.ui.toast(copied.isCopied ? (source === undefined ? 'Copied the formula as LaTeX' : 'Copied the LaTeX source') : 'Could not copy the formula')
+    // its top-right corner: absolute, so it moves no row. An image block's
+    // copies the paths of its files, placed as they were drawn.
+    const copyButton = (key: string, tex: string, source?: string, kind?: DiagramKind) => {
+      const action = copyAction(tex, source, source !== undefined && kind !== undefined ? imageBook.paths(source, kind, found.block?.cwd) : undefined)
+      const press = async () => {
+        const copied = await $.ui.copy({ text: action.text, surface: e.surface })
+        $.ui.toast(copied.isCopied ? action.copied : action.failed)
+      }
+      return (
+        <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+          <Button key={key} label={action.label} plain dimColor onPress={press} />
+        </Box>
+      )
     }
     const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
       piece.kind === 'image' && left.has(piece.image) ? (
@@ -697,9 +705,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
       ) : piece.kind === 'image' ? (
         <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
           <Image key={drawnImage(`kittex-image-${i}`, piece.image)} source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={shownAlt ? altText(piece.tex) : BLANK_ALT} />
-          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-            <Button key={`kittex-copy-${i}`} label={COPY_LABEL} plain dimColor onPress={copy(piece.tex, piece.copy)} />
-          </Box>
+          {copyButton(`kittex-copy-${i}`, piece.tex, piece.copy)}
         </Box>
       ) : (
         <Text dimColor>{piece.text}</Text>
@@ -742,11 +748,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
                   rows={inline.image.rows}
                   alt={shownAlt ? altText(inline.tex) : inline.display ? BLANK_ALT : inlineAlt(inline.tex, inlineEnv, inline.image.columns)}
                 />
-                {inline.display ? (
-                  <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-                    <Button key={`kittex-copy-${k}`} label={COPY_LABEL} plain dimColor onPress={copy(inline.tex, inline.copy)} />
-                  </Box>
-                ) : null}
+                {inline.display ? copyButton(`kittex-copy-${k}`, inline.tex, inline.copy, inline.diagram) : null}
               </Box>
             ))}
           </Box>

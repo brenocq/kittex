@@ -10,7 +10,7 @@ import type { On } from 'claude-code'
 
 import { blockImages, createLineScanner, imageBlock, init, measureImageBlock, readImageFile, renderImageBlock } from '../hooks/core.js'
 import type { ImageSource, ImageSpec } from '../hooks/core.js'
-import { DIAGRAM_INSTRUCTIONS, IMAGE_LABEL, imageInstructions, MATH_INSTRUCTIONS, MessageStream, NOT_RENDERED, pictureEnvFor, planLanded, renderEnvFor, SECTION_ID, STREAMED_PATTERN } from '../hooks/math.ts'
+import { COPY_PATH_LABEL, DIAGRAM_INSTRUCTIONS, IMAGE_LABEL, imageInstructions, MATH_INSTRUCTIONS, MessageStream, NOT_RENDERED, pictureEnvFor, planLanded, renderEnvFor, SECTION_ID, STREAMED_PATTERN } from '../hooks/math.ts'
 import type { PreviewRecord, StreamEnv, StreamRewrite } from '../hooks/math.ts'
 import { ImageBook, imageBlockOf, imageBook } from '../hooks/image.ts'
 import type { ImageHost } from '../hooks/image.ts'
@@ -480,6 +480,31 @@ describe('image blocks in a session', () => {
     expect(after).toHaveLength(1)
     expect(centre(after[0]!)).toEqual(centre(before[0]!))
     expect(centre(after[0]!)).not.toEqual([0, 200, 0, 255])
+  })
+
+  test("an image block's copy button copies the paths of its files, as they were drawn", async ($, on) => {
+    const copied: string[] = []
+    on('ui.copy', ($, e) => {
+      copied.push(e.text)
+      return { value: { isCopied: true } }
+    })
+    const where = { cwd: '/w' }
+    serveDisk(on, new Map([['/w/out/plot.png', { base64: GRADIENT_B64, mtimeMs: 1 }], ['/w/out/green.png', { base64: GREEN_B64, mtimeMs: 1 }]]), where)
+    await startSession($, on)
+    await init()
+    const shown = await streamReply($, 'm1', `Here:\n\n${FENCE}\n\nDone.\n`)
+    const two = '```latex\n\\includegraphics{out/plot.png}\\hfill\n\\includegraphics{out/green.png}\n```'
+    const both = await streamReply($, 'm2', `Both:\n\n${two}\n\nDone.\n`)
+    // After a /cd the button still names the file the reply drew.
+    where.cwd = '/v'
+    await streamReply($, 'm3', 'Moved.\n')
+    for (const text of [shown, both]) {
+      const ui = await mount($, text)
+      const button = await ui.find({ type: 'Button' })
+      expect(button?.props).toMatchObject({ label: COPY_PATH_LABEL })
+      await ui.press({ key: String(button?.key) })
+    }
+    expect(copied).toEqual(['/w/out/plot.png', '/w/out/plot.png\n/w/out/green.png'])
   })
 
   test('the instructions tell the model how to show a file, PDF left out without TeX', async ($, on) => {
