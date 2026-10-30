@@ -347,3 +347,33 @@ export function fitImageBlock(own: readonly { width: number; height: number }[],
   const heightPx = Math.max(1, Math.round(height * k))
   return { ...cellsFor(widthPx, heightPx, box), widthPx, heightPx, images }
 }
+
+/** The whole cells one image of a block covers, counted from its picture's top-left cell. */
+export interface ImageCells {
+  column: number
+  row: number
+  columns: number
+  rows: number
+}
+
+/**
+ * The cells each image of a block covers where its picture is `fit.columns`
+ * wide and `rows` tall (fit.rows, or more for a taller placeholder), the
+ * images' area centred in them as renderImageBlock centres it. Each edge is
+ * rounded to the nearest cell line, so neighbours IMAGE_GAP apart share no
+ * cell, and every image keeps at least one cell each way.
+ */
+export function blockCells(fit: BlockFit, box: Pick<ImageBox, 'cellWidth' | 'cellHeight'>, rows: number = fit.rows): ImageCells[] {
+  const left = (fit.columns * box.cellWidth - fit.widthPx) / 2
+  const top = (rows * box.cellHeight - fit.heightPx) / 2
+  const span = (from: number, size: number, cell: number, count: number) => {
+    const start = Math.min(count - 1, Math.max(0, Math.round(from / cell)))
+    const end = Math.min(count, Math.max(start + 1, Math.round((from + size) / cell)))
+    return [start, end - start] as const
+  }
+  return fit.images.map(place => {
+    const [column, columns] = span(left + place.x, place.widthPx, box.cellWidth, fit.columns)
+    const [row, height] = span(top + place.y, place.heightPx, box.cellHeight, rows)
+    return { column, row, columns, rows: height }
+  })
+}

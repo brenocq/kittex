@@ -1,6 +1,6 @@
 import { blockParts, charsOf, engineHyperlinks, layoutHeading, layoutList, layoutProse, layoutQuote, layoutTable, proseBlocks, textWidth, visibleProse, wrapLine, wrapRows } from './layout/index.js'
 import { adaptColor, assumedBackground, contrast, legible, readSvg, svgTextTex, texPicture as readTexPicture, type SvgTextRun, type TexDocument } from './diagram/index.js'
-import { type BlockFit, type BlockImage, blockImages, fitImage, fitImageBlock, type ImageBlock, type ImageBox, type ImageSpec } from './image/block.js'
+import { type BlockFit, type BlockImage, blockCells, blockImages, fitImage, fitImageBlock, type ImageBlock, type ImageBox, type ImageCells, type ImageSpec } from './image/block.js'
 import { type Bitmap, decodeImage, encodeRgbaPng as encodeBitmapPng, ImageError, imageHeader, MAX_IMAGE_PIXELS, scaleBitmap } from './image/index.js'
 import { encodePicturePng, encodePng, INK_EDGE, inkAlpha, measure, measurePicture as pictureCells, pictureOutlines, rasterize, rasterizePicture, recolorPng, strokeWeight } from './raster/index.js'
 import { createLineScanner, scan } from './scan/index.js'
@@ -76,8 +76,8 @@ export {
   toHex,
 } from './terminal/index.js'
 export type { ByteReader, ColorProbeOptions, ConfigReadOptions, FileReader, FontFile, FontMetrics, InkSources, TextLayout } from './terminal/index.js'
-export { blockImages, fitImage, fitImageBlock, IMAGE_GAP, imageBlock, LINE_WIDTH_PT, MAX_BLOCK_IMAGES, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
-export type { BlockFit, BlockImage, ImageBlock, ImageBox, ImageFit, ImageLength, ImageSpec } from './image/block.js'
+export { blockCells, blockImages, fitImage, fitImageBlock, IMAGE_GAP, imageBlock, LINE_WIDTH_PT, MAX_BLOCK_IMAGES, parseLength, resolveImagePath, TEXT_HEIGHT_PT } from './image/block.js'
+export type { BlockFit, BlockImage, ImageBlock, ImageBox, ImageCells, ImageFit, ImageLength, ImageSpec } from './image/block.js'
 export { ImageError, imageHeader, MAX_IMAGE_PIXELS } from './image/index.js'
 export type { Bitmap, ImageFormat } from './image/index.js'
 export { createLineScanner, encodePng, GlyphError, initTypeset, inkAlpha, measure, rasterize, recolorPng, scan, strokeWeight, TexError, texToMathML, toUnicode, typeset, typesetLoaded }
@@ -147,6 +147,8 @@ export type InkPlace = NonNullable<RasterOptions['inkPlace']>
 export interface RenderedImage extends CellBox {
   /** A PNG of exactly columns × cellWidth by rows × cellHeight pixels. */
   png: Uint8Array
+  /** An image block's drawing (renderImageBlock): the cells each of its images covers, in reading order. */
+  cells?: readonly ImageCells[]
 }
 
 /**
@@ -653,7 +655,7 @@ const SVG_EM_PER_UNIT = 72.27 / 72 / 10
  * size in pixels (a vector's at VECTOR_PX_PER_EM), which sizes it.
  */
 export type ImageSource =
-  | { kind: 'bitmap'; width: number; height: number; bitmap: Bitmap }
+  | { kind: 'bitmap'; width: number; height: number; bitmap: Bitmap; format?: 'png' | 'jpeg' }
   | { kind: 'picture'; width: number; height: number; picture: Picture }
 
 /**
@@ -675,7 +677,23 @@ export function readImageFile(bytes: Uint8Array): ImageSource | 'pdf' {
   const pixels = bitmap.width * bitmap.height
   const k = pixels > KEPT_IMAGE_PIXELS ? Math.sqrt(KEPT_IMAGE_PIXELS / pixels) : 1
   const kept = k < 1 ? scaleBitmap(bitmap, Math.max(1, Math.round(bitmap.width * k)), Math.max(1, Math.round(bitmap.height * k))) : bitmap
-  return { kind: 'bitmap', width: bitmap.width, height: bitmap.height, bitmap: kept }
+  return { kind: 'bitmap', width: bitmap.width, height: bitmap.height, bitmap: kept, format: header.format }
+}
+
+/**
+ * An image file as a PNG of its own: a picture (SVG, a PDF's page) drawn at
+ * its own size in its own colours, as the file shows it elsewhere (not
+ * adapted to the terminal's background, nor its strokes darkened), a bitmap
+ * at the pixels kept of it; never more than MAX_IMAGE_PIXELS, a larger
+ * picture scaled down to them.
+ */
+export function originalPng(source: ImageSource): Uint8Array {
+  if (source.kind === 'bitmap') return encodeBitmapPng(source.bitmap)
+  const k = Math.min(1, Math.sqrt(MAX_IMAGE_PIXELS / Math.max(1, source.width * source.height)))
+  const width = Math.max(1, Math.floor(source.width * k))
+  const height = Math.max(1, Math.floor(source.height * k))
+  const raster = rasterizePicture(source.picture, { emPx: width / source.picture.width, cellWidth: width, cellHeight: height, maxColumns: 1, maxRows: 1, weight: 0, color: color => color })
+  return encodeBitmapPng({ width: raster.widthPx, height: raster.heightPx, rgba: raster.rgba })
 }
 
 /** The sandbox's TextDecoder (AGENTS.md lists it), which core's lib (ES2023, no DOM) doesn't declare. */
@@ -817,9 +835,13 @@ export function measureImageBlock(sources: readonly ImageSource[], block: ImageB
 export function renderImageBlock(sources: readonly ImageSource[], block: ImageBlock, env: PictureEnv, minRows?: number, density = 1): RenderedImage & { density: number } {
   checkSources(sources, block)
   const sole = soleImage(block)
-  if (sole) return renderImage(sources[0]!, sole, env, minRows, density)
+  if (sole) {
+    const image = renderImage(sources[0]!, sole, env, minRows, density)
+    return { ...image, cells: [{ column: 0, row: 0, columns: image.columns, rows: image.rows }] }
+  }
   const fit = fitImageBlock(sources, block, imageBox(env))
   const rows = Math.max(fit.rows, minRows ?? 0)
+  const cells = blockCells(fit, env, rows)
   const fullWidth = fit.columns * env.cellWidth
   const fullHeight = rows * env.cellHeight
   // A photo among them: started as renderImage starts one. Pictures alone compress well and start at full density.
@@ -827,7 +849,7 @@ export function renderImageBlock(sources: readonly ImageSource[], block: ImageBl
   let d = Math.min(1, Math.max(MIN_IMAGE_DENSITY, density), photo ? Math.sqrt(IMAGE_FILE_BYTES / (fullWidth * fullHeight)) : 1)
   for (;;) {
     const png = encodeBitmapPng(composeBlock(sources, fit, env, fullWidth, fullHeight, d))
-    if (png.length <= IMAGE_FILE_BYTES) return { columns: fit.columns, rows, scale: 1, png, density: d }
+    if (png.length <= IMAGE_FILE_BYTES) return { columns: fit.columns, rows, scale: 1, png, density: d, cells }
     if (d <= MIN_IMAGE_DENSITY) throw new TexError('images too large to send to the terminal')
     d = Math.max(MIN_IMAGE_DENSITY, d * 0.7)
   }
