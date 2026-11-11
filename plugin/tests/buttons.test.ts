@@ -1,0 +1,71 @@
+// Where a picture's hover buttons go (buttons.ts): beside it, never over the
+// cells of any Image, so hovering never takes a picture off the screen.
+
+import { describe, expect } from 'claude-code/testing'
+
+import { BUTTON_GAP, buttonSpot } from '../hooks/buttons.ts'
+import type { ButtonBounds, CellBox } from '../hooks/buttons.ts'
+import { test } from './support.ts'
+
+const LABELS = ['⧉ copy path', '⧉ copy image']
+const WIDE = 12
+const ROW = 11 + BUTTON_GAP + 12
+
+const box = (row: number, column: number, rows: number, columns: number): CellBox => ({ row, column, rows, columns })
+const alone = (own: CellBox) => ({ own, frame: own, siblings: [] })
+const open: ButtonBounds = { left: 0, right: 100, top: 0, bottom: 40 }
+
+/** The cells the buttons take, from where buttonSpot puts them. */
+function taken(own: CellBox, spot: ReturnType<typeof buttonSpot>): CellBox {
+  const size = spot.direction === 'column' ? { rows: LABELS.length, columns: WIDE } : { rows: 1, columns: ROW }
+  return { row: own.row + spot.top, column: own.column + spot.left, ...size }
+}
+
+const meets = (a: CellBox, b: CellBox) => a.column < b.column + b.columns && b.column < a.column + a.columns && a.row < b.row + b.rows && b.row < a.row + a.rows
+
+describe('button spot', () => {
+  test('a picture with room to its right gets its buttons stacked there, off its cells', async () => {
+    const own = box(2, 4, 6, 30)
+    const spot = buttonSpot(alone(own), [own], LABELS, open)
+    expect(spot).toEqual({ top: 0, left: 30 + BUTTON_GAP, direction: 'column' })
+    expect(meets(taken(own, spot), own)).toBe(false)
+  })
+
+  test('a picture as wide as the reply gets them in one row above it, or below where the row above is not free', async () => {
+    const own = box(2, 0, 6, 100)
+    expect(buttonSpot(alone(own), [own], LABELS, open)).toEqual({ top: -1, left: 100 - ROW, direction: 'row' })
+    expect(buttonSpot(alone(own), [own], LABELS, { ...open, top: 2 })).toEqual({ top: 6, left: 100 - ROW, direction: 'row' })
+  })
+
+  test('two images side by side in one block: each gets its buttons on its own side, never over the other', async () => {
+    const frame = box(1, 20, 8, 60)
+    const first = box(1, 20, 8, 29)
+    const second = box(1, 51, 8, 29)
+    const one = buttonSpot({ own: first, frame, siblings: [second] }, [frame], LABELS, open)
+    const two = buttonSpot({ own: second, frame, siblings: [first] }, [frame], LABELS, open)
+    expect(one.direction).toBe('column')
+    expect(taken(first, one).column + WIDE).toBeLessThanOrEqual(frame.column)
+    expect(two.direction).toBe('column')
+    expect(taken(second, two).column).toBeGreaterThanOrEqual(frame.column + frame.columns)
+    for (const [own, spot] of [[first, one], [second, two]] as const) expect(meets(taken(own, spot), frame)).toBe(false)
+  })
+
+  test('a block as wide as the reply puts each image\'s buttons above the block, by that image', async () => {
+    const frame = box(1, 0, 8, 100)
+    const first = box(1, 0, 8, 49)
+    const second = box(1, 51, 8, 49)
+    const one = buttonSpot({ own: first, frame, siblings: [second] }, [frame], LABELS, open)
+    const two = buttonSpot({ own: second, frame, siblings: [first] }, [frame], LABELS, open)
+    expect(one).toEqual({ top: -1, left: 49 - ROW, direction: 'row' })
+    expect(two).toEqual({ top: -1, left: 49 - ROW, direction: 'row' })
+  })
+
+  test('another Image in the way is skipped: the buttons go to the next free side', async () => {
+    const own = box(4, 0, 4, 40)
+    const neighbour = box(4, 41, 1, 20)
+    const spot = buttonSpot(alone(own), [own, neighbour], LABELS, open)
+    expect(spot.direction).toBe('row')
+    expect(meets(taken(own, spot), neighbour)).toBe(false)
+    expect(meets(taken(own, spot), own)).toBe(false)
+  })
+})

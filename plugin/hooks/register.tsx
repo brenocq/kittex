@@ -52,7 +52,10 @@ import {
   BUILD_ID,
 } from './core.js'
 import type { ByteReader, CellSize, FontMetrics, ImageSpec, InkPlace, InlineEnv, PictureEnv, RenderedImage, RenderEnv, TerminalColors, TerminalInfo, TexDocument } from './core.js'
+import { BUTTON_GAP, blockPlaces, buttonSpot, lonePlace, piecePlace, proseBounds } from './buttons.ts'
+import type { ButtonBounds, ButtonPlace, CellBox } from './buttons.ts'
 import { COPIED_IMAGE, COPY_IMAGE_LABEL, copyImage, failedCopy } from './clipboard.ts'
+import { cellEnv, sameColor, sameCurve, terminalId } from './env.ts'
 import type { ClipboardImage } from './clipboard.ts'
 import { formulaOf } from './formula.ts'
 import { imageBlockOf, imageBook, NO_PDF } from './image.ts'
@@ -65,7 +68,6 @@ import {
   bulletFor,
   CELL_IDLE_MS,
   CELL_REFRESH_MS,
-  cellOrFallback,
   copyAction,
   DIAGRAM_INSTRUCTIONS,
   imageInstructions,
@@ -82,6 +84,7 @@ import {
   inlineFlow,
   joinProse,
   ON_SCREEN_REPORTED,
+  PIECE_TOP,
   STREAMED_PATTERN,
   linkEnv,
   locatePreviews,
@@ -114,7 +117,7 @@ import type { EngineGraphics, InlineSlot, InstructedSessions, KittexEnv, LandedP
 import type { Kittex } from '../types'
 import { diagramJob, hiddenDirs, mathJob, onPath, pdfPicture, prepareFormat, probeTex, rememberedTex, TEX_BACKGROUND_MS, TEX_STREAM_BUDGET_MS, texBook, texCacheDir, texPath, texResult } from './tex.ts'
 import type { DiagramKind, TexHost } from './tex.ts'
-import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams } from './doctor.ts'
+import { DOCTOR_DESCRIPTION, DOCTOR_PROBE_MS, formatDoctor, osFacts, plain, probeCache, probeDiagrams, terminalFactsOf } from './doctor.ts'
 import type { DoctorFacts, DoctorHost, TerminalFacts } from './doctor.ts'
 
 type Engine = EngineInterface
@@ -685,20 +688,40 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
     const indent = first ? REPLY_INDENT : 0
     // A selection over an image copies the terminal's placeholder cells, not the
     // formula (the engine copies screen cells and offers no hook), so each image
-    // carries a copy button, shown while the pointer is over it (fullscreen), in
-    // its top-right corner: absolute, so it moves no row. An image block's
-    // images carry theirs each over its own cells (imageButtons).
+    // carries a copy button, shown while the pointer is over it (fullscreen):
+    // absolute, so it moves no row, and beside the picture, never on its cells
+    // (buttonSpot), which would take the picture off the screen. An image
+    // block's images carry theirs each beside its own picture (imageButtons).
+    // The revealed Box sits in the Box holding the Image, never in a Box laid
+    // over it: a reveal repaints its parent's cells without an Image outside
+    // that parent, which then stays erased.
     const copyText = (action: ReturnType<typeof copyAction>) => async () => {
       const copied = await $.ui.copy({ text: action.text, surface: e.surface })
       $.ui.toast(copied.isCopied ? action.copied : action.failed)
     }
-    const copyButton = (key: string, tex: string, source?: string, kind?: DiagramKind) => {
-      const action = copyAction(tex, source, source !== undefined && kind !== undefined ? imageBook.paths(source, kind, found.block?.cwd) : undefined)
+    /** A picture's buttons, beside it among `images` within `bounds`, from `at` (its top-left cell in the keyed Box). */
+    const hoverButtons = (buttons: readonly { key: string; label: string; onPress: () => unknown }[], place: ButtonPlace, at = { row: 0, column: 0 }) => {
+      const spot = buttonSpot(place.picture, place.images, buttons.map(button => button.label), place.bounds)
       return (
-        <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-          <Button key={key} label={action.label} plain dimColor onPress={copyText(action)} />
+        <Box
+          position="absolute"
+          top={at.row + spot.top}
+          left={at.column + spot.left}
+          display="none"
+          hover={{ display: 'flex' }}
+          flexDirection={spot.direction}
+          columnGap={BUTTON_GAP}
+          alignItems="flex-start"
+        >
+          {buttons.map(button => (
+            <Button key={button.key} label={button.label} plain dimColor onPress={() => void button.onPress()} />
+          ))}
         </Box>
       )
+    }
+    const copyButton = (key: string, place: ButtonPlace, tex: string, source?: string, kind?: DiagramKind) => {
+      const action = copyAction(tex, source, source !== undefined && kind !== undefined ? imageBook.paths(source, kind, found.block?.cwd) : undefined)
+      return hoverButtons([{ key, label: action.label, onPress: copyText(action) }], place)
     }
     // An image puts itself on the system clipboard: a PNG or JPEG file as it
     // is, an SVG or PDF drawn to a PNG in its own colors (originalPng).
@@ -717,26 +740,33 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
       }
     }
     // Each image of an image block gets its own "copy path" and "copy image",
-    // in the top-right corner of the cells it covers. Those cells are a keyed
-    // Box of their own, the hover scope that shows the buttons, so the pointer
-    // over one image shows only that image's.
-    const imageButtons = (k: number, inline: InlineSlot['inline']) => {
+    // beside its own picture, all of them shown while the pointer is over the
+    // block (a hover scope of each image's own would be a Box laid over it).
+    // `frame`: the block's Image, where the overlay's `images` and `bounds`
+    // place it.
+    const imageButtons = (k: number, inline: InlineSlot['inline'], frame: CellBox, images: readonly CellBox[], bounds: ButtonBounds) => {
       const paths = inline.copy !== undefined && inline.diagram !== undefined ? imageBook.paths(inline.copy, inline.diagram, found.block?.cwd) : undefined
       const cells = inline.image.cells
-      if (paths === undefined || paths.length === 0 || cells?.length !== paths.length) return copyButton(`kittex-copy-${k}`, inline.tex, inline.copy, inline.diagram)
+      if (paths === undefined || paths.length === 0 || cells?.length !== paths.length) return copyButton(`kittex-copy-${k}`, lonePlace(frame, images, bounds), inline.tex, inline.copy, inline.diagram)
+      const places = blockPlaces(frame, cells, images, bounds)
       return cells.map((cell, j) => {
         const path = paths[j] ?? ''
         const action = copyAction(inline.tex, inline.copy, [path])
-        return (
-          <Box key={`kittex-cell-${k}-${j}`} position="absolute" top={cell.row} left={cell.column} width={cell.columns} height={cell.rows}>
-            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }} flexDirection="column" alignItems="flex-end">
-              <Button key={`kittex-copy-${k}-${j}`} label={action.label} plain dimColor onPress={copyText(action)} />
-              <Button key={`kittex-copy-image-${k}-${j}`} label={COPY_IMAGE_LABEL} plain dimColor onPress={copyImagePress(path)} />
-            </Box>
-          </Box>
+        const place = places[j] ?? lonePlace(frame, images, bounds)
+        return hoverButtons(
+          [
+            { key: `kittex-copy-${k}-${j}`, label: action.label, onPress: copyText(action) },
+            { key: `kittex-copy-image-${k}-${j}`, label: COPY_IMAGE_LABEL, onPress: copyImagePress(path) },
+          ],
+          place,
+          cell,
         )
       })
     }
+    // The columns a reply's drawing may take, past the indent its pieces start at.
+    const rightEdge = columns - 1 - indent
+    // An image piece: a blank row above the first, and wherever a piece opens with a gap.
+    const ownPlace = (image: RenderedImage, i: number) => piecePlace(image, indent, rightEdge, { above: i === 0 || pieces[i]?.gap === true, below: pieces[i + 1]?.gap === true })
     const own = (piece: Exclude<Piece, { kind: 'prose' }>, i: number) =>
       piece.kind === 'image' && left.has(piece.image) ? (
         <Box key={`kittex-formula-${i}-text`} width={piece.image.columns} height={piece.image.rows} flexDirection="column">
@@ -745,7 +775,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
       ) : piece.kind === 'image' ? (
         <Box key={`kittex-formula-${i}-${signatureOf(piece.image.png)}`}>
           <Image key={drawnImage(`kittex-image-${i}`, piece.image)} source={{ png: base64Of(piece.image.png) }} columns={piece.image.columns} rows={piece.image.rows} alt={shownAlt ? altText(piece.tex) : BLANK_ALT} />
-          {copyButton(`kittex-copy-${i}`, piece.tex, piece.copy)}
+          {copyButton(`kittex-copy-${i}`, ownPlace(piece.image, i), piece.tex, piece.copy)}
         </Box>
       ) : (
         <Text dimColor>{piece.text}</Text>
@@ -766,6 +796,11 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
       const text = await below({ ...e, props: { ...e.props, text: piece.text, isFirstOfReply } })
       const inline = piece.inline?.filter(one => !left.has(one.image))
       if (!inline?.length) return text
+      // Every image of the piece in its cells: the first piece starts at the reply's edge, the others at the indent.
+      const origin = indentOf(isFirstOfReply)
+      const boxOf = (one: InlineSlot['inline']): CellBox => ({ row: PIECE_TOP + one.row, column: origin + one.col, rows: one.image.rows, columns: one.image.columns })
+      const images = inline.map(boxOf)
+      const bounds = at === 0 ? proseBounds(images, 0, rightEdge + indent, true, PIECE_TOP) : proseBounds(images, indent, rightEdge, piece.gap, PIECE_TOP)
       return (
         <Box flexDirection="row-reverse">
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
@@ -788,7 +823,7 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
                   rows={inline.image.rows}
                   alt={shownAlt ? altText(inline.tex) : inline.display ? BLANK_ALT : inlineAlt(inline.tex, inlineEnv, inline.image.columns)}
                 />
-                {inline.display ? imageButtons(k, inline) : null}
+                {inline.display ? imageButtons(k, inline, boxOf(inline), images, bounds) : null}
               </Box>
             ))}
           </Box>
@@ -957,79 +992,45 @@ async function setUp($: Engine, surface: string | null): Promise<void> {
  * literals.
  */
 async function readProcessEnv($: Engine): Promise<Record<string, string | undefined>> {
+  // Each name beside its read, so the two never drift apart.
+  const read = async (name: string, value: Promise<string | undefined>) => [name, await value] as const
   const values = await Promise.all([
-    $.env.get('TERM'),
-    $.env.get('TERM_PROGRAM'),
-    $.env.get('TERM_PROGRAM_VERSION'),
-    $.env.get('LC_TERMINAL'),
-    $.env.get('KITTY_WINDOW_ID'),
-    $.env.get('KITTY_PID'),
-    $.env.get('KITTY_INSTALLATION_DIR'),
-    $.env.get('KITTY_CONFIG_DIRECTORY'),
-    $.env.get('GHOSTTY_RESOURCES_DIR'),
-    $.env.get('GHOSTTY_BIN_DIR'),
-    $.env.get('WEZTERM_PANE'),
-    $.env.get('WEZTERM_EXECUTABLE'),
-    $.env.get('ITERM_SESSION_ID'),
-    $.env.get('TMUX'),
-    $.env.get('STY'),
-    $.env.get('ZELLIJ'),
-    $.env.get('ZELLIJ_SESSION_NAME'),
-    $.env.get('SSH_CONNECTION'),
-    $.env.get('SSH_CLIENT'),
-    $.env.get('SSH_TTY'),
-    $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES'),
-    $.env.get('CLAUDE_CODE_SESSION_KIND'),
-    $.env.get('CLAUDE_CONFIG_DIR'),
-    $.env.get('HOME'),
-    $.env.get('XDG_CONFIG_HOME'),
-    $.env.get('XDG_CONFIG_DIRS'),
-    $.env.get('XDG_CACHE_HOME'),
-    $.env.get('FORCE_HYPERLINK'),
-    $.env.get('TERMINAL_EMULATOR'),
-    $.env.get('WT_SESSION'),
-    $.env.get('VTE_VERSION'),
-    $.env.get('CI'),
-    $.env.get('TEAMCITY_VERSION'),
-    $.env.get('NETLIFY'),
+    read('TERM', $.env.get('TERM')),
+    read('TERM_PROGRAM', $.env.get('TERM_PROGRAM')),
+    read('TERM_PROGRAM_VERSION', $.env.get('TERM_PROGRAM_VERSION')),
+    read('LC_TERMINAL', $.env.get('LC_TERMINAL')),
+    read('KITTY_WINDOW_ID', $.env.get('KITTY_WINDOW_ID')),
+    read('KITTY_PID', $.env.get('KITTY_PID')),
+    read('KITTY_INSTALLATION_DIR', $.env.get('KITTY_INSTALLATION_DIR')),
+    read('KITTY_CONFIG_DIRECTORY', $.env.get('KITTY_CONFIG_DIRECTORY')),
+    read('GHOSTTY_RESOURCES_DIR', $.env.get('GHOSTTY_RESOURCES_DIR')),
+    read('GHOSTTY_BIN_DIR', $.env.get('GHOSTTY_BIN_DIR')),
+    read('WEZTERM_PANE', $.env.get('WEZTERM_PANE')),
+    read('WEZTERM_EXECUTABLE', $.env.get('WEZTERM_EXECUTABLE')),
+    read('ITERM_SESSION_ID', $.env.get('ITERM_SESSION_ID')),
+    read('TMUX', $.env.get('TMUX')),
+    read('STY', $.env.get('STY')),
+    read('ZELLIJ', $.env.get('ZELLIJ')),
+    read('ZELLIJ_SESSION_NAME', $.env.get('ZELLIJ_SESSION_NAME')),
+    read('SSH_CONNECTION', $.env.get('SSH_CONNECTION')),
+    read('SSH_CLIENT', $.env.get('SSH_CLIENT')),
+    read('SSH_TTY', $.env.get('SSH_TTY')),
+    read('CLAUDE_CODE_FORCE_TERMINAL_IMAGES', $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES')),
+    read('CLAUDE_CODE_SESSION_KIND', $.env.get('CLAUDE_CODE_SESSION_KIND')),
+    read('CLAUDE_CONFIG_DIR', $.env.get('CLAUDE_CONFIG_DIR')),
+    read('HOME', $.env.get('HOME')),
+    read('XDG_CONFIG_HOME', $.env.get('XDG_CONFIG_HOME')),
+    read('XDG_CONFIG_DIRS', $.env.get('XDG_CONFIG_DIRS')),
+    read('XDG_CACHE_HOME', $.env.get('XDG_CACHE_HOME')),
+    read('FORCE_HYPERLINK', $.env.get('FORCE_HYPERLINK')),
+    read('TERMINAL_EMULATOR', $.env.get('TERMINAL_EMULATOR')),
+    read('WT_SESSION', $.env.get('WT_SESSION')),
+    read('VTE_VERSION', $.env.get('VTE_VERSION')),
+    read('CI', $.env.get('CI')),
+    read('TEAMCITY_VERSION', $.env.get('TEAMCITY_VERSION')),
+    read('NETLIFY', $.env.get('NETLIFY')),
   ])
-  const names = [
-    'TERM',
-    'TERM_PROGRAM',
-    'TERM_PROGRAM_VERSION',
-    'LC_TERMINAL',
-    'KITTY_WINDOW_ID',
-    'KITTY_PID',
-    'KITTY_INSTALLATION_DIR',
-    'KITTY_CONFIG_DIRECTORY',
-    'GHOSTTY_RESOURCES_DIR',
-    'GHOSTTY_BIN_DIR',
-    'WEZTERM_PANE',
-    'WEZTERM_EXECUTABLE',
-    'ITERM_SESSION_ID',
-    'TMUX',
-    'STY',
-    'ZELLIJ',
-    'ZELLIJ_SESSION_NAME',
-    'SSH_CONNECTION',
-    'SSH_CLIENT',
-    'SSH_TTY',
-    'CLAUDE_CODE_FORCE_TERMINAL_IMAGES',
-    'CLAUDE_CODE_SESSION_KIND',
-    'CLAUDE_CONFIG_DIR',
-    'HOME',
-    'XDG_CONFIG_HOME',
-    'XDG_CONFIG_DIRS',
-    'XDG_CACHE_HOME',
-    'FORCE_HYPERLINK',
-    'TERMINAL_EMULATOR',
-    'WT_SESSION',
-    'VTE_VERSION',
-    'CI',
-    'TEAMCITY_VERSION',
-    'NETLIFY',
-  ]
-  return Object.fromEntries(names.map((name, i) => [name, values[i]]))
+  return Object.fromEntries(values)
 }
 
 /** `uname -s` (the engine's bullet differs on macOS), or undefined when it can't run. */
@@ -1127,9 +1128,6 @@ function backgroundNow(): Pick<KittexEnv, 'background'> {
   const background = terminalColors?.background
   return background ? { background: { r: background.r, g: background.g, b: background.b } } : {}
 }
-
-const sameColor = (a: KittexEnv['inkOver'], b: KittexEnv['inkOver']) => a === b || (!!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b)
-const sameCurve = (a: KittexEnv['inkCurve'], b: KittexEnv['inkCurve']) => a === b || (!!a && !!b && a.gamma === b.gamma && a.contrast === b.contrast)
 
 /** The `maxProseWidth` setting, when set: reply prose wraps at most this wide. */
 async function readProseWidth($: Engine): Promise<number | undefined> {
@@ -1253,16 +1251,6 @@ function cellsFor($: Engine): Cells {
       pollTimer?.cancel()
     },
   }
-}
-
-/**
- * A measured cell as kittex.env holds it, with the math's em for it
- * (mathEmPxFor: from the text font's metrics once read, else the font's own
- * cell, the terminal's adjustments undone).
- */
-function cellEnv(cell: CellSize | undefined, env: Pick<KittexEnv, 'kind' | 'cellAdjust' | 'kittyAdjust' | 'font'>): Pick<KittexEnv, 'cellWidth' | 'cellHeight' | 'measured' | 'emPx'> {
-  const { cellWidth, cellHeight, measured } = cellOrFallback(cell)
-  return { cellWidth, cellHeight, measured, emPx: mathEmPxFor({ cellWidth, cellHeight }, env) }
 }
 
 /**
@@ -1581,11 +1569,6 @@ function clockOf($: Engine): (fn: () => void, ms: number) => void {
       later?.(fn, ms)
     }
   }
-}
-
-/** The terminal a remembered env was measured in. */
-function terminalId(variables: Readonly<Record<string, string | undefined>>): string {
-  return [variables.TERM, variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION, variables.TMUX ? 'tmux' : ''].join('|')
 }
 
 /** The env the last session stored, when it was this terminal's (a render's $: three variables and a store read). */
@@ -1955,22 +1938,13 @@ async function doctorFacts($: Engine, options: Parameters<Register>[1]): Promise
   ])
   // Claude Code's decision on pictures: asked now when it isn't known yet and an Image of kittex's is on screen.
   const claude = graphics.state === 'yes' || graphics.state === 'no' ? graphics : await checkGraphics($).catch(() => graphics)
-  const hex = (c: { r: number; g: number; b: number } | undefined) => (c ? `#${[c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}` : undefined)
-  const program = [variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION].filter(Boolean).join(' ')
-  const terminalFacts: TerminalFacts = {
-    kind: info.kind,
-    images: info.images,
-    ...(info.multiplexer ? { multiplexer: info.multiplexer } : {}),
-    ...(info.ssh ? { ssh: true } : {}),
-    ...(variables.TERM ? { term: variables.TERM } : {}),
-    ...(program ? { program } : {}),
-    ...(env ? { cell: { width: env.cellWidth, height: env.cellHeight, measured: env.measured } } : {}),
+  const terminalFacts = terminalFactsOf(info, variables, {
+    ...(env ? { cell: { width: env.cellWidth, height: env.cellHeight, measured: env.measured }, ink: env.ink } : {}),
+    ...(env?.background ? { background: env.background } : {}),
     ...(font ? { font } : {}),
-    ...(env ? { ink: hex(env.ink) } : {}),
-    ...(env?.background ? { background: hex(env.background) } : {}),
     colors: terminalColors?.foreground ? 'terminal' : 'theme',
-    ...(info.images ? { claude: { ...claude } } : {}),
-  }
+    claude,
+  })
   const pluginVersion = typeof manifest === 'string' ? (JSON.parse(manifest) as { version?: unknown }).version : undefined
   const optionText = (value: unknown, fallback: string) => (value === undefined ? fallback : typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value))
   return {

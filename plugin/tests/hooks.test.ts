@@ -48,7 +48,7 @@ function formula(image: Record<string, unknown>, slot: Record<string, unknown> =
     props: slot,
     children: [
       { type: 'Image', ...image },
-      { type: 'Box', props: { position: 'absolute', top: 0, right: 0, display: 'none' }, hover: { display: 'flex' }, children: [{ type: 'Button', props: { label: COPY_LABEL } }] },
+      { type: 'Box', props: { position: 'absolute', display: 'none' }, hover: { display: 'flex' }, children: [{ type: 'Button', props: { label: COPY_LABEL } }] },
     ],
   }
 }
