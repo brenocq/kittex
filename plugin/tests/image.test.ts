@@ -483,24 +483,35 @@ describe('image blocks in a session', () => {
     expect(centre(after[0]!)).not.toEqual([0, 200, 0, 255])
   })
 
-  /** Every Box keyed as one image's cells (`kittex-cell-`): its props, the labels of the Buttons inside, and the box that shows them (props, hover). */
-  function cellBoxes(node: unknown): { props: Record<string, unknown>; labels: string[]; corner: unknown }[] {
+  type Drawn = { type?: unknown; props?: Record<string, unknown>; hover?: unknown; children?: unknown[] }
+
+  /** The labels of the Buttons in `node`. */
+  function labelsOf(node: unknown): string[] {
     if (typeof node !== 'object' || node === null) return []
-    const element = node as { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
-    const labels = (one: unknown): string[] => {
-      if (typeof one !== 'object' || one === null) return []
-      const inner = one as { type?: unknown; props?: { label?: unknown }; children?: unknown[] }
-      return [...(inner.type === 'Button' && typeof inner.props?.label === 'string' ? [inner.props.label] : []), ...(inner.children ?? []).flatMap(labels)]
-    }
-    if (element.type === 'Box' && String(element.props?.['key']).startsWith('kittex-cell-')) {
-      return [{ props: element.props ?? {}, labels: labels(element), corner: (element.children ?? [])[0] }]
-    }
-    return (element.children ?? []).flatMap(cellBoxes)
+    const element = node as Drawn
+    return [...(element.type === 'Button' && typeof element.props?.['label'] === 'string' ? [element.props['label']] : []), ...(element.children ?? []).flatMap(labelsOf)]
+  }
+
+  /** Every Box revealed on hover that holds a copy image button: its props, hover, labels, and the Box it sits in. */
+  function reveals(node: unknown, parent?: Drawn): { box: Drawn; labels: string[]; parent: Drawn | undefined }[] {
+    if (typeof node !== 'object' || node === null) return []
+    const element = node as Drawn
+    const labels = labelsOf(element)
+    if (element.type === 'Box' && element.hover !== undefined && labels.includes(COPY_IMAGE_LABEL)) return [{ box: element, labels, parent }]
+    return (element.children ?? []).flatMap(child => reveals(child, element))
+  }
+
+  /** The size of every Image drawn, in document order. */
+  function imagesOf(node: unknown): { columns: number; rows: number }[] {
+    if (typeof node !== 'object' || node === null) return []
+    const element = node as { type?: unknown; props?: { columns?: unknown; rows?: unknown }; children?: unknown[] }
+    const own = element.type === 'Image' && typeof element.props?.columns === 'number' && typeof element.props.rows === 'number' ? [{ columns: element.props.columns, rows: element.props.rows }] : []
+    return [...own, ...(element.children ?? []).flatMap(imagesOf)]
   }
 
   const TWO = '```latex\n\\includegraphics{out/plot.png}\\hfill\n\\includegraphics{out/green.png}\n```'
 
-  test("each image of a block has its own copy path and copy image over its own cells; copy path copies that image's path, as drawn", async ($, on) => {
+  test("each image of a block has its own copy path and copy image beside it, shown on hover; copy path copies that image's path, as drawn", async ($, on) => {
     const copied: string[] = []
     on('ui.copy', ($, e) => {
       copied.push(e.text)
@@ -517,17 +528,31 @@ describe('image blocks in a session', () => {
     await streamReply($, 'm3', 'Moved.\n')
     const one = await mount($, shown)
     const two = await mount($, both)
-    const [alone] = cellBoxes(await one.drawn())
-    const pair = cellBoxes(await two.drawn())
-    // Each image's cells hold its two buttons, stacked in their top-right corner, shown on hover.
-    for (const cell of [alone, ...pair]) {
-      expect(cell?.labels).toEqual([COPY_PATH_LABEL, COPY_IMAGE_LABEL])
-      expect(cell?.props).toMatchObject({ position: 'absolute' })
-      expect(cell?.corner).toMatchObject({ props: { position: 'absolute', top: 0, right: 0, display: 'none', flexDirection: 'column' }, hover: { display: 'flex' } })
+    const [alone] = reveals(await one.drawn())
+    const pair = reveals(await two.drawn())
+    // Each image's two buttons are revealed on hover, beside its own picture,
+    // in the Box that holds the block's Image: a reveal in a Box laid over the
+    // Image would erase the picture when it shows.
+    for (const reveal of [alone, ...pair]) {
+      expect(reveal?.labels).toEqual([COPY_PATH_LABEL, COPY_IMAGE_LABEL])
+      expect(reveal?.box).toMatchObject({ props: { position: 'absolute', display: 'none' }, hover: { display: 'flex' } })
+      expect(imagesOf({ children: reveal?.parent?.children ?? [] })).toHaveLength(1)
     }
     expect(pair).toHaveLength(2)
-    const [left, right] = pair.map(cell => cell.props as { left: number; width: number; top: number; height: number })
-    expect(left!.left + left!.width).toBeLessThanOrEqual(right!.left)
+    // No button lands on the Image's cells, and the two images' buttons stand apart.
+    const spots: string[] = []
+    for (const [ui, list] of [[one, [alone]], [two, pair]] as const) {
+      const image = imagesOf(await ui.drawn())[0]
+      expect(image).toBeDefined()
+      for (const reveal of list) {
+        const props = reveal!.box.props as { top: number; left: number; flexDirection: string }
+        const size = props.flexDirection === 'column' ? { rows: 2, columns: COPY_IMAGE_LABEL.length } : { rows: 1, columns: COPY_PATH_LABEL.length + 1 + COPY_IMAGE_LABEL.length }
+        const onImage = props.left < image!.columns && 0 < props.left + size.columns && props.top < image!.rows && 0 < props.top + size.rows
+        expect(onImage).toBe(false)
+        spots.push(`${props.top},${props.left}`)
+      }
+    }
+    expect(new Set(spots.slice(1)).size).toBe(2)
     for (const ui of [one, two]) {
       for (const button of await ui.findAll({ type: 'Button', text: COPY_PATH_LABEL })) await ui.press({ key: String(button.key) })
     }

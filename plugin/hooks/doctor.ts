@@ -11,7 +11,7 @@
 // goes in code spans or through `plain`, so no markdown in it changes the row.
 
 import { diagramDocument, formatName, ulimitProbe } from './core.js'
-import type { PdfConverter } from './core.js'
+import type { PdfConverter, TerminalInfo } from './core.js'
 import { compileTrial, onPath, PDF_CONVERTER_NAMES, probePdf, probeSandbox, runsPostScript, takesLibgs, texCacheDir, texPath } from './tex.ts'
 import { CACHE_LIMIT_BYTES, TEX_CACHE_LIMIT_BYTES } from './cache.ts'
 import type { Sandbox, SandboxProbe, TexHost, TexSetup } from './tex.ts'
@@ -561,6 +561,39 @@ export interface TerminalFacts {
    * kittex drew one, `pending` while Claude Code hasn't asked the terminal.
    */
   claude?: { state: 'unknown' | 'pending' | 'yes' | 'no'; source?: string }
+}
+
+type Rgb = { r: number; g: number; b: number }
+
+/** What kittex measured in the terminal, for terminalFactsOf. */
+export interface TerminalSeen {
+  cell?: { width: number; height: number; measured: boolean }
+  ink?: Rgb
+  background?: Rgb
+  font?: TerminalFacts['font']
+  colors: TerminalFacts['colors']
+  claude: NonNullable<TerminalFacts['claude']>
+}
+
+const hex = (c: Rgb) => `#${[c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`
+
+/** The terminal as the doctor reports it: what detection found in `variables`, and what kittex measured there. */
+export function terminalFactsOf(info: TerminalInfo, variables: Readonly<Record<string, string | undefined>>, seen: TerminalSeen): TerminalFacts {
+  const program = [variables.TERM_PROGRAM, variables.TERM_PROGRAM_VERSION].filter(Boolean).join(' ')
+  return {
+    kind: info.kind,
+    images: info.images,
+    ...(info.multiplexer ? { multiplexer: info.multiplexer } : {}),
+    ...(info.ssh ? { ssh: true } : {}),
+    ...(variables.TERM ? { term: variables.TERM } : {}),
+    ...(program ? { program } : {}),
+    ...(seen.cell ? { cell: seen.cell } : {}),
+    ...(seen.font ? { font: seen.font } : {}),
+    ...(seen.ink ? { ink: hex(seen.ink) } : {}),
+    ...(seen.background ? { background: hex(seen.background) } : {}),
+    colors: seen.colors,
+    ...(info.images ? { claude: { ...seen.claude } } : {}),
+  }
 }
 
 export interface StreamingFacts {
