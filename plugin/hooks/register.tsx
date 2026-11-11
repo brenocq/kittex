@@ -182,6 +182,10 @@ const streams = new Map<string, Streaming>()
 const storedBlocks: string[] = []
 /** Response rows appended before any flush of their block (a one-line reply): linked once its stream shows up. */
 const pendingRows: { uuid: string; text: string }[] = []
+/** The plugins whose hooks modules load before kittex's, first outermost (engine.create's list). */
+let loadedBefore: readonly string[] = []
+/** The most hooks seen drawing a reply outside kittex's own (its `ui.render` place in the chain). */
+let drawnOver = 0
 /** Claude Code's environment as the terminal helpers read it. */
 let processEnv: Record<string, string | undefined> = {}
 let terminal: TerminalInfo | undefined
@@ -257,6 +261,8 @@ export const register: Register = (on, options) => {
   // plugin, in the terminal as the setup last saw it (lastEnv; no image
   // before session.start has set it up) and in the colour the caller names.
   on('engine.create', async ($, e, next) => {
+    const at = e.plugins.indexOf('kittex')
+    loadedBefore = at > 0 ? e.plugins.slice(0, at) : []
     const built = await next(e)
     const kittex: Kittex = {
       formula: async request => formulaOf(request, off || lastEnv === undefined ? null : lastEnv, terminalColors, math),
@@ -481,9 +487,23 @@ export const register: Register = (on, options) => {
   // mobile) is not hooked: it has no kitty graphics and draws the text it
   // holds as markdown (and math) its own way, where a formula's Unicode laid
   // out in rows would run together on one line.
-  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => drawLanded($, e, next, math))
-  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', props: { text: sourcePattern(math, true) } }, ($, e, next) => drawLanded($, e, next, math))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: true }, props: { text: STREAMED_PATTERN, onScreen: ON_SCREEN_REPORTED } }, ($, e, next) => watched(next, drawLanded($, e, next, math)))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', viewport: { isFullscreen: false }, props: { text: STREAMED_PATTERN } }, ($, e, next) => watched(next, drawLanded($, e, next, math)))
+  on('ui.render', { component: 'AssistantMessage', surface: 'terminal', props: { text: sourcePattern(math, true) } }, ($, e, next) => watched(next, drawLanded($, e, next, math)))
+}
+
+/**
+ * A reply's drawing, noting once it settles whether another plugin's hook ran
+ * outside kittex's on it: kittex's place in the chain is one above the nearest
+ * link beneath it (0 the outermost), so a place past 0 counts hooks above.
+ */
+async function watched<T>(next: { readonly trace: readonly { readonly index: number }[] }, drawing: Promise<T>): Promise<T> {
+  try {
+    return await drawing
+  } finally {
+    const [nearest] = next.trace
+    if (nearest !== undefined) drawnOver = Math.max(drawnOver, nearest.index - 1)
+  }
 }
 
 /** One flush's rewrite (the MessageDisplay hook's work, its flushes taken in order). */
@@ -1953,7 +1973,7 @@ async function doctorFacts($: Engine, options: Parameters<Register>[1]): Promise
     ...(surface ? { surface } : {}),
     ...(surface === 'terminal' && clients.length > 0 ? { clients } : {}),
     ...(off ? {} : { terminal: terminalFacts }),
-    streaming: { off, streamed: streams.size, unstreamed: pendingRows.length, ...(section !== undefined ? { section } : {}), managed: policy !== undefined && Object.keys(policy).length > 0 },
+    streaming: { off, streamed: streams.size, unstreamed: pendingRows.length, ...(section !== undefined ? { section } : {}), managed: policy !== undefined && Object.keys(policy).length > 0, ...(drawnOver > 0 ? { drawnOver: { hooks: drawnOver, plugins: loadedBefore } } : {}) },
     options: {
       block: math.block,
       inline: math.inline,

@@ -607,6 +607,26 @@ export interface StreamingFacts {
   section?: boolean
   /** Whether managed settings (policy) are present. */
   managed: boolean
+  /**
+   * Another plugin's reply drawing ran outside kittex's (its hook nearer the
+   * top of the chain): how many such hooks a drawn reply passed through first,
+   * and the plugins loaded before kittex, first outermost, of which they are.
+   * Absent when no reply has shown one.
+   */
+  drawnOver?: { hooks: number; plugins: readonly string[] }
+}
+
+/**
+ * The check on a plugin drawing replies outside kittex: Claude Code nests a
+ * tier's plugins in load order, first outermost (install order, or --plugin-dir
+ * order), and a plugin there that draws paragraphs itself (prism's colored
+ * ones) shows kittex's streamed previews as text and its own math as LaTeX.
+ */
+function drawnOverLine(over: { hooks: number; plugins: readonly string[] }): string {
+  const names = over.plugins.map(code)
+  const who = names.length === 0 ? 'another plugin' : names.length === over.hooks ? names.join(', ') : `one of ${names.join(', ')}`
+  const first = names.length === 1 ? names[0] : 'that plugin'
+  return `drawn over: ${who} ${names.length > 1 && names.length === over.hooks ? 'draw' : 'draws'} replies before kittex, so math in the paragraphs it draws itself stays as text. Fix: reinstall ${first} after kittex (${code('claude plugin uninstall')}, then ${code('claude plugin install')}) so kittex loads first; with ${code('--plugin-dir')}, put kittex's first.`
 }
 
 export interface DoctorFacts {
@@ -735,6 +755,7 @@ export function formatDoctor(facts: DoctorFacts): string {
   } else {
     line(INFO, 'no reply has streamed yet this session: run this again after one to confirm')
   }
+  if (!s.off && !elsewhere && s.drawnOver) line(NO, drawnOverLine(s.drawnOver))
   if (!s.off && s.section === false && (s.streamed > 0 || s.unstreamed > 0)) line(INFO, "instructions to Claude ride your first message (the system-prompt hook is skipped here)")
   else if (!s.off && s.section === true) line(OK, "instructions to Claude: in the system prompt")
 

@@ -3,6 +3,7 @@
 // the engine.
 
 import { describe, expect } from 'claude-code/testing'
+import type { Engine, Plugin } from 'claude-code/testing'
 
 import {
   DOCTOR_COMMAND,
@@ -498,6 +499,18 @@ describe('the report', () => {
     expect(streaming({ off: true })).toContain('– kittex is off: Block math and Inline math are both raw')
   })
 
+  test('streaming: a plugin drawing replies outside kittex is named, with the order to fix', async () => {
+    const d = await allThere()
+    const streaming = (s: Partial<DoctorFacts['streaming']>) => formatDoctor(facts(d, { streaming: { off: false, streamed: 2, unstreamed: 0, section: true, managed: false, ...s } }))
+    expect(streaming({})).not.toContain('drawn over')
+    expect(streaming({ drawnOver: { hooks: 1, plugins: ['prism'] } })).toContain(
+      "✗ drawn over: `prism` draws replies before kittex, so math in the paragraphs it draws itself stays as text. Fix: reinstall `prism` after kittex (`claude plugin uninstall`, then `claude plugin install`) so kittex loads first; with `--plugin-dir`, put kittex's first.",
+    )
+    expect(streaming({ drawnOver: { hooks: 1, plugins: ['klog', 'prism'] } })).toContain('✗ drawn over: one of `klog`, `prism` draws replies before kittex')
+    expect(streaming({ drawnOver: { hooks: 1, plugins: [] } })).toContain('✗ drawn over: another plugin draws replies before kittex')
+    expect(streaming({ off: true, drawnOver: { hooks: 1, plugins: ['prism'] } })).not.toContain('drawn over')
+  })
+
   test('a terminal without images: why, what kittex does instead, and where images work', async () => {
     const d = await allThere()
     const tmux = formatDoctor(facts(d, { terminal: { kind: 'kitty', images: false, multiplexer: 'tmux', colors: 'theme', ink: '#ffffff' } }))
@@ -529,6 +542,32 @@ describe('the command through the engine', () => {
     const { text } = await $.command.run(RUN)
     expect(text).toContain('**Diagrams (local TeX)**')
     expect(text).toContain('✗ latex: not found on PATH')
+  })
+
+  // A whole-reply mod loaded before kittex (prism, installed first) sits
+  // outside it on reply drawing; nothing outside: no line.
+  const OUTER: Plugin = {
+    name: 'outer',
+    tier: 'prepend',
+    register(on) {
+      on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => next(e))
+    },
+  }
+  const REPLY = 'So $x^2$ holds.'
+  const mountReply = ($: Engine) =>
+    $.ui.mount({ plugin: 'kittex', surface: 'terminal', component: 'AssistantMessage', requestId: 'r1', props: { text: REPLY, isFirstOfReply: true }, viewport: { columns: 100, rows: 50, isFullscreen: false } })
+
+  test('a plugin drawing replies outside kittex is reported once a reply was drawn', { plugins: [OUTER] }, async ($, on) => {
+    await startSession($, on)
+    expect((await $.command.run(RUN)).text).not.toContain('drawn over')
+    await (await mountReply($)).drawn()
+    expect((await $.command.run(RUN)).text).toContain('draws replies before kittex')
+  })
+
+  test('kittex alone on reply drawing: no drawn-over line', async ($, on) => {
+    await startSession($, on)
+    await (await mountReply($)).drawn()
+    expect((await $.command.run(RUN)).text).not.toContain('drawn over')
   })
 
   test('with kittex off (both raw), the doctor still answers', { options: { block: 'raw', inline: 'raw' } }, async ($, on) => {
