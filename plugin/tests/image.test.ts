@@ -545,10 +545,14 @@ describe('image blocks in a session', () => {
       const image = imagesOf(await ui.drawn())[0]
       expect(image).toBeDefined()
       for (const reveal of list) {
-        const props = reveal!.box.props as { top: number; left: number; flexDirection: string }
-        const size = props.flexDirection === 'column' ? { rows: 2, columns: COPY_IMAGE_LABEL.length } : { rows: 1, columns: COPY_PATH_LABEL.length + 1 + COPY_IMAGE_LABEL.length }
+        const props = reveal!.box.props as { top: number; left: number; flexDirection: string; paddingLeft: number; paddingRight: number }
+        const padding = props.paddingLeft + props.paddingRight
+        const size = props.flexDirection === 'column' ? { rows: 2, columns: COPY_IMAGE_LABEL.length + padding } : { rows: 1, columns: COPY_PATH_LABEL.length + 1 + COPY_IMAGE_LABEL.length + padding }
         const onImage = props.left < image!.columns && 0 < props.left + size.columns && props.top < image!.rows && 0 < props.top + size.rows
         expect(onImage).toBe(false)
+        // The Box touches the Image, so a pointer moving from one to the other never crosses a cell outside both.
+        const touching = props.flexDirection === 'column' ? props.left === image!.columns || props.left + size.columns === 0 : props.top === image!.rows || props.top + size.rows === 0
+        expect(touching).toBe(true)
         spots.push(`${props.top},${props.left}`)
       }
     }

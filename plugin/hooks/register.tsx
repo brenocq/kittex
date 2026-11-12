@@ -730,6 +730,8 @@ async function drawLanded($: Engine, e: TerminalLanded, below: (e: TerminalLande
           display="none"
           hover={{ display: 'flex' }}
           flexDirection={spot.direction}
+          paddingLeft={spot.padding.left}
+          paddingRight={spot.padding.right}
           columnGap={BUTTON_GAP}
           alignItems="flex-start"
         >

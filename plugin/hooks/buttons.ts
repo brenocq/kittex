@@ -12,12 +12,20 @@ export interface CellBox {
   columns: number
 }
 
-/** Where a picture's buttons are drawn, from its top-left cell, and how they are laid out. */
+/**
+ * Where a picture's buttons are drawn, from its top-left cell, and how they
+ * are laid out. The Box starts against its Image, the gap between them being
+ * its own `padding`: a cell between the two would be in neither hover scope,
+ * and a pointer moving slowly from the picture to its buttons would stop
+ * there, hiding them before it reached them.
+ */
 export interface ButtonSpot {
   top: number
   left: number
   /** Stacked one under another (beside the picture), or side by side in one row (above or below it). */
   direction: 'column' | 'row'
+  /** Blank columns inside the Box, between its Image and the buttons. */
+  padding: { left: number; right: number }
 }
 
 /** The cells the buttons may take: columns from `left` up to `right` (exclusive), rows from `top` up to `bottom` (exclusive). */
@@ -103,26 +111,32 @@ export function buttonSpot(picture: ButtonPicture, images: readonly CellBox[], l
   const stacked = { rows: labels.length, columns: Math.max(0, ...labels.map(width)) }
   const inRow = { rows: 1, columns: labels.reduce((sum, label) => sum + width(label), 0) + BUTTON_GAP * Math.max(0, labels.length - 1) }
   const aligned = (columns: number) => Math.max(bounds.left, Math.min(own.column + own.columns - columns, bounds.right - columns))
+  const padded = { rows: stacked.rows, columns: stacked.columns + BUTTON_GAP }
+  const none = { left: 0, right: 0 }
   const sides = [
     {
-      box: { row: own.row, column: frame.column + frame.columns + BUTTON_GAP, ...stacked },
+      box: { row: own.row, column: frame.column + frame.columns, ...padded },
       clear: !siblings.some(other => rowsMeet(other, own) && other.column >= own.column + own.columns),
       direction: 'column' as const,
+      padding: { left: BUTTON_GAP, right: 0 },
     },
     {
-      box: { row: own.row, column: frame.column - BUTTON_GAP - stacked.columns, ...stacked },
+      box: { row: own.row, column: frame.column - padded.columns, ...padded },
       clear: !siblings.some(other => rowsMeet(other, own) && other.column + other.columns <= own.column),
       direction: 'column' as const,
+      padding: { left: 0, right: BUTTON_GAP },
     },
     {
       box: { row: frame.row - inRow.rows, column: aligned(inRow.columns), ...inRow },
       clear: !siblings.some(other => columnsMeet(other, own) && other.row + other.rows <= own.row),
       direction: 'row' as const,
+      padding: none,
     },
     {
       box: { row: frame.row + frame.rows, column: aligned(inRow.columns), ...inRow },
       clear: !siblings.some(other => columnsMeet(other, own) && other.row >= own.row + own.rows),
       direction: 'row' as const,
+      padding: none,
     },
   ]
   const fits = ({ box, clear }: (typeof sides)[number]) =>
@@ -132,7 +146,7 @@ export function buttonSpot(picture: ButtonPicture, images: readonly CellBox[], l
     box.row >= bounds.top &&
     box.row + box.rows <= bounds.bottom &&
     !images.some(image => overlaps(box, image))
-  const above = { box: { row: frame.row - inRow.rows, column: aligned(inRow.columns), ...inRow }, direction: 'row' as const }
+  const above = { box: { row: frame.row - inRow.rows, column: aligned(inRow.columns), ...inRow }, direction: 'row' as const, padding: none }
   const chosen = sides.find(fits) ?? above
-  return { top: chosen.box.row - own.row, left: chosen.box.column - own.column, direction: chosen.direction }
+  return { top: chosen.box.row - own.row, left: chosen.box.column - own.column, direction: chosen.direction, padding: chosen.padding }
 }
